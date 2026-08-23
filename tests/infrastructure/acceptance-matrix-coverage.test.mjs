@@ -9,7 +9,17 @@
 //   G3  the specific known flaky / pre-existing-red files are quarantined;
 //   G4  ci.yml has no hidden failures on blocking steps (no `|| true`, no
 //       continue-on-error), every matrix group is invoked by CI, and no CI
-//       step invokes a group the matrix no longer defines.
+//       step invokes a group the matrix no longer defines. Both G4d
+//       directions use EXACT membership in the comment-stripped extracted
+//       invocation set — a group name that merely shares a prefix with an
+//       invoked name does not count (CC-U1 repair 2026-08-23).
+//   G5  ADR-092 cross-guard: the CC proof-hosting manifest's declared
+//       registryGroup must exist in the matrix export and be exactly invoked
+//       by CI. This test is hosted in the INDEPENDENT matrix-coverage group
+//       (not cc-proof-registry), so a coordinated removal of the registry
+//       group AND its CI step AND the registry's own test still leaves THIS
+//       check red — the registry cannot bootstrap itself out of existence.
+//       The group name is derived from the manifest, never hardcoded.
 //
 // This is the "small workflow-validation test" required by CI-02: it makes the
 // "no required deterministic suite is silently omitted" exit rule machine-checked.
@@ -26,6 +36,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extractInvokedGroups } from '../../tools/cc-proof-hosting-registry.mjs';
+import { CC_PROOF_HOSTING_MANIFEST } from './cc-proof-hosting-manifest.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const runner = path.join(root, 'tools', 'run-acceptance-matrix.mjs');
@@ -162,6 +173,15 @@ test('G3b: flaky quarantine entries reference either the W9 replacement or a sta
 const ciRaw = readFileSync(ciPath, 'utf8');
 const ci = ciRaw.split(/\r?\n/).map(line => line.replace(/(^|\s)#.*$/, '$1')).join('\n');
 
+// The comment-stripped EXTRACTED invocation set: the only form in which CI
+// group invocations may be compared (CC-U1 repair 2026-08-23). Substring
+// probes like ci.includes(`--group ${g}`) are prefix-colliding — a CI step
+// invoking `--group process-modules-shadow` would satisfy a check for
+// `process-modules` — so G4d/G5 use exact Set membership over the tokens
+// extractInvokedGroups() actually parsed.
+const ciInvokedList = [...new Set(extractInvokedGroups(ci))];
+const ciInvokedExact = new Set(ciInvokedList);
+
 test('G4a: ci.yml has no `|| true` hiding a blocking step failure', () => {
   // A bare `|| true` in any run command silently swallows non-zero exits.
   assert.ok(!/\|\|\s*true/.test(ci), 'ci.yml contains a hidden `|| true` failure');
@@ -176,29 +196,60 @@ test('G4c: ci.yml does not run the blanket `npm test` step', () => {
   assert.ok(!/^\s*run:\s*npm\s+test\s*$/m.test(ci), 'ci.yml still runs blanket `npm test`');
 });
 
-test('G4d: ci.yml invokes EVERY acceptance-matrix group and no unknown group (derived from the machine-readable export)', () => {
+test('G4d: ci.yml invokes EVERY acceptance-matrix group and no unknown group (derived from the machine-readable export, EXACT invocation membership)', () => {
   // ADR-092: the required group set is DERIVED from the matrix export — a
   // hardcoded list here could silently lag a group rename, a removal, or a
   // newly added group (exactly how the CC-GAP-8 proof went orphaned).
-  // Direction 1: every matrix group must have a blocking CI step.
+  // Direction 1: every matrix group must have a blocking CI step. EXACT
+  // membership in the extracted invocation set: a prefix-sharing group name
+  // (e.g. CI invoking `--group X-shadow` when the matrix defines `X`) must
+  // NOT satisfy the requirement (CC-U1 repair 2026-08-23: the previous
+  // substring `ci.includes(...)` probe was prefix-colliding).
   const matrixGroups = Object.keys(matrix.groups).sort();
   assert.ok(matrixGroups.length >= 7, `expected at least 7 matrix groups, got ${matrixGroups.length}`);
   for (const g of matrixGroups) {
     assert.ok(
-      ci.includes(`--group ${g}`),
-      `ci.yml missing blocking step for matrix group '${g}'`,
+      ciInvokedExact.has(g),
+      `ci.yml missing blocking step for matrix group '${g}' (exact '--group ${g}' invocation required — a longer name sharing this prefix does not count)`,
     );
   }
   // Direction 2: every `--group X` CI invokes must be a group the matrix
   // still defines — a stale step after a rename/removal is dead wiring.
-  const invoked = [...new Set(extractInvokedGroups(ci))];
-  assert.ok(invoked.length >= 7, `expected ci.yml to invoke at least 7 groups, got ${invoked.length}`);
-  for (const g of invoked) {
+  assert.ok(ciInvokedList.length >= 7, `expected ci.yml to invoke at least 7 groups, got ${ciInvokedList.length}`);
+  for (const g of ciInvokedList) {
     assert.ok(
       Object.hasOwn(matrix.groups, g),
       `ci.yml invokes '--group ${g}' but the acceptance matrix defines no such group (stale wiring)`,
     );
   }
+});
+
+// G5 — ADR-092 / CC-U1 coordinated-removal cross-guard (independently hosted).
+//
+// The registry layer (tools/cc-proof-hosting-registry.mjs +
+// cc-proof-hosting.test.mjs) proves manifest <-> matrix <-> CI closure, but
+// ALL of it runs inside the cc-proof-registry group — the very group it
+// guards. Deleting that group AND its CI step together orphaned the registry's
+// own test and left G4d green (both sides of the bijection shrank
+// consistently): a silent bootstrap removal. This check lives in the
+// SEPARATE matrix-coverage group, derives the registry group from the
+// manifest (never hardcoded), and fails when the declared registryGroup is
+// absent from the matrix export or not exactly invoked by CI — even when the
+// registry group, its CI step, and the registry's own test file are all gone.
+test('G5: the manifest-declared CC proof-registry group exists in the matrix export and is exactly invoked by CI (ADR-092 coordinated-removal cross-guard)', () => {
+  const registryGroup = CC_PROOF_HOSTING_MANIFEST.registryGroup;
+  assert.ok(
+    typeof registryGroup === 'string' && registryGroup.trim().length > 0,
+    'the CC proof-hosting manifest must declare a non-empty registryGroup',
+  );
+  assert.ok(
+    Object.hasOwn(matrix.groups, registryGroup),
+    `manifest.registryGroup '${registryGroup}' is missing from the matrix export — coordinated removal of the registry group and its CI step must not leave matrix-coverage green`,
+  );
+  assert.ok(
+    ciInvokedExact.has(registryGroup),
+    `ci.yml does not invoke '--group ${registryGroup}' exactly (real CI invocation set: [${ciInvokedList.join(', ')}]) — coordinated removal of the registry group and its CI step must not leave matrix-coverage green`,
+  );
 });
 
 test('G4e: dispatcher-race step excludes pre-existing-red worktree-isolation.mjs', () => {

@@ -17,6 +17,13 @@
 //       the manifest blocking rows pinned to it (a file joining that group
 //       without a manifest row = silent widening = red), and a CI-invoked
 //       group unknown to the matrix = stale CI wiring = red.
+//   registry bootstrap      : the manifest's own registryGroup must exist in
+//       the matrix (REGISTRY_GROUP_UNKNOWN — a mutated/typo'd group name may
+//       never silently skip the bijection block and validate ok=true), be
+//       invoked by CI (REGISTRY_GROUP_NOT_INVOKED_BY_CI), and be anchored by
+//       at least one blocking manifest row pinned to that same group
+//       (REGISTRY_GROUP_UNANCHORED). CC-U1 repair 2026-08-23: the pure
+//       validator previously failed OPEN on all three.
 //   pending honesty         : pending rows carry non-empty tracker + reason
 //       and can NEVER absorb a blocking proof — a pending row whose file is
 //       hosted in any CI-invoked matrix group is a stale/dishonest pending
@@ -188,23 +195,43 @@ export function validateProofHosting({ manifest, matrix, ciInvokedGroups = null,
     }
   }
 
-  // Registry-group bijection: the dedicated exact-file group's run-set must
-  // equal the manifest blocking rows pinned to it. This is the
-  // matrix -> manifest direction for the registry's own hosting surface: a
+  // Registry-group bootstrap validation + bijection: the dedicated exact-file
+  // group's run-set must equal the manifest blocking rows pinned to it. This is
+  // the matrix -> manifest direction for the registry's own hosting surface: a
   // file joining the group without a manifest row is silent scope widening;
   // a manifest row leaving the group is caught above as PROOF_NOT_HOSTED.
+  //
+  // CC-U1 repair 2026-08-23 (fail-closed bootstrap): the old guard ran the
+  // whole block only `if (groups[registryGroup])`, so a manifest.registryGroup
+  // mutated to an undefined group (typo / coordinated removal) silently
+  // skipped every registry-group check and validated ok=true. The registry
+  // group's own hosting truth is now typed and fail-closed on three axes:
+  //   exists  — REGISTRY_GROUP_UNKNOWN
+  //   invoked — REGISTRY_GROUP_NOT_INVOKED_BY_CI
+  //   anchored — REGISTRY_GROUP_UNANCHORED (>=1 blocking row pinned to it)
   const registryGroup = isNonEmptyString(manifest.registryGroup) ? manifest.registryGroup : null;
-  if (registryGroup && groups && groups[registryGroup]) {
-    const inGroup = Array.isArray(groups[registryGroup].files) ? groups[registryGroup].files : [];
-    const pinned = new Set(blockingRows.filter((r) => r.group === registryGroup).map((r) => r.file));
-    for (const f of inGroup) {
-      if (!pinned.has(f)) {
-        push('REGISTRY_GROUP_WIDENED', `${f} runs in the '${registryGroup}' group but has no manifest blocking row pinned to it — the CC proof-registry surface cannot silently widen`, f);
+  if (registryGroup && groups) {
+    const registryGroupDef = groups[registryGroup];
+    if (!registryGroupDef) {
+      push('REGISTRY_GROUP_UNKNOWN', `manifest.registryGroup '${registryGroup}' is not defined in the acceptance matrix (typo, rename, or coordinated group+CI removal?) — the registry's own hosting group may never silently vanish`);
+    } else {
+      if (invoked !== null && !invoked.includes(registryGroup)) {
+        push('REGISTRY_GROUP_NOT_INVOKED_BY_CI', `manifest.registryGroup '${registryGroup}' is defined in the matrix but CI never invokes '--group ${registryGroup}' — the registry's own group must be CI-invoked, not only declared`);
       }
-    }
-    for (const f of pinned) {
-      if (!inGroup.includes(f)) {
-        push('REGISTRY_GROUP_ROW_NOT_HOSTED', `${f} is pinned to '${registryGroup}' by the manifest but absent from the group run-set`, f);
+      if (!blockingRows.some((r) => r.group === registryGroup)) {
+        push('REGISTRY_GROUP_UNANCHORED', `manifest.registryGroup '${registryGroup}' is anchored by no blocking manifest row pinned to it — the registry group must host at least one registered blocking proof (the bijection anchor), not exist as an empty unproven shell`);
+      }
+      const inGroup = Array.isArray(registryGroupDef.files) ? registryGroupDef.files : [];
+      const pinned = new Set(blockingRows.filter((r) => r.group === registryGroup).map((r) => r.file));
+      for (const f of inGroup) {
+        if (!pinned.has(f)) {
+          push('REGISTRY_GROUP_WIDENED', `${f} runs in the '${registryGroup}' group but has no manifest blocking row pinned to it — the CC proof-registry surface cannot silently widen`, f);
+        }
+      }
+      for (const f of pinned) {
+        if (!inGroup.includes(f)) {
+          push('REGISTRY_GROUP_ROW_NOT_HOSTED', `${f} is pinned to '${registryGroup}' by the manifest but absent from the group run-set`, f);
+        }
       }
     }
   }

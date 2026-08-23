@@ -258,6 +258,12 @@ Choose Option C. Normative contract:
    (no silent widening). CI invoking an unknown group is red. Missing file,
    duplicate row, group rename, run-set drop, quarantine reclassification,
    CI omission, stale pending, malformed manifest — each a typed violation.
+   The registry group itself is typed fail-closed on three axes (CC-U1
+   repair, 2026-08-23): a `registryGroup` unknown to the matrix is
+   `REGISTRY_GROUP_UNKNOWN` (a mutated/typo'd group name may never skip the
+   bijection block and validate ok=true), a declared-but-CI-omitted one is
+   `REGISTRY_GROUP_NOT_INVOKED_BY_CI`, and one anchored by no blocking
+   manifest row is `REGISTRY_GROUP_UNANCHORED`.
 4. **Machine-readable matrix truth.** The export
    `node tools/run-acceptance-matrix.mjs --list-json` is the only supported
    machine surface for group/run-set/quarantine facts; validators and tests
@@ -310,10 +316,60 @@ real repo-level RED/GREEN cycles verified in this landing:
 - (m11) registry-group row not hosted → `REGISTRY_GROUP_ROW_NOT_HOSTED`;
 - (m12) emptied/malformed manifest → `MANIFEST_MALFORMED`;
 - (m13) invalid row type / missing proof statement → typed red;
+- (m14) `registryGroup` mutated to an unknown/typo group →
+  `REGISTRY_GROUP_UNKNOWN` (the pure validator previously failed OPEN
+  here — the bijection block was silently skipped);
+- (m15) `registryGroup` defined but not CI-invoked →
+  `REGISTRY_GROUP_NOT_INVOKED_BY_CI`;
+- (m16) `registryGroup` anchored by no blocking row →
+  `REGISTRY_GROUP_UNANCHORED`;
+- (m17) coordinated group+CI removal → `REGISTRY_GROUP_UNKNOWN`
+  (+ row-level `GROUP_UNKNOWN`) at the validator layer;
+- (m18) prefix-colliding group name (`--group X-shadow` when the matrix
+  defines `X`) cannot satisfy exact invocation →
+  `REGISTRY_GROUP_NOT_INVOKED_BY_CI` (+ row-level);
 - real cycle 1: removing the GAP-8 exact entry from `process-modules` fails
   both the `cc-proof-registry` group and coverage G2g;
 - real cycle 2: removing the CI step fails the validator with
-  `GROUP_NOT_INVOKED_BY_CI` for the registry's own test file.
+  `GROUP_NOT_INVOKED_BY_CI` for the registry's own test file;
+- real cycle 3 (CC-U1 repair): removing the `cc-proof-registry` matrix group
+  AND its CI step together — which also orphans the registry's own test —
+  fails the independently hosted matrix-coverage suite (coverage G5), not
+  only the registry layer.
+
+## CC-U1 repair (2026-08-23): fail-closed registry bootstrap
+
+Three independently found defense-in-depth gaps, repaired without widening
+ADR-092 scope (manifest rows, the two pending GAP-2 rows, GAP-8 exact
+hosting, G2g, and `PROOF_CLAIMS` are all unchanged):
+
+1. **Pure validator fail-open.** A `manifest.registryGroup` mutated to an
+   undefined group skipped the bijection block entirely and validated
+   `ok=true`. The registry group's own hosting truth is now typed
+   fail-closed — exists / invoked / anchored (m14–m16).
+2. **Bootstrap coordinated removal.** Deleting the `cc-proof-registry`
+   matrix group AND its CI step together left every check green: the
+   registry's own test was orphaned with the group, and G4d's two
+   directions shrank consistently. The INDEPENDENTLY hosted
+   `matrix-coverage` suite now imports the manifest and requires its
+   declared `registryGroup` to exist in the `--list-json` export and be
+   EXACTLY present in the real CI invocation set (coverage G5; the group
+   name is derived from the manifest, never hardcoded). This cross-guard
+   fails even when the registry group, its CI step, and the registry's own
+   test file are all deleted together (real cycle 3).
+3. **G4d prefix collision.** The `ci.includes('--group X')` substring probe
+   was satisfied by any longer name sharing the prefix. Both G4d
+   directions (and G5) now use exact membership in the comment-stripped
+   extracted invocation set (m18).
+
+**Reviewed limitation.** The G5 cross-guard covers the registry BOOTSTRAP
+only — it derives the manifest's `registryGroup`, not every blocking row
+(that remains the registry layer's job). A coordinated removal of the
+`matrix-coverage` group and its own CI step would still be green: a guard
+cannot host itself, and no third layer was added. That residual is recorded
+here rather than hidden. The two GAP-2 pending rows remain pending — their
+hosting conversion is its own reviewed change and is untouched by this
+repair.
 
 ## Consequences
 
@@ -322,12 +378,17 @@ Positive:
 - the GAP-8 orphan class is now structurally impossible for every registered
   proof: hosting, group identity, quarantine status, and CI invocation are
   each independently pinned and mutation-proven;
+- the registry's own bootstrap is two-layer fail-closed (CC-U1 repair): the
+  validator types the `registryGroup` (unknown / not-invoked / unanchored),
+  and the independently hosted matrix-coverage G5 cross-guard stays red
+  under a coordinated group+CI removal even when the registry's own test is
+  deleted with them;
 - the two GAP-2 orphans are finally VISIBLE — typed pending with tracker and
   reason, printed in every registry run, instead of green-in-isolation files
   CI has never executed;
 - hardcoded CI group knowledge is gone: G4d derives both directions from the
-  `--list-json` export, so renames, removals, and new groups fail closed
-  automatically;
+  `--list-json` export (with exact invocation membership), so renames,
+  removals, new groups, and prefix-colliding names fail closed automatically;
 - the frozen K1-D proof-claim contract is untouched.
 
 Negative:
@@ -335,7 +396,10 @@ Negative:
 - one more manifest, validator, group, and CI step to maintain;
 - the registry cannot detect critical proofs that never enter it — a
   declared boundary guarded by the CC-U1 checklist process, not by magic;
-- pending rows persist until a reviewed hosting change converts them.
+- pending rows persist until a reviewed hosting change converts them;
+- the G5 cross-guard cannot guard its own host: removing the
+  `matrix-coverage` group and its CI step together would still be green
+  (reviewed limitation, stated above — no infinite tower of guards).
 
 Neutral:
 

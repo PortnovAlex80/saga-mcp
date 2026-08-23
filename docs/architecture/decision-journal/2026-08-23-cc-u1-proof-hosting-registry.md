@@ -125,6 +125,34 @@ blocking + 2 typed pending rows), validator (pure core + CLI), blocking test
 `--list-json` export, `cc-proof-registry` exact-file group, CI step, and the
 coverage self-check migrated off the hardcoded group list onto the export.
 
+## Repair addendum (2026-08-23, same-day CC-U1 defense-in-depth review)
+
+Three independently found gaps in the landing, repaired without scope
+change (the two GAP-2 pending rows, GAP-8 exact hosting, G2g, and the
+frozen PROOF_CLAIMS bijection are untouched):
+
+1. **The pure validator failed OPEN on a mutated `registryGroup`** — an
+   unknown group silently skipped the bijection block and validated
+   `ok=true`. Now typed fail-closed: `REGISTRY_GROUP_UNKNOWN`,
+   `REGISTRY_GROUP_NOT_INVOKED_BY_CI`, `REGISTRY_GROUP_UNANCHORED`
+   (battery m14–m16).
+2. **Coordinated removal of the `cc-proof-registry` group + its CI step
+   left every check green** — the registry's own test was orphaned with
+   the group, and G4d's bijection sides shrank consistently. The
+   independently hosted matrix-coverage suite now cross-guards the
+   manifest-declared `registryGroup` (coverage G5, derived from the
+   manifest, exact membership in the real CI invocation set), verified by
+   a real RED/GREEN cycle (cycle 3).
+3. **Coverage G4d used prefix-colliding substring probes**
+   (`ci.includes('--group X')` is satisfied by `--group X-shadow`) — now
+   exact membership in the comment-stripped extracted invocation set, both
+   directions (battery m18).
+
+Reviewed limitation recorded honestly: G5 cross-guards the registry
+bootstrap only; a coordinated removal of the matrix-coverage group and its
+own CI step would still pass (a guard cannot host itself). No further
+layer was added; the residual is stated in ADR-092 instead of hidden.
+
 ## Check trigger
 
 Any proposal to (a) widen the manifest to non-CC proofs, (b) reintroduce a
