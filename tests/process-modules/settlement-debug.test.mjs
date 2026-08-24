@@ -351,6 +351,24 @@ test('settlement_explain: discovery run traced generically, legacy settlement qu
     // Seed the legacy D4 settlement table with a live row (FK chain of the
     // legacy closure is out of scope for this fixture — toggle FK for the
     // seed insert only). The row MUST be ignored by the tool.
+    // ADR-095 Phase-5 note: fresh DBs no longer create this table; the
+    // fixture DDL below recreates it exactly as an EXISTING pre-cutover
+    // database carries it — inert history the tool must still never read.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ${LEGACY_SETTLEMENT_TABLE} (
+        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+        epic_id                   INTEGER NOT NULL,
+        proposal_id               INTEGER NOT NULL,
+        proposal_content_hash     TEXT,
+        readiness_assessment_hash TEXT,
+        policy_version            TEXT,
+        policy_hash               TEXT,
+        input_snapshot            TEXT,
+        input_hash                TEXT,
+        decision                  TEXT NOT NULL,
+        rationale                 TEXT
+      );
+    `);
     db.pragma('foreign_keys = OFF');
     try {
       db.prepare(`

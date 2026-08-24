@@ -72,8 +72,11 @@ test('R1: the committed CC proof-hosting manifest validates against the live mat
   const result = validateProofHosting({ manifest: CC_PROOF_HOSTING_MANIFEST, matrix, ciInvokedGroups, fileExists });
   assert.deepEqual(result.violations, [],
     `CC proof-hosting violations:\n${result.violations.map((v) => `  [${v.code}] ${v.file ?? ''}: ${v.detail}`).join('\n')}`);
-  assert.equal(result.summary.blocking, 4);
-  assert.equal(result.summary.pending, 2);
+  // 2026-08-24 GAP-2 conversion: the two ex-orphan rows became blocking
+  // (their reviewed conveyor groups host them), so blocking 4 -> 6 and the
+  // pending set reaches its terminal zero.
+  assert.equal(result.summary.blocking, 6);
+  assert.equal(result.summary.pending, 0);
 });
 
 test('R2: both GAP-8 proofs and the hosted GAP-2 projection are pinned blocking in the CI-invoked process-modules group (G2g surface preserved)', () => {
@@ -83,17 +86,26 @@ test('R2: both GAP-8 proofs and the hosted GAP-2 projection are pinned blocking 
   }
 });
 
-test('R3: the two GAP-2 orphan terminal-projection proofs are HONESTLY pending — on disk, green-critical, and hosted nowhere', () => {
+test('R3: the two former GAP-2 orphan terminal-projection proofs are BLOCKING, hosted in their pinned groups, and CI-invoked', () => {
+  // 2026-08-24 conversion (the row tracker protocol executed): the reviewed
+  // conveyor-app / conveyor-periphery matrix groups (both CI-invoked) now
+  // host the two ex-orphans, so the rows converted pending -> blocking. The
+  // oracle strength is preserved in the new direction: each row must exist,
+  // be blocking, pin its hosting group, the group must host the exact file,
+  // and ci.yml must invoke the group.
   for (const f of [GAP2_ORPHAN_SETTLEMENT, GAP2_ORPHAN_TRACKER]) {
     const row = CC_PROOF_HOSTING_MANIFEST.rows.find((r) => r.file === f);
     assert.ok(row, `${f} must have a manifest row`);
-    assert.equal(row.type, 'pending');
-    assert.ok(row.tracker.trim().length > 0, 'pending row must carry a tracker');
-    assert.ok(row.reason.trim().length > 0, 'pending row must carry a reason');
+    assert.equal(row.type, 'blocking',
+      'the hosted critical proof must be a blocking row (the GAP-2 orphan hosting follow-up conversion)');
+    assert.ok(typeof row.group === 'string' && row.group.length > 0,
+      `${f} blocking row must pin its hosting group`);
+    const g = matrix.groups[row.group];
+    assert.ok(g, `matrix group '${row.group}' must exist`);
+    assert.ok(g.files.includes(f), `${f} must be hosted in its pinned group '${row.group}'`);
+    assert.ok(ciInvokedGroups.includes(row.group),
+      `ci.yml must invoke the pinned group '${row.group}'`);
     assert.ok(fileExists(f), `${f} must exist on disk`);
-    for (const [gName, g] of Object.entries(matrix.groups)) {
-      assert.ok(!g.files.includes(f), `${f} must not appear hosted in group '${gName}' while typed pending`);
-    }
   }
 });
 
@@ -201,28 +213,50 @@ test('m7: typing a HOSTED proof as pending fails closed (PENDING_ABSORBS_HOSTED 
   expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', GAP8_ACCOUNTING);
 });
 
-test('m7b: a pending row whose file later lands in a blocking run-set goes stale and fails closed', () => {
-  const matrixMutated = clone(matrix);
-  matrixMutated.groups.architecture.files.push(GAP2_ORPHAN_SETTLEMENT);
-  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixMutated), 'PENDING_ABSORBS_HOSTED', GAP2_ORPHAN_SETTLEMENT);
+test('m7b: a pending row whose file lands in a blocking run-set goes stale and fails closed', () => {
+  // Post-conversion the manifest carries zero real pending rows, so this
+  // direction is proven with a SYNTHETIC pending row (same mutation class,
+  // same validator code path): the blocking ex-orphan row is flipped to
+  // pending while its file stays hosted in conveyor-app.
+  const m = clone(CC_PROOF_HOSTING_MANIFEST);
+  const row = m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  row.type = 'pending';
+  row.tracker = 'synthetic stale pending — must stay red';
+  row.reason = 'reclassified pending to dodge the hosting proof — must stay red';
+  expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', GAP2_ORPHAN_SETTLEMENT);
 });
 
 test('m8: pending rows without tracker/reason fail closed (PENDING_TRACKER_MISSING / PENDING_REASON_MISSING)', () => {
-  const mNoTracker = clone(CC_PROOF_HOSTING_MANIFEST);
-  const a = mNoTracker.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
-  a.tracker = '';
-  expectCode(validate(mNoTracker), 'PENDING_TRACKER_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  // Synthetic isolated-pending base (post-conversion no real pending row
+  // exists): the ex-orphan row flips to pending AND its file is dropped
+  // from the cloned matrix run-set, so ONLY the tracker/reason codes fire.
+  const pendingIsolated = () => {
+    const m = clone(CC_PROOF_HOSTING_MANIFEST);
+    const row = m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+    row.type = 'pending';
+    row.reason = 'synthetic pending for the tracker/reason isolation';
+    const matrixIsolated = clone(matrix);
+    const g = matrixIsolated.groups[row.group];
+    matrixIsolated.groups[row.group] = { ...g, files: g.files.filter((f) => f !== GAP2_ORPHAN_SETTLEMENT) };
+    delete row.group;
+    return { m, matrixIsolated };
+  };
 
-  const mNoReason = clone(CC_PROOF_HOSTING_MANIFEST);
-  const b = mNoReason.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  const mNoTracker = pendingIsolated();
+  mNoTracker.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT).tracker = '';
+  expectCode(validate(mNoTracker.m, mNoTracker.matrixIsolated), 'PENDING_TRACKER_MISSING', GAP2_ORPHAN_SETTLEMENT);
+
+  const mNoReason = pendingIsolated();
+  const b = mNoReason.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  b.tracker = 'docs/plans/CONFORMANCE-CLOSURE-PLAN.md fake-tracker row';
   b.reason = '';
-  expectCode(validate(mNoReason), 'PENDING_REASON_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  expectCode(validate(mNoReason.m, mNoReason.matrixIsolated), 'PENDING_REASON_MISSING', GAP2_ORPHAN_SETTLEMENT);
 
-  const mBadTrackerPath = clone(CC_PROOF_HOSTING_MANIFEST);
-  const c = mBadTrackerPath.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  const mBadTrackerPath = pendingIsolated();
+  const c = mBadTrackerPath.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
   c.tracker = 'docs/plans/DOES-NOT-EXIST.md tracker path must exist';
   const trackerExists = (f) => f !== 'docs/plans/DOES-NOT-EXIST.md';
-  expectCode(validate(mBadTrackerPath, matrix, ciInvokedGroups, trackerExists), 'PENDING_TRACKER_PATH_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  expectCode(validate(mBadTrackerPath.m, mBadTrackerPath.matrixIsolated, ciInvokedGroups, trackerExists), 'PENDING_TRACKER_PATH_MISSING', GAP2_ORPHAN_SETTLEMENT);
 });
 
 test('m9: an unregistered file joining the registry group fails closed (REGISTRY_GROUP_WIDENED)', () => {

@@ -20,9 +20,23 @@ import { createAcceptanceContractValidator } from '../../modules/formalization/a
 import { createSrsContractValidator } from '../../modules/formalization/application/srs-contract-validator.js';
 import { createFormalizationContractValidator } from '../../modules/formalization/application/formalization-contract-validator.js';
 import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contract.js';
+import { DISCOVERY_PROCESS_MODULE_REF } from '../lifecycles/product-delivery-module-contracts.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
-const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
+// ADR-095 Phase-6 repair (2026-08-24): the Phase-4 atomic module bump
+// (3.0.2 -> 4.0.0) left this wiring keyed at the legacy identity, so every
+// worker_done on a live Discovery node failed with
+// SUBMISSION_VALIDATION_POLICY_MISSING (product-discovery@4.0.0/...). The
+// live key is now DERIVED from the canonical contracts constant so the next
+// bump cannot leave this file stale again. The legacy 3.0.2 key stays: a
+// nonterminal run pinned to the retired six-handler installation rehydrates
+// that exact package (ADR-034 / ADR-095 retained-old-installations), and its
+// worker_done boundary resolves policies under the pinned module identity —
+// the same multi-version enumeration DEVELOPMENT_MODULE_REFS uses.
+const DISCOVERY_MODULE_REFS = [
+  'product-discovery@3.0.2',
+  `${DISCOVERY_PROCESS_MODULE_REF.name}@${DISCOVERY_PROCESS_MODULE_REF.version}`,
+] as const;
 const DEVELOPMENT_MODULE_REFS = [
   'solution-development@1.1.0',
   'solution-development@1.2.0',
@@ -92,14 +106,16 @@ export function wireSubmissionValidation(
 
   // --- Discovery policies ---
   for (const nodeId of ['produce-proposal', 'assess-readiness']) {
-    policyRegistry.register(
-      DISCOVERY_MODULE_REF,
-      nodeId,
-      {
-        mode: 'none',
-        rationale: 'typed Production Cell product; validated by cell gate and Discovery settlement',
-      },
-    );
+    for (const moduleRef of DISCOVERY_MODULE_REFS) {
+      policyRegistry.register(
+        moduleRef,
+        nodeId,
+        {
+          mode: 'none',
+          rationale: 'typed Production Cell product; validated by cell gate and Discovery settlement',
+        },
+      );
+    }
   }
 
   // Development workers publish typed JSON products. Their schema/cardinality

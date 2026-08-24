@@ -34,8 +34,14 @@ async function setupFreshDb(repoPath, baseCommit) {
     .run(1, 'Crash recovery fixture', 'Crash test', 'active', '[]', '{}');
   db.prepare('INSERT INTO epics (id, project_id, name, status, priority) VALUES (?, ?, ?, ?, ?)')
     .run(1, 1, 'Pipeline', 'planned', 'high');
-  db.prepare('INSERT INTO lifecycle_execution_controls (epic_id, concurrency) VALUES (?, ?)')
-    .run(1, 1);
+  // The production admission boundary is fail-closed: an orchestration
+  // fixture must pin the exact model route and its catalog quota, just as a
+  // real Factory Start does.  Leaving these columns NULL tests malformed
+  // persisted state, not crash recovery.
+  db.prepare(`INSERT INTO lifecycle_execution_controls
+      (epic_id, concurrency, model_provider, model_name, model_effort, model_concurrency_limit)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(1, 1, 'zai', 'glm-4.7', 'high', 2);
   db.prepare('INSERT INTO repositories (id, name, default_branch, metadata) VALUES (?, ?, ?, ?)').run(1, 'crash-repo', 'main', '{}');
   db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(1, 1, 1, 'component', repoPath, 'dev', 'active');

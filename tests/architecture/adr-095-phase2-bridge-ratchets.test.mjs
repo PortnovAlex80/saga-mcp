@@ -398,20 +398,17 @@ test('BR4c: the factory fails closed without the pinned lifecycle reader (compos
 });
 
 // ---------------------------------------------------------------------------
-// BR5 — retired handler IDs cannot fan out beyond the exact known legacy
-// files. Today the five ControlIntent-era ids may exist ONLY inside the three
-// classified legacy src files (dead factory, dead package adapter, stale
-// manifest pins). Any NEW file mentioning one (a fresh registration, a new
-// tool, a new test-visible wiring in src) fails here. Phase 4 deletes the
-// first two and repins the third in ONE commit and tightens this allowed set
-// to empty in that same commit.
+// BR5 — retired handler IDs cannot appear ANYWHERE in src/. Before the
+// Phase-4 cutover the five ControlIntent-era ids were tolerated inside the
+// three classified legacy src files (dead factory, dead package adapter,
+// stale manifest pins). Phase 4 deleted the first two and repinned the
+// manifest to the one live handler; ADR-095 Phase 6 (2026-08-24) empties the
+// allowed set to its terminal state — the same commit-train the suite's
+// Phase-4/5/6 note required. Any file mentioning a retired id (a fresh
+// registration, a new tool, a new test-visible wiring in src) fails here.
 // ---------------------------------------------------------------------------
 
-const RETIRED_ID_ALLOWED_FILES = Object.freeze([
-  'src/modules/discovery/application/discovery-installation.ts',
-  'src/process-modules/modules/discovery/package/contributions/handler-adapter.ts',
-  'src/process-modules/modules/discovery/package/manifest.ts',
-]);
+const RETIRED_ID_ALLOWED_FILES = Object.freeze([]);
 
 test('BR5: retired Discovery handler IDs appear in src/ ONLY inside the exact known legacy files', () => {
   const offenders = new Map();

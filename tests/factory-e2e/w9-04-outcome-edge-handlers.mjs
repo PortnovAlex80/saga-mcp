@@ -28,7 +28,7 @@ function git(cwd, ...args) {
   }).trim();
 }
 
-const DISC = 'product-discovery@3.0.2';
+const DISC = 'product-discovery@4.0.0';
 const FRM = 'solution-formalization@1.0.0';
 const DEV = 'solution-development@1.4.4';
 

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const { definitions, handlers } = await import('../../dist/tools/process-modules.js');
+const { DISCOVERY_PROCESS_MODULE_REF } = await import(
+  '../../dist/process-modules/modules/discovery/discovery-process-module.js'
+);
 
 const toolNames = definitions.map(definition => definition.name);
 
@@ -43,9 +46,12 @@ test('process_module_list returns the complete product lifecycle catalog', () =>
   const refs = result.modules.map(
     module => `${module.identity.name}@${module.identity.version}`,
   );
+  // ADR-095 Phase 4 bumped product-discovery 3.0.2 -> 4.0.0 atomically with
+  // the manifest cutover; the expectation is DERIVED from the canonical
+  // contracts constant so a future bump cannot leave this catalog pin stale.
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
-    'product-discovery@3.0.2',
+    `product-discovery@${DISCOVERY_PROCESS_MODULE_REF.version}`,
     'solution-development@1.4.4',
     'solution-formalization@1.0.0',
   ]);
@@ -55,7 +61,7 @@ test('process_module_list returns the complete product lifecycle catalog', () =>
 test('process_module_get returns complete definition and validation', () => {
   const result = handlers.process_module_get({
     name: 'product-discovery',
-    version: '3.0.2',
+    version: DISCOVERY_PROCESS_MODULE_REF.version,
   });
   assert.equal(result.module.identity.kind, 'discovery');
   assert.equal(result.validation.valid, true);
