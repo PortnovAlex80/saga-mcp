@@ -84,10 +84,6 @@ export const DISCOVERY_PROPOSAL_BUNDLE_CONTRACT: ContractRef = contractRef(
  * transformation proposal. Matches
  * `factory.discovery-normalization-proposal.v1`.
  */
-export const DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'factory.discovery-normalization-proposal.v1',
-  '1.0.0',
-);
 
 /**
  * Output contract of the `prepare-readiness` / `resolve-readiness` node pair:
@@ -104,10 +100,6 @@ export const DISCOVERY_READINESS_BUNDLE_CONTRACT: ContractRef = contractRef(
  * advisory diagnosis report. Matches `factory.discovery-diagnosis.v1`. The
  * diagnosis is advisory-only — it never enters the outcome-critical flow.
  */
-export const DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'factory.discovery-diagnosis.v1',
-  '1.0.0',
-);
 
 /**
  * Output contract of the brief auto-provisioning projection: the synthetic
@@ -115,10 +107,6 @@ export const DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT: ContractRef = contractRef(
  * Formalization has its PRD → brief `derived_from` lineage). Matches
  * `factory.discovery-brief.v1`.
  */
-export const DISCOVERY_BRIEF_BUNDLE_CONTRACT: ContractRef = contractRef(
-  'factory.discovery-brief.v1',
-  '1.0.0',
-);
 
 /**
  * The intermediate settlement-input contract the settlement handler assembles
@@ -166,10 +154,7 @@ export const DISCOVERY_CERTIFICATE_CONTRACT: ContractRef = contractRef(
  */
 export const DISCOVERY_NODE_OUTPUT_CONTRACTS: readonly ContractRef[] = Object.freeze([
   DISCOVERY_PROPOSAL_BUNDLE_CONTRACT,
-  DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT,
   DISCOVERY_READINESS_BUNDLE_CONTRACT,
-  DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT,
-  DISCOVERY_BRIEF_BUNDLE_CONTRACT,
   DISCOVERY_SETTLEMENT_INPUT_CONTRACT,
 ]);
 

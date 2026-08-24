@@ -71,12 +71,8 @@ import { DISCOVERY_AGENT_ASSISTANCE } from './assistance.js';
 // ---------------------------------------------------------------------------
 // Module key + discovery handler identities.
 //
-// Discovery's kernel handlers are registered in
-// `discovery-installation.ts` (`createDiscoveryKernelHandlers`). That file
-// inlines the handler id strings; this manifest pins them as a frozen
-// constant so the handlerRefs below stay in lockstep with the registration.
-// Mirrors `FORMALIZATION_HANDLER_IDS` / `FORMALIZATION_MODULE_KEY` from
-// `formalization-installation.ts`.
+// Discovery's live handler is registered by the production-cell installation.
+// This manifest pins exactly that installed surface.
 // ---------------------------------------------------------------------------
 
 /**
@@ -95,11 +91,6 @@ export const DISCOVERY_MODULE_KEY =
  * boundary Formalization draws.
  */
 export const DISCOVERY_HANDLER_IDS = Object.freeze({
-  resolveProposalSubmission: 'discovery-resolve-proposal-submission',
-  prepareNormalization: 'discovery-prepare-normalization',
-  resolveNormalizedProposal: 'discovery-resolve-normalized-proposal',
-  prepareReadiness: 'discovery-prepare-readiness',
-  resolveReadiness: 'discovery-resolve-readiness',
   settlementPolicy: 'discovery-settlement-policy',
 });
 
@@ -173,9 +164,7 @@ const DISCOVERY_PACKAGE_RESOURCE_ROOT =
 const RESOURCE_PATHS = {
   // Execution-profile skills (one per discovery LM node).
   proposalExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-worker/SKILL.md`,
-  normalizerExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-normalizer/SKILL.md`,
   readinessAdvisorExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-readiness-advisor/SKILL.md`,
-  diagnosisAdvisorExecutionSkill: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/skills/saga-discovery-diagnosis-advisor/SKILL.md`,
   // Shared protocol skill pinned by every discovery execution profile.
   // PLATFORM resource: stays at the repo-root skills/ dir (shared by all
   // process modules); not duplicated into the package.
@@ -185,18 +174,10 @@ const RESOURCE_PATHS = {
   proposalCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-call-template.json`,
   proposalStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-stage-tracker.md`,
   proposalChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/proposal-checklist.md`,
-  // Normalizer worker templates.
-  normalizationCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-call-template.json`,
-  normalizationStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-stage-tracker.md`,
-  normalizationChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/normalization-checklist.md`,
   // Readiness advisor templates.
   readinessCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-call-template.json`,
   readinessStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-stage-tracker.md`,
   readinessChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/readiness-checklist.md`,
-  // Diagnosis advisor templates (advisory-only execution profile).
-  diagnosisCallTemplate: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-call-template.json`,
-  diagnosisStageTracker: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-stage-tracker.md`,
-  diagnosisChecklist: `${DISCOVERY_PACKAGE_RESOURCE_ROOT}/diagnosis-checklist.md`,
 } as const;
 
 /**
@@ -217,20 +198,8 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     digest: PENDING_DIGEST,
   },
   {
-    logicalId: 'discovery.skill.normalizer',
-    path: RESOURCE_PATHS.normalizerExecutionSkill,
-    kind: 'skill',
-    digest: PENDING_DIGEST,
-  },
-  {
     logicalId: 'discovery.skill.readiness-advisor',
     path: RESOURCE_PATHS.readinessAdvisorExecutionSkill,
-    kind: 'skill',
-    digest: PENDING_DIGEST,
-  },
-  {
-    logicalId: 'discovery.skill.diagnosis-advisor',
-    path: RESOURCE_PATHS.diagnosisAdvisorExecutionSkill,
     kind: 'skill',
     digest: PENDING_DIGEST,
   },
@@ -266,25 +235,6 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
     kind: 'checklist',
     digest: PENDING_DIGEST,
   },
-  // --- Normalizer worker resources ---------------------------------------
-  {
-    logicalId: 'discovery.template.normalization-call',
-    path: RESOURCE_PATHS.normalizationCallTemplate,
-    kind: 'mcp-call-template',
-    digest: PENDING_DIGEST,
-  },
-  {
-    logicalId: 'discovery.tracker.normalization-stage',
-    path: RESOURCE_PATHS.normalizationStageTracker,
-    kind: 'template',
-    digest: PENDING_DIGEST,
-  },
-  {
-    logicalId: 'discovery.checklist.normalization',
-    path: RESOURCE_PATHS.normalizationChecklist,
-    kind: 'checklist',
-    digest: PENDING_DIGEST,
-  },
   // --- Readiness advisor resources ---------------------------------------
   {
     logicalId: 'discovery.template.readiness-call',
@@ -301,25 +251,6 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
   {
     logicalId: 'discovery.checklist.readiness',
     path: RESOURCE_PATHS.readinessChecklist,
-    kind: 'checklist',
-    digest: PENDING_DIGEST,
-  },
-  // --- Diagnosis advisor resources (advisory-only profile) ---------------
-  {
-    logicalId: 'discovery.template.diagnosis-call',
-    path: RESOURCE_PATHS.diagnosisCallTemplate,
-    kind: 'mcp-call-template',
-    digest: PENDING_DIGEST,
-  },
-  {
-    logicalId: 'discovery.tracker.diagnosis-stage',
-    path: RESOURCE_PATHS.diagnosisStageTracker,
-    kind: 'template',
-    digest: PENDING_DIGEST,
-  },
-  {
-    logicalId: 'discovery.checklist.diagnosis',
-    path: RESOURCE_PATHS.diagnosisChecklist,
     kind: 'checklist',
     digest: PENDING_DIGEST,
   },
@@ -344,8 +275,8 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
 // a trivially-passing placeholder comparison.
 // ---------------------------------------------------------------------------
 
-/** Shared handler version (matches the module version's minor). */
-const HANDLER_VERSION = '1.0.0';
+/** Handler version bumped atomically with the six-to-one cutover. */
+const HANDLER_VERSION = '2.0.0';
 
 /** Directory of THIS manifest module (mirrored by tsc into dist/). */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -359,7 +290,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  */
 const DISCOVERY_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
   HERE,
-  '../../../../modules/discovery/application/discovery-installation.js',
+  '../../../../modules/discovery/application/discovery-production-cell-installation.js',
   'discovery',
 );
 
@@ -379,11 +310,6 @@ function discoveryHandlerRef(logicalId: string): HandlerRef {
  * `process-outcome-emitter` is runtime-owned and intentionally excluded.
  */
 export const DISCOVERY_HANDLER_REFS: readonly HandlerRef[] = [
-  discoveryHandlerRef(DISCOVERY_HANDLER_IDS.resolveProposalSubmission),
-  discoveryHandlerRef(DISCOVERY_HANDLER_IDS.prepareNormalization),
-  discoveryHandlerRef(DISCOVERY_HANDLER_IDS.resolveNormalizedProposal),
-  discoveryHandlerRef(DISCOVERY_HANDLER_IDS.prepareReadiness),
-  discoveryHandlerRef(DISCOVERY_HANDLER_IDS.resolveReadiness),
   discoveryHandlerRef(DISCOVERY_HANDLER_IDS.settlementPolicy),
 ];
 

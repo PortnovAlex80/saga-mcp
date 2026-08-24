@@ -18,9 +18,6 @@ const { buildExecutionContext } = await import(
 const { executionContextHash } = await import(
   '../../dist/shared/authority/execution-context.js'
 );
-const { SqliteFactoryDiscoveryRuntime } = await import(
-  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
-);
 
 test('WorkIntent contract is physically immutable and cannot switch production ingress', () => {
   const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-intent-seal-'));

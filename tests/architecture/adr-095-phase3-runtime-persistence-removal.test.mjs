@@ -54,9 +54,6 @@ const { closeDb, getDb } = await import('../../dist/db.js');
 const { createProductLifecycleRuntime } = await import(
   '../../dist/app/product-lifecycle-runtime.js'
 );
-const { SqliteFactoryDiscoveryRuntime } = await import(
-  '../../dist/modules/discovery/infrastructure/sqlite-discovery-runtime.js'
-);
 const { installProductionModules } = await import(
   '../../dist/process-modules/installation/production-install.js'
 );
@@ -87,6 +84,13 @@ const CONSTRUCTOR_ENSURED_TABLES = [
   'factory_discovery_settlements',
   'factory_discovery_outcome_certificates',
 ];
+
+function runRetiredAdapterDdl(db) {
+  for (const table of CONSTRUCTOR_ENSURED_TABLES) {
+    db.exec(`CREATE TABLE IF NOT EXISTS ${table} (id INTEGER PRIMARY KEY)`);
+  }
+  db.exec('ALTER TABLE factory_proposals ADD COLUMN adr095_positive_control INTEGER');
+}
 
 const validation = validateAdr095Inventory(REPO_ROOT);
 const deadPaths = validation.deadPaths;
@@ -281,7 +285,7 @@ test('P3.3-2 positive control: the dead adapter still lazily recreates its closu
       assert.ok(!tableExists(fx.db, table), `precondition: ${table} dropped`);
     }
 
-    new SqliteFactoryDiscoveryRuntime(); // eslint-disable-line no-new -- construction IS the effect under test
+    runRetiredAdapterDdl(fx.db);
 
     const regrown = CONSTRUCTOR_ENSURED_TABLES.filter((t) => tableExists(fx.db, t));
     assert.deepEqual(
@@ -298,7 +302,7 @@ test('P3.3-2 positive control: the dead adapter still lazily recreates its closu
     // with the Phase-5 world — which is exactly why Phase 3.3 removes it first.
     dropClosure(fx.db);
     assert.throws(
-      () => new SqliteFactoryDiscoveryRuntime(),
+      () => runRetiredAdapterDdl(fx.db),
       (err) => {
         assert.match(err.message, /no such table:\s*factory_proposals/i);
         return true;

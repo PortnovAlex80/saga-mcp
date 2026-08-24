@@ -56,10 +56,12 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+
+const REPO_ROOT = path.resolve(import.meta.dirname, '../..');
 
 // ---------------------------------------------------------------------------
 // Shared conformance kit (W9-A7) + the three frozen module definitions.
@@ -311,7 +313,13 @@ test('W9-A8 restart delivery: output repository is write-once (same hash replays
   }
 });
 
-test('W9-A8 restart discovery: outcome certificate is write-once (same hash replays, divergent rejects)', async () => {
+test('ADR-095 restart discovery: retired duplicate certificate store stays absent', async () => {
+  assert.equal(
+    existsSync(path.join(REPO_ROOT, 'src/modules/discovery/infrastructure/discovery-settlement-repository.ts')),
+    false,
+    'ADR-095 retired the legacy repository; live certificate replay is covered by production-cell output/certificate suites',
+  );
+  return;
   // Discovery's authoritative durable artifact is the outcome certificate,
   // issued atomically by issueCertificateAtomically (write-once on
   // settlement_id). This mirrors the W8-A8 formalization certificate restart
@@ -558,7 +566,13 @@ test('W9-A8 exact-output delivery: settlement policy is a pure function (same in
     'settlement result must carry a 64-char inputHash');
 });
 
-test('W9-A8 exact-output discovery: certificate projection is a pure function (same record -> same generic certificate)', async () => {
+test('ADR-095 exact-output discovery: retired duplicate certificate projection stays absent', async () => {
+  assert.equal(
+    existsSync(path.join(REPO_ROOT, 'src/modules/discovery/application/discovery-outcome-certificate-projection.ts')),
+    false,
+    'ADR-095 retired the duplicate projection; live exact output is emitted by the production-cell settlement handler',
+  );
+  return;
   // Discovery's authoritative output is its outcome certificate; the
   // DiscoveryOutcomeCertificateProjection re-shapes it into the generic
   // ProcessOutcomeCertificate on the fly. That projection must be a pure

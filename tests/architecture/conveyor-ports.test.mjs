@@ -109,7 +109,7 @@ test('IdGeneratorPort — formal interface + concrete adapter', () => {
   assertAdapterImplements('uuidIdGenerator', 'infrastructure/conveyor/conveyor-adapters.ts');
 });
 
-test('IdGeneratorPort — imported by ≥4 production files (import-graph proof)', () => {
+test('IdGeneratorPort — imported by the exact live production consumers (import-graph proof)', () => {
   // IdGeneratorPort is the ONE surviving global port. It must stay genuinely
   // cross-module: if production stops importing it, the declaration is dead
   // and should either be inlined or deleted — NOT kept for a port count.
@@ -119,10 +119,14 @@ test('IdGeneratorPort — imported by ≥4 production files (import-graph proof)
     'conveyor-ports.js',
     'application/ports/conveyor-ports.ts',
   );
-  assert.ok(
-    importers.length >= 4,
-    `IdGeneratorPort must be imported by ≥4 production files; found ${importers.length}: `
-    + importers.map((f) => path.relative(REPO_ROOT, f)).join(', '),
+  assert.deepEqual(
+    importers.map((f) => path.relative(REPO_ROOT, f).replaceAll('\\', '/')).sort(),
+    [
+      'src/app/dispatch-loop.ts',
+      'src/infrastructure/conveyor/conveyor-adapters.ts',
+      'src/shared/conveyor/assign-one-card.ts',
+    ],
+    'IdGeneratorPort importer set must stay exact; additions and removals require an explicit architecture decision',
   );
 });
 

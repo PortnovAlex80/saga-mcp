@@ -103,13 +103,6 @@ export const DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource 
  * certificate). Verifies that every cited condition id and source ref belongs
  * to the immutable certificate's policy trace before the report is accepted.
  */
-export const DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL: DiscoverySkillResource = skillResource({
-  logicalId: 'discovery.skill.reviewer.diagnosis',
-  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-diagnosis-advisor/SKILL.md',
-  kind: 'reviewer-skill',
-  pinnedByProfile: 'discovery-diagnosis-advisor',
-  slot: 'review',
-});
 
 // ---------------------------------------------------------------------------
 // Execution + semantic skills — the author-side skills pinned by each profile.
@@ -133,13 +126,6 @@ export const DISCOVERY_WORKER_SKILL: DiscoverySkillResource = skillResource({
  * `semanticSkill` on the normalizer profile (semantic transformation of
  * ambiguous source fields without inventing evidence).
  */
-export const DISCOVERY_NORMALIZER_SKILL: DiscoverySkillResource = skillResource({
-  logicalId: 'discovery.skill.normalizer',
-  path: 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-normalizer/SKILL.md',
-  kind: 'skill',
-  pinnedByProfile: 'discovery-normalizer',
-  slot: 'execution',
-});
 
 /**
  * Process-module worker protocol skill. Pinned as the `protocolSkill` on EVERY
@@ -184,9 +170,7 @@ export const DISCOVERY_KICKSTART_REVIEWER_SKILL: DiscoverySkillResource = skillR
  */
 export const DISCOVERY_SKILL_RESOURCES: readonly DiscoverySkillResource[] = Object.freeze([
   DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL,
-  DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL,
   DISCOVERY_WORKER_SKILL,
-  DISCOVERY_NORMALIZER_SKILL,
   DISCOVERY_PROTOCOL_SKILL,
   DISCOVERY_KICKSTART_REVIEWER_SKILL,
 ]);
