@@ -1352,6 +1352,26 @@
         "integration/canonical-2026-08-24 — canonical consolidation history beginning at merge a170dd95 and task-shadow merge cd02e9fc",
         "docs/factory-run/stage23-devtest/TRACKER.md — REG-28 truth correction and explicit separation of historical run evidence from canonical qualification"
       ]
+    },
+    {
+      "adr": "097",
+      "file": "097-event-projected-workflow-kernel.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "Every cross-aggregate transition is atomically paired with an exact durable event/obligation; no scheduler, dependency evaluator, terminalizer or material consumer reads Kanban/task projections; aggregate transitions use their sole reducer/CAS owner; projection deletion and rebuild cannot change dispatch or terminal outcome; every nonterminal committed state has a live owner, runnable obligation, typed wait with wake source, or committed transition due.",
+      "successor": null,
+      "notes": "Accepted 2026-08-24 after a Cynefin decomposition, three independent architecture options, weighted MCDA and a hostile review. The initial per-run-supervisor leader was rejected because it would duplicate bounded aggregate authority; a supervisor may survive only as a stateless replaceable obligation consumer. Missing evidence: no cutover implementation exists yet. Closure requires the complete state reader/writer inventory, hard per-FactoryStart protocol cutover, zero projection-authority/direct-writer ratchets, write-time progress-successor enforcement, projection rebuild and board-corruption proofs, bounded model/generated traces, fault injection at every event/evidence boundary, and a clean Development capsule vertical on one immutable build.",
+      "evidence": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md — Cynefin triage, three options, MCDA, pre-mortem, hostile correction, chosen authority laws and decision journal",
+        "src/application/conveyor-runtime.ts — declares task status a projection but reads it back when binding Workplace authority",
+        "src/lifecycle/work-assignment-core.ts and src/tools/tasks.ts — current dispatch and dependency decisions still consume/mutate the task projection",
+        "docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md — material authority and explicit durable-handoff diagnosis",
+        "docs/architecture/CONVEYOR-MENTAL-MODEL.md section 23 — composed bounded machines and progress-obligation invariant"
+      ]
     }
   ]
 }
