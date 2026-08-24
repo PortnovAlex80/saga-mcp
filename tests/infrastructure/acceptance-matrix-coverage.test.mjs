@@ -290,6 +290,37 @@ test('G2m: BOTH BM-5 file-identity suites are hosted blocking (per-file de-hosti
   }
 });
 
+test('G2n: the BM-5 upstream-routing proof is hosted blocking (per-file removal/de-hosting guard)', () => {
+  // GUARD ID NOTE (canonical BM-5 integration, 2026-08-24): this guard was
+  // authored as `G2l` on the stage22/bm5-file-identity branch, whose base
+  // predated ADR-095 Phase-2C/3. Canonical saga4 had already assigned G2l
+  // to the conveyor v4.3 focused-invariants suite (Phase-3.1 migrated live
+  // oracle); that canonical guard is kept, and this BM-5 guard is renamed
+  // to the next genuinely free ID G2n (G2m being the renamed BM-5
+  // file-identity pair guard). runSet semantics unchanged: membership only,
+  // quarantine does not count.
+  // tests/factory-contract/srs-identity-upstream-routing.test.mjs — the BM-5
+  // Red-Team correction follow-up (2026-08-24, gate v1.4.0): code-scoped
+  // upstream routing for plan-independent frozen-SRS defects. The planner
+  // check plans declare upstreamOwnedFailureCodes; the gate reducer
+  // escalates EXACTLY receipts carrying srs-file-identity-conflict /
+  // srs-artifact-drifted / srs-module-manifest-missing to the
+  // producer-defect verdict 'failed' (no planner repair budget burned),
+  // while genuine plan errors from the same entry keep author repair.
+  // Unlike the G2m pair this suite has NO exact-file entry in
+  // run-acceptance-matrix.mjs — it is hosted by the factory-contract GROUP
+  // GLOB — so nothing else pins it per-file. Deleting the file, narrowing
+  // the glob away from it, or dropping it from the run-set must fail HERE,
+  // not silently orphan the proof again (the recurring orphan-hosting
+  // death class, RED-TEAM-AUDIT §"per-file removal guards"). Asserted
+  // against runSet only: reclassifying the routing proof as FLAKY or
+  // PRE-EXISTING-RED is not an honest way to drop it.
+  assert.ok(
+    runSet.has('tests/factory-contract/srs-identity-upstream-routing.test.mjs'),
+    'srs-identity-upstream-routing must stay in a blocking run-set (BM-5 upstream-routing proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [

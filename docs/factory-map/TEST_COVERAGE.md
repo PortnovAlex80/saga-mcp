@@ -1,6 +1,6 @@
-# TEST_COVERAGE — reconciled evidence labels and the coverage universe (as of `12d46037`)
+# TEST_COVERAGE — reconciled evidence labels and the coverage universe (as of `010f600c`)
 
-- **Sources of truth (machine):** `tools/run-acceptance-matrix.mjs` (8 groups,
+- **Sources of truth (machine):** `tools/run-acceptance-matrix.mjs` (9 groups,
   6 quarantine rows, `--list-json` export is the ONLY supported machine
   surface per ADR-092) and `.github/workflows/ci.yml` (each group an isolated
   blocking step, ubuntu-only, branches `dev|main|saga2-refactoring|saga4`).
@@ -30,7 +30,7 @@ metadata, not a strength grade.
 
 ## 2. Registry facts (reconciler-verified, not narrated)
 
-- 8 groups: `architecture`, `factory-model`, `readiness-fencing`,
+- 9 groups: `architecture`, `factory-model`, `readiness-fencing`,
   `factory-contract`, `process-modules` (concurrency=1; TWELVE exact-file
   adoptions at `tools/run-acceptance-matrix.mjs:89-139`: the CC-GAP-8 pair
   [verification-ledger, terminal-exit-accounting], the Elite-8
@@ -45,7 +45,7 @@ metadata, not a strength grade.
   `discovery-live-v2` (8 exact files, ADR-095 Phase-2A/2B),
   `matrix-coverage` (self-check),
   `cc-proof-registry` (bidirectional manifest↔matrix↔CI closure, ADR-092),
-  `factory-proof` (27 exact files: W0 kernel, W1 verticals, CC-10A measuring
+  `factory-proof` (23 exact files: W0 kernel, W1 verticals, CC-10A measuring
   surface).
 - 6 quarantine rows: golden-path (FLAKY), parallel-git-desk (FLAKY),
   factory-temporal/* (FLAKY), development-task-graph-diagnostics

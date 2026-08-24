@@ -424,5 +424,5 @@ function hashReceipt(
     outcome,
     evidenceRefs,
   });
- }
+}
 
