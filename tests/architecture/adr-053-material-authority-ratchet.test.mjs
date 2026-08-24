@@ -50,6 +50,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import test from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -259,8 +260,10 @@ test('TASK-SHADOW ratchet: the readTaskForWorkplace port stays deleted in src/',
 // TASK-SHADOW L1 (2026-08-24) — the newest-wins pin below originally matched
 // only the EXACT retired spelling (`FROM tasks WHERE workplace_ref=? ORDER BY
 // id DESC LIMIT 1`). Equivalent task-selection chronology could evade by
-// trivially re-spelling the selector. The detector now covers the audited
-// evasion shapes while staying scoped to TASK selection by workplace:
+// trivially re-spelling the selector. The active detector uses the TypeScript
+// AST to extract complete static string/template literals and therefore has
+// no character look-ahead bound. It covers the audited evasion shapes while
+// staying scoped to TASK selection by workplace:
 //   (a) MAX(id)/MAX(rowid) aggregates (scalar subquery or plain aggregate);
 //   (b) ORDER BY created_at/updated_at/rowid DESC (any task-row chronology
 //       column, not just id);
@@ -270,6 +273,8 @@ test('TASK-SHADOW ratchet: the readTaskForWorkplace port stays deleted in src/',
 //       JOIN ... ON workplace_ref, extra predicates between FROM and ORDER
 //       BY, `tasks AS t`, quoted identifiers, secondary sort keys
 //       (`ORDER BY sort_order, id DESC`).
+//   (e) tasks as either a FROM or JOIN target;
+//   (f) ROW_NUMBER/RANK/DENSE_RANK windows ordered by task chronology DESC.
 // Scope guard (what must NOT fire): chronology over NON-task columns (an
 // execution-attempt frontier inside an already-exact task, e.g.
 // `ORDER BY we.reserved_at DESC`), exact append-frontiers keyed by a logical
@@ -282,44 +287,76 @@ const SQL_KEYWORDS = new Set([
   'natural', 'full',
 ]);
 
-function detectNewestWinsTaskSelections(src) {
-  const findings = [];
-  const fromTasks = /\bfrom\s+["'`[]?tasks["'`\]]?(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/gi;
-  for (const match of src.matchAll(fromTasks)) {
-    const rawAlias = (match[1] ?? '').toLowerCase();
-    const alias = rawAlias && !SQL_KEYWORDS.has(rawAlias) ? rawAlias : null;
-    const afterStart = match.index + match[0].length;
-    const after = src.slice(afterStart, afterStart + 420);
-    // Task selection BY WORKPLACE: the workplace predicate (WHERE/JOIN ON)
-    // must follow the tasks reference.
-    if (!/workplace_ref/i.test(after)) continue;
-    const qualifiedOrder = /(?:order\s+by|,)\s*([a-z_][a-z0-9_]*)\s*\.\s*(id|rowid|created_at|updated_at)\s+desc/i.exec(after);
-    const bareOrder = /(?:order\s+by|,)\s*(id|rowid|created_at|updated_at)\s+desc/i.exec(after);
-    if (qualifiedOrder ?? bareOrder) {
-      // A qualified column of a DIFFERENT table is not task-row chronology
-      // (e.g. `ORDER BY we.reserved_at DESC` — an execution frontier).
-      const qualifier = qualifiedOrder ? qualifiedOrder[1].toLowerCase() : null;
-      if (!qualifier || qualifier === 'tasks' || qualifier === alias) {
-        findings.push(
-          `${src.slice(match.index, Math.min(src.length, afterStart + 200)).replace(/\s+/gu, ' ').trim()}`,
-        );
-      }
+// Parse syntax rather than source substrings so every complete static SQL
+// literal is inspected regardless of formatting or distance between clauses.
+function extractStaticSqlLiterals(src) {
+  const sourceFile = ts.createSourceFile(
+    'adr-053-ratchet-input.ts',
+    src,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const literals = [];
+  function visit(node) {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      literals.push(node.text);
     }
-    // MAX(id)/MAX(rowid) directly before `FROM tasks` (aggregate select list
-    // or scalar subquery head): `SELECT MAX(id) FROM tasks WHERE workplace_ref=?`.
-    const before = src.slice(Math.max(0, match.index - 120), match.index);
-    const qualifiedMax = /max\s*\(\s*(?:distinct\s+)?([a-z_][a-z0-9_]*)\s*\.\s*(id|rowid)\s*\)/i.exec(before);
-    const bareMax = /max\s*\(\s*(?:distinct\s+)?(id|rowid)\s*\)/i.exec(before);
-    if (qualifiedMax ?? bareMax) {
-      const qualifier = qualifiedMax ? qualifiedMax[1].toLowerCase() : null;
-      if (!qualifier || qualifier === 'tasks' || qualifier === alias) {
-        findings.push(
-          `${src.slice(Math.max(0, match.index - 120), Math.min(src.length, afterStart + 120)).replace(/\s+/gu, ' ').trim()}`,
-        );
-      }
-    }
+    ts.forEachChild(node, visit);
   }
-  return findings;
+  visit(sourceFile);
+  return literals;
+}
+
+function taskRelationAliases(sql) {
+  const aliases = new Set(['tasks']);
+  const taskTarget = /\b(?:from|join)\s+(?:["`\[]?tasks["`\]]?)(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/giu;
+  for (const match of sql.matchAll(taskTarget)) {
+    const alias = (match[1] ?? '').toLowerCase();
+    if (alias && !SQL_KEYWORDS.has(alias)) aliases.add(alias);
+  }
+  return aliases;
+}
+
+function isTaskChronologyColumn(qualifier, aliases) {
+  return qualifier === undefined || aliases.has(qualifier.toLowerCase());
+}
+
+function detectNewestWinsInSql(sql) {
+  const findings = [];
+  if (!/\b(?:from|join)\s+(?:["`\[]?tasks["`\]]?)/iu.test(sql)) return findings;
+  if (!/\bworkplace_ref\b/iu.test(sql)) return findings;
+
+  const aliases = taskRelationAliases(sql);
+  const chronology = '(id|rowid|created_at|updated_at)';
+  const order = new RegExp(
+    `(?:order\\s+by|,)\\s*(?:([a-z_][a-z0-9_]*)\\s*\\.\\s*)?${chronology}\\s+desc`,
+    'giu',
+  );
+  const aggregate = new RegExp(
+    `max\\s*\\(\\s*(?:distinct\\s+)?(?:([a-z_][a-z0-9_]*)\\s*\\.\\s*)?(id|rowid)\\s*\\)`,
+    'giu',
+  );
+  const windowWinner = /\b(row_number|rank|dense_rank)\s*\(\s*\)\s*over\s*\(([\s\S]*?)\)/giu;
+
+  for (const match of sql.matchAll(order)) {
+    if (isTaskChronologyColumn(match[1], aliases)) findings.push(sql);
+  }
+  for (const match of sql.matchAll(aggregate)) {
+    if (isTaskChronologyColumn(match[1], aliases)) findings.push(sql);
+  }
+  for (const match of sql.matchAll(windowWinner)) {
+    const windowOrder = new RegExp(
+      `order\\s+by[\\s\\S]*?(?:([a-z_][a-z0-9_]*)\\s*\\.\\s*)?${chronology}\\s+desc`,
+      'iu',
+    ).exec(match[2]);
+    if (windowOrder && isTaskChronologyColumn(windowOrder[1], aliases)) findings.push(sql);
+  }
+  return [...new Set(findings.map((finding) => finding.replace(/\s+/gu, ' ').trim()))];
+}
+
+function detectNewestWinsTaskSelections(src) {
+  return extractStaticSqlLiterals(src).flatMap(detectNewestWinsInSql);
 }
 
 test('TASK-SHADOW ratchet: no newest-wins workplace task selection in src/ (audited evasion shapes included)', () => {
@@ -358,6 +395,11 @@ test('TASK-SHADOW ratchet: the newest-wins detector catches every audited evasio
     ['ORDER BY id DESC then first row (no LIMIT)', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC`'],
     ['predicate formatting + alias + extra predicates', "`SELECT t.id FROM tasks AS t WHERE t.workplace_ref = ? AND json_extract(t.metadata,'$.role')='author' ORDER BY t.id DESC LIMIT 1`"],
     ['JOIN-scoped workplace predicate', '`SELECT t.id FROM tasks t JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref ORDER BY t.id DESC LIMIT 1`'],
+    ['tasks as JOIN target', '`SELECT t.id FROM factory_workplaces w JOIN tasks AS t ON t.workplace_ref=w.workplace_ref ORDER BY t.id DESC LIMIT 1`'],
+    ['ROW_NUMBER window newest-wins', '`SELECT id, ROW_NUMBER() OVER (PARTITION BY workplace_ref ORDER BY id DESC) AS newest FROM tasks WHERE workplace_ref=?`'],
+    ['RANK window newest-wins', '`SELECT id, RANK() OVER (PARTITION BY t.workplace_ref ORDER BY t.created_at DESC) AS newest FROM tasks t WHERE t.workplace_ref=?`'],
+    ['DENSE_RANK window newest-wins', '`SELECT id, DENSE_RANK() OVER (PARTITION BY t.workplace_ref ORDER BY t.updated_at DESC) AS newest FROM tasks t WHERE t.workplace_ref=?`'],
+    ['chronology beyond the former scan bound', `\`SELECT id FROM tasks WHERE workplace_ref=? AND note='${'x'.repeat(500)}' ORDER BY id DESC LIMIT 1\``],
     ['secondary sort key DESC', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY sort_order, id DESC`'],
     ['lowercase sql', "`select id from tasks where workplace_ref=? order by id desc limit 1`"],
   ];
