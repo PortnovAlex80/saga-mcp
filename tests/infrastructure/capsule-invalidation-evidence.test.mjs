@@ -18,6 +18,9 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { bindReplayToClaim } from '../../dist/infrastructure/replay/replay-claim-binder.js';
 import { computeReplayKey } from '../../dist/infrastructure/replay/replay-key-material.js';
@@ -228,8 +231,18 @@ test('K9/evidence: successor binding is single-shot and exact', () => {
 // evidence — two divergent capsules under one key re-conflicted forever
 // (live: child-3 plan desk poisoned on every cycle). Corruption-class
 // evidence must exclude the capsule from the SELECTION.
-test('K9/loop-kill: after a payload-conflict, the NEXT bind resolves as an ordinary miss (no eternal loop)', () => {
+test('K9/loop-kill: after a payload-conflict, the NEXT bind resolves as an ordinary miss (no eternal loop)', t => {
+  const journalDir = mkdtempSync(join(tmpdir(), 'saga-replay-loop-kill-'));
+  const journalPath = join(journalDir, 'factory-run-journal.jsonl');
+  const priorJournal = process.env.SAGA_RUN_JOURNAL;
+  process.env.SAGA_RUN_JOURNAL = journalPath;
   const db = freshDb();
+  t.after(() => {
+    db.close();
+    if (priorJournal === undefined) delete process.env.SAGA_RUN_JOURNAL;
+    else process.env.SAGA_RUN_JOURNAL = priorJournal;
+    rmSync(journalDir, { recursive: true, force: true });
+  });
   seedProcessRun(db, 1000, 7, PKG);
   db.prepare(
     `INSERT INTO factory_stage_runs (id, lifecycle_run_id, process_run_id, stage_id, status)
@@ -263,6 +276,26 @@ test('K9/loop-kill: after a payload-conflict, the NEXT bind resolves as an ordin
     executionId: 'exec-miss',
     role: 'author',
   });
-  assert.ok(selection === null || selection.capsule === undefined,
-    'the post-conflict bind must resolve as an ordinary miss, never re-conflict');
+  assert.ok(selection, 'the post-conflict claim resolves');
+  assert.equal(selection.capsuleRef, null,
+    'the post-conflict bind is an exact ordinary miss, never a replay hit');
+
+  const execution = db.prepare(
+    'SELECT metadata FROM worker_executions WHERE execution_id=?',
+  ).get('exec-miss');
+  const replay = JSON.parse(execution.metadata).execution_context.replay;
+  assert.equal(replay.invalidation.capsuleRef, 'cap-left',
+    'the deterministic first poisoned alias remains the typed route subject');
+  assert.equal(replay.invalidation.reason, 'payload-conflict');
+  assert.equal(replay.invalidation.classification, 'integrity-suspect');
+
+  const journal = readFileSync(journalPath, 'utf8')
+    .trim().split('\n').map(line => JSON.parse(line));
+  const escalation = journal.find(event =>
+    event.kind === 'replay.invalidation.integrity-suspect'
+    && event.data?.capsule_ref === 'cap-left');
+  assert.ok(escalation, 'the exact poisoned capsule is journalled');
+  assert.equal(escalation.data.reason, 'payload-conflict');
+  assert.equal(escalation.data.route, 'typed-miss+operator-escalation');
+
 });

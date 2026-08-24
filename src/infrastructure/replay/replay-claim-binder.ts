@@ -379,22 +379,25 @@ export function bindReplayToClaim(
   // refused) must exclude a capsule from the selection; the obsolete class
   // (package-changed et al.) keeps its designed hit-then-typed-miss route.
   const capsuleRows = db.prepare(
-    `SELECT c.capsule_ref,c.payload_hash,c.payload_snapshot
+    `SELECT c.capsule_ref,c.payload_hash,c.payload_snapshot,
+            EXISTS (
+              SELECT 1 FROM factory_replay_capsule_invalidations i
+               WHERE i.capsule_ref=c.capsule_ref
+                 AND i.reason IN ('payload-conflict','refused')
+            ) AS integrity_suspect
        FROM factory_replay_capsules c
       WHERE c.project_id=? AND c.replay_key=?
-        AND NOT EXISTS (
-          SELECT 1 FROM factory_replay_capsule_invalidations i
-           WHERE i.capsule_ref=c.capsule_ref
-             AND i.reason IN ('payload-conflict','refused'))`,
+      ORDER BY c.capsule_ref ASC`,
   ).all(keyMaterial.projectId, replayKey) as Array<{
     capsule_ref: string;
     payload_hash: string;
     payload_snapshot: string;
+    integrity_suspect: number;
   }>;
   // Semantic payload identity (§15/ADR-080): the raw payload_hash carries the
   // run-scoped product digest; conflict detection must compare the semantic
   // projection so byte-equal material under one key stays a pure alias.
-  const capsules = capsuleRows.map(row => ({
+  const capsules = capsuleRows.filter(row => row.integrity_suspect === 0).map(row => ({
     capsule_ref: row.capsule_ref,
     payload_hash: row.payload_hash,
     semantic_payload_hash: semanticReplayPayloadHash(row.payload_snapshot),
@@ -442,9 +445,22 @@ export function bindReplayToClaim(
   // stage-reset) is the designed invalidate+rebuild route: typed in the
   // bound context, no alarm. The previously boolean hasInvalidation() call
   // erased exactly this distinction.
-  const invalidationRouting = capsule
+  const selectedInvalidationRouting = capsule
     ? classifyCapsuleInvalidations(repo.readInvalidationsForCapsule(capsule.capsule_ref))
     : null;
+  // Loop-kill and typed routing are separate obligations. Integrity-suspect
+  // capsules are excluded from conflict selection above, but when that leaves
+  // an ordinary miss the decision boundary must still receive the exact
+  // durable reason that caused the exclusion. Choose by capsule_ref (the SQL
+  // order above) so multiple poisoned aliases produce a stable audit route.
+  const excludedInvalidationRouting = selection.outcome === 'miss'
+    ? capsuleRows
+        .filter(row => row.integrity_suspect !== 0)
+        .map(row => classifyCapsuleInvalidations(repo.readInvalidationsForCapsule(row.capsule_ref)))
+        .find((route): route is CapsuleInvalidationRouting => route !== null)
+      ?? null
+    : null;
+  const invalidationRouting = selectedInvalidationRouting ?? excludedInvalidationRouting;
   const invalidated = invalidationRouting !== null;
   if (invalidationRouting?.classification === 'integrity-suspect') {
     const processRunId = Number(metadataObject(input.task.metadata).process_run_id);
