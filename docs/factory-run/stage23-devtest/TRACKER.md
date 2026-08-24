@@ -6,7 +6,33 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
-## Status: RUNNING (observation only)
+## Status: STOPPED (operator directive, 2026-08-24 ~11:50 local) — resume protocol below
+
+**Stop evidence:** `factory.mjs stop --all --reason "operator directive: full stop,
+continue later"` — engine epic=1 pid 26996 braked (2 stale engine pids already dead),
+2 worker executions fenced (1 with workplace rewind), 0 workers running after,
+lifecycle 2 `paused` @ solution-development, controls `engine_state='stopped'`,
+checkpoint captured to `.factory-sandboxes/devtest-db/.factory-checkpoints/latest-1-all`.
+Watchdog (12h sampler) killed by the operator session.
+
+**Desk state at stop:** 4 done/terminal, 4 in_progress/queued, 1 in_progress/repair_wait
+(kernel-owned — the engine drives it on resume), 1 todo/idle. Tasks 34–45: 10 done
+(shared-core-foundation merged as `db3fe758`), 2 stopped mid-flight (task 29, 30).
+Product `dev`: 8 commits above the formalization base `9355b06a`.
+
+**Resume protocol (from here, per the runbook):**
+
+```bash
+cd D:/Development/saga-mcp-ELITE9
+node scripts/factory.mjs unpark .factory-sandboxes/devtest-db/factory.sqlite --project 1
+SAGA_REAL_CLAUDE_PATH="node D:/Development/saga-mcp-ELITE9/tools/agent-proxy/claude-shim.mjs" \
+SAGA_CLAUDE_PATH="node D:/Development/saga-mcp-ELITE9/tools/agent-proxy/claude-shim.mjs" \
+SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1 SAGA_FACTORY_CONCURRENCY=8 \
+node scripts/factory.mjs resume .factory-sandboxes/devtest-db/factory.sqlite
+# then watchdog (step 7 of the runbook)
+```
+
+## (historical) Launch status — RUNNING (observation only)
 
 | Field | Value |
 |---|---|
