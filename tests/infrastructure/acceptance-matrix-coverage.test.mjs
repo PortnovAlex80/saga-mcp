@@ -211,6 +211,24 @@ test('G2j: migration-conformance is hosted blocking green-on-legacy-baseline (AD
   );
 });
 
+test('G2k: the ADR-095 eight-ratchet suite is hosted blocking (Phase-2C proof hosting)', () => {
+  // tests/architecture/adr-095-ratchet-suite.test.mjs is the COMPLETE
+  // eight-ratchet set required by ADR-095 Phase 2 ("ratchets first") plus
+  // the machine-executed mutation negatives (ratchet 8 non-vacuity): the
+  // shrinking-allowlist ceiling, the two-armed one-handler manifest/digest
+  // ratchet keyed on the atomic version bump, the src symbol/table absence
+  // scan (inventory removalSymbols, schemaVersion 3), the dist-aware
+  // clean-build absence, and the fresh-DB closure state machine. Removing
+  // the exact file (deletion OR de-hosting from the architecture run-set)
+  // must fail HERE, not silently orphan the ratchet set. Asserted against
+  // runSet only: quarantining the ratchet suite is not an honest way to
+  // drop it.
+  assert.ok(
+    runSet.has('tests/architecture/adr-095-ratchet-suite.test.mjs'),
+    'adr-095-ratchet-suite must stay in a blocking run-set (ADR-095 Phase-2C eight-ratchet proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [

@@ -83,9 +83,9 @@ function joinPath(root, rel) {
 }
 
 export const ADR_095_INVENTORY = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 3,
   decision: 'ADR-095',
-  phaseAuthored: '2B',
+  phaseAuthored: '2C',
   authoredAt: '2026-08-24',
   authorities: Object.freeze([
     'docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md',
@@ -1206,6 +1206,205 @@ export const ADR_095_INVENTORY = Object.freeze({
   }),
 
   // -------------------------------------------------------------------------
+  // REMOVAL SYMBOLS (Phase-2C, schemaVersion 3) — the src-level surface the
+  // eight ADR-095 ratchets pin. Every entry names a symbol class that must be
+  // ABSENT from src/ after its phase, together with the EXACT pinned set of
+  // live (non-dead) files that legitimately reference it TODAY on the
+  // legacy-present tree (machine-derived by the 2026-08-24 comment-stripped
+  // src scan; every outside reference maps to a recorded phase-3/phase-4
+  // obligation). Ratchet 3 (src symbol/table absence) consumes this; the
+  // allowedOutside sets empty when the phase-4 marker (product-discovery
+  // version bump) lands, so reintroducing any symbol post-cutover is RED.
+  // -------------------------------------------------------------------------
+  removalSymbols: Object.freeze({
+    note: 'path tokens use a leading slash + extension alternation ([/\\x27]name\\.(ts|js)) so live longer names (discovery-proposal.*) never false-match the dead shorter ones (proposal.*)',
+    // Path tokens of the dead phase-4 files whose basenames are collision-free
+    // across the whole repo. EXCLUDED (collision risk with LIVE same-named
+    // files in other modules' contributions/): /handler-adapter,
+    // /tool-contributions — their dead surfaces are pinned by namedSymbols
+    // (DISCOVERY_PACKAGE_HANDLER_IDS, DISCOVERY_TOOL_CONTRIBUTIONS, ...) plus
+    // the barrel's classified dead re-export rows instead.
+    pathTokens: Object.freeze([
+      Object.freeze({
+        token: '/discovery-installation',
+        deadFile: 'src/modules/discovery/application/discovery-installation.ts',
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/infrastructure/process-modules/brief-provisioning-ports.ts', cleanedAtPhase: 4, reason: 'type-only import of the BriefProvisioning port types; re-homed in the phase-4 same-commit obligation' }),
+          Object.freeze({ path: 'src/process-modules/modules/discovery/package/manifest.ts', cleanedAtPhase: 4, reason: 'the DISCOVERY_HANDLER_IMPLEMENTATION_DIGEST pin; repinned to the production-cell bytes at the phase-4 cutover' }),
+        ]),
+      }),
+      Object.freeze({
+        token: '/discovery-proposal-projection',
+        deadFile: 'src/modules/discovery/infrastructure/discovery-proposal-projection.ts',
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/tools/products.ts', cleanedAtPhase: 3, reason: 'the LIVE WRITER block; removed first at phase 3 (F1 ordering)' }),
+        ]),
+      }),
+      Object.freeze({
+        token: '/proposal-ref-bridge',
+        deadFile: 'src/modules/discovery/domain/proposal-ref-bridge.ts',
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/tools/products.ts', cleanedAtPhase: 3, reason: 'the PROPOSAL_REF_SCHEMA product emission; removed at phase 3' }),
+        ]),
+      }),
+      Object.freeze({
+        token: '/discovery-runtime-port',
+        deadFile: 'src/modules/discovery/infrastructure/discovery-runtime-port.ts',
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/app/product-lifecycle-runtime.ts', cleanedAtPhase: 3, reason: 'the FactoryDiscoveryRuntimePersistence type import; field dies at phase 3' }),
+          Object.freeze({ path: 'src/modules/module-registration.ts', cleanedAtPhase: 3, reason: 'the ModuleSharedDeps.runtimePersistence field type; dies at phase 3' }),
+        ]),
+      }),
+      Object.freeze({
+        token: '/sqlite-discovery-runtime',
+        deadFile: 'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts',
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/app/product-lifecycle-runtime.ts', cleanedAtPhase: 3, reason: 'the runtimePersistence construction (options.discoveryRuntimePersistence ?? new SqliteFactoryDiscoveryRuntime()); removed at phase 3 (F2)' }),
+        ]),
+      }),
+      // The remaining dead files have ZERO outside src references today
+      // (machine-verified 2026-08-24); the tokens are pinned anyway so any
+      // FUTURE import of a dead module is RED in both ratchet arms.
+      ...Object.freeze([
+        '/discovery-proposal-tools',
+        '/discovery-normalization-tools',
+        '/discovery-readiness-tools',
+        '/discovery-tool-args',
+        '/discovery-settlement-service',
+        '/discovery-normalization-service',
+        '/discovery-readiness-service',
+        '/discovery-certificate-bundle',
+        '/ensure-discovery-workspace',
+        '/discovery-outcome-certificate-projection',
+        '/discovery-normalization-repository',
+        '/discovery-readiness-repository',
+        '/discovery-settlement-repository',
+        '/discovery-proposal-repository',
+        '/proposal',
+        '/discovery-normalization',
+        '/discovery-normalization-records',
+        '/discovery-normalization-proposal',
+        '/discovery-outcome-certificate',
+        '/discovery-readiness-records',
+      ].map((token) => Object.freeze({
+        token,
+        deadFile: Object.freeze([
+          'src/tools/discovery-proposal-tools.ts',
+          'src/tools/discovery-normalization-tools.ts',
+          'src/tools/discovery-readiness-tools.ts',
+          'src/tools/discovery-tool-args.ts',
+          'src/modules/discovery/application/discovery-settlement-service.ts',
+          'src/modules/discovery/application/discovery-normalization-service.ts',
+          'src/modules/discovery/application/discovery-readiness-service.ts',
+          'src/modules/discovery/application/discovery-certificate-bundle.ts',
+          'src/modules/discovery/application/ensure-discovery-workspace.ts',
+          'src/modules/discovery/application/discovery-outcome-certificate-projection.ts',
+          'src/modules/discovery/infrastructure/discovery-normalization-repository.ts',
+          'src/modules/discovery/infrastructure/discovery-readiness-repository.ts',
+          'src/modules/discovery/infrastructure/discovery-settlement-repository.ts',
+          'src/modules/discovery/infrastructure/discovery-proposal-repository.ts',
+          'src/modules/discovery/domain/proposal.ts',
+          'src/modules/discovery/domain/discovery-normalization.ts',
+          'src/modules/discovery/domain/discovery-normalization-records.ts',
+          'src/modules/discovery/domain/discovery-normalization-proposal.ts',
+          'src/modules/discovery/domain/discovery-outcome-certificate.ts',
+          'src/modules/discovery/domain/discovery-readiness-records.ts',
+        ].find((f) => f.endsWith(`${token}.ts`))),
+        allowedOutside: Object.freeze([]),
+      }))),
+    ]),
+    // Named exported symbols of the dead files (and the dead rows of the
+    // partial-live containers). allowedOutside is the EXACT live referencing
+    // set today; each entry dies at its named phase.
+    namedSymbols: Object.freeze([      // -- phase-3 live-write/type hosts --------------------------------
+      Object.freeze({ symbol: 'projectDiscoveryProposal', allowedOutside: Object.freeze([{ path: 'src/tools/products.ts', cleanedAtPhase: 3 }]) }),
+      Object.freeze({ symbol: 'requiresDiscoveryProjection', allowedOutside: Object.freeze([{ path: 'src/tools/products.ts', cleanedAtPhase: 3 }]) }),
+      Object.freeze({ symbol: 'PROPOSAL_REF_SCHEMA', allowedOutside: Object.freeze([{ path: 'src/tools/products.ts', cleanedAtPhase: 3 }]) }),
+      Object.freeze({ symbol: 'discovery_proposal_id', allowedOutside: Object.freeze([{ path: 'src/tools/products.ts', cleanedAtPhase: 3 }]) }),
+      Object.freeze({ symbol: 'SqliteFactoryDiscoveryRuntime', allowedOutside: Object.freeze([{ path: 'src/app/product-lifecycle-runtime.ts', cleanedAtPhase: 3 }]) }),
+      Object.freeze({ symbol: 'FactoryDiscoveryRuntimePersistence', allowedOutside: Object.freeze([{ path: 'src/app/product-lifecycle-runtime.ts', cleanedAtPhase: 3 }, { path: 'src/modules/module-registration.ts', cleanedAtPhase: 3 }]) }),
+      // -- phase-4 re-homes / dead rows of kept containers --------------
+      Object.freeze({ symbol: 'DiscoveryBriefProvisioningPort', allowedOutside: Object.freeze([{ path: 'src/infrastructure/process-modules/brief-provisioning-ports.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DiscoveryBriefProvisioningContext', allowedOutside: Object.freeze([{ path: 'src/infrastructure/process-modules/brief-provisioning-ports.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DiscoveryBriefProvisioningOutcome', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DiscoveryRuntimePersistencePort', allowedOutside: Object.freeze([{ path: 'src/modules/discovery/domain/discovery-domain-contracts.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DiscoverySettlementPort', allowedOutside: Object.freeze([{ path: 'src/modules/discovery/domain/discovery-domain-contracts.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/output-contracts.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/output-contracts.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_BRIEF_BUNDLE_CONTRACT', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/output-contracts.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_CAP_RUNTIME_PERSISTENCE', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_CAP_SETTLEMENT_POLICY_REPOSITORY', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_GUARD_DIAGNOSIS_ADVISORY', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_NORMALIZER_SKILL', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      Object.freeze({ symbol: 'DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL', allowedOutside: Object.freeze([{ path: 'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts', cleanedAtPhase: 4 }, { path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }]) }),
+      // -- phase-4 barrel dead re-export rows (C1) ----------------------
+      ...Object.freeze([
+        'DISCOVERY_PROPOSAL_SUBMIT_CONTRIBUTION',
+        'DISCOVERY_NORMALIZATION_GET_CONTRIBUTION',
+        'DISCOVERY_NORMALIZATION_SUBMIT_CONTRIBUTION',
+        'DISCOVERY_READINESS_GET_CONTRIBUTION',
+        'DISCOVERY_READINESS_SUBMIT_CONTRIBUTION',
+        'DISCOVERY_DIAGNOSIS_GET_CONTRIBUTION',
+        'DISCOVERY_DIAGNOSIS_SUBMIT_CONTRIBUTION',
+        'DISCOVERY_BRIEF_ARTIFACT_CREATE_CONTRIBUTION',
+        'DISCOVERY_WORKER_DONE_CONTRIBUTION',
+        'DISCOVERY_PACKAGE_HANDLER_IDS',
+        'DISCOVERY_TOOL_CONTRIBUTIONS',
+        'DISCOVERY_TOOL_NAMESPACE',
+        'DISCOVERY_TOOL_RESOURCE_IDS',
+        'createDiscoveryPackageHandlerAdapter',
+        'createFakeDiscoveryBriefProvisioningPort',
+        'FakeDiscoveryBriefProvisioningRecord',
+      ].map((symbol) => Object.freeze({
+        symbol,
+        allowedOutside: Object.freeze([
+          Object.freeze({ path: 'src/process-modules/modules/discovery/package/contributions/index.ts', cleanedAtPhase: 4 }),
+        ]),
+      }))),
+      // -- dead-internal only today; pinned so ANY future reference is RED -
+      ...Object.freeze([
+        'createDiscoveryKernelHandlers',
+        'createDiscoveryWorkplacePersistence',
+        'FactoryDiscoverySettlementService',
+        'SettlementValidationError',
+        'ensureDiscoveryWorkspace',
+        'FACTORY_TOOL_CALL_SHAPES',
+        'FACTORY_ARG_SOURCES',
+      ].map((symbol) => Object.freeze({ symbol, allowedOutside: Object.freeze([]) }))),
+    ]),
+    // Dead-lane manifest resourceIndex logicalIds (phase 4 drops the inline
+    // entries; the SKILL/template/tracker/checklist resources themselves are
+    // deadPhase4Resources).
+    manifestDeadLaneLogicalIds: Object.freeze([
+      'discovery.skill.normalizer',
+      'discovery.skill.diagnosis-advisor',
+      'discovery.template.normalization-call',
+      'discovery.template.diagnosis-call',
+      'discovery.tracker.normalization-stage',
+      'discovery.tracker.diagnosis-stage',
+      'discovery.checklist.normalization',
+      'discovery.checklist.diagnosis',
+    ]),
+    manifestDeadLaneAllowedIn: Object.freeze([
+      // manifest.ts carries the inline resourceIndex entries; reviewer-skills.ts
+      // pins the discovery.skill.normalizer logicalId inside the
+      // DISCOVERY_NORMALIZER_SKILL dead row (verified by src scan 2026-08-24:
+      // the ONLY other live reference — both die at phase 4).
+      'src/process-modules/modules/discovery/package/manifest.ts',
+      'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts',
+    ]),
+    // Table/index name allowed live sites TODAY: the fresh DDL home for all
+    // ten tables + nineteen indexes, plus the ONE legacy query host
+    // (settlement_explain over factory_discovery_settlements — its block
+    // dies at phase 3). Table absence under src/ is enforced from phase 5
+    // (ratchet 3 table arm keys on the schema-closure state, not phase 4).
+    tableAllowedOutsideCommon: Object.freeze(['src/schema.ts']),
+    tableAllowedOutsideSpecific: Object.freeze({
+      factory_discovery_settlements: Object.freeze(['src/tools/settlement-debug.ts']),
+    }),
+  }),
+
+  // -------------------------------------------------------------------------
   // Mandatory same-commit Phase-4 migration for the BLOCKING-hosted
   // migration-conformance suite (the Phase-2A hosting decision recorded here
   // so it cannot be forgotten at the cutover). SCOPE NOTE (red-team F2): the
@@ -1423,6 +1622,98 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
   for (const e of inv.deadPhase3) {
     if (e.kind === 'code-block' && deadPaths.has(e.path)) {
       errors.push(`phase-3 code-block host is itself a dead file: ${e.path}`);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // REMOVAL SYMBOLS (Phase-2C) — structural validation. The allowedOutside
+  // sets are DATA pinned to the 2026-08-24 src scan; here we prove they are
+  // structurally sound (every allowed site is a classified, on-disk path;
+  // every path token names its dead file; the dead-lane logicalIds exist in
+  // the manifest today). The DYNAMIC enforcement (occurrences outside the
+  // allowed sets are RED) lives in the ratchet suite via the Phase-2C
+  // checks module — the validator here cannot see phase state.
+  // -------------------------------------------------------------------------
+  const symbols = inv.removalSymbols;
+  if (!symbols || !Array.isArray(symbols.pathTokens) || !Array.isArray(symbols.namedSymbols)) {
+    throw new Error(
+      'ADR-095 removal inventory self-validation FAILED:\n  - removalSymbols section missing (required since schemaVersion 3 / Phase-2C)',
+    );
+  }
+  const classifiedPaths = new Set([
+    ...deadPaths,
+    ...keptPaths,
+    ...legacyTestPaths,
+    ...hostedImporterPaths,
+  ]);
+  const checkAllowedOutside = (owner, list) => {
+    for (const entry of list) {
+      const p = typeof entry === 'string' ? entry : entry.path;
+      if (!classifiedPaths.has(p)) {
+        errors.push(`${owner}: allowedOutside path is not a classified inventory path: ${p}`);
+      }
+      if (!fs.existsSync(joinPath(root, p))) {
+        errors.push(`${owner}: allowedOutside path missing on disk: ${p}`);
+      }
+      if (typeof entry === 'object' && ![3, 4].includes(entry.cleanedAtPhase)) {
+        errors.push(`${owner}: allowedOutside entry without cleanedAtPhase 3|4: ${p}`);
+      }
+    }
+  };
+  const seenTokens = new Set();
+  for (const t of symbols.pathTokens) {
+    if (seenTokens.has(t.token)) errors.push(`duplicate path token: ${t.token}`);
+    seenTokens.add(t.token);
+    if (!deadPaths.has(t.deadFile)) {
+      errors.push(`path token does not name a dead file: ${t.token} -> ${t.deadFile}`);
+    }
+    const base = t.deadFile.split('/').pop().replace(/\.ts$/, '');
+    if (t.token !== `/${base}`) {
+      errors.push(`path token '${t.token}' is not the basename of its dead file ${t.deadFile}`);
+    }
+    checkAllowedOutside(`pathToken ${t.token}`, t.allowedOutside);
+  }
+  // The collision-excluded tokens must stay excluded while their live
+  // same-named siblings exist in other modules (they are pinned by
+  // namedSymbols + the barrel's classified rows instead).
+  const excludedTokens = ['/handler-adapter', '/tool-contributions'];
+  for (const x of excludedTokens) {
+    if (seenTokens.has(x)) errors.push(`collision-risk token must stay excluded from pathTokens: ${x}`);
+  }
+  const seenSymbols = new Set();
+  for (const s of symbols.namedSymbols) {
+    if (seenSymbols.has(s.symbol)) errors.push(`duplicate named symbol: ${s.symbol}`);
+    seenSymbols.add(s.symbol);
+    checkAllowedOutside(`namedSymbol ${s.symbol}`, s.allowedOutside);
+  }
+  const manifestSrc = fs.readFileSync(
+    joinPath(root, 'src/process-modules/modules/discovery/package/manifest.ts'),
+    'utf8',
+  );
+  const seenLogicalIds = new Set();
+  for (const id of symbols.manifestDeadLaneLogicalIds) {
+    if (seenLogicalIds.has(id)) errors.push(`duplicate dead-lane logicalId: ${id}`);
+    seenLogicalIds.add(id);
+    if (!manifestSrc.includes(id)) {
+      errors.push(`dead-lane logicalId not present in manifest.ts today (pin is stale): ${id}`);
+    }
+  }
+  for (const p of symbols.manifestDeadLaneAllowedIn) {
+    if (!classifiedPaths.has(p) || !fs.existsSync(joinPath(root, p))) {
+      errors.push(`manifestDeadLaneAllowedIn path not classified/on disk: ${p}`);
+    }
+  }
+  for (const p of symbols.tableAllowedOutsideCommon) {
+    if (!fs.existsSync(joinPath(root, p))) errors.push(`tableAllowedOutsideCommon path missing on disk: ${p}`);
+  }
+  for (const [table, paths] of Object.entries(symbols.tableAllowedOutsideSpecific ?? {})) {
+    if (!inv.deadPhase5Tables.includes(table)) {
+      errors.push(`tableAllowedOutsideSpecific key is not a dead phase-5 table: ${table}`);
+    }
+    for (const p of paths) {
+      if (!fs.existsSync(joinPath(root, p))) {
+        errors.push(`tableAllowedOutsideSpecific[${table}] path missing on disk: ${p}`);
+      }
     }
   }
 

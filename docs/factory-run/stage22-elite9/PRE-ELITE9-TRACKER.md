@@ -458,10 +458,78 @@ boot baseline) are executed under this point.
          directions. BR6 mutation negatives prove the scan non-vacuous
          (unclassified file / ghost classification / double classification
          each fail by exact path). Phase 4 is UNBLOCKED by inventory truth.
-       - Phase-2B touched NO production legacy code and NO checked-in dist;
-         build + blocking groups green (below, commit message). Bridge suite
-         now 16 tests (BR1a-e, BR2a-b, BR3, BR4a-c, BR5, BR6a-d). The
-         eight-ratchet set + mutation proofs (Phase 2 proper) remain OPEN.
+        - Phase-2B touched NO production legacy code and NO checked-in dist;
+          build + blocking groups green (below, commit message). Bridge suite
+          now 16 tests (BR1a-e, BR2a-b, BR3, BR4a-c, BR5, BR6a-d). The
+          eight-ratchet set + mutation proofs (Phase 2 proper) remain OPEN.
+        **Phase-2C DONE 2026-08-24 (this commit, worktree
+        `saga-mcp-DISCOVERY-P2C`): the COMPLETE eight-ratchet set + non-vacuous
+        mutation proofs are authored, hosted BLOCKING, and GREEN on the
+        legacy-present tree — Phase 2 proper is CLOSED. Evidence record:
+        `docs/factory-run/stage22-elite9/DISCOVERY-PHASE2C-RATCHETS.md`
+        (mapping ratchet 1..8 → exact owners; mutation table; RED
+        demonstration of every removal-pinning post-arm against today's
+        tree). Machine surface:**
+        - `tests/infrastructure/adr-095-removal-inventory.mjs` at
+          schemaVersion 3 — new `removalSymbols` section (25 collision-free
+          dead-module path tokens; handler-adapter/tool-contributions tokens
+          EXCLUDED for live same-name collisions in other modules and pinned
+          by symbols instead; 42 named dead symbols with per-symbol EXACT
+          allowed live sites mapped to phase-3/4 obligations; 8 dead-lane
+          manifest logicalIds; table/index allowed-site pins) + validator
+          rules (allowed sites must be classified on-disk paths, logicalIds
+          present today, collision exclusions enforced).
+        - `tests/infrastructure/adr-095-phase2c-ratchet-checks.mjs` — PURE
+          checkers R1-R5 + state readers; phase markers are DERIVED, never
+          flags: `phase4Landed` = product-discovery version strictly > 3.0.2
+          with src==dist coherence (the atomic Decision-4 bump IS the phase
+          boundary — a single reintroduced file cannot flip the arm back);
+          `closureInSchema` = dist SCHEMA_SQL closure presence (phase-5
+          boundary).
+        - `tests/architecture/adr-095-ratchet-suite.test.mjs` (22 tests,
+          BLOCKING via the architecture group; removal guard G2k added in
+          `tests/infrastructure/acceptance-matrix-coverage.test.mjs`):
+          R1 allowlist ceiling 1 + zero Discovery-scoped edges in BOTH
+          allowlist shapes; R2 two-armed manifest/digest ratchet (pre-arm =
+          the EXACT censused six-handler/dead-dist-digest baseline at 3.0.2 —
+          the F5 same-version drift shape is RED at the manifest level;
+          post-arm = exactly `discovery-settlement-policy` at the
+          production-cell dist digest with a bumped handler version); R3 src
+          symbol/table absence scan over removalSymbols (retired-ID fan-out
+          stays owned by BR5 — not duplicated); R4 dist-aware clean-build
+          absence (pre-arm build faithfulness, post-arm zero emitted dead
+          modules, stale/absent dist fail-closed); R5 fresh-DB closure state
+          machine over a REAL `dist/db.js getDb` database (complete-closure
+          integrity, F2 ordering, partial-closure, kept-table guards);
+          R6a pins the discovery-live-v2 group EXACT-eight-file membership
+          (no glob widening — the one ratchet-6 fact nobody pinned);
+          R7a anti-guts the boot-regression owner (F5 drift oracle text must
+          stay); R8 consolidated gate + the machine-executed mutation
+          negatives for EVERY ADR-095 removed-surface class (dead handler
+          ref, legacy tool import, projection write, legacy CREATE TABLE,
+          stale manifest pin) on the same checker code path the real tree
+          takes.
+        - RED demonstration recorded (Phase-2 rule "each removal-pinning
+          ratchet RED against the legacy-present tree"): R2 post-arm RED
+          (6 refs, wrong ids, dead digest a0f5f5f7… != production-cell
+          bc39da86…); R3 post-arm RED (156 findings) + table arm RED (all
+          ten closure tables in src/schema.ts); R4 post-arm RED (27 emitted
+          dead modules); R5 F2-ordering + partial-closure arms RED via the
+          recorded virtual-state runs. The consolidated tip stays GREEN
+          (arms selected by the TRUE markers).
+        - Honest boundary (recorded in the evidence doc): re-adding ALL ten
+          closure CREATEs post-phase-5 is GREEN by design — that is the
+          ADR-095 Phase-5 rollback boundary; the ratchet-8 class (ONE
+          reintroduced instance) is RED in every arm.
+        - Validation: clean `npm run build` exit 0; architecture 477/477;
+          process-modules 1461/1461; discovery-live-v2 134/134;
+          matrix-coverage 23/23 (G2k live). No production legacy deleted, no
+          schema change, no checked-in dist, nothing weakened/quarantined.
+          **Phase-3 gate: NOT green by design** (Phase 3 has not executed —
+          no production code changed here); Phase-2C closes the Phase-3
+          ENTRY gate only. The Phase-3 EXIT gate is enforced after its
+          commit by R3's empty post-phase-3 host expectations + the hosted
+          suites.
   3. Live side effects removed + v2 E2E — projection/proposal-ref/
      `discovery_proposal_id`/settlement-debug legacy query gone;
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
@@ -498,10 +566,14 @@ journal `docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete
 registry entry in `docs/architecture/adr-closure-registry.json`); Phase-1
 census + boot baseline `58d7ce4d`; Phase-2A (branch
 `stage22/discovery-phase2`): inventory module + live-v2/migration-conformance
-hosting + bridge ratchets; Phase-2B (this commit, worktree
+hosting + bridge ratchets; Phase-2B (worktree
 `saga-mcp-DISCOVERY-P2B`): audit-corrected complete partition (inventory
 schemaVersion 2), four more live suites hosted blocking, bidirectional
-partition scan + presence counter, hosted-dead-importer obligations. No
+partition scan + presence counter, hosted-dead-importer obligations;
+Phase-2C (this commit, worktree `saga-mcp-DISCOVERY-P2C`): the complete
+eight-ratchet suite + mutation proofs (inventory schemaVersion 3
+`removalSymbols`; pure checkers; 22-test blocking suite + G2k guard;
+evidence `DISCOVERY-PHASE2C-RATCHETS.md`). No
 production legacy was deleted; no oracle quarantined or weakened.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —

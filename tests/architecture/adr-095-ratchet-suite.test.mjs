@@ -1,0 +1,419 @@
+// tests/architecture/adr-095-ratchet-suite.test.mjs
+//
+// ADR-095 Phase-2C — the COMPLETE eight-ratchet set, hosted BLOCKING in the
+// architecture group (removal guard G2k).
+//
+// ADR-095 "Ratchets" 1..8 — every ratchet maps to EXACT owning tests:
+//
+//   R1 shrinking allowlist
+//        R1a/R1b HERE (ceiling 1, zero Discovery-scoped edges at every
+//        phase, mutation negatives) + BR3 (bridge: no dead-file edge may
+//        enter KNOWN_VIOLATIONS) + the dependency-direction suite's own
+//        `length <= ALLOWLIST_BASELINE` monotone test.
+//   R2 exact one-handler manifest/digest across the versioned boundary
+//        R2a-R2e HERE (pre-arm: the EXACT censused six-handler baseline at
+//        3.0.2 with the dead-dist digest; post-arm: exactly
+//        discovery-settlement-policy repinned to the production-cell dist
+//        bytes with a bumped handler version) + handler-digest-runtime-
+//        consistency (generic per-workshop digest==dist re-pin, phases 4+).
+//   R3 full src symbol/table absence
+//        R3a-R3e HERE, driven by inventory.removalSymbols (schemaVersion 3).
+//        Retired-handler-ID fan-out is owned by BR5 (not duplicated).
+//   R4 dist-aware clean-build absence
+//        R4a/R4b HERE (pre-arm build faithfulness; post-arm zero emitted
+//        dead modules; stale-dist fail-closed).
+//   R5 fresh DB lacks the full closure
+//        R5a-R5d HERE (real fresh DB through dist/db.js getDb; partial
+//        closure / F2 ordering / kept-table guards).
+//   R6 live v2 behavior
+//        OWNED by the hosted discovery-live-v2 group (8 suites; hosting
+//        pinned by G2i) + the factory-proof discovery packs + discovery-
+//        output-handoff (process-modules). R6a HERE pins what nobody else
+//        does: the discovery-live-v2 matrix group is EXACTLY the eight
+//        inventory files (no directory glob can silently widen the hosted
+//        surface).
+//   R7 existing-DB boot with retired old installation
+//        OWNED by tests/process-modules/discovery-legacy-removal-boot-
+//        regression.test.mjs (in-process installProductionModules proof,
+//        hosting pinned by G2h). R7a HERE anti-guts the owner: the suite
+//        must still carry the F5 drift oracle text. The spawned-engine
+//        exit-0 smoke lands with Phase 4 (tracker Point 5 record).
+//   R8 deliberate mutation RED/GREEN
+//        R8x HERE = the machine-executed mutation negatives (R1b, R2b-e,
+//        R3b-e, R4b, R5b-d): every ADR-095 removed-surface mutation class
+//        (dead handler ref, legacy tool import, projection write, legacy
+//        CREATE TABLE, stale manifest pin at the old version) turns the
+//        EXACT checker RED by precise message on the same code path the
+//        real tree takes; the GREEN direction is the real-tree tests. The
+//        Phase-6 deliberate cycle re-executes these classes against the
+//        removed tree and records them.
+//
+// Phase-2C boundary honesty (no overclaim): ratchets 3/4/5 post-removal
+// arms and ratchet 2's post-cutover arm CANNOT be green on today's
+// legacy-present tree — they testify over the phase-4/5 end states. The
+// two-armed design keys every arm on machine-derived phase markers (the
+// atomic product-discovery version bump; the schema-closure DDL state), so
+// the suite is GREEN today where the ADR intends (the pre-state truths and
+// the mutation negatives) and flips to the post-state assertions in the
+// same commit-train as the removal it pins — no consolidated red tip.
+// The demonstrated RED of each post-arm against TODAY's tree is recorded in
+// docs/factory-run/stage22-elite9/DISCOVERY-PHASE2C-RATCHETS.md.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  ADR_095_INVENTORY,
+} from '../infrastructure/adr-095-removal-inventory.mjs';
+import {
+  readRatchetState,
+  readManifestFacts,
+  readSrcScan,
+  createFreshDbObjects,
+  checkR1,
+  checkR2,
+  checkR3,
+  checkR4,
+  checkR5,
+  semverGt,
+} from '../infrastructure/adr-095-phase2c-ratchet-checks.mjs';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// Real-tree facts, read once. The checks are pure functions over these —
+// the mutation negatives below only vary the DATA, never a parallel
+// implementation of the ratchet.
+const state = await readRatchetState(REPO_ROOT);
+const manifestFacts = await readManifestFacts(REPO_ROOT);
+const srcScan = readSrcScan(REPO_ROOT);
+const depTestSource = readFileSync(
+  path.join(REPO_ROOT, 'tests', 'architecture', 'dependency-direction.test.mjs'),
+  'utf8',
+);
+
+const LEGACY_VERSION = ADR_095_INVENTORY.moduleIdentity.version; // '3.0.2'
+
+// ===========================================================================
+// State-marker sanity — the arms must key on real, coherent markers.
+// ===========================================================================
+
+test('R0: ratchet state markers are coherent (dist built, version marker readable, pre-cutover today)', () => {
+  assert.ok(state.distAvailable, 'dist/ must be built before the ratchet suite can testify (npm run build)');
+  assert.equal(state.srcVersion, LEGACY_VERSION,
+    `today's tree pins the censused legacy version ${LEGACY_VERSION} (got ${state.srcVersion})`);
+  assert.equal(state.versionCoherent, true,
+    'src and dist version markers must agree (rebuild in the same commit as any bump)');
+  assert.equal(state.phase4Landed, false,
+    'Phase 2C authors ratchets BEFORE the removal: the phase-4 marker must not have landed');
+  assert.equal(state.deadFilesRemaining.length, ADR_095_INVENTORY.deadPhase4Files.length,
+    'all classified dead phase-4 files must still be present today (deletion is Phase 4)');
+  assert.equal(state.closureInSchema, true,
+    'the fresh schema still creates the legacy closure today (removal is Phase 5)');
+});
+
+// ===========================================================================
+// R1 — shrinking allowlist (ratchet 1)
+// ===========================================================================
+
+test('R1a: dependency-direction allowlist — baseline ceiling 1, ZERO Discovery-scoped edges (real tree GREEN)', () => {
+  const { errors, facts } = checkR1(depTestSource);
+  assert.deepEqual(errors, [], `ratchet 1 must be green on the real tree: ${errors.join(' | ')}`);
+  assert.equal(facts.baseline, 1, 'the discovery-era allowlist ceiling is exactly 1 entry');
+  assert.equal(facts.discoveryEdges.length, 0,
+    'zero Discovery-scoped allowlist edges at every phase — legacy death may never become allowlist debt');
+});
+
+test('R1b: MUTATION — a Discovery-scoped allowlist edge (or a raised baseline) turns ratchet 1 RED', () => {
+  // Mutation class: grandfathering a discovery edge instead of deleting it.
+  const mutated = depTestSource.replace(
+    'const discoveryLeaks = [];',
+    "const discoveryLeaks = [['src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts', 'src/db.ts']];",
+  );
+  const { errors } = checkR1(mutated);
+  assert.ok(errors.some((e) => e.includes('Discovery-scoped edges') && e.includes('sqlite-discovery-runtime')),
+    `the discovery-edge mutation must RED naming the edge (got: ${errors.join(' | ')})`);
+
+  // Mutation class: raising the ceiling (allowlist growth without review).
+  const raised = depTestSource.replace('const ALLOWLIST_BASELINE = 1', 'const ALLOWLIST_BASELINE = 2');
+  const raisedResult = checkR1(raised);
+  assert.ok(raisedResult.errors.some((e) => e.includes('ALLOWLIST_BASELINE grew')),
+    'a raised baseline must RED (shrink-only ratchet)');
+});
+
+// ===========================================================================
+// R2 — exact one-handler manifest/digest across the versioned boundary
+// ===========================================================================
+
+test('R2a: pre-cutover arm — the manifest holds the EXACT censused six-handler baseline with the dead-dist digest (real tree GREEN)', async () => {
+  const errors = checkR2(state, { ...manifestFacts, srcVersion: state.srcVersion, distVersion: state.distVersion });
+  assert.deepEqual(errors, [],
+    `the censused pre-cutover baseline (six ids, six refs, shared dead-dist digest, handler version 1.0.0) must be GREEN today: ${errors.join(' | ')}`);
+  // Cross-pin the census shape against the dist manifest directly.
+  assert.equal(manifestFacts.handlerRefs.length, 6, 'censused shape: six handler refs at 3.0.2');
+  assert.deepEqual(
+    [...manifestFacts.handlerIdsValues].sort(),
+    [...ADR_095_INVENTORY.legacyHandlerIds].sort(),
+    'declared ids == the Phase-1 census baseline',
+  );
+});
+
+test('R2b: MUTATION — six stale refs at the BUMPED version (post-cutover arm) turn ratchet 2 RED', () => {
+  const errors = checkR2(
+    { phase4Landed: true },
+    { ...manifestFacts, srcVersion: '3.1.0', distVersion: '3.1.0' },
+  );
+  assert.ok(errors.some((e) => e.includes('EXACTLY ONE handler ref')),
+    `six refs at the bumped version must RED (got: ${errors.join(' | ')})`);
+  assert.ok(errors.some((e) => e.includes('retired handler ids still declared')),
+    'the retired ids must be named');
+});
+
+test('R2c: MUTATION — one-ref reduction at the LEGACY version (the F5 same-version drift shape) turns ratchet 2 RED', () => {
+  const oneRef = {
+    ...manifestFacts,
+    handlerIdsValues: [ADR_095_INVENTORY.liveHandlerId],
+    handlerRefs: manifestFacts.handlerRefs.slice(5), // only settlement-policy
+  };
+  const errors = checkR2({ phase4Landed: false }, { ...oneRef, srcVersion: LEGACY_VERSION, distVersion: LEGACY_VERSION });
+  assert.ok(errors.some((e) => e.includes('six-handler baseline')),
+    `a reduced manifest at ${LEGACY_VERSION} must RED — this is the manifest half of the F5 STOP-SHIP shape (got: ${errors.join(' | ')})`);
+});
+
+test('R2d: MUTATION — post-cutover digest pinned to anything but the production-cell dist bytes turns ratchet 2 RED (F3)', () => {
+  const errors = checkR2(
+    { phase4Landed: true },
+    {
+      ...manifestFacts,
+      handlerIdsValues: [ADR_095_INVENTORY.liveHandlerId],
+      handlerRefs: [{
+        logicalId: ADR_095_INVENTORY.liveHandlerId,
+        version: '1.1.0',
+        digest: manifestFacts.deadDistDigest, // stale pin to the DEAD bytes
+      }],
+      srcVersion: '3.1.0',
+      distVersion: '3.1.0',
+    },
+  );
+  assert.ok(errors.some((e) => e.includes('production-cell dist bytes')),
+    `a stale digest pin at the bumped version must RED (got: ${errors.join(' | ')})`);
+});
+
+test('R2e: MUTATION — post-cutover handler version NOT bumped turns ratchet 2 RED (Decision 4)', () => {
+  const errors = checkR2(
+    { phase4Landed: true },
+    {
+      ...manifestFacts,
+      handlerIdsValues: [ADR_095_INVENTORY.liveHandlerId],
+      handlerRefs: [{
+        logicalId: ADR_095_INVENTORY.liveHandlerId,
+        version: '1.0.0', // not bumped
+        digest: manifestFacts.productionCellDigest,
+      }],
+      srcVersion: '3.1.0',
+      distVersion: '3.1.0',
+    },
+  );
+  assert.ok(errors.some((e) => e.includes('bumped above the legacy 1.0.0')),
+    `an unbumped handler version must RED (got: ${errors.join(' | ')})`);
+});
+
+// ===========================================================================
+// R3 — full src symbol/table absence (ratchet 3)
+// ===========================================================================
+
+test('R3a: pre-state arm — every removal symbol sits INSIDE its pinned allowed sites (real tree GREEN)', () => {
+  const errors = checkR3(srcScan, /* phase4Landed */ false, /* closureInSchema */ true);
+  assert.deepEqual(errors, [],
+    `today all dead symbols must be confined to the classified dead files + the pinned allowedOutside hosts: ${errors.join(' | ')}`);
+});
+
+test('R3b: MUTATION — a legacy dead tool import in a live file turns ratchet 3 RED (both arms)', () => {
+  // Mutation class: "a legacy tool import".
+  const mutated = [
+    ...srcScan,
+    ['src/modules/discovery/index.ts',
+      srcScan.find(([rel]) => rel === 'src/modules/discovery/index.ts')[1]
+        + "\nimport { createDiscoveryProposalHandlers } from './application/discovery-proposal-tools.js';\n"],
+  ];
+  for (const phase4Landed of [false, true]) {
+    const errors = checkR3(mutated, phase4Landed, true);
+    assert.ok(errors.some((e) => e.includes('discovery-proposal-tools') && e.includes('src/modules/discovery/index.ts')),
+      `the legacy tool import must RED in the phase4Landed=${phase4Landed} arm (got: ${errors.join(' | ')})`);
+  }
+});
+
+test('R3c: MUTATION — a reintroduced projection write post-cutover turns ratchet 3 RED', () => {
+  // Mutation class: "a projection write". Post-cutover the allowed sites are
+  // EMPTY — even the former phase-3 host (products.ts) may not call it again.
+  const mutated = srcScan.map(([rel, t]) =>
+    rel === 'src/tools/products.ts' ? [rel, t + '\nif (requiresDiscoveryProjection(x)) { projectDiscoveryProposal(db, x); }\n'] : [rel, t]);
+  const errors = checkR3(mutated, /* phase4Landed */ true, /* closureInSchema */ false);
+  assert.ok(errors.some((e) => e.includes('projectDiscoveryProposal') && e.includes('src/tools/products.ts')),
+    `the reintroduced projection write must RED post-cutover (got: ${errors.join(' | ')})`);
+});
+
+test('R3d: MUTATION — a dead symbol in a WRONG live file (not its pinned host) REDs even pre-cutover', () => {
+  // Allowed sites are PER SYMBOL, not global: projectDiscoveryProposal is
+  // allowed in products.ts ONLY (until phase 3); anywhere else is RED today.
+  const mutated = srcScan.map(([rel, t]) =>
+    rel === 'src/modules/module-registration.ts' ? [rel, t + '\nconst sneak = projectDiscoveryProposal;\n'] : [rel, t]);
+  const errors = checkR3(mutated, /* phase4Landed */ false, /* closureInSchema */ true);
+  assert.ok(errors.some((e) => e.includes('projectDiscoveryProposal') && e.includes('src/modules/module-registration.ts')),
+    `a dead symbol outside its pinned host must RED pre-cutover (got: ${errors.join(' | ')})`);
+});
+
+test('R3e: MUTATION — a legacy table reference outside schema.ts REDs in the phase-4→5 intermediate arm', () => {
+  // Between the version bump and the schema removal, table names are legal
+  // ONLY inside src/schema.ts (and the dead files, which are gone by then).
+  const mutated = srcScan.map(([rel, t]) =>
+    rel === 'src/tools/settlement-debug.ts'
+      ? [rel, t + "\nconst q = 'SELECT * FROM factory_proposals';\n"]
+      : [rel, t]);
+  const errors = checkR3(mutated, /* phase4Landed */ true, /* closureInSchema */ true);
+  assert.ok(errors.some((e) => e.includes('factory_proposals') && e.includes('src/tools/settlement-debug.ts')),
+    `a legacy table reference outside schema.ts must RED post-cutover (got: ${errors.join(' | ')})`);
+});
+
+// ===========================================================================
+// R4 — dist-aware clean-build absence (ratchet 4)
+// ===========================================================================
+
+test('R4a: pre-state arm — the clean build emits every still-present dead module (build faithfulness, real tree GREEN)', () => {
+  const errors = checkR4(state);
+  assert.deepEqual(errors, [],
+    `the dist must faithfully mirror the present dead files today (no stale dist): ${errors.join(' | ')}`);
+});
+
+test('R4b: MUTATION — an emitted dead module surviving in dist post-cutover turns ratchet 4 RED (F6)', () => {
+  const deadEmission = 'dist/modules/discovery/application/discovery-installation.js';
+  const mutatedState = {
+    ...state,
+    phase4Landed: true,
+    deadFilesRemaining: [],
+    distFiles: new Set([...state.distFiles, deadEmission]),
+  };
+  const errors = checkR4(mutatedState);
+  assert.ok(errors.some((e) => e.includes(deadEmission) && e.includes('clean rebuild')),
+    `a stale emitted dead module must RED post-cutover (got: ${errors.join(' | ')})`);
+  // And the stale-dist fail-closed: no dist at all refuses to testify.
+  const noDist = checkR4({ ...state, distAvailable: false, distFiles: new Set() });
+  assert.ok(noDist.some((e) => e.includes('clean build')), 'an absent dist must fail closed');
+});
+
+// ===========================================================================
+// R5 — fresh DB lacks the full closure (ratchet 5)
+// ===========================================================================
+
+test('R5a: real fresh DB through dist/db.js getDb carries the COMPLETE closure today (pre-state GREEN)', async () => {
+  const fresh = await createFreshDbObjects(REPO_ROOT);
+  const errors = checkR5(fresh, /* phase4Landed */ false);
+  assert.deepEqual(errors, [],
+    `the fresh-DB closure must be COMPLETE (all ten tables + nineteen indexes) pre-removal: ${errors.join(' | ')}`);
+  for (const t of ADR_095_INVENTORY.deadPhase5Tables) {
+    assert.ok(fresh.tables.has(t), `pre-state fact: fresh DB creates ${t}`);
+  }
+  for (const i of ADR_095_INVENTORY.deadPhase5Indexes) {
+    assert.ok(fresh.indexes.has(i), `pre-state fact: fresh DB creates ${i}`);
+  }
+});
+
+test('R5b: MUTATION — ONE reintroduced legacy CREATE TABLE post-phase-5 turns ratchet 5 RED (partial closure)', () => {
+  // Post-phase-5 fresh DB with exactly one legacy table regrown.
+  const mutated = {
+    tables: new Set(['factory_proposals', ...ADR_095_INVENTORY.keptLive.keptTables]),
+    indexes: new Set(ADR_095_INVENTORY.keptLive.keptIndexes),
+  };
+  const errors = checkR5(mutated, /* phase4Landed */ true);
+  assert.ok(errors.some((e) => e.includes('PARTIAL legacy closure') && e.includes('factory_proposals')),
+    `a single reintroduced legacy CREATE TABLE must RED naming it (got: ${errors.join(' | ')})`);
+});
+
+test('R5c: MUTATION — schema closure removed BEFORE the phase-4 cutover turns ratchet 5 RED (F2 ordering)', () => {
+  const mutated = {
+    tables: new Set(ADR_095_INVENTORY.keptLive.keptTables),
+    indexes: new Set(ADR_095_INVENTORY.keptLive.keptIndexes),
+  };
+  const errors = checkR5(mutated, /* phase4Landed */ false);
+  assert.ok(errors.some((e) => e.includes('F2') || e.includes('Decision 3')),
+    `closure removal before the cutover must RED (got: ${errors.join(' | ')})`);
+});
+
+test('R5d: MUTATION — losing the KEPT factory_work_intents table REDs in every state (never part of the removal)', () => {
+  const mutated = { tables: new Set(ADR_095_INVENTORY.deadPhase5Tables), indexes: new Set(ADR_095_INVENTORY.deadPhase5Indexes) };
+  const errors = checkR5(mutated, /* phase4Landed */ false);
+  assert.ok(errors.some((e) => e.includes('factory_work_intents')),
+    `dropping the kept shared-protocol table must RED (got: ${errors.join(' | ')})`);
+});
+
+// ===========================================================================
+// R6 — live v2 behavior: the hosted executor surface cannot silently widen
+// ===========================================================================
+
+test('R6a: the discovery-live-v2 matrix group is EXACTLY the eight inventory live-v2 files (no glob widening)', () => {
+  const runnerSource = readFileSync(path.join(REPO_ROOT, 'tools', 'run-acceptance-matrix.mjs'), 'utf8');
+  const groupBlock = extractGroupGlobs(runnerSource, 'discovery-live-v2');
+  const globs = [...groupBlock.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const expected = [
+    'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
+    'tests/discovery/order-constraint-register.test.mjs',
+    'tests/matrix/e-constraint-loss.test.mjs',
+    'tests/modules/discovery/discovery-check-providers.test.mjs',
+    'tests/discovery/d1-1-authority.test.mjs',
+    'tests/discovery/d1-1-binding.test.mjs',
+    'tests/discovery/d3-readiness-domain.test.mjs',
+    'tests/discovery/d4-settlement-policy.test.mjs',
+  ];
+  assert.deepEqual([...globs].sort(), [...expected].sort(),
+    'the ratchet-6 executor group must host EXACTLY the eight proven-live suites — no directory glob, no silent widening');
+  assert.ok(!globs.some((g) => g.includes('*')), 'a glob entry would let the hosted live-v2 surface widen silently');
+});
+
+function extractGroupGlobs(source, groupName) {
+  const decl = source.indexOf(`'${groupName}': {`);
+  assert.ok(decl !== -1, `group not found in run-acceptance-matrix.mjs: ${groupName}`);
+  const open = source.indexOf('globs: [', decl);
+  const close = source.indexOf(']', open);
+  assert.ok(open !== -1 && close !== -1, `globs array not found for group ${groupName}`);
+  return source.slice(open, close);
+}
+
+// ===========================================================================
+// R7 — existing-DB boot: anti-gut pin on the owning boot-regression suite
+// ===========================================================================
+
+test('R7a: the boot-regression owner still carries the F5 drift oracle (MODULE_INSTALLATION_INCOMPATIBLE_DRIFT)', () => {
+  const owner = readFileSync(
+    path.join(REPO_ROOT, 'tests', 'process-modules', 'discovery-legacy-removal-boot-regression.test.mjs'),
+    'utf8',
+  );
+  assert.match(owner, /MODULE_INSTALLATION_INCOMPATIBLE_DRIFT/,
+    'the F5 STOP-SHIP drift oracle must stay in the boot-regression suite (hosting is pinned by G2h; this pin refuses a gutted-but-green file)');
+  assert.match(owner, /installProductionModules/,
+    'the proof must keep binding to the engine boot entry (the Phase-1 red-team correction)');
+  assert.match(owner, /rehydrate/,
+    'the pinned-run exact-package rehydration assertion must stay');
+});
+
+// ===========================================================================
+// R8 — consolidated gate: every checker GREEN over the real tree, today
+// ===========================================================================
+
+test('R8: consolidated real-tree gate — R1..R5 checkers all GREEN on the legacy-present tree', async () => {
+  const r1 = checkR1(depTestSource).errors;
+  const r2 = checkR2(state, { ...manifestFacts, srcVersion: state.srcVersion, distVersion: state.distVersion });
+  const r3 = checkR3(srcScan, state.phase4Landed, state.closureInSchema);
+  const r4 = checkR4(state);
+  const fresh = await createFreshDbObjects(REPO_ROOT);
+  const r5 = checkR5(fresh, state.phase4Landed);
+  const all = { r1, r2, r3, r4, r5 };
+  for (const [name, errors] of Object.entries(all)) {
+    assert.deepEqual(errors, [], `${name} must be green on the real tree (arm selected by the true markers)`);
+  }
+  // Marker semantics sanity: semver boundary of the phase-4 discriminator.
+  assert.equal(semverGt('3.0.3', LEGACY_VERSION), true);
+  assert.equal(semverGt('3.1.0', LEGACY_VERSION), true);
+  assert.equal(semverGt(LEGACY_VERSION, LEGACY_VERSION), false);
+});
