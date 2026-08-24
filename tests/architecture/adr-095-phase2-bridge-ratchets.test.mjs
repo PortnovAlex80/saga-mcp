@@ -1,22 +1,24 @@
 // tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs
 //
-// ADR-095 Phase-2A — additive, GREEN-today, non-vacuous bridge ratchets.
+// ADR-095 Phase-2 bridge ratchets — additive, GREEN-today, non-vacuous.
 //
 // Phase 2 (ADR-095: "ratchets first") authors the removal-pinning proofs
-// BEFORE any deletion lands. This suite carries the Phase-2A subset that is
-// provable on the legacy-present tree and consumes the exact machine
-// inventory (tests/infrastructure/adr-095-removal-inventory.mjs):
+// BEFORE any deletion lands. This suite carries the Phase-2 subset provable
+// on the legacy-present tree and consumes the exact machine inventory
+// (tests/infrastructure/adr-095-removal-inventory.mjs):
 //
 //   BR1  inventory self-validation — uniqueness, dead∩kept=∅, every
 //        present-today path resolves, schema tables/indexes exact, and the
-//        EXACT pinned counts (dead 35 = 26 phase-4 files + 9 dead-lane
-//        resources; kept 43 = 20 fully-kept production files + 4
-//        partial-live containers + 10 live resources + 9 live test files);
-//   BR2  unresolved monotonicity + the Phase-4 atomic gate — the exact
-//        pinned baseline of 5 may only shrink (growth rejected), and the
-//        `phase4BlockedByUnresolved` machine flag is proven COUPLED to the
-//        unresolved list (decoupled mutated clones must fail validation);
-//        the dead-file presence counter stays deferred until closure;
+//        EXACT pinned counts (dead 36 = 27 phase-4 files + 9 dead-lane
+//        resources; kept 47 = 18 fully-kept production files + 5
+//        partial-live containers with exhaustively classified rows +
+//        11 live resources + 13 live test files);
+//   BR2  unresolved closure + the Phase-4 atomic gate — unresolved is EMPTY
+//        (closed in Phase-2B by the exhaustive row classifications C1/C2 +
+//        the exact test partition C3), phase4BlockedByUnresolved is false,
+//        and the BIDIRECTIONAL dead-file presence counter is LIVE (fails on
+//        early deletion AND on unreviewed dead-set growth); decoupled
+//        mutated clones fail validation;
 //   BR3  the dependency-direction allowlist DENIES any ADR-095 dead-file
 //        edge — the KNOWN_VIOLATIONS array block (plus its single
 //        programmatic append site) is extracted BOUNDED and no quoted
@@ -29,7 +31,13 @@
 //        touches the dead six-handler factory (ratchet 2/6 bridge);
 //   BR5  retired handler IDs cannot fan out beyond the exact known legacy
 //        files — the five ControlIntent-era ids appear in src/ ONLY inside
-//        the three classified legacy files (Phase-4 tightens this to zero).
+//        the three classified legacy files (Phase-4 tightens this to zero);
+//   BR6  the BIDIRECTIONAL SCOPED PARTITION SCAN (Phase-2B correction C6) —
+//        the completeness claim "the 36 dead paths + 47 kept paths are the
+//        whole scoped universe" is machine-proved: virtual-tree mutation
+//        negatives show the scan fails on an UNCLASSIFIED scoped file, on a
+//        classified file ABSENT from the scanned set, and on a DOUBLE
+//        classification — the scan cannot pass vacuously.
 //
 // Deliberately NOT duplicated here: the same-version six→one handler drift
 // negative (MODULE_INSTALLATION_INCOMPATIBLE_DRIFT) is already machine-proven
@@ -67,29 +75,34 @@ const retiredHandlerIds = validation.retiredHandlerIds;
 // ---------------------------------------------------------------------------
 
 test('BR1a: inventory self-validation passes with the EXACT pinned dead/kept counts', () => {
-  // Exact counts, deliberately pinned (red-team F1): the classified dead
-  // baseline is 35 paths = 26 phase-4 files + 9 dead-lane resources (phase 3
-  // contributes code-blocks only — no whole files/resources today); the kept
-  // baseline is 43 paths = 20 fully-kept production files + 4 partial-live
-  // containers + 10 live resources + 9 live test files. Any delta must be a
-  // reviewed classification change landing in the same commit as this pin,
-  // never silent drift.
-  assert.equal(ADR_095_INVENTORY.deadPhase4Files.length, 26,
-    'exact classified dead baseline: 26 phase-4 files (update this pin only with a reviewed classification change)');
+  // Exact counts, deliberately pinned (red-team F1 + Phase-2B corrections
+  // C1/C2): the classified dead baseline is 36 paths = 27 phase-4 files
+  // (Phase-2A 26 + the wholly-dead tool-contributions.ts) + 9 dead-lane
+  // resources (phase 3 contributes code-blocks only — no whole files/
+  // resources today); the kept baseline is 47 paths = 18 fully-kept
+  // production files (Phase-2A 20 − discovery-domain-contracts.ts − the
+  // contributions barrel, both now partial-live) + 5 partial-live
+  // containers (4 contributions incl. the barrel + discovery-domain-contracts)
+  // + 11 live resources (Phase-2A 10 + skills/saga-kickstart/SKILL.md per
+  // C4) + 13 live test files (Phase-2A 9 + the four newly hosted live
+  // suites per C3). Any delta must be a reviewed classification change
+  // landing in the same commit as this pin, never silent drift.
+  assert.equal(ADR_095_INVENTORY.deadPhase4Files.length, 27,
+    'exact classified dead baseline: 27 phase-4 files (update this pin only with a reviewed classification change)');
   assert.equal(ADR_095_INVENTORY.deadPhase4Resources.length, 9,
     'exact classified dead baseline: 9 dead-lane resources');
-  assert.equal(deadPaths.size, 35,
-    'exact classified dead baseline: 35 dead paths = 26 phase-4 files + 9 resources');
-  assert.equal(ADR_095_INVENTORY.keptLive.productionFiles.length, 20,
-    'exact kept baseline: 20 fully-kept production files');
-  assert.equal(ADR_095_INVENTORY.keptLive.partialLiveFilesWithUnresolvedRows.length, 4,
-    'exact kept baseline: 4 partial-live containers (kept as files, rows unresolved)');
-  assert.equal(ADR_095_INVENTORY.keptLive.liveResources.length, 10,
-    'exact kept baseline: 10 live resources');
-  assert.equal(ADR_095_INVENTORY.keptLive.testFiles.length, 9,
-    'exact kept baseline: 9 live test files');
-  assert.equal(validation.keptPaths.size, 43,
-    'exact kept baseline: 43 kept paths = 20 + 4 + 10 + 9');
+  assert.equal(deadPaths.size, 36,
+    'exact classified dead baseline: 36 dead paths = 27 phase-4 files + 9 resources');
+  assert.equal(ADR_095_INVENTORY.keptLive.productionFiles.length, 18,
+    'exact kept baseline: 18 fully-kept production files');
+  assert.equal(ADR_095_INVENTORY.keptLive.partialLiveFiles.length, 5,
+    'exact kept baseline: 5 partial-live containers (kept as files, rows exhaustively classified)');
+  assert.equal(ADR_095_INVENTORY.keptLive.liveResources.length, 11,
+    'exact kept baseline: 11 live resources');
+  assert.equal(ADR_095_INVENTORY.keptLive.testFiles.length, 13,
+    'exact kept baseline: 13 live test files');
+  assert.equal(validation.keptPaths.size, 47,
+    'exact kept baseline: 47 kept paths = 18 + 5 + 11 + 13');
 });
 
 test('BR1b: the exact ADR dead-file names from the decision text are all classified dead', () => {
@@ -130,55 +143,138 @@ test('BR1c: factory_work_intents is kept live and NOT part of the legacy table c
   }
 });
 
+test('BR1d: the audited contribution/domain-contracts row classifications are pinned exactly (Phase-2B C1/C2)', () => {
+  // tool-contributions.ts is WHOLLY DEAD — a deadPhase4File, not a container.
+  assert.ok(deadPaths.has('src/process-modules/modules/discovery/package/contributions/tool-contributions.ts'),
+    'tool-contributions.ts must be classified dead (all 9 rows are ControlIntent-era tool lanes)');
+  const partial = Object.fromEntries(
+    ADR_095_INVENTORY.keptLive.partialLiveFiles.map((e) => [e.path, e]),
+  );
+  // discovery-domain-contracts.ts: exactly 5 live rows (the discovery-process-module
+  // constants), dead rows grouped but exhaustive.
+  const contracts = partial['src/modules/discovery/domain/discovery-domain-contracts.ts'];
+  assert.ok(contracts, 'discovery-domain-contracts.ts must be a partial-live container');
+  assert.equal(contracts.liveRows.length, 5,
+    'domain-contracts has exactly 5 live rows (consumed by discovery-process-module.ts)');
+  for (const row of ['DISCOVERY_PROPOSAL_SCHEMA', 'DISCOVERY_READINESS_ASSESSMENT_SCHEMA',
+    'DISCOVERY_INTENT_KIND', 'DISCOVERY_READINESS_INTENT_KIND', 'DISCOVERY_WORK_INTENT_SCHEMA']) {
+    assert.ok(contracts.liveRows.some((r) => r.row === row), `missing live row: ${row}`);
+  }
+  // The three audited contribution containers keep their exact dead-row groups.
+  const out = partial['src/process-modules/modules/discovery/package/contributions/output-contracts.ts'];
+  assert.equal(out.deadRows.length, 4, 'output-contracts: 3 dead bundle contracts + the aggregate entry');
+  const caps = partial['src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts'];
+  assert.equal(caps.deadRows.length, 4, 'acceptance-capabilities: 3 dead rows + the aggregate entry');
+  const skills = partial['src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts'];
+  assert.equal(skills.deadRows.length, 3, 'reviewer-skills: 2 dead pins + the aggregate entry');
+  // The audited dead-row NAMES appear in their justifications/rows (spot pins).
+  assert.match(out.deadRows.map((r) => r.row).join(' '), /NORMALIZATION_BUNDLE/);
+  assert.match(out.deadRows.map((r) => r.row).join(' '), /DIAGNOSIS_BUNDLE/);
+  assert.match(out.deadRows.map((r) => r.row).join(' '), /BRIEF_BUNDLE/);
+  assert.match(caps.deadRows.map((r) => r.row).join(' '), /RUNTIME_PERSISTENCE/);
+  assert.match(caps.deadRows.map((r) => r.row).join(' '), /SETTLEMENT_POLICY_REPOSITORY/);
+  assert.match(caps.deadRows.map((r) => r.row).join(' '), /DIAGNOSIS_ADVISORY/);
+  assert.match(skills.deadRows.map((r) => r.row).join(' '), /NORMALIZER_SKILL/);
+  assert.match(skills.deadRows.map((r) => r.row).join(' '), /DIAGNOSIS_ADVISOR_REVIEWER_SKILL/);
+  // C4: saga-kickstart is a KEPT live resource.
+  assert.ok(ADR_095_INVENTORY.keptLive.liveResources.includes('skills/saga-kickstart/SKILL.md'),
+    'skills/saga-kickstart/SKILL.md must be kept (C4)');
+});
+
+test('BR1e: the legacy test partition is exact paths with exact actions (Phase-2B C3)', () => {
+  // 13 delete/helper + 5 migrate = 18 entries; no wildcards.
+  const lt = ADR_095_INVENTORY.legacyTests;
+  assert.equal(lt.length, 18, 'exact legacy-test partition: 18 files');
+  for (const t of lt) {
+    assert.ok(!/[*?]/.test(t.path), `wildcard in legacy test path: ${t.path}`);
+    assert.ok(t.path.endsWith('.test.mjs') || t.path.endsWith('_conveyor-fakes.mjs'),
+      `non-test path in legacyTests: ${t.path}`);
+  }
+  assert.equal(lt.filter((t) => t.verdict === 'delete').length, 12);
+  assert.equal(lt.filter((t) => t.verdict === 'helper').length, 1);
+  assert.equal(lt.filter((t) => t.verdict === 'migrate').length, 5);
+  // The four previously-unhosted LIVE suites are now hosted kept-live tests.
+  for (const f of [
+    'tests/discovery/d1-1-authority.test.mjs',
+    'tests/discovery/d1-1-binding.test.mjs',
+    'tests/discovery/d3-readiness-domain.test.mjs',
+    'tests/discovery/d4-settlement-policy.test.mjs',
+  ]) {
+    assert.ok(ADR_095_INVENTORY.keptLive.testFiles.includes(f), `${f} must be a kept live test (hosted Phase-2B)`);
+    assert.ok(!lt.some((t) => t.path === f), `${f} must not be a legacy test`);
+  }
+  // Every hosted dead importer is a real hosted file with an obligation (C5).
+  for (const h of ADR_095_INVENTORY.hostedDeadImporters) {
+    assert.ok(h.obligation.length > 20, `hosted importer without a concrete action: ${h.file}`);
+  }
+});
+
 // ---------------------------------------------------------------------------
-// BR2 — unresolved monotonicity + the Phase-4 atomic gate. Deliberately NOT
-// a tautological `deferred === (unresolved > 0)` restatement: the coupling
+// BR2 — unresolved closure + the Phase-4 atomic gate + the LIVE bidirectional
+// presence counter. Deliberately NOT a tautological restatement: the coupling
 // is enforced MACHINE-side by validateAdr095Inventory, and BR2b proves it
 // fires by feeding decoupled mutated clones to the validator. The tests
-// themselves pin today's exact state (baseline 5, blocked, deferred).
+// themselves pin today's exact state (empty, unblocked, counter live).
 // ---------------------------------------------------------------------------
 
-test('BR2a: unresolved is the exact pinned baseline of 5 and may only shrink', () => {
-  // Monotone ratchet: 5 → 4 → … → 0. Growth beyond the baseline is rejected
-  // by validateAdr095Inventory (machine side). This exact equality is the
-  // review-forcing pin: a resolution must update it in the SAME commit.
-  // Baseline history: 2026-08-24 baseline = 5 (4 partial-live contribution
-  // containers + the legacy-only test list).
+test('BR2a: unresolved is EMPTY (closed by the Phase-2B exhaustive classifications) and may never regrow', () => {
+  // Closure history: 2026-08-24 Phase-2A baseline = 5 (4 partial-live
+  // contribution containers + the legacy-only test list); 2026-08-24
+  // Phase-2B = 0 (C1/C2 closed every contribution + domain-contracts row;
+  // C3 replaced the test wildcard with exact per-file actions). The
+  // partition scan (BR6) enforces completeness forward — an ambiguous file
+  // must be classified in the scan, never parked in unresolved.
   assert.equal(
     ADR_095_INVENTORY.unresolved.length,
-    5,
-    'unresolved must equal the pinned baseline 5 — a resolution updates this pin in the same ' +
-      'commit; growth is a classification regression',
+    0,
+    'unresolved must be EMPTY — completeness is enforced by the partition scan, not by an open list',
   );
 });
 
-test('BR2b: phase4BlockedByUnresolved is the atomic machine gate (flag, counter, validator coupling)', () => {
-  // Today's pinned state: Phase 4 is BLOCKED (unresolved non-empty), the
-  // bidirectional dead-file presence counter stays deferred, and the
-  // deferral states the unresolved-inventory reason.
-  assert.equal(ADR_095_INVENTORY.phase4BlockedByUnresolved, true,
-    'Phase 4 is blocked today: unresolved is non-empty');
-  assert.equal(ADR_095_INVENTORY.presenceCounter.deferred, true,
-    'the presence counter must stay deferred while Phase 4 is blocked');
-  assert.match(
-    ADR_095_INVENTORY.presenceCounter.reason,
-    /unresolved/i,
-    'the deferral must state the unresolved-inventory reason',
-  );
+test('BR2b: phase4BlockedByUnresolved is cleared and the bidirectional presence counter is LIVE (machine-coupled)', () => {
+  // Today's pinned state: Phase 4 is UNBLOCKED (unresolved empty since
+  // Phase-2B), and the bidirectional dead-file presence counter is live —
+  // it fails on early deletion AND on unreviewed dead-set growth.
+  assert.equal(ADR_095_INVENTORY.phase4BlockedByUnresolved, false,
+    'Phase 4 is unblocked today: unresolved is empty (Phase-2B closure)');
+  assert.equal(ADR_095_INVENTORY.presenceCounter.deferred, false,
+    'the presence counter is LIVE since the Phase-2B completeness proof');
+  assert.equal(ADR_095_INVENTORY.presenceCounter.deadPathCount, 36,
+    'the counter pins the exact dead-path count (36)');
   // Non-vacuous machine proofs (not a tautology): the validator must REJECT
-  // a prematurely CLEARED flag while unresolved entries remain (an early
-  // Phase-4 landing) ...
+  // a re-OPENED unresolved list (a classification regression — growth from
+  // empty is never progress) ...
   assert.throws(
-    () => validateAdr095Inventory(REPO_ROOT, { ...ADR_095_INVENTORY, phase4BlockedByUnresolved: false }),
-    /phase4BlockedByUnresolved/,
-    'clearing the flag must fail validation while unresolved is non-empty',
+    () => validateAdr095Inventory(REPO_ROOT, {
+      ...ADR_095_INVENTORY,
+      unresolved: [{ path: 'x', question: 'regressed' }],
+    }),
+    /unresolved must be EMPTY/,
+    'a non-empty unresolved list must fail validation (closure is one-way)',
   );
-  // ... and must REJECT an emptied unresolved list that did not clear the
-  // flag (and un-defer the counter) in the same commit.
+  // ... a decoupled flag (blocked while unresolved is empty) ...
   assert.throws(
-    () => validateAdr095Inventory(REPO_ROOT, { ...ADR_095_INVENTORY, unresolved: [] }),
-    /phase4BlockedByUnresolved|presence counter|same commit/,
-    'emptying unresolved must fail validation until the flag clears and the counter lands atomically',
+    () => validateAdr095Inventory(REPO_ROOT, { ...ADR_095_INVENTORY, phase4BlockedByUnresolved: true }),
+    /phase4BlockedByUnresolved/,
+    'the flag must track the (empty) unresolved list exactly',
+  );
+  // ... a counter that UNDERCOUNTS (would pass an early deletion) ...
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, {
+      ...ADR_095_INVENTORY,
+      presenceCounter: { ...ADR_095_INVENTORY.presenceCounter, deadPathCount: 35 },
+    }),
+    /deadPathCount/,
+    'an undercounting presence counter must fail validation (early-deletion direction)',
+  );
+  // ... and a counter that OVERCOUNTS (would hide unreviewed dead-set growth).
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, {
+      ...ADR_095_INVENTORY,
+      presenceCounter: { ...ADR_095_INVENTORY.presenceCounter, deadPathCount: 37 },
+    }),
+    /deadPathCount/,
+    'an overcounting presence counter must fail validation (dead-set-growth direction)',
   );
 });
 
@@ -327,6 +423,79 @@ test('BR5: retired Discovery handler IDs appear in src/ ONLY inside the exact kn
     [],
     'retired ADR-095 handler IDs fanned out beyond the exact known legacy files ' +
       `(allowed: ${RETIRED_ID_ALLOWED_FILES.join('; ')}):\n${rendered.join('\n')}`,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// BR6 — the bidirectional scoped partition scan is NON-VACUOUS (C6). The
+// real-tree scan already ran inside validateAdr095Inventory at import time
+// (it would have thrown otherwise). Here, VIRTUAL tree listings prove the
+// scan's failure modes: an unclassified scoped file, a classified file
+// missing from the scanned set, and a double classification each turn the
+// validation RED. Without these negatives, "the 36+47 partition is the whole
+// scoped universe" would be an unproven claim (audit correction 6).
+// ---------------------------------------------------------------------------
+
+// The REAL scoped file set, captured once (the ground truth the virtual
+// mutations derive from — using it as the override must keep validation
+// green, proving the override path itself is faithful).
+const REAL_SCOPED = validation.scopedFiles;
+const realListing = () => [...REAL_SCOPED];
+
+test('BR6a: the scan is green over the real scoped set replayed through the override (faithfulness)', () => {
+  // The override replays exactly the real per-tree files, so validation
+  // must stay green — this pins that BR6b/6c/6d fail because of their
+  // MUTATION, not because the override mechanism is broken.
+  const byTree = new Map(ADR_095_INVENTORY.scopedPartitionScan.directoryTrees.map((t) => [t, []]));
+  for (const rel of REAL_SCOPED) {
+    const tree = ADR_095_INVENTORY.scopedPartitionScan.directoryTrees.find((t) => rel.startsWith(`${t}/`));
+    if (tree) byTree.get(tree).push(rel);
+  }
+  validateAdr095Inventory(REPO_ROOT, ADR_095_INVENTORY, (tree) => byTree.get(tree) ?? []);
+});
+
+test('BR6b: an UNCLASSIFIED scoped file fails the scan (new legacy residue cannot hide)', () => {
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, ADR_095_INVENTORY, (tree) =>
+      tree === 'src/modules/discovery'
+        ? [...realListing().filter((f) => f.startsWith('src/modules/discovery/')),
+           'src/modules/discovery/application/some-new-legacy-service.ts']
+        : realListing().filter((f) => f.startsWith(`${tree}/`))),
+    /UNCLASSIFIED scoped file: src\/modules\/discovery\/application\/some-new-legacy-service\.ts/,
+    'a new unclassified file inside a scoped tree must fail validation by exact path',
+  );
+});
+
+test('BR6c: a classified file ABSENT from the scanned set fails the scan (ghost classifications rejected)', () => {
+  // Drop a classified file from the virtual tree — the scan must name it.
+  const dropped = 'tests/discovery/d4-settlement-policy.test.mjs';
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, ADR_095_INVENTORY, (tree) =>
+      realListing().filter((f) => f.startsWith(`${tree}/`) && f !== dropped)),
+    /ABSENT from the scanned set/,
+    'a classified path inside a scoped tree but missing from disk must fail validation',
+  );
+});
+
+test('BR6d: a DOUBLE classification fails the scan (a path cannot be both kept and legacy-test)', () => {
+  // Clone the inventory with one kept-live test ALSO listed as a legacy
+  // test — the real scan must reject the overlap.
+  const mutated = {
+    ...ADR_095_INVENTORY,
+    legacyTests: [
+      ...ADR_095_INVENTORY.legacyTests,
+      Object.freeze({
+        path: 'tests/discovery/d4-settlement-policy.test.mjs',
+        verdict: 'delete',
+        phase: 4,
+        justification: 'deliberate mutation: double classification must fail',
+      }),
+    ],
+  };
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, mutated),
+    /MULTIPLE buckets/,
+    'a file classified in two buckets must fail validation',
   );
 });
 

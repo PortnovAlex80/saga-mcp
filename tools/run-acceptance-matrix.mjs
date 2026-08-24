@@ -139,14 +139,27 @@ const GROUPS = {
   // tests/infrastructure/acceptance-matrix-coverage.test.mjs make deletion or
   // de-hosting fail the coverage suite. ADR-095 Decision 5 preserves these
   // suites untouched through the whole removal.
+  //
+  // ADR-095 Phase-2B (audit correction C3): FOUR MORE proven-live orphans
+  // were found unhosted by the same test — d1-1-authority, d1-1-binding
+  // (D1 authority/binding over live db/schema/dispatcher infra),
+  // d3-readiness-domain (live readiness-assessment domain), and
+  // d4-settlement-policy (live settlement-policy/input/readiness domains).
+  // All four import ZERO dead Discovery surfaces (verified by dist-import
+  // scan 2026-08-24) and are green (62/62 combined in isolation). Hosted
+  // here BLOCKING; exact files, same no-widening rule.
   'discovery-live-v2': {
     globs: [
       'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
       'tests/discovery/order-constraint-register.test.mjs',
       'tests/matrix/e-constraint-loss.test.mjs',
       'tests/modules/discovery/discovery-check-providers.test.mjs',
+      'tests/discovery/d1-1-authority.test.mjs',
+      'tests/discovery/d1-1-binding.test.mjs',
+      'tests/discovery/d3-readiness-domain.test.mjs',
+      'tests/discovery/d4-settlement-policy.test.mjs',
     ],
-    note: 'ADR-095 Phase-2A live-v2 hosting — settlement lifecycle classification (m1-m6), order-constraint register round-trip, E constraint-loss boundary matrix, live check providers. Ratchet-6 executor surface; never weakened, never quarantined.',
+    note: 'ADR-095 Phase-2A/2B live-v2 hosting — settlement lifecycle classification (m1-m6), order-constraint register round-trip, E constraint-loss boundary matrix, live check providers, D1 authority + binding, D3 readiness domain, D4 settlement-policy domain. Ratchet-6 executor surface; never weakened, never quarantined.',
   },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],

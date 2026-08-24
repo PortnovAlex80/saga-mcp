@@ -1,34 +1,66 @@
 // tests/infrastructure/adr-095-removal-inventory.mjs
 //
-// ADR-095 Phase-2A — the EXACT, machine-consumed Discovery-legacy removal
-// inventory: the exact CLASSIFIED baseline, not a complete inventory (the
-// distinction is load-bearing while `unresolved` is non-empty). This is NOT
-// a test file (no *.test.mjs suffix, hosted by no matrix glob); it is the
-// shared data module consumed by
+// ADR-095 Phase-2B — the EXACT, machine-consumed Discovery-legacy removal
+// inventory, now a COMPLETE partition (Phase-2A authored the classified
+// baseline; Phase-2B closed it per the two independent audit corrections
+// verified on 2026-08-24). This is NOT a test file (no *.test.mjs suffix,
+// hosted by no matrix glob); it is the shared data module consumed by
 // tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs (blocking,
 // architecture group) and available to every later ADR-095 phase.
 //
-// Derivation discipline (per the Phase-2A brief):
-//   - every dead/kept classification below is derived from the production
-//     code at HEAD + ADR-095 (docs/architecture/decisions/
-//     095-complete-removal-of-dead-discovery-legacy.md) + the factory maps
-//     (docs/factory-map/01_DISCOVERY.md DEAD/DECLARATIVE-ONLY STRATA 1-7,
-//     GRAPH_RECONCILIATION dead-candidate classification) + the Phase-1
-//     census (docs/factory-run/stage22-elite9/DISCOVERY-PHASE1-CENSUS.md);
-//   - NO ambiguous residue is guessed: files whose exclusive-deadness is not
-//     proven are listed in `unresolved` (dead paths classified so far: 35 =
-//     26 phase-4 files + 9 dead-lane resources; kept paths: 43 = 20
-//     fully-kept production files + 4 partial-live containers + 10 live
-//     resources + 9 live test files) and the Phase-1 "full inventory" item
-//     stays open (see PRE-ELITE9-TRACKER Point 5 phase 1);
-//   - self-validation (validateAdr095Inventory) proves: entry uniqueness,
-//     dead ∩ kept = ∅, every `present-today` file/resource path resolves on
-//     disk, every table/index entry exists in src/schema.ts, the retired
-//     handler-id set is exactly the ADR six-handler baseline minus the one
-//     live settlement handler, the unresolved list never grows beyond its
-//     pinned baseline of 5, every partial-live container carries its
-//     row-level unresolved entry, and the `phase4BlockedByUnresolved` gate
-//     is true exactly while unresolved is non-empty (atomic Phase-4 block).
+// Phase-2B corrections applied (each independently re-verified, not trusted):
+//   C1 the four package contribution data files have ZERO production
+//      consumers except the unconsumed barrel (src reverse scan: manifest.ts
+//      imports no contributions file; nothing outside contributions/ imports
+//      the barrel). tool-contributions.ts is WHOLLY DEAD (all 9 rows are
+//      ControlIntent-era tool-lane declarations for tools no MCP composition
+//      registers) → reclassified to deadPhase4Files. The other three stay
+//      partial-live with their dead rows now EXHAUSTIVELY classified
+//      (output-contracts: normalization/diagnosis/brief bundle contracts;
+//      acceptance-capabilities: runtime-persistence +
+//      settlement-policy-repository + diagnosis-advisory; reviewer-skills:
+//      normalizer + diagnosis-advisor pins).
+//   C2 discovery-domain-contracts.ts is NOT fully-kept: its only src
+//      importers are the LIVE discovery-process-module.ts (exactly 5
+//      constants) and two DEAD files (discovery-installation.ts,
+//      discovery-outcome-certificate-projection.ts). Reclassified
+//      partial-live with every row classified: 5 live constants, 56
+//      legacy-only rows (incl. the whole DiscoveryRuntimePersistencePort /
+//      DiscoverySettlementPort surfaces and every mirror constant whose LIVE
+//      definition lives in the live domain files).
+//   C3 the legacy test inventory is EXACT PATHS, not a d1-d7 wildcard: four
+//      LIVE unhosted suites (d1-1-authority, d1-1-binding, d3-readiness-domain,
+//      d4-settlement-policy — green in isolation 62/62, 2026-08-24) are
+//      hosted BLOCKING in the discovery-live-v2 matrix group in Phase-2B;
+//      five mixed suites (d3/d4 architecture-boundary, d4-settlement-recovery
+//      (m6a live block), mcp-catalog-authority-errors,
+//      conveyor-v4.3-focused-invariants) carry migrate-preserving-live-
+//      assertions actions at the phase that kills their dead surface; every
+//      other legacy-only test has an exact delete action with its
+//      exclusive-legacy justification; _conveyor-fakes.mjs is classified
+//      (helper consumed only by two delete-classified suites).
+//   C4 skills/saga-kickstart/SKILL.md is KEPT (live resource pinned by
+//      DISCOVERY_KICKSTART_REVIEWER_SKILL, pinnedByProfile 'package-optional');
+//      it was missing from the Phase-2A surface partition.
+//   C5 missing same-commit obligations recorded for EVERY hosted dead
+//      importer: kernel-admission-distance (sqlite-discovery-runtime.ts:413
+//      linkType copy + settlement-debug DRIFT register anchor + drift count
+//      16→15), v4-target-conformance (REG-11 proposal-ref-bridge existence),
+//      work-intent-contract-immutability, handler-digest-runtime-consistency,
+//      discovery-package-contributions, migration-conformance, the hosted
+//      discovery-outcome-certificate-projection.test.mjs, and the hosted
+//      factory-proof workshop-inventory baseline (pins dead projection +
+//      handler-adapter dependency edges).
+//   C6 completeness is PROVEN, not claimed: a bidirectional scoped partition
+//      scan (scopedPartitionScan) walks the scoped src trees (all of
+//      src/modules/discovery, all of src/process-modules/modules/discovery,
+//      the four src/tools/discovery-*.ts), the scoped test trees (all of
+//      tests/discovery, all of tests/modules/discovery), every individually
+//      scoped out-of-tree test/fixture, and the six relevant skills, and
+//      asserts every file is in EXACTLY ONE partition bucket (dead | kept |
+//      partial-live | legacy-test | hosted-importer). Mutation negatives in
+//      the bridge suite (BR6) prove the scan fails on an unclassified file,
+//      a missing classified file, and a double classification.
 //
 // Phase semantics follow ADR-095's normative phase order:
 //   phase 3 = live side-effect removal FIRST (writes stop while tables exist);
@@ -51,9 +83,9 @@ function joinPath(root, rel) {
 }
 
 export const ADR_095_INVENTORY = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   decision: 'ADR-095',
-  phaseAuthored: '2A',
+  phaseAuthored: '2B',
   authoredAt: '2026-08-24',
   authorities: Object.freeze([
     'docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md',
@@ -99,8 +131,11 @@ export const ADR_095_INVENTORY = Object.freeze({
         'reverse-dep scan: products.ts is the only src importer of discovery-proposal-projection',
       sameCommitObligations: Object.freeze([
         'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imports ' +
-        'dist/modules/discovery/infrastructure/discovery-proposal-projection.js ' +
-        '(unhosted legacy-only consumer — migrate or delete under the operator-approved list)',
+        'dist/modules/discovery/infrastructure/discovery-proposal-projection.js — ' +
+        'MIGRATE preserving live assertions (see legacyTests entry: invariant 5 ' +
+        '"Discovery proposal is a schema projection behind universal product_submit" ' +
+        're-points to the projection-free product_submit seam; the live replay/' +
+        'routing/authority invariants stay) in the SAME commit as this block removal',
       ]),
     }),
     Object.freeze({
@@ -109,7 +144,12 @@ export const ADR_095_INVENTORY = Object.freeze({
       detail: 'settlement_explain legacy Discovery query over factory_discovery_settlements ' +
         '(discoverySettlement block; the TOOL ITSELF STAYS for non-Discovery traces)',
       evidence: 'ADR-095 Decision 1 bullet 1; map CONTRADICTIONS context (settlement-debug.ts:117-139)',
-      sameCommitObligations: Object.freeze([]),
+      sameCommitObligations: Object.freeze([
+        'tests/architecture/kernel-admission-distance.test.mjs (BLOCKING-hosted, architecture ' +
+        'group) carries DRIFT_REPORTED anchor "module_ref_key === \'discovery\'" on this file ' +
+        'plus FROZEN_REGISTER_COUNTS drift:16 — removing this block makes the register entry ' +
+        'STALE and the suite RED: same-commit re-pin (drop the anchor, drift 16→15)',
+      ]),
     }),
     Object.freeze({
       kind: 'code-block',
@@ -133,6 +173,7 @@ export const ADR_095_INVENTORY = Object.freeze({
   // -------------------------------------------------------------------------
   // DEAD — phase 4: the atomic cutover commit (module-version bump + manifest
   // repin to the production-cell digest + code/resource deletion).
+  // Phase-2B count: 27 files (Phase-2A 26 + tool-contributions.ts per C1).
   // -------------------------------------------------------------------------
   deadPhase4Files: Object.freeze([
     Object.freeze({
@@ -145,7 +186,8 @@ export const ADR_095_INVENTORY = Object.freeze({
         'schema only at phase 5); src reverse-dep scan: sole src importer is src/tools/products.ts',
       sameCommitObligations: Object.freeze([
         'phase 3 must remove the products.ts projection block FIRST (deadPhase3[0]); ' +
-        'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imports it (unhosted legacy-only consumer)',
+        'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imports it (MIGRATE per its ' +
+        'legacyTests action in the phase-3 commit)',
       ]),
     }),
     Object.freeze({
@@ -161,7 +203,7 @@ export const ADR_095_INVENTORY = Object.freeze({
         'src/infrastructure/process-modules/brief-provisioning-ports.ts',
         'update the hosted blocker suite ' +
         'tests/architecture/handler-digest-runtime-consistency.test.mjs (imports this module ' +
-        'via dist; ADR-095 six-blocker list)',
+        'via dist; ADR-095 six-blocker list; repin to the one-handler production-cell digest)',
       ]),
     }),
     Object.freeze({
@@ -170,7 +212,9 @@ export const ADR_095_INVENTORY = Object.freeze({
       detail: 'dead MCP discovery proposal tool (proposal_submit lane); no MCP composition import',
       evidence: 'ADR-095 Decision 1 bullet 2; 01_DISCOVERY.md STRATA 3; src reverse-dep scan: 0 src importers',
       sameCommitObligations: Object.freeze([
-        'tests/characterization/mcp-catalog-authority-errors.test.mjs imports it (unhosted legacy-only consumer)',
+        'tests/characterization/mcp-catalog-authority-errors.test.mjs imports it — MIGRATE per ' +
+        'its legacyTests action (live catalog/authority/error-normalization assertions stay; ' +
+        'the pinned sorted tool-name set drops the dead discovery tools)',
       ]),
     }),
     Object.freeze({
@@ -180,7 +224,8 @@ export const ADR_095_INVENTORY = Object.freeze({
       evidence: 'ADR-095 Decision 1 bullet 2; 01_DISCOVERY.md STRATA 3; src reverse-dep scan: 0 src importers',
       sameCommitObligations: Object.freeze([
         'tests/characterization/mcp-catalog-authority-errors.test.mjs, ' +
-        'tests/discovery/d2-normalization-lineage.test.mjs import it (unhosted legacy-only consumers)',
+        'tests/discovery/d2-normalization-lineage.test.mjs import it (d2 line: DELETE per its ' +
+        'legacyTests action; mcp-catalog: MIGRATE)',
       ]),
     }),
     Object.freeze({
@@ -190,17 +235,23 @@ export const ADR_095_INVENTORY = Object.freeze({
       evidence: 'ADR-095 Decision 1 bullet 2; 01_DISCOVERY.md STRATA 3; src reverse-dep scan: 0 src importers',
       sameCommitObligations: Object.freeze([
         'tests/characterization/mcp-catalog-authority-errors.test.mjs, ' +
-        'tests/discovery/d3-readiness-{correction,handler,index-migration}.test.mjs import it (unhosted legacy-only consumers)',
+        'tests/discovery/d3-readiness-{correction,handler,index-migration}.test.mjs import it ' +
+        '(d3 line: DELETE per legacyTests actions; mcp-catalog: MIGRATE)',
       ]),
     }),
     Object.freeze({
       kind: 'file',
       path: 'src/tools/discovery-tool-args.ts',
       detail: 'shared helpers of the three dead MCP discovery tools only',
-      evidence: 'ADR-095 Decision 1 bullet 2; src reverse-dep scan: imported ONLY by the three dead tool files',
+      evidence: 'ADR-095 Decision 1 bullet 2; src reverse-dep scan: imported ONLY by the three dead ' +
+        'tool files (src/application/actionable-tool-error.ts references it in COMMENTS only — ' +
+        'stale comment cleanup, not a code dependency)',
       sameCommitObligations: Object.freeze([
         'tests/characterization/mcp-catalog-authority-errors.test.mjs, ' +
-        'tests/discovery/tool-actionable-errors.test.mjs import it (unhosted legacy-only consumers)',
+        'tests/discovery/tool-actionable-errors.test.mjs import it (tool-actionable-errors: ' +
+        'DELETE per its legacyTests action — it pins ONLY the dead args helpers; mcp-catalog: ' +
+        'MIGRATE — its enrichPayloadErrors/FACTORY_TOOL_CALL_SHAPES lanes re-point to the live ' +
+        'parameterized surface src/application/actionable-tool-error.ts or delete with the tools)',
       ]),
     }),
     Object.freeze({
@@ -210,7 +261,8 @@ export const ADR_095_INVENTORY = Object.freeze({
       evidence: 'ADR-095 Decision 1 bullet 2; 01_DISCOVERY.md STRATA 2; src reverse-dep scan: 0 src importers',
       sameCommitObligations: Object.freeze([
         'tests/discovery/d4-settlement-{persistence,recovery}.test.mjs, ' +
-        'tests/discovery/d5-certificate-bundle.test.mjs import it (unhosted legacy-only consumers)',
+        'tests/discovery/d5-certificate-bundle.test.mjs import it (d4-persistence/d5: DELETE per ' +
+        'legacyTests actions; d4-recovery: MIGRATE preserving the m6a live block)',
       ]),
     }),
     Object.freeze({
@@ -260,6 +312,9 @@ export const ADR_095_INVENTORY = Object.freeze({
         'repin/delete-list migration, see mandatoryPhase4Repins below',
         'tests/process-modules/discovery-outcome-certificate-projection.test.mjs (BLOCKING-hosted ' +
         'by the process-modules glob) imports it via dist — same-commit migrate-or-delete',
+        'tests/factory-proof/workshop-inventory.baseline.json (hosted by the factory-proof group) ' +
+        'pins the "discovery-outcome-certificate-projection.ts (modules->legacy)" dependency ' +
+        'edge — regenerate the baseline in the same commit (see hostedDeadImporters)',
       ]),
     }),
     Object.freeze({
@@ -314,10 +369,14 @@ export const ADR_095_INVENTORY = Object.freeze({
       evidence: 'ADR-095 Decision 1 bullet 3 + Decision 3; 01_DISCOVERY.md STRATA 4; sole src importer: product-lifecycle-runtime.ts:349-350',
       sameCommitObligations: Object.freeze([
         'tests/architecture/work-intent-contract-immutability.test.mjs (BLOCKING-hosted, ' +
-        'architecture glob) imports it — re-point its fixture at the kept factory_work_intents ' +
-        'schema (the TABLE STAYS; only this adapter import dies)',
+        'architecture glob) imports it via dist — re-point its fixture at the kept ' +
+        'factory_work_intents schema (the TABLE STAYS; only this adapter import dies)',
+        'tests/architecture/kernel-admission-distance.test.mjs (BLOCKING-hosted, architecture ' +
+        'glob) pins src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts:413 as one ' +
+        'of the EXACT THREE linkType behavioural copies — same-commit re-pin of the copies list ' +
+        '(three → two: the projection-persistence and tasks.ts copies remain)',
         'unhosted legacy-only test consumers: tests/discovery/d4-settlement-atomicity, ' +
-        'd4-settlement-persistence, d4-settlement-recovery, d5-certificate-bundle',
+        'd4-settlement-persistence, d4-settlement-recovery (migrate: m6a block stays), d5-certificate-bundle',
       ]),
     }),
     Object.freeze({
@@ -342,7 +401,10 @@ export const ADR_095_INVENTORY = Object.freeze({
       detail: 'PROPOSAL_REF_SCHEMA bridge (phase 3 removes its live emission from products.ts)',
       evidence: 'ADR-095 Decision 1 bullet 1+2; src reverse-dep scan: after phase 3 only the dead proposal tool imports it',
       sameCommitObligations: Object.freeze([
-        'tests/modules/discovery/proposal-ref-bridge.test.mjs imports it (unhosted legacy-only consumer)',
+        'tests/modules/discovery/proposal-ref-bridge.test.mjs imports it (unhosted legacy-only consumer — DELETE)',
+        'tests/architecture/v4-target-conformance-ratchet.test.mjs (BLOCKING-hosted, architecture ' +
+        'glob) asserts REG-11 "proposal-ref bridge for Discovery exists" via existsSync — ' +
+        'same-commit removal/replacement of REG-11 (see hostedDeadImporters)',
       ]),
     }),
     Object.freeze({
@@ -393,9 +455,32 @@ export const ADR_095_INVENTORY = Object.freeze({
         'mirrors the five retired handler ids (DISCOVERY_PACKAGE_HANDLER_IDS)',
       evidence: 'ADR-095 Decision 1 bullet 4; 01_DISCOVERY.md STRATA 1; src reverse-dep scan: sole importer is contributions/index.ts (barrel)',
       sameCommitObligations: Object.freeze([
-        'drop the barrel re-exports from package/contributions/index.ts in the same commit',
+        'drop the barrel re-exports from package/contributions/index.ts in the same commit (its ' +
+        'handler-adapter block is a partialLive dead row — see partialLiveFiles)',
         'update tests/process-modules/discovery-package-contributions.test.mjs (BLOCKING-hosted; ' +
         'ADR-095 six-blocker list) to pin the live one-handler contributions',
+        'tests/factory-proof/workshop-inventory.baseline.json pins the "handler-adapter.ts ' +
+        '(legacy->modules)" dependency edge — regenerate the baseline in the same commit',
+      ]),
+    }),
+    Object.freeze({
+      kind: 'file',
+      path: 'src/process-modules/modules/discovery/package/contributions/tool-contributions.ts',
+      detail: 'WHOLLY DEAD (Phase-2B correction C1): all 9 rows are ControlIntent-era tool-lane ' +
+        'declarations (proposal_submit, normalization_get/submit, readiness_get/submit, ' +
+        'diagnosis_get/submit, artifact_create.brief, worker_done) for tools no MCP composition ' +
+        'registers; the manifest (W9-A1) imports NONE of this — it declares its own inline ' +
+        'resourceIndex/contract refs — and the barrel re-exporting it has zero production importers',
+      evidence: 'src reverse-dep scan 2026-08-24: zero src importers outside package/contributions/; ' +
+        'manifest.ts imports only discovery-process-module.js + assistance.js + domain SPI files; ' +
+        'the W9-A2 doc-claim "the manifest spreads this into ProcessModuleManifest.toolContributions" ' +
+        'is not realized in code',
+      sameCommitObligations: Object.freeze([
+        'drop the tool-contributions re-export block from package/contributions/index.ts in the ' +
+        'same commit (partialLive dead row)',
+        'update tests/process-modules/discovery-package-contributions.test.mjs (BLOCKING-hosted; ' +
+        'imports this file via dist) to pin the live one-handler contributions without the ' +
+        'tool-contribution lanes',
       ]),
     }),
   ]),
@@ -407,7 +492,8 @@ export const ADR_095_INVENTORY = Object.freeze({
       detail: 'dead normalizer lane execution skill (manifest logicalId discovery.skill.normalizer)',
       evidence: 'ADR-095 Decision 1 bullet 5 (dead-lane skills); 01_DISCOVERY.md STRATA 5/CONTRADICTION 3',
       sameCommitObligations: Object.freeze([
-        'drop the discovery.skill.normalizer resourceIndex entry + reviewer-skills pin in the same commit',
+        'drop the discovery.skill.normalizer resourceIndex entry (manifest.ts inline index) + ' +
+        'reviewer-skills pin (DISCOVERY_NORMALIZER_SKILL dead row) in the same commit',
       ]),
     }),
     Object.freeze({
@@ -416,7 +502,9 @@ export const ADR_095_INVENTORY = Object.freeze({
       detail: 'dead diagnosis lane execution skill (logicalId discovery.skill.diagnosis-advisor)',
       evidence: 'ADR-095 Decision 1 bullet 5; 01_DISCOVERY.md STRATA 5 (diagnosis flow deleted from the module)',
       sameCommitObligations: Object.freeze([
-        'drop the discovery.skill.diagnosis-advisor resourceIndex entry + reviewer-skills pin in the same commit',
+        'drop the discovery.skill.diagnosis-advisor resourceIndex entry (manifest.ts inline ' +
+        'index) + reviewer-skills pin (DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL dead row) ' +
+        'in the same commit',
       ]),
     }),
     Object.freeze({
@@ -484,7 +572,9 @@ export const ADR_095_INVENTORY = Object.freeze({
       path: 'src/process-modules/modules/discovery/package/manifest.ts',
       detail: 'DISCOVERY_HANDLER_IDS/DISCOVERY_HANDLER_REFS reduced to exactly ' +
         'discovery-settlement-policy; DISCOVERY_HANDLER_IMPLEMENTATION_DIGEST repinned to the ' +
-        'production-cell installation bytes; product-discovery version bumped ATOMICALLY',
+        'production-cell installation bytes; product-discovery version bumped ATOMICALLY; the ' +
+        'inline resourceIndex drops its dead-lane entries (discovery.skill.normalizer, ' +
+        'discovery.skill.diagnosis-advisor — see deadPhase4Resources obligations)',
       evidence: 'ADR-095 Decision 4 + pre-mortem F3/F5; 01_DISCOVERY.md STRATA 6 + CONTRADICTIONS 1-2',
       sameCommitObligations: Object.freeze([
         'same-commit version bump at src/process-modules/lifecycles/product-delivery-module-contracts.ts:30-33',
@@ -537,11 +627,13 @@ export const ADR_095_INVENTORY = Object.freeze({
   // KEPT LIVE — the explicit preserved surface (ADR-095 Decision 5).
   // FULLY-KEPT entries (productionFiles, liveResources, testFiles, kept
   // tables/indexes/triggers): nothing may be deleted, weakened, or repointed
-  // by any phase. PARTIAL-LIVE entries (partialLiveFilesWithUnresolvedRows):
-  // kept AS CONTAINERS — row-level repoint/removal inside them is allowed
-  // (and partly REQUIRED by phase-4 same-commit obligations, e.g. dropping
-  // the dead-lane reviewer-skill pins) while whole-FILE deletion is
-  // FORBIDDEN until their unresolved row-level classification closes.
+  // by any phase. PARTIAL-LIVE entries (partialLiveFiles): kept AS FILES —
+  // row-level repoint/removal inside them is allowed (and partly REQUIRED by
+  // phase-4 same-commit obligations) while whole-FILE deletion is FORBIDDEN.
+  // Phase-2B: every partial-live file's rows are EXHAUSTIVELY classified
+  // (liveRows + deadRows) — the Phase-2A "unresolved" row questions are
+  // CLOSED (C1/C2); discovery-domain-contracts.ts moved here from
+  // productionFiles; tool-contributions.ts moved OUT to deadPhase4Files.
   // -------------------------------------------------------------------------
   keptLive: Object.freeze({
     productionFiles: Object.freeze([
@@ -553,11 +645,9 @@ export const ADR_095_INVENTORY = Object.freeze({
       'src/modules/discovery/domain/discovery-settlement-policy.ts',
       'src/modules/discovery/domain/discovery-settlement-input.ts',
       'src/modules/discovery/domain/discovery-settlement-records.ts',
-      'src/modules/discovery/domain/discovery-domain-contracts.ts',
       'src/process-modules/modules/discovery/discovery-process-module.ts',
       'src/process-modules/modules/discovery/package/manifest.ts',
       'src/process-modules/modules/discovery/package/assistance.ts',
-      'src/process-modules/modules/discovery/package/contributions/index.ts',
       'src/process-modules/modules/discovery/package/index.ts',
       'src/tools/products.ts',
       'src/tools/settlement-debug.ts',
@@ -566,15 +656,208 @@ export const ADR_095_INVENTORY = Object.freeze({
       'src/infrastructure/process-modules/brief-provisioning-ports.ts',
       'src/process-modules/lifecycles/product-delivery-module-contracts.ts',
     ]),
-    // KEPT AS CONTAINERS, unresolved at ROW level (each has a matching
-    // `unresolved` entry below): these files carry live rows AND rows whose
-    // dead-vs-live classification is still open. Row-level repoint/removal
-    // is allowed; whole-file deletion is forbidden until resolved.
-    partialLiveFilesWithUnresolvedRows: Object.freeze([
-      'src/process-modules/modules/discovery/package/contributions/tool-contributions.ts',
-      'src/process-modules/modules/discovery/package/contributions/output-contracts.ts',
-      'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts',
-      'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts',
+    // KEPT AS FILES with row-level dead/live classification (Phase-2B: every
+    // row classified; whole-file deletion forbidden; dead rows die at the
+    // phase named in their obligation).
+    partialLiveFiles: Object.freeze([
+      Object.freeze({
+        path: 'src/modules/discovery/domain/discovery-domain-contracts.ts',
+        detail: 'PARTIAL-LIVE (Phase-2B correction C2). Sole live src importer: ' +
+          'discovery-process-module.ts (exactly 5 constants). The dead importers are ' +
+          'discovery-installation.ts + discovery-outcome-certificate-projection.ts (both ' +
+          'deadPhase4Files). Mirror constants whose LIVE definitions live elsewhere stay ' +
+          'authoritative in their live files.',
+        liveRows: Object.freeze([
+          Object.freeze({ row: 'DISCOVERY_PROPOSAL_SCHEMA', consumer: 'discovery-process-module.ts' }),
+          Object.freeze({ row: 'DISCOVERY_READINESS_ASSESSMENT_SCHEMA', consumer: 'discovery-process-module.ts' }),
+          Object.freeze({ row: 'DISCOVERY_INTENT_KIND', consumer: 'discovery-process-module.ts' }),
+          Object.freeze({ row: 'DISCOVERY_READINESS_INTENT_KIND', consumer: 'discovery-process-module.ts' }),
+          Object.freeze({ row: 'DISCOVERY_WORK_INTENT_SCHEMA', consumer: 'discovery-process-module.ts' }),
+        ]),
+        deadRows: Object.freeze([
+          Object.freeze({
+            row: 'DISCOVERY_OUTCOME_CERTIFICATE_SCHEMA, DISCOVERY_SETTLEMENT_INPUT_SCHEMA, NO_READINESS_HASH',
+            justification: 'mirror constants consumed from THIS file only by dead discovery-installation.ts; ' +
+              'the live definitions live in discovery-production-cell-installation.ts, ' +
+              'discovery-settlement-input.ts, discovery-settlement-records.ts respectively',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_DIAGNOSIS_REPORT_SCHEMA, DISCOVERY_NORMALIZATION_PROPOSAL_SCHEMA, ' +
+              'DISCOVERY_NORMALIZATION_INTENT_KIND, DISCOVERY_DIAGNOSIS_INTENT_KIND',
+            justification: 'legacy-lane schema/kind constants; zero src importers of THIS copy (the ' +
+              'normalization/diagnosis lanes are dead; shared/work-intent.ts keeps its own kind copies)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DiscoveryRuntimePersistencePort + every Ensure*/Insert/Issue/Prepare port-input ' +
+              'shape + every D1-D5 record/status/interface type (WorkIntentStatus, ' +
+              'DiscoveryOutcome, DiscoveryProposalPayload, OverallReadiness, RecommendedNextAction, ' +
+              'ReadinessShadowResult, DiagnosisDecision, ExecutionProvenance, ProposalProvenance, ' +
+              'RawDiscoverySubmissionStatus, RawDiscoverySubmissionRecord, ControlIntentStatus, ' +
+              'DiscoveryNormalizationProposalRecord, ReadinessControlStatus, ' +
+              'ReadinessAssessmentStatus, ReadinessAssessmentRecord, ReadinessControlExecution, ' +
+              'SettlementStatus, SettlementDecision, DiscoverySettlementReasonCode, ' +
+              'SettlementRecord, OutcomeCertificateRecord, SettlementInputKey, ' +
+              'SettlementProposalRecord, AuthorityScope, WorkIntent, CreateWorkIntent, ' +
+              'ProposalStatus, ProposalRecord, DiagnosisControlStatus, DiagnosisReportStatus, ' +
+              'DiagnosisControlIntentRecord, DiagnosisControlExecution, DiagnosisReportRecord, ' +
+              'EnsureProjectedTask, EnsureNodeExecutionPlan, EnsureNormalizationControl, ' +
+              'NormalizationControlExecution, EnsureReadinessControl, EnsureDiagnosisControl, ' +
+              'SubmitDiagnosisReportInput, IssueCertificateAtomicallyInput, InsertSettlementPort, ' +
+              'PrepareIntentForExecutionResult, ReadinessControlIntentRecord, SettleRequest, ' +
+              'DiscoverySettlementResult, DiscoverySettlementPort)',
+            justification: 'consumed from THIS file only by dead files (installation/projection) or by ' +
+              'nobody; the live settlement surface keeps its own types in ' +
+              'discovery-settlement-policy/input/records.ts and discovery-readiness-assessment.ts',
+            phase: 4,
+          }),
+        ]),
+        obligations: Object.freeze([
+          'phase 4 deletes the dead rows in the SAME commit as discovery-installation.ts + ' +
+          'discovery-outcome-certificate-projection.ts (their only consumers); the file stays, ' +
+          'reduced to the 5 live constants',
+        ]),
+      }),
+      Object.freeze({
+        path: 'src/process-modules/modules/discovery/package/contributions/output-contracts.ts',
+        detail: 'kept as live declared contract data; 3 dead rows (C1)',
+        liveRows: Object.freeze([
+          Object.freeze({ row: 'DISCOVERY_INPUT_CONTRACT', consumer: 'declared live input contract (discovery-case v1)' }),
+          Object.freeze({ row: 'DISCOVERY_PROPOSAL_BUNDLE_CONTRACT', consumer: 'live proposal lane' }),
+          Object.freeze({ row: 'DISCOVERY_READINESS_BUNDLE_CONTRACT', consumer: 'live readiness lane' }),
+          Object.freeze({ row: 'DISCOVERY_SETTLEMENT_INPUT_CONTRACT', consumer: 'live settlement lane' }),
+          Object.freeze({ row: 'DISCOVERY_OUTPUT_CONTRACT', consumer: 'live terminal output contract' }),
+          Object.freeze({ row: 'DISCOVERY_CERTIFICATE_CONTRACT', consumer: 'live certificate payload contract' }),
+          Object.freeze({ row: 'DISCOVERY_DECLARED_OUTCOMES / DISCOVERY_OUTCOME_CODES', consumer: 'live declared outcome set' }),
+        ]),
+        deadRows: Object.freeze([
+          Object.freeze({
+            row: 'DISCOVERY_NORMALIZATION_BUNDLE_CONTRACT',
+            justification: 'normalization lane is dead; no live surface speaks factory.discovery-normalization-proposal.v1',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_DIAGNOSIS_BUNDLE_CONTRACT',
+            justification: 'diagnosis lane is dead (D5 deleted from the module)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_BRIEF_BUNDLE_CONTRACT',
+            justification: 'ControlIntent-era brief auto-provisioning projection is dead; live brief ' +
+              'provisioning is the injected port recorded on discovery-installation obligations',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_NODE_OUTPUT_CONTRACTS aggregate entries for the three dead bundle contracts',
+            justification: 'aggregate shrinks with its dead members (proposal → readiness → ' +
+              'settlement-input order preserved)',
+            phase: 4,
+          }),
+        ]),
+        obligations: Object.freeze([
+          'phase 4 removes the three dead bundle contracts + their aggregate entries; ' +
+          'tests/process-modules/discovery-package-contributions.test.mjs re-pins the reduced ' +
+          'contract set in the same commit',
+        ]),
+      }),
+      Object.freeze({
+        path: 'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts',
+        detail: 'kept as live declared capability/guard data; 3 dead rows (C1)',
+        liveRows: Object.freeze([
+          Object.freeze({ row: 'DISCOVERY_CAP_MANAGED_PRODUCTION_LEDGER', consumer: 'live capability' }),
+          Object.freeze({ row: 'DISCOVERY_CAP_OUTCOME_CERTIFICATE_ISSUER', consumer: 'live capability' }),
+          Object.freeze({ row: 'DISCOVERY_CAP_LM_NODE_EXECUTION_PERSISTENCE', consumer: 'live optional capability' }),
+          Object.freeze({ row: 'DISCOVERY_GUARD_AUTHORITY_FENCE', consumer: 'live guard' }),
+          Object.freeze({ row: 'DISCOVERY_GUARD_MANAGED_PRODUCTION', consumer: 'live guard' }),
+          Object.freeze({ row: 'DISCOVERY_GUARD_NODE_ALLOWED_TOOLS', consumer: 'live guard' }),
+          Object.freeze({ row: 'DISCOVERY_GUARD_EXECUTION_ID_FENCE', consumer: 'live guard' }),
+        ]),
+        deadRows: Object.freeze([
+          Object.freeze({
+            row: 'DISCOVERY_CAP_RUNTIME_PERSISTENCE',
+            justification: 'declares the dead discovery-runtime-persistence port capability; the port + ' +
+              'its sqlite implementation are deadPhase4Files and the runtimePersistence field dies in phase 3',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_CAP_SETTLEMENT_POLICY_REPOSITORY',
+            justification: 'declares the dead settlement-policy repository capability (discovery-settlement-repository.ts is dead)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_GUARD_DIAGNOSIS_ADVISORY',
+            justification: 'diagnosis lane is dead; the guard binds a flow node that no longer exists',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_CAPABILITY_REQUIREMENTS / DISCOVERY_GUARD_BINDINGS aggregate entries for the three dead rows',
+            justification: 'aggregates shrink with their dead members',
+            phase: 4,
+          }),
+        ]),
+        obligations: Object.freeze([
+          'phase 4 removes the dead capability/guard rows + aggregate entries; ' +
+          'tests/process-modules/discovery-package-contributions.test.mjs re-pins in the same commit',
+        ]),
+      }),
+      Object.freeze({
+        path: 'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts',
+        detail: 'kept as live pinned skill data; 2 dead rows (C1)',
+        liveRows: Object.freeze([
+          Object.freeze({ row: 'DISCOVERY_READINESS_ADVISOR_REVIEWER_SKILL', consumer: 'live readiness advisor review skill' }),
+          Object.freeze({ row: 'DISCOVERY_WORKER_SKILL', consumer: 'live proposal worker execution skill' }),
+          Object.freeze({ row: 'DISCOVERY_PROTOCOL_SKILL', consumer: 'live shared protocol skill (every profile)' }),
+          Object.freeze({ row: 'DISCOVERY_KICKSTART_REVIEWER_SKILL', consumer: 'live optional reviewer skill (skills/saga-kickstart/SKILL.md — KEPT per C4)' }),
+        ]),
+        deadRows: Object.freeze([
+          Object.freeze({
+            row: 'DISCOVERY_NORMALIZER_SKILL',
+            justification: 'pins the dead saga-discovery-normalizer/SKILL.md resource (deadPhase4Resources)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL',
+            justification: 'pins the dead saga-discovery-diagnosis-advisor/SKILL.md resource (deadPhase4Resources)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'DISCOVERY_SKILL_RESOURCES / DISCOVERY_SKILL_RESOURCE_INDEX_ENTRIES aggregate entries for the two dead pins',
+            justification: 'aggregates shrink with their dead members',
+            phase: 4,
+          }),
+        ]),
+        obligations: Object.freeze([
+          'phase 4 removes the two dead pins + aggregate entries in the SAME commit as the dead ' +
+          'skill resources and the manifest inline resourceIndex entries',
+        ]),
+      }),
+      Object.freeze({
+        path: 'src/process-modules/modules/discovery/package/contributions/index.ts',
+        detail: 'the contributions barrel (kept: the package declared import surface, pinned by ' +
+          'the hosted discovery-package-contributions suite); row-level dead re-export blocks die ' +
+          'with their sources',
+        liveRows: Object.freeze([
+          Object.freeze({ row: 'acceptance-capabilities re-export block', consumer: 'live rows only after phase-4 reduction' }),
+          Object.freeze({ row: 'output-contracts re-export block', consumer: 'live rows only after phase-4 reduction' }),
+          Object.freeze({ row: 'reviewer-skills re-export block', consumer: 'live rows only after phase-4 reduction' }),
+        ]),
+        deadRows: Object.freeze([
+          Object.freeze({
+            row: 'tool-contributions re-export block (11 symbols)',
+            justification: 'tool-contributions.ts is wholly dead (C1)',
+            phase: 4,
+          }),
+          Object.freeze({
+            row: 'handler-adapter re-export block (10 symbols)',
+            justification: 'handler-adapter.ts is deadPhase4Files',
+            phase: 4,
+          }),
+        ]),
+        obligations: Object.freeze([
+          'phase 4 drops both dead re-export blocks in the SAME commit as their source files',
+        ]),
+      }),
     ]),
     liveResources: Object.freeze([
       'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-worker/SKILL.md',
@@ -587,6 +870,7 @@ export const ADR_095_INVENTORY = Object.freeze({
       'src/process-modules/modules/discovery/package/resources/readiness-stage-tracker.md',
       'src/process-modules/modules/discovery/package/resources/readiness-checklist.md',
       'skills/saga-process-module-worker-protocol/SKILL.md',
+      'skills/saga-kickstart/SKILL.md',
     ]),
     // factory_work_intents is NOT part of the legacy closure: it is a live
     // shared protocol entity (dispatcher, work-assignment-core,
@@ -603,9 +887,13 @@ export const ADR_095_INVENTORY = Object.freeze({
       'trg_factory_work_intents_contract_immutable',
     ]),
     // ADR-095 Decision 5: the live E2E/constraint/output suites, preserved
-    // untouched. The four Discovery orphans were hosted BLOCKING in Phase-2A
-    // (matrix group discovery-live-v2); migration-conformance was hosted
-    // BLOCKING green-on-legacy-baseline in the process-modules group.
+    // untouched. Phase-2A hosted the four orphans (matrix group
+    // discovery-live-v2) + migration-conformance (process-modules group).
+    // Phase-2B hosts FOUR MORE proven-live orphans (C3): d1-1-authority,
+    // d1-1-binding, d3-readiness-domain, d4-settlement-policy (green in
+    // isolation 62/62 combined, 2026-08-24) — the live-v2 executor surface
+    // now covers D1 authority/binding, D3 readiness domain, D4 settlement
+    // policy domain in addition to the Phase-2A four.
     testFiles: Object.freeze([
       'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
       'tests/discovery/order-constraint-register.test.mjs',
@@ -616,85 +904,305 @@ export const ADR_095_INVENTORY = Object.freeze({
       'tests/factory-proof/discovery-resilience-pack.test.mjs',
       'tests/process-modules/discovery-output-handoff.test.mjs',
       'tests/process-modules/discovery-legacy-removal-boot-regression.test.mjs',
+      'tests/discovery/d1-1-authority.test.mjs',
+      'tests/discovery/d1-1-binding.test.mjs',
+      'tests/discovery/d3-readiness-domain.test.mjs',
+      'tests/discovery/d4-settlement-policy.test.mjs',
     ]),
   }),
 
   // -------------------------------------------------------------------------
-  // UNRESOLVED — residue NOT classified by this baseline. Do not guess these;
-  // each needs its own proven derivation before Phase 4. MONOTONE ratchet:
-  // the exact baseline is 5 (4 partial-live contribution containers +
-  // 1 legacy-only test list); entries may only be RESOLVED (removed), never
-  // added — validateAdr095Inventory rejects growth beyond the baseline. The
-  // Phase-1 "full live-v2/dead-legacy/shared inventory" item in the
-  // PRE-ELITE9 tracker stays OPEN until this list is empty.
+  // LEGACY TESTS — the exact per-file partition + action (Phase-2B correction
+  // C3: PATHS, not wildcards). Three verdicts:
+  //   delete  — legacy-only (exercises ONLY removed surfaces; operator
+  //             approval ADR-095 §7); deleted at the named phase;
+  //   migrate — MIXED: contains live assertions that MUST be preserved
+  //             (migrated/re-pointed FIRST, never deleted) when the dead
+  //             surface dies at the named phase;
+  //   helper  — a non-test fixture consumed ONLY by delete-classified files;
+  //             deleted with its last consumer in the same commit.
+  // Hosting truth (matrix --list-json, 2026-08-24): every file here is
+  // UNHOSTED (no blocking run-set, no quarantine) except where noted.
   // -------------------------------------------------------------------------
-  unresolved: Object.freeze([
+  legacyTests: Object.freeze([
+    // ---- DELETE (phase 4) — legacy-only, unhosted -------------------------
     Object.freeze({
-      path: 'src/process-modules/modules/discovery/package/contributions/tool-contributions.ts',
-      question: 'KEPT AS A CONTAINER (keptLive.partialLiveFilesWithUnresolvedRows). The open ' +
-        'question is ROW-level: which DISCOVERY_TOOL_CONTRIBUTIONS rows (the legacy ' +
-        'proposal/normalization/readiness/diagnosis submit-get lanes) are dead-lane data vs ' +
-        'live declared capability surface? Requires a map of consumers before Phase 4 decides ' +
-        'row-level repoint/removal — whole-file deletion is forbidden until this closes.',
+      path: 'tests/discovery/d1-workspace-creation.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'sole dist import: ensure-discovery-workspace.js (deadPhase4Files); exercises only the legacy workspace provisioning',
     }),
     Object.freeze({
-      path: 'src/process-modules/modules/discovery/package/contributions/output-contracts.ts',
-      question: 'KEPT AS A CONTAINER (partialLiveFilesWithUnresolvedRows). Open question is ' +
-        'ROW-level: which DISCOVERY_NORMALIZATION/READINESS/DIAGNOSIS_BUNDLE_CONTRACT rows are ' +
-        'dead-lane data vs live declared output contracts? Same row-level rule as ' +
-        'tool-contributions.',
+      path: 'tests/discovery/d2-normalization-lifecycle.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'sole dist import: discovery-normalization-service.js (deadPhase4Files); also consumes _conveyor-fakes',
     }),
     Object.freeze({
-      path: 'src/process-modules/modules/discovery/package/contributions/acceptance-capabilities.ts',
-      question: 'KEPT AS A CONTAINER (partialLiveFilesWithUnresolvedRows). Open question is ' +
-        'ROW-level: several rows name legacy capabilities (DISCOVERY_CAP_RUNTIME_PERSISTENCE, ' +
-        'DISCOVERY_CAP_SETTLEMENT_POLICY_REPOSITORY, DISCOVERY_GUARD_DIAGNOSIS_ADVISORY…) — ' +
-        'which rows die with the legacy lanes and which stay live?',
+      path: 'tests/discovery/d2-normalization-lineage.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-normalization-tools/-proposal/-repository (deadPhase4Files); live infra (db/work-intent/authority) drives only dead lanes',
     }),
     Object.freeze({
-      path: 'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts',
-      question: 'KEPT AS A CONTAINER (partialLiveFilesWithUnresolvedRows). Open question is ' +
-        'ROW-level: live lanes stay; the dead normalizer/diagnosis-advisor pins ' +
-        '(DISCOVERY_NORMALIZER_SKILL, DISCOVERY_DIAGNOSIS_ADVISOR_REVIEWER_SKILL) are Phase-4 ' +
-        'same-commit obligations already recorded on the resource entries — the ROW ' +
-        'classification of the remaining pins is what stays open.',
+      path: 'tests/discovery/d2-normalization.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-normalization.js + discovery-normalization-proposal.js (deadPhase4Files)',
     }),
     Object.freeze({
-      path: 'tests/discovery/*.test.mjs (d1-d7 legacy suites) + tests/characterization/' +
-        'mcp-catalog-authority-errors.test.mjs + tests/discovery/tool-actionable-errors.test.mjs ' +
-        '+ tests/modules/discovery/proposal-ref-bridge.test.mjs + tests/replay/' +
-        'conveyor-v4.3-focused-invariants.test.mjs',
-      question: 'the legacy-only TEST deletion list (operator-approved by ADR-095 §7): each file ' +
-        'must be proven to exercise ONLY removed surfaces (exclusive-legacy justification) ' +
-        'before deletion executes; tests also covering live v2 behavior migrate FIRST. The ' +
-        'per-entry sameCommitObligations fields above record the consumers; the migrate-vs-delete ' +
-        'decision per file is the still-open half of Phase 1.',
+      path: 'tests/discovery/d3-readiness-correction.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-readiness-service/-tools, normalization+readiness repositories (deadPhase4Files); also consumes _conveyor-fakes',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d3-readiness-handler.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-readiness-tools + normalization/readiness repositories (deadPhase4Files)',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d3-readiness-index-migration.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-readiness-tools + normalization/readiness repositories (deadPhase4Files)',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d4-settlement-atomicity.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-outcome-certificate, normalization/settlement repositories, sqlite-discovery-runtime (deadPhase4Files)',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d4-settlement-persistence.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-settlement-service, settlement/readiness repositories, sqlite-discovery-runtime (deadPhase4Files)',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d5-certificate-bundle.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'dead dist imports: discovery-certificate-bundle, discovery-settlement-service, repositories, sqlite-discovery-runtime (deadPhase4Files)',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/tool-actionable-errors.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'sole dist import: discovery-tool-args.js (deadPhase4Files); the PARAMETERIZED structured-error surface it inspired lives on in src/application/actionable-tool-error.ts (pinned by tests/application/actionable-tool-error.test.mjs + mcp-conformance)',
+    }),
+    Object.freeze({
+      path: 'tests/modules/discovery/proposal-ref-bridge.test.mjs',
+      verdict: 'delete',
+      phase: 4,
+      justification: 'sole dist import: proposal-ref-bridge.js (deadPhase4Files); the bridge has no live surface after phase 3 removes the products.ts emission',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/_conveyor-fakes.mjs',
+      verdict: 'helper',
+      phase: 4,
+      justification: 'non-test fixture (no *.test.mjs suffix); consumed ONLY by d2-normalization-lifecycle + d3-readiness-correction (both delete-classified) — delete with the last consumer in the same commit',
+    }),
+    // ---- MIGRATE (preserve live assertions) --------------------------------
+    Object.freeze({
+      path: 'tests/discovery/d3-architecture-boundary.test.mjs',
+      verdict: 'migrate',
+      phase: 4,
+      justification: 'MIXED. Live assertion to PRESERVE: "readiness domain has no DB import" over ' +
+        'discovery-readiness-assessment.ts (KEPT). Dead assertions (over readiness-service, ' +
+        'readiness-records, readiness-repository, readiness-tools — all deadPhase4Files) are ' +
+        'deleted with their files. Migration keeps the file, reduced to the live boundary check.',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d4-architecture-boundary.test.mjs',
+      verdict: 'migrate',
+      phase: 4,
+      justification: 'MIXED. Live assertions to PRESERVE (5): settlement-policy purity ×3 (no DB, ' +
+        'no LM client, no SQLite import), settlement-input purity ×1, and src/index.ts registers ' +
+        'NO settlement_submit/certificate_submit tool (workers must never mint certificates). ' +
+        'Dead assertions (over settlement-service ×4, settlement-repository ×2, ' +
+        'outcome-certificate domain ×1 — deadPhase4Files) are deleted with their files.',
+    }),
+    Object.freeze({
+      path: 'tests/discovery/d4-settlement-recovery.test.mjs',
+      verdict: 'migrate',
+      phase: 4,
+      justification: 'MIXED. The m6a live block (ADR-090 CC-IC-1, line ~1222: "a continuation ' +
+        'inherits the ORIGINAL register — same pinned inputs → byte-identical digest; ' +
+        're-extraction from drifted material is a typed red") drives the LIVE ' +
+        'production-cell installation + lifecycles and MUST be preserved. The 18 ' +
+        'service/repository/runtime recovery+integrity lanes drive the dead settlement ' +
+        'service/repositories via sqlite-discovery-runtime and are deleted with them.',
+    }),
+    Object.freeze({
+      path: 'tests/characterization/mcp-catalog-authority-errors.test.mjs',
+      verdict: 'migrate',
+      phase: 4,
+      justification: 'MIXED (hosted in NO group — matrix-checked 2026-08-24). Live assertions to ' +
+        'PRESERVE: catalog shape/no-duplicates, authority fencing (managed identity, allowed ' +
+        'tools, AUTHORITY_DENIED/CONTEXT_INVALID), identity guard, friendlyError normalization, ' +
+        'error envelope wiring. Dead-surface migration in the same commit as the tool deletion: ' +
+        'the pinned sorted tool-name set drops the three dead discovery tools; the ' +
+        'FACTORY_TOOL_CALL_SHAPES/vocabulary lanes for the dead tools re-point to the live ' +
+        'parameterized surface (src/application/actionable-tool-error.ts) or delete with the tools.',
+    }),
+    Object.freeze({
+      path: 'tests/replay/conveyor-v4.3-focused-invariants.test.mjs',
+      verdict: 'migrate',
+      phase: 3,
+      justification: 'MIXED (hosted in NO group — matrix-checked 2026-08-24). Live invariants to ' +
+        'PRESERVE (10 of 11): executor-kind unification, capsule routing, retired-simulator ' +
+        'exclusion, replay-capsule payload shape, idempotency binding, gate-rejected/failed-replay ' +
+        'detectability, replay-certification fail-closure — all over live replay/routing/authority ' +
+        'infra. The phase-3 migration (SAME commit as the products.ts projection block removal): ' +
+        'invariant 5 "Discovery proposal is a schema projection behind universal product_submit" ' +
+        'drops its discovery-proposal-projection.js import and re-points to the projection-free ' +
+        'product_submit seam (the proposal DOMAIN type import stays — discovery-proposal.ts is KEPT).',
     }),
   ]),
 
   // -------------------------------------------------------------------------
-  // Phase-4 atomic machine gate: while ANY unresolved entry remains, Phase 4
-  // (the deletion cutover) MUST NOT land. validateAdr095Inventory enforces
-  // the coupling: this flag is true EXACTLY WHILE unresolved is non-empty —
-  // clearing it requires emptying unresolved in the SAME commit, and
-  // resolving the last entry requires clearing the flag (and adding the
-  // presence counter) in the same commit. No partial states.
+  // HOSTED DEAD IMPORTERS — machine-recorded same-commit actions for every
+  // BLOCKING-hosted test/fixture that imports or pins a dead surface (C5).
+  // These suites are LIVE (they stay hosted); only their dead pins migrate.
   // -------------------------------------------------------------------------
-  phase4BlockedByUnresolved: true,
+  hostedDeadImporters: Object.freeze([
+    Object.freeze({
+      file: 'tests/architecture/handler-digest-runtime-consistency.test.mjs',
+      hostedIn: 'architecture',
+      obligation: 'imports dist discovery-installation.js (six-handler digest lane) — Phase-4 ' +
+        'same-commit repin to the one-handler production-cell digest (ratchet 2; ADR-095 blocker list)',
+    }),
+    Object.freeze({
+      file: 'tests/architecture/kernel-admission-distance.test.mjs',
+      hostedIn: 'architecture',
+      obligation: 'TWO dead pins: (a) "the linkType behavioural ternary exists in exactly the ' +
+        'three known copies" includes src/modules/discovery/infrastructure/sqlite-discovery-' +
+        'runtime.ts:413 — Phase-4 same-commit re-pin of the copies list (three → two); ' +
+        '(b) DRIFT_REPORTED anchor src/tools/settlement-debug.ts "module_ref_key === ' +
+        '\'discovery\'" + FROZEN_REGISTER_COUNTS drift:16 — Phase-3 same-commit re-pin ' +
+        '(drop the anchor, drift 16→15) with the settlement-debug block removal',
+    }),
+    Object.freeze({
+      file: 'tests/architecture/v4-target-conformance-ratchet.test.mjs',
+      hostedIn: 'architecture',
+      obligation: 'REG-11 asserts proposal-ref-bridge.ts EXISTS via existsSync — Phase-4 ' +
+        'same-commit removal/replacement of REG-11 with the bridge deletion',
+    }),
+    Object.freeze({
+      file: 'tests/architecture/work-intent-contract-immutability.test.mjs',
+      hostedIn: 'architecture',
+      obligation: 'imports dist sqlite-discovery-runtime.js as its fixture adapter — Phase-4 ' +
+        'same-commit re-point at the KEPT factory_work_intents schema (the table, indexes, and ' +
+        'immutability trigger stay; only this adapter import dies)',
+    }),
+    Object.freeze({
+      file: 'tests/process-modules/discovery-package-contributions.test.mjs',
+      hostedIn: 'process-modules',
+      obligation: 'imports dist tool-contributions.js + handler-adapter.js + the three partial-live ' +
+        'containers + the barrel — Phase-4 same-commit repin to the live one-handler, ' +
+        'reduced-row contributions (ADR-095 blocker list)',
+    }),
+    // NOTE: tests/execution/migration-conformance.test.mjs is ALSO a hosted
+    // dead importer but is classified kept-live (keptLive.testFiles) — its
+    // scan bucket is kept:tests and its obligation lives in
+    // mandatoryPhase4Repins (a scan bucket may not overlap; the obligation
+    // is not the bucket).
+    Object.freeze({
+      file: 'tests/process-modules/discovery-outcome-certificate-projection.test.mjs',
+      hostedIn: 'process-modules',
+      obligation: 'imports dist discovery-outcome-certificate-projection.js — Phase-4 same-commit ' +
+        'migrate-or-delete (legacy-only oracle over the dead projection)',
+    }),
+    Object.freeze({
+      file: 'tests/factory-proof/workshop-inventory.baseline.json',
+      hostedIn: 'factory-proof (consumed by the workshop-inventory suite)',
+      obligation: 'pins dependency edges naming the DEAD discovery-outcome-certificate-projection.ts ' +
+        '"(modules->legacy)" and contributions/handler-adapter.ts "(legacy->modules)" — Phase-4 ' +
+        'same-commit baseline regeneration (the edge scan changes when the files die)',
+    }),
+  ]),
 
   // -------------------------------------------------------------------------
-  // Honest deferral: NO dead-file presence counter exists in Phase-2A. A
-  // both-directions counter (fails on early deletion AND on new dead files)
-  // is only honest once the dead set is PROVEN complete; today the unresolved
-  // list is non-empty, so such a counter could pass while the classification
-  // is wrong. Phase 2 (full inventory closure) empties unresolved, clears
-  // phase4BlockedByUnresolved, and adds the counter — all in the same commit.
+  // UNRESOLVED — EMPTY since Phase-2B (2026-08-24). The Phase-2A baseline of
+  // 5 (4 contribution containers + the legacy-only test list) was CLOSED by
+  // the exhaustive row classifications (C1/C2) and the exact test partition
+  // (C3), and completeness is enforced FORWARD by the bidirectional scoped
+  // partition scan below: any NEW unclassified file in a scoped tree fails
+  // validation, so an unresolved list would be dead weight. Growth from empty
+  // is rejected: if a file is genuinely ambiguous, the SCAN is what must be
+  // extended (with its classification), never this list.
+  // -------------------------------------------------------------------------
+  unresolved: Object.freeze([]),
+
+  // -------------------------------------------------------------------------
+  // Phase-4 atomic machine gate: CLEARED in Phase-2B — the partition scan
+  // proves the classification exhaustive (bidirectionally, with mutation
+  // negatives in BR6), so the Phase-4 block reason ("unresolved non-empty")
+  // no longer holds. The validator still enforces the coupling in BOTH
+  // directions: this flag must be false exactly while unresolved is empty.
+  // -------------------------------------------------------------------------
+  phase4BlockedByUnresolved: false,
+
+  // -------------------------------------------------------------------------
+  // Bidirectional dead-file presence counter — LIVE since Phase-2B (the
+  // Phase-2A deferral reason "the dead set is not proven complete" is
+  // discharged by the partition scan). Fails on EARLY deletion (a dead path
+  // removed before its phase) AND on NEW dead files (a path added to the
+  // dead set without a reviewed classification change updating this count).
   // -------------------------------------------------------------------------
   presenceCounter: Object.freeze({
-    deferred: true,
-    reason: 'the dead-file set is not proven complete (see `unresolved`): a bidirectional ' +
-      'presence counter over an incomplete inventory is dishonest — it would pass while ' +
-      'ambiguous residue is unclassified. Add the counter only when unresolved.length === 0.',
+    deferred: false,
+    deadPathCount: 36,
+    deadFileCount: 27,
+    deadResourceCount: 9,
+  }),
+
+  // -------------------------------------------------------------------------
+  // SCOPED PARTITION SCAN (C6) — the bidirectional completeness proof.
+  // Scope: the complete discovery src trees, the four dead tool files, the
+  // discovery test trees, every individually scoped out-of-tree test/fixture
+  // that touches a dead surface, and the six relevant skills. The validator
+  // asserts: (disk files in scope) === (classified paths in scope), i.e. no
+  // unclassified file and no ghost classification, with every file in
+  // EXACTLY ONE bucket.
+  // -------------------------------------------------------------------------
+  scopedPartitionScan: Object.freeze({
+    directoryTrees: Object.freeze([
+      'src/modules/discovery',
+      'src/process-modules/modules/discovery',
+      'tests/discovery',
+      'tests/modules/discovery',
+    ]),
+    individualFiles: Object.freeze([
+      'src/tools/discovery-proposal-tools.ts',
+      'src/tools/discovery-normalization-tools.ts',
+      'src/tools/discovery-readiness-tools.ts',
+      'src/tools/discovery-tool-args.ts',
+      'tests/characterization/mcp-catalog-authority-errors.test.mjs',
+      'tests/replay/conveyor-v4.3-focused-invariants.test.mjs',
+      'tests/execution/migration-conformance.test.mjs',
+      'tests/process-modules/discovery-outcome-certificate-projection.test.mjs',
+      'tests/process-modules/discovery-package-contributions.test.mjs',
+      'tests/architecture/handler-digest-runtime-consistency.test.mjs',
+      'tests/architecture/kernel-admission-distance.test.mjs',
+      'tests/architecture/v4-target-conformance-ratchet.test.mjs',
+      'tests/architecture/work-intent-contract-immutability.test.mjs',
+      'tests/factory-proof/workshop-inventory.baseline.json',
+      'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-worker/SKILL.md',
+      'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-readiness-advisor/SKILL.md',
+      'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-normalizer/SKILL.md',
+      'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-diagnosis-advisor/SKILL.md',
+      'skills/saga-process-module-worker-protocol/SKILL.md',
+      'skills/saga-kickstart/SKILL.md',
+    ]),
+    // NOTE on skill paths: the four saga-discovery-* execution skills live
+    // under src/process-modules/modules/discovery/package/resources/skills/
+    // (also reachable through the directory tree above — listed individually
+    // so the scan proves their classification even if the tree moves); the
+    // two platform skills live at repo-root skills/.
+    note: 'every file under the scoped trees and every individually scoped file must be classified in exactly one partition bucket: dead | kept-live | partial-live | legacy-test | hosted-importer | kept-live-test',
   }),
 
   // -------------------------------------------------------------------------
@@ -710,7 +1218,7 @@ export const ADR_095_INVENTORY = Object.freeze({
   mandatoryPhase4Repins: Object.freeze([
     Object.freeze({
       file: 'tests/execution/migration-conformance.test.mjs',
-      obligation: 'hosted BLOCKING (process-modules group) in Phase-2A GREEN on the legacy ' +
+      obligation: 'hosted BLOCKING (process-modules group) since Phase-2A GREEN on the legacy ' +
         'baseline (35/35, 2026-08-24) WITHOUT repinning — the production surface has not ' +
         'changed yet. The suite does NOT assert the six-handler count/IDs: its ' +
         'package-isolation lane validates discoveryPackageManifest STRUCTURALLY only ' +
@@ -732,15 +1240,13 @@ export const ADR_095_INVENTORY = Object.freeze({
 // a precise message on any structural defect. Pure sync checks only. The
 // optional `inventory` argument (defaults to ADR_095_INVENTORY) exists so
 // tests can PROVE the machine rules fire — e.g. that a decoupled
-// phase4BlockedByUnresolved flag is rejected — instead of trusting that the
-// current object merely satisfies them.
+// phase4BlockedByUnresolved flag or a wrong presence-counter count is
+// rejected — instead of trusting that the current object merely satisfies
+// them. `listFilesOverride` lets tests feed a VIRTUAL file listing to the
+// partition scan (mutation negatives) without touching disk.
 // ---------------------------------------------------------------------------
 
-// Monotone baseline: `unresolved` starts at exactly five entries and may
-// only shrink. Growth is a classification regression, never progress.
-const UNRESOLVED_BASELINE = 5;
-
-export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY) {
+export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY, listFilesOverride = null) {
   const errors = [];
   const inv = inventory;
   const root = repoRoot;
@@ -756,62 +1262,111 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY)
     deadPaths.add(e.path);
   }
 
-  const partialLive = inv.keptLive.partialLiveFilesWithUnresolvedRows ?? [];
+  const partialLiveEntries = inv.keptLive.partialLiveFiles ?? [];
+  const partialLivePaths = partialLiveEntries.map((p) => (typeof p === 'string' ? p : p.path));
+  const legacyTestPaths = inv.legacyTests.map((t) => t.path);
+  const hostedImporterPaths = inv.hostedDeadImporters.map((h) => h.file);
   const keptPaths = new Set([
     ...inv.keptLive.productionFiles,
-    ...partialLive,
+    ...partialLivePaths,
     ...inv.keptLive.liveResources,
     ...inv.keptLive.testFiles,
   ]);
-  for (const p of keptPaths) {
-    if (deadPaths.has(p)) errors.push(`path both dead and kept: ${p}`);
+
+  // Cross-bucket disjointness: dead ∩ anything-else = ∅.
+  const legacyBuckets = [
+    ['keptLive.productionFiles', inv.keptLive.productionFiles],
+    ['partialLiveFiles', partialLivePaths],
+    ['keptLive.liveResources', inv.keptLive.liveResources],
+    ['keptLive.testFiles', inv.keptLive.testFiles],
+    ['legacyTests', legacyTestPaths],
+    ['hostedDeadImporters', hostedImporterPaths],
+  ];
+  for (const [bucketName, bucket] of legacyBuckets) {
+    const seen = new Set();
+    for (const p of bucket) {
+      if (seen.has(p)) errors.push(`duplicate path inside ${bucketName}: ${p}`);
+      seen.add(p);
+      if (deadPaths.has(p)) errors.push(`path both dead and in ${bucketName}: ${p}`);
+    }
   }
 
-  // Partial-live containers are KEPT as files with ROW-level questions open:
-  // each must carry its matching unresolved entry and must not be
-  // double-listed as fully kept.
-  const unresolvedPaths = new Set(inv.unresolved.map((u) => u.path));
-  for (const p of partialLive) {
-    if (inv.keptLive.productionFiles.includes(p)) {
-      errors.push(`partial-live container double-listed as fully-kept: ${p}`);
+  // Partial-live containers: exhaustive row classification required — every
+  // entry must carry at least one liveRow and, when it has dead rows, a
+  // phase + justification per dead row.
+  for (const entry of partialLiveEntries) {
+    if (typeof entry === 'string') {
+      errors.push(`partial-live entry must be an object with classified rows: ${entry}`);
+      continue;
     }
-    if (!unresolvedPaths.has(p)) {
-      errors.push(`partial-live container missing its row-level unresolved entry: ${p}`);
+    if (!entry.liveRows || entry.liveRows.length === 0) {
+      errors.push(`partial-live container has NO live rows — it is wholly dead, classify it deadPhase4Files instead: ${entry.path}`);
+    }
+    for (const dr of entry.deadRows ?? []) {
+      if (typeof dr.phase !== 'number') {
+        errors.push(`partial-live dead row without phase: ${entry.path} :: ${String(dr.row).slice(0, 60)}…`);
+      }
+      if (!dr.justification || dr.justification.length < 10) {
+        errors.push(`partial-live dead row without justification: ${entry.path} :: ${String(dr.row).slice(0, 60)}…`);
+      }
     }
   }
 
-  // Unresolved monotonicity: entries may only be resolved (removed), never
-  // added — growth beyond the pinned baseline is a regression.
-  if (inv.unresolved.length > UNRESOLVED_BASELINE) {
+  // Legacy tests: exact verdicts with phases.
+  for (const t of inv.legacyTests) {
+    if (!['delete', 'migrate', 'helper'].includes(t.verdict)) {
+      errors.push(`legacyTests entry with unknown verdict '${t.verdict}': ${t.path}`);
+    }
+    if (!['3', '4'].includes(String(t.phase))) {
+      errors.push(`legacyTests entry with non-phase phase '${String(t.phase)}': ${t.path}`);
+    }
+    if (!t.justification || t.justification.length < 10) {
+      errors.push(`legacyTests entry without justification: ${t.path}`);
+    }
+  }
+
+  // Unresolved closure: EMPTY, enforced forward by the partition scan. The
+  // Phase-4 gate is unblocked exactly while unresolved is empty; a
+  // non-empty unresolved list is no longer expressible without failing here.
+  if (inv.unresolved.length !== 0) {
     errors.push(
-      `unresolved list GREW beyond the pinned baseline ${UNRESOLVED_BASELINE} ` +
-        `(got ${inv.unresolved.length}) — unresolved may only shrink`,
+      `unresolved must be EMPTY since Phase-2B (got ${inv.unresolved.length}): the partition ` +
+        'scan enforces completeness — extend the scan with a classification, never this list',
     );
   }
-
-  // Phase-4 atomic gate: blocked exactly while unresolved is non-empty. The
-  // flag cannot be cleared early (deletion cutover while rows are
-  // unclassified) and cannot linger after closure.
   const blocked = inv.unresolved.length > 0;
   if (inv.phase4BlockedByUnresolved !== blocked) {
     errors.push(
       `phase4BlockedByUnresolved must be ${blocked} (unresolved.length=${inv.unresolved.length}): ` +
-        'Phase 4 is blocked exactly while unresolved is non-empty; the flag flips atomically ' +
-        'with the last resolution (same commit)',
-    );
-  }
-  if (blocked && inv.presenceCounter.deferred !== true) {
-    errors.push('presence counter must stay deferred while unresolved is non-empty');
-  }
-  if (!blocked && inv.presenceCounter.deferred === true) {
-    errors.push(
-      'unresolved is empty but the presence counter is still deferred — add the bidirectional ' +
-        'counter and clear deferred in the same commit as the last resolution',
+        'the flag is true exactly while unresolved is non-empty',
     );
   }
 
+  // Presence counter (bidirectional, over the proven-complete set).
+  if (blocked !== true && inv.presenceCounter.deferred !== false) {
+    errors.push('presence counter must be LIVE (deferred:false) once unresolved is empty');
+  }
+  if (blocked === true && inv.presenceCounter.deferred !== true) {
+    errors.push('presence counter must stay deferred while unresolved is non-empty');
+  }
+  if (inv.presenceCounter.deferred === false) {
+    if (inv.presenceCounter.deadPathCount !== deadPaths.size) {
+      errors.push(
+        `presenceCounter.deadPathCount (${inv.presenceCounter.deadPathCount}) != actual dead ` +
+          `path count (${deadPaths.size}) — the bidirectional counter fails on both early ` +
+          'deletion and unreviewed dead-set growth',
+      );
+    }
+    if (inv.presenceCounter.deadFileCount !== inv.deadPhase4Files.length) {
+      errors.push('presenceCounter.deadFileCount != deadPhase4Files.length');
+    }
+    if (inv.presenceCounter.deadResourceCount !== inv.deadPhase4Resources.length) {
+      errors.push('presenceCounter.deadResourceCount != deadPhase4Resources.length');
+    }
+  }
+
   // Every dead file/resource entry and every kept production/resource/test
-  // path must resolve on disk TODAY (Phase-2A deletes nothing).
+  // path must resolve on disk TODAY (Phase-2B deletes nothing).
   for (const e of deadFileEntries) {
     if (!fs.existsSync(joinPath(root, e.path))) {
       errors.push(`dead entry path missing on disk (expected present-today): ${e.path}`);
@@ -871,10 +1426,142 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY)
     }
   }
 
+  // -------------------------------------------------------------------------
+  // BIDIRECTIONAL SCOPED PARTITION SCAN (C6).
+  // -------------------------------------------------------------------------
+  const scanResult = runScopedPartitionScan(root, inv, listFilesOverride);
+  errors.push(...scanResult.errors);
+
   if (errors.length > 0) {
     throw new Error(
       'ADR-095 removal inventory self-validation FAILED:\n  - ' + errors.join('\n  - '),
     );
   }
-  return { retiredHandlerIds: retired, deadPaths, keptPaths };
+  return {
+    retiredHandlerIds: retired,
+    deadPaths,
+    keptPaths,
+    scopedFiles: scanResult.scopedFiles,
+    classifiedPaths: scanResult.classifiedPaths,
+  };
+}
+
+// Walks the scoped trees (+ individual files) and proves the on-disk file set
+// equals the classified set, with exactly-one-bucket membership. When
+// `listFilesOverride` is provided (a (dirTree) => string[] function), it
+// replaces disk walking for the trees — the mutation-negative hook proving
+// the scan is non-vacuous (an unclassified file, a missing classified file,
+// or a double classification must all fail).
+function runScopedPartitionScan(root, inv, listFilesOverride) {
+  const errors = [];
+  const trees = inv.scopedPartitionScan.directoryTrees;
+  const individualFiles = inv.scopedPartitionScan.individualFiles;
+
+  // Bucket membership sets.
+  const deadPaths = new Set([
+    ...inv.deadPhase3.filter((e) => e.kind === 'file' || e.kind === 'resource').map((e) => e.path),
+    ...inv.deadPhase4Files.map((e) => e.path),
+    ...inv.deadPhase4Resources.map((e) => e.path),
+  ]);
+  const keptFileBuckets = new Map([
+    ['kept:production', inv.keptLive.productionFiles],
+    ['kept:partialLive', (inv.keptLive.partialLiveFiles ?? []).map((p) => (typeof p === 'string' ? p : p.path))],
+    ['kept:resources', inv.keptLive.liveResources],
+    ['kept:tests', inv.keptLive.testFiles],
+  ]);
+  const legacyTests = new Set(inv.legacyTests.map((t) => t.path));
+  const hostedImporters = new Set(inv.hostedDeadImporters.map((h) => h.file));
+
+  const classify = (rel) => {
+    const buckets = [];
+    if (deadPaths.has(rel)) buckets.push('dead');
+    for (const [name, list] of keptFileBuckets) {
+      if (list.includes(rel)) buckets.push(name);
+    }
+    if (legacyTests.has(rel)) buckets.push('legacy-test');
+    if (hostedImporters.has(rel)) buckets.push('hosted-importer');
+    return buckets;
+  };
+
+  // Collect the on-disk scoped file set.
+  const scopedFiles = new Set();
+  for (const tree of trees) {
+    const files = listFilesOverride
+      ? listFilesOverride(tree)
+      : walkTree(joinPath(root, tree)).map((abs) => toRelativePosix(root, abs));
+    if (files === null) {
+      errors.push(`scoped tree missing on disk: ${tree}`);
+      continue;
+    }
+    for (const rel of files) scopedFiles.add(rel);
+  }
+  // Individual files: nested entries (e.g. package skill resources already
+  // inside a tree) are fine but must not double-classify; every individual
+  // file must exist on disk when no override is active.
+  for (const rel of individualFiles) {
+    const nested = scopedFiles.has(rel);
+    if (!nested) {
+      if (!listFilesOverride && !fs.existsSync(joinPath(root, rel))) {
+        errors.push(`scoped individual file missing on disk: ${rel}`);
+        continue;
+      }
+      scopedFiles.add(rel);
+    }
+  }
+
+  // Direction 1 — every scoped on-disk file is classified in EXACTLY ONE bucket.
+  for (const rel of scopedFiles) {
+    const buckets = classify(rel);
+    if (buckets.length === 0) {
+      errors.push(`partition scan: UNCLASSIFIED scoped file: ${rel} (classify it or prove it out of scope — never ignore)`);
+    } else if (buckets.length > 1) {
+      errors.push(`partition scan: file classified in MULTIPLE buckets (${buckets.join(' + ')}): ${rel}`);
+    }
+  }
+
+  // Direction 2 — every classified path inside the scoped universe exists in
+  // the scoped on-disk set (no ghost classifications).
+  const classifiedPaths = new Set([
+    ...deadPaths,
+    ...keptFileBuckets.get('kept:production'),
+    ...keptFileBuckets.get('kept:partialLive'),
+    ...keptFileBuckets.get('kept:resources'),
+    ...keptFileBuckets.get('kept:tests'),
+    ...legacyTests,
+    ...hostedImporters,
+  ]);
+  for (const rel of classifiedPaths) {
+    if (!scopedFiles.has(rel)) {
+      // Files outside the scoped trees (e.g. kept tests in tests/factory-proof
+      // or tests/matrix, kept src hosts like products.ts) are legitimate —
+      // the scan scope covers the DISCOVERY universe; ghosts INSIDE the
+      // scoped universe are what must fail. A classified path inside a
+      // scoped tree prefix must appear in the scoped set.
+      const insideScope = trees.some((tree) => rel.startsWith(`${tree}/`));
+      if (insideScope) {
+        errors.push(`partition scan: classified path inside a scoped tree but ABSENT from the scanned set: ${rel}`);
+      }
+    }
+  }
+
+  return { scopedFiles, classifiedPaths, errors };
+}
+
+function walkTree(absDir) {
+  if (!fs.existsSync(absDir)) return null;
+  const out = [];
+  const stack = [absDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(p);
+      else out.push(p);
+    }
+  }
+  return out;
+}
+
+function toRelativePosix(root, abs) {
+  return path.relative(root, abs).split(path.sep).join('/');
 }

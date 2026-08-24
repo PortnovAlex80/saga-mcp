@@ -274,7 +274,13 @@ boot baseline) are executed under this point.
       retired-installation DB stays OPEN as the Phase-4 (ratchet 7)
       STOP-SHIP proof, not claimed here. STILL OPEN: the full
       live-v2/dead-legacy/shared inventory + legacy-only test deletion
-       list. **Phase-2A inventory step (2026-08-24, this commit):** the
+       list. **CLOSED by Phase-2B (2026-08-24):** the inventory is now a
+       COMPLETE machine partition (schemaVersion 2 — see the Phase-2B
+       record under phase 2 below): `unresolved` empty, every scoped
+       src/test/resource/skill file classified in exactly one bucket, the
+       legacy-only test list exact per-file, completeness proven by the
+       bidirectional scoped partition scan with mutation negatives.
+       **Phase-2A inventory step (2026-08-24, this commit):** the
        EXACT machine-consumed CLASSIFIED BASELINE now exists as
        `tests/infrastructure/adr-095-removal-inventory.mjs` (self-validating:
        uniqueness, dead∩kept=∅, all present-today paths resolve, the exact
@@ -329,60 +335,133 @@ boot baseline) are executed under this point.
        proves nothing — its hosting + its re-pinning to the post-removal
        surface must land ATOMICALLY with the ADR-095 phase that changes
        the surface it observes.
-      **Phase-2A DONE 2026-08-24 (this commit, branch
-      `stage22/discovery-phase2`) — blockers (a)/(b) RESOLVED, ratchet
-      authoring continues:**
-      - (a) resolved: new narrowly justified exact-file matrix group
-        `discovery-live-v2` (four suites, no directory globs) + its CI step
-        in `.github/workflows/ci.yml`; all four re-run green in isolation
-        first (15/39/13/5), then green as the group (72 tests). Per-file
-        removal guards G2i in
-        `tests/infrastructure/acceptance-matrix-coverage.test.mjs` make
-        deletion or de-hosting fail the coverage suite; nothing was
-        quarantined or weakened.
-       - (b) resolved by hosting GREEN on the current legacy baseline
-         WITHOUT repinning (the production surface has NOT changed; the
-         suite truthfully pins the legacy surfaces it observes — the dead
-         settlement-repository + certificate-projection dist imports and
-         the `factory_proposals` seed, NOT any six-handler count/ID):
-         migration-conformance re-run green in isolation (35/35) and inside
-         the `process-modules` group (exact-file entry, group green 1461
-         tests); removal guard G2j added. Its MANDATORY same-commit Phase-4
-         migration is recorded machine-readably in
-         `tests/infrastructure/adr-095-removal-inventory.mjs`
-         (`mandatoryPhase4Repins`): at the cutover commit the imports of
-         the dead `discovery-settlement-repository.js` /
-         `discovery-outcome-certificate-projection.js` migrate or delete
-         per the legacy-only list (the `discoveryPackageManifest` pin needs
-         no handler-shape edit — its lane validates the manifest
-         structurally and stays green across the one-handler repin, whose
-         truth is enforced by `handler-digest-runtime-consistency` + the
-         Phase-4 hard ratchet); at Phase 5 its fresh-DB `factory_proposals`
-         INSERT follows the schema closure removal.
-      - Phase-2A bridge ratchets (additive, green-today, non-vacuous;
-        hosted BLOCKING in the architecture group):
-         `tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs` —
-         BR1 inventory self-validation with EXACT pinned counts (dead 35 =
-         26 phase-4 files + 9 dead-lane resources; kept 43 = 20 + 4
-         partial-live containers + 10 + 9); BR2 unresolved monotonicity +
-         Phase-4 atomic gate (exact baseline 5, growth rejected;
-         `phase4BlockedByUnresolved` true exactly while `unresolved` is
-         non-empty — decoupled mutated clones fail validation, and the
-         bidirectional dead-file presence counter stays deferred until
-         closure: no counter over an unproven baseline); BR3
-         dependency-direction allowlist DENIES any ADR-095 dead-file edge
-         (bounded to the KNOWN_VIOLATIONS array block + its discoveryLeaks
-         append site; zero such entries today); BR4 live
-         composition registers EXACTLY one settlement handler
-         (`createDiscoveryProductionCellKernelHandlers` returns exactly
-         `discovery-settlement-policy`; `src/modules/discovery/index.ts`
-         never touches the dead six-handler factory; fail-closed reader
-         contract intact); BR5 the five retired handler IDs cannot fan out
-         beyond the exact known legacy files (discovery-installation.ts,
-         handler-adapter.ts, manifest.ts — machine-verified across src/).
-         NOT duplicated: the same-version six→one drift negative stays
-         owned by the Phase-1 boot-regression suite (G2h). The eight-ratchet
-         set + mutation proofs (Phase 2 proper) remain OPEN.
+       **Phase-2A DONE 2026-08-24 (this commit, branch
+       `stage22/discovery-phase2`) — blockers (a)/(b) RESOLVED, ratchet
+       authoring continues:**
+       - (a) resolved: new narrowly justified exact-file matrix group
+         `discovery-live-v2` (four suites, no directory globs) + its CI step
+         in `.github/workflows/ci.yml`; all four re-run green in isolation
+         first (15/39/13/5), then green as the group (72 tests). Per-file
+         removal guards G2i in
+         `tests/infrastructure/acceptance-matrix-coverage.test.mjs` make
+         deletion or de-hosting fail the coverage suite; nothing was
+         quarantined or weakened.
+        - (b) resolved by hosting GREEN on the current legacy baseline
+          WITHOUT repinning (the production surface has NOT changed; the
+          suite truthfully pins the legacy surfaces it observes — the dead
+          settlement-repository + certificate-projection dist imports and
+          the `factory_proposals` seed, NOT any six-handler count/ID):
+          migration-conformance re-run green in isolation (35/35) and inside
+          the `process-modules` group (exact-file entry, group green 1461
+          tests); removal guard G2j added. Its MANDATORY same-commit Phase-4
+          migration is recorded machine-readably in
+          `tests/infrastructure/adr-095-removal-inventory.mjs`
+          (`mandatoryPhase4Repins`): at the cutover commit the imports of
+          the dead `discovery-settlement-repository.js` /
+          `discovery-outcome-certificate-projection.js` migrate or delete
+          per the legacy-only list (the `discoveryPackageManifest` pin needs
+          no handler-shape edit — its lane validates the manifest
+          structurally and stays green across the one-handler repin, whose
+          truth is enforced by `handler-digest-runtime-consistency` + the
+          Phase-4 hard ratchet); at Phase 5 its fresh-DB `factory_proposals`
+          INSERT follows the schema closure removal.
+       - Phase-2A bridge ratchets (additive, green-today, non-vacuous;
+         hosted BLOCKING in the architecture group):
+          `tests/architecture/adr-095-phase2-bridge-ratchets.test.mjs` —
+          BR1 inventory self-validation with EXACT pinned counts (dead 35 =
+          26 phase-4 files + 9 dead-lane resources; kept 43 = 20 + 4
+          partial-live containers + 10 + 9); BR2 unresolved monotonicity +
+          Phase-4 atomic gate (exact baseline 5, growth rejected;
+          `phase4BlockedByUnresolved` true exactly while `unresolved` is
+          non-empty — decoupled mutated clones fail validation, and the
+          bidirectional dead-file presence counter stays deferred until
+          closure: no counter over an unproven baseline); BR3
+          dependency-direction allowlist DENIES any ADR-095 dead-file edge
+          (bounded to the KNOWN_VIOLATIONS array block + its discoveryLeaks
+          append site; zero such entries today); BR4 live
+          composition registers EXACTLY one settlement handler
+          (`createDiscoveryProductionCellKernelHandlers` returns exactly
+          `discovery-settlement-policy`; `src/modules/discovery/index.ts`
+          never touches the dead six-handler factory; fail-closed reader
+          contract intact); BR5 the five retired handler IDs cannot fan out
+          beyond the exact known legacy files (discovery-installation.ts,
+          handler-adapter.ts, manifest.ts — machine-verified across src/).
+          NOT duplicated: the same-version six→one drift negative stays
+          owned by the Phase-1 boot-regression suite (G2h). The eight-ratchet
+          set + mutation proofs (Phase 2 proper) remain OPEN.
+       **Phase-2B DONE 2026-08-24 (inventory closure + hosting, same
+       Phase-2 commit-train; two independent audit corrections verified
+       independently before any edit — none trusted on faith):**
+       - **C1 (contributions):** verified the four contribution data files
+         have ZERO production consumers except the unconsumed barrel
+         (`manifest.ts` imports no contributions file; nothing outside
+         `package/contributions/` imports the barrel; the W9-A2 doc-claim
+         "the manifest spreads these" is unrealized in code).
+         `tool-contributions.ts` reclassified WHOLLY DEAD (all 9 rows are
+         ControlIntent-era tool lanes) → deadPhase4Files (26→27). The other
+         three stay partial-live with rows EXHAUSTIVELY classified:
+         output-contracts dead rows = normalization/diagnosis/brief bundle
+         contracts (+aggregate); acceptance-capabilities dead rows =
+         runtime-persistence + settlement-policy-repository +
+         diagnosis-advisory (+aggregates); reviewer-skills dead rows =
+         normalizer + diagnosis-advisor pins (+aggregates). The barrel
+         itself is partial-live (its tool-contributions + handler-adapter
+         re-export blocks die with their sources).
+       - **C2 (domain contracts):** `discovery-domain-contracts.ts` is NOT
+         fully-kept — its only live src importer is
+         `discovery-process-module.ts` (exactly 5 constants); everything
+         else is consumed only by dead files or nobody. Reclassified
+         partial-live with all rows classified: 5 live constants + 56
+         legacy-only rows (incl. the entire DiscoveryRuntimePersistencePort
+         and DiscoverySettlementPort surfaces and the mirror constants whose
+         live definitions live in the live domain files).
+       - **C3 (exact test partition):** the d1-d7 wildcard is gone. Four
+         LIVE unhosted suites hosted BLOCKING in `discovery-live-v2`
+         (d1-1-authority, d1-1-binding, d3-readiness-domain,
+         d4-settlement-policy — zero dead-surface imports, 62/62 green in
+         isolation; G2i extended to 8 files). Five MIXED suites carry
+         migrate-preserving-live-assertions actions (d3/d4
+         architecture-boundary; d4-settlement-recovery — the m6a ADR-090
+         continuation-register block is preserved, its 18 legacy
+         service/repo lanes die; mcp-catalog-authority-errors — live
+         catalog/authority/error-normalization assertions stay, the pinned
+         tool-name set drops the dead tools; conveyor-v4.3-focused-
+         invariants — 10 of 11 live invariants stay, invariant 5 migrates
+         with the phase-3 projection removal). Twelve legacy-only tests +
+         `_conveyor-fakes.mjs` (helper of two delete-classified suites) have
+         exact delete actions with exclusive-legacy justifications.
+       - **C4 (kickstart):** `skills/saga-kickstart/SKILL.md` classified
+         KEPT (live resource, pinned by DISCOVERY_KICKSTART_REVIEWER_SKILL).
+       - **C5 (hosted dead importers):** machine-recorded same-commit
+         actions for EVERY hosted importer/pinner of a dead surface —
+         kernel-admission-distance (sqlite-discovery-runtime.ts:413 linkType
+         copy pin, settlement-debug DRIFT anchor + drift count 16→15),
+         v4-target-conformance (REG-11 proposal-ref-bridge existence),
+         work-intent-contract-immutability (dist runtime import re-point at
+         the KEPT factory_work_intents schema), handler-digest-runtime-
+         consistency, discovery-package-contributions, migration-conformance,
+         discovery-outcome-certificate-projection.test.mjs, and the hosted
+         factory-proof workshop-inventory baseline (pins dead projection +
+         handler-adapter dependency edges).
+       - **C6 (completeness PROVEN, not claimed):** the inventory
+         (schemaVersion 2) closes: `unresolved` EMPTY,
+         `phase4BlockedByUnresolved` false, and the BIDIRECTIONAL dead-file
+         presence counter LIVE (36 = 27 files + 9 resources; fails on early
+         deletion AND unreviewed growth). Completeness is enforced by a
+         BIDIRECTIONAL SCOPED PARTITION SCAN over 97 scoped files (all of
+         src/modules/discovery, src/process-modules/modules/discovery,
+         tests/discovery, tests/modules/discovery + the four dead tool files
+         + every out-of-tree test/fixture touching a dead surface + the six
+         relevant skills): every scoped file in EXACTLY ONE bucket
+         (dead 36 | kept 47 = 18 production + 5 partial-live + 11 resources
+         + 13 live tests | legacy-test 18 | hosted-importer 7), both
+         directions. BR6 mutation negatives prove the scan non-vacuous
+         (unclassified file / ghost classification / double classification
+         each fail by exact path). Phase 4 is UNBLOCKED by inventory truth.
+       - Phase-2B touched NO production legacy code and NO checked-in dist;
+         build + blocking groups green (below, commit message). Bridge suite
+         now 16 tests (BR1a-e, BR2a-b, BR3, BR4a-c, BR5, BR6a-d). The
+         eight-ratchet set + mutation proofs (Phase 2 proper) remain OPEN.
   3. Live side effects removed + v2 E2E — projection/proposal-ref/
      `discovery_proposal_id`/settlement-debug legacy query gone;
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
@@ -417,10 +496,13 @@ boot baseline) are executed under this point.
 (`docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md`;
 journal `docs/architecture/decision-journal/2026-08-23-discovery-legacy-complete-removal.md`;
 registry entry in `docs/architecture/adr-closure-registry.json`); Phase-1
-census + boot baseline `58d7ce4d`; Phase-2A (this commit, branch
+census + boot baseline `58d7ce4d`; Phase-2A (branch
 `stage22/discovery-phase2`): inventory module + live-v2/migration-conformance
-hosting + bridge ratchets + this refinement. No production legacy was
-deleted; no oracle quarantined or weakened.
+hosting + bridge ratchets; Phase-2B (this commit, worktree
+`saga-mcp-DISCOVERY-P2B`): audit-corrected complete partition (inventory
+schemaVersion 2), four more live suites hosted blocking, bidirectional
+partition scan + presence counter, hosted-dead-importer obligations. No
+production legacy was deleted; no oracle quarantined or weakened.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

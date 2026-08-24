@@ -155,19 +155,28 @@ test('G2h: ADR-095 Phase-1 Discovery legacy-removal boot regression is covered (
   );
 });
 
-test('G2i: the four LIVE Discovery v2 suites are hosted blocking (ADR-095 Phase-2 ratchet-6 executor surface)', () => {
-  // ADR-095 Phase-2 blocker (a): these four proven-live oracles were CI
-  // orphans — committed, green in isolation, executed by nobody. They are the
-  // hosted executor surface for ratchet 6 ("live v2 behavior") and ADR-095
-  // Decision 5 preserves them untouched through the entire removal. Removing
-  // any exact file (deletion OR de-hosting from the discovery-live-v2 group)
-  // must fail HERE. Asserted against runSet only: quarantining a live-v2
-  // oracle is not an honest way to drop it.
+test('G2i: the LIVE Discovery v2 suites are hosted blocking (ADR-095 Phase-2 ratchet-6 executor surface)', () => {
+  // ADR-095 Phase-2 blocker (a): the Phase-2A four proven-live oracles were
+  // CI orphans — committed, green in isolation, executed by nobody. They are
+  // the hosted executor surface for ratchet 6 ("live v2 behavior") and
+  // ADR-095 Decision 5 preserves them untouched through the entire removal.
+  //
+  // Phase-2B (audit correction C3): FOUR MORE proven-live orphans joined
+  // them (d1-1-authority, d1-1-binding, d3-readiness-domain,
+  // d4-settlement-policy — zero dead-surface imports, 62/62 green in
+  // isolation 2026-08-24). Removing any exact file (deletion OR de-hosting
+  // from the discovery-live-v2 group) must fail HERE. Asserted against
+  // runSet only: quarantining a live-v2 oracle is not an honest way to
+  // drop it.
   const required = [
     'tests/discovery/d7-settlement-lifecycle-classification.test.mjs',
     'tests/discovery/order-constraint-register.test.mjs',
     'tests/matrix/e-constraint-loss.test.mjs',
     'tests/modules/discovery/discovery-check-providers.test.mjs',
+    'tests/discovery/d1-1-authority.test.mjs',
+    'tests/discovery/d1-1-binding.test.mjs',
+    'tests/discovery/d3-readiness-domain.test.mjs',
+    'tests/discovery/d4-settlement-policy.test.mjs',
   ];
   for (const f of required) {
     assert.ok(
