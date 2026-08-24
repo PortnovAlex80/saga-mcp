@@ -187,3 +187,20 @@ Pin the golden to its build sha; `redevelop --check` re-verifies cheaply.
 - 06:24:50 task 34 `shared-core-foundation` created; 06:24:52 worker dispatched
   (execution `0ea8b9a8…`, pid 28832, opencode shim confirmed in worker log).
 - 06:28:28 watchdog live.
+
+## 2026-08-24 ~16:10 local — the memory-fix restart (fourth start, operator directive)
+
+Paused with checkpoint, both feedback-loop fix commits riding the fresh dist
+(4a0aa742 episodic gate-rejection memory + a289949a absolute-path addressing,
+rejected-count line, hatch persistence), resumed. First resume hit the
+controller-lease TTL (30s) of the just-braked engine — fail-closed
+FACTORY_LAUNCH_ALREADY_CONTROLLED, retried clean 90s later (engine pid 26940,
+launch cdc27a79 adopted, controls 8/8, watchdog live).
+
+DECISIVE VERIFICATION — the first dispatches after the restart:
+`[prompt-budget] task=30 … currentFeedback=3277` and `task=36 …
+currentFeedback=2471` (structurally 0 before the fix on every one of the 19
+prior dispatches). The episodic PRIOR ATTEMPTS block is now in every repair
+worker's prompt; workspaceBlock grew to ~5.9KB (absolute paths + the
+rejected-count line). Tasks 30 (16 rejections) and 36 (4) immediately
+re-dispatched and are executing.
