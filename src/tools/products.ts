@@ -7,8 +7,6 @@ import { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { writeProduct } from './universal-desk-helper.js';
-import { projectDiscoveryProposal, requiresDiscoveryProjection } from '../modules/discovery/infrastructure/discovery-proposal-projection.js';
-import { PROPOSAL_REF_SCHEMA } from '../modules/discovery/domain/proposal-ref-bridge.js';
 import { isWorkplaceProductionSnapshot } from '../process-modules/shared/workplace-production-snapshot.js';
 import { materializeManagedSourceChange } from '../infrastructure/source-change/managed-source-change-candidate.js';
 import { withImmediateTransaction } from '../lifecycle/work-assignment-core.js';
@@ -65,32 +63,12 @@ const productSubmit: ToolHandler = args => {
       executionRef: result.record.executionId,
       productKey: `content:${result.record.contentHash}`,
     });
-    // Compatibility projections are part of the same source transaction as
-    // the final-presentation commitment. A crash cannot expose a commitment
-    // whose deterministic product projections are missing.
-    let discoveryProjection: { proposalId: number; contentHash: string } | null = null;
-    if (requiresDiscoveryProjection(schema)) {
-      discoveryProjection = projectDiscoveryProposal(getDb(), {
-        submissionId: result.record.submissionId,
-      });
-      if (discoveryProjection) {
-        writeProduct(getDb(), {
-          schemaRef: PROPOSAL_REF_SCHEMA,
-          content: {
-            proposalId: discoveryProjection.proposalId,
-            contentHash: discoveryProjection.contentHash,
-          },
-          executionRef: result.record.executionId,
-          // Instance key: each accepted projection row is its own product.
-          // Without it the key collapses to the kind singleton and a retry
-          // from a NEW execution (whose projection legitimately produces a
-          // new proposalId) violates UNIQUE(process_run_id, product_kind,
-          // product_key) — the artifact-ref bridge uses the same
-          // `artifact:<id>` convention for exactly this reason.
-          productKey: `proposal:${discoveryProjection.proposalId}`,
-        });
-      }
-    }
+    // The universal desk product and the final-presentation commitment are
+    // part of the same source transaction as the submission write. A crash
+    // cannot expose a commitment whose deterministic product is missing.
+    // (ADR-095 Phase 3.1: the legacy Discovery proposal projection and its
+    // proposal-ref side product were removed here — product_submit is
+    // projection-free; Discovery proposals are ordinary typed products.)
     const commitment = recordFinalPresentationCommitment(getDb(), {
       taskId: result.record.taskId,
       executionId: result.record.executionId,
@@ -98,7 +76,7 @@ const productSubmit: ToolHandler = args => {
       productRef: result.record.artifactRef,
       productDigest: result.record.contentHash,
     });
-    return { result, universalRef, discoveryProjection, commitment };
+    return { result, universalRef, commitment };
   });
   // Fast path. The durable obligation written above remains the crash/restart
   // owner; this synchronous attempt only avoids waiting for the next sweep.
@@ -119,7 +97,6 @@ const productSubmit: ToolHandler = args => {
     module_ref: committed.result.record.moduleRef,
     node_id: committed.result.record.nodeId,
     execution_id: committed.result.record.executionId,
-    discovery_proposal_id: committed.discoveryProjection?.proposalId ?? null,
     presentation_commitment_ref: committed.commitment?.commitmentRef ?? null,
     stop: committed.commitment !== null,
     _workflow_hint: committed.commitment

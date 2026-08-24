@@ -67,6 +67,11 @@
 //   phase 4 = atomic version bump + manifest repin + dead code/resource
 //             deletion + existing-DB boot test (one commit);
 //   phase 5 = fresh-schema closure removal from SCHEMA_SQL (no DROP).
+// AMENDED at Phase 3.1 (2026-08-24): deadPhase3[0] (the products.ts
+// projection block) is EXECUTED; every deadPhase3 entry now carries
+// status/contentMarkers enforced machine-side by the validator (see the
+// deadPhase3 section comment). No bucket changed; no file deleted; the
+// presence counter is untouched (phase 3 contributes code-blocks only).
 // `entry.kind`:
 //   file        — a whole source file deleted at the phase;
 //   resource    — a package resource file deleted at the phase;
@@ -118,29 +123,50 @@ export const ADR_095_INVENTORY = Object.freeze({
   // DEAD — phase 3: live write-side effects removed FIRST (F1/F2 ordering).
   // Every entry removes a WRITE or a lazy-recreation site while the legacy
   // tables still exist; nothing here deletes a production legacy file.
+  //
+  // Phase-3.1 (2026-08-24): entry[0] (the products.ts projection block) is
+  // EXECUTED; entries[1..3] remain PENDING. Machine truthfulness: every entry
+  // carries `status` ('executed'|'pending') plus `contentMarkers` (strings
+  // that MUST be absent from the host file once executed, MUST be present
+  // while pending) — validateAdr095Inventory enforces BOTH directions against
+  // the on-disk host file, so the executed/pending claim can never drift from
+  // the code truth.
   // -------------------------------------------------------------------------
   deadPhase3: Object.freeze([
     Object.freeze({
       kind: 'code-block',
       path: 'src/tools/products.ts',
+      status: 'executed',
+      executedAt: '2026-08-24',
+      executedIn: 'Phase 3.1',
+      contentMarkers: Object.freeze([
+        'projectDiscoveryProposal',
+        'requiresDiscoveryProjection',
+        'PROPOSAL_REF_SCHEMA',
+        'discovery_proposal_id',
+      ]),
       detail: 'product_submit discovery projection block (requiresDiscoveryProjection/' +
         'projectDiscoveryProposal call + PROPOSAL_REF_SCHEMA product emission), the ' +
         'projectDiscoveryProposal/PROPOSAL_REF_SCHEMA imports, and the ' +
-        'discovery_proposal_id response field',
+        'discovery_proposal_id response field — REMOVED (Phase 3.1, 2026-08-24); ' +
+        'product_submit is projection-free; Discovery proposals are ordinary typed products',
       evidence: 'ADR-095 Decision 1 bullet 1; 01_DISCOVERY.md map §PURPOSE edge 5 (LIVE WRITER); ' +
-        'reverse-dep scan: products.ts is the only src importer of discovery-proposal-projection',
+        'reverse-dep scan: products.ts was the only src importer of discovery-proposal-projection',
       sameCommitObligations: Object.freeze([
-        'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imports ' +
+        'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imported ' +
         'dist/modules/discovery/infrastructure/discovery-proposal-projection.js — ' +
-        'MIGRATE preserving live assertions (see legacyTests entry: invariant 5 ' +
-        '"Discovery proposal is a schema projection behind universal product_submit" ' +
-        're-points to the projection-free product_submit seam; the live replay/' +
-        'routing/authority invariants stay) in the SAME commit as this block removal',
+        'MIGRATED in the SAME Phase-3.1 commit, preserving live assertions (see ' +
+        'legacyTests entry: invariant 5 "Discovery proposal is a schema projection behind ' +
+        'universal product_submit" re-pointed to the projection-free product_submit seam ' +
+        'with negative proofs that the legacy projection cannot be recreated/provided; the ' +
+        'live replay/routing/authority invariants stay)',
       ]),
     }),
     Object.freeze({
       kind: 'code-block',
       path: 'src/tools/settlement-debug.ts',
+      status: 'pending',
+      contentMarkers: Object.freeze(['factory_discovery_settlements']),
       detail: 'settlement_explain legacy Discovery query over factory_discovery_settlements ' +
         '(discoverySettlement block; the TOOL ITSELF STAYS for non-Discovery traces)',
       evidence: 'ADR-095 Decision 1 bullet 1; map CONTRADICTIONS context (settlement-debug.ts:117-139)',
@@ -154,6 +180,8 @@ export const ADR_095_INVENTORY = Object.freeze({
     Object.freeze({
       kind: 'code-block',
       path: 'src/app/product-lifecycle-runtime.ts',
+      status: 'pending',
+      contentMarkers: Object.freeze(['discoveryRuntimePersistence', 'SqliteFactoryDiscoveryRuntime']),
       detail: 'the shared runtimePersistence construction (options.discoveryRuntimePersistence ' +
         '?? new SqliteFactoryDiscoveryRuntime()) and its runtimePersistence hand-off into ' +
         'module registration; the file ITSELF STAYS',
@@ -163,6 +191,8 @@ export const ADR_095_INVENTORY = Object.freeze({
     Object.freeze({
       kind: 'code-block',
       path: 'src/modules/module-registration.ts',
+      status: 'pending',
+      contentMarkers: Object.freeze(['runtimePersistence']),
       detail: 'the ModuleSharedDeps.runtimePersistence field (FactoryDiscoveryRuntimePersistence ' +
         'type import + field); the file ITSELF STAYS',
       evidence: 'ADR-095 Decision 3 (F2); module-registration.ts:23,64',
@@ -180,14 +210,14 @@ export const ADR_095_INVENTORY = Object.freeze({
       kind: 'file',
       path: 'src/modules/discovery/infrastructure/discovery-proposal-projection.ts',
       detail: 'the product_submit → factory_proposals projection implementation. Its LAST live ' +
-        'consumption (the products.ts block) is removed in phase 3; the file deletion lands ' +
-        'with the phase-4 code deletion (still 1 src importer today — the live writer)',
+        'consumption (the products.ts block) was removed in Phase 3.1 (2026-08-24); 0 src ' +
+        'importers remain — the file deletion lands with the phase-4 code deletion',
       evidence: 'ADR-095 Decision 1 bullet 1 + pre-mortem F1 (the LIVE WRITER; writer removed FIRST, ' +
-        'schema only at phase 5); src reverse-dep scan: sole src importer is src/tools/products.ts',
+        'schema only at phase 5); src reverse-dep scan at Phase 3.1: products.ts no longer imports it',
       sameCommitObligations: Object.freeze([
-        'phase 3 must remove the products.ts projection block FIRST (deadPhase3[0]); ' +
-        'tests/replay/conveyor-v4.3-focused-invariants.test.mjs imports it (MIGRATE per its ' +
-        'legacyTests action in the phase-3 commit)',
+        'phase 3 must remove the products.ts projection block FIRST (deadPhase3[0]) — DONE ' +
+        '(Phase 3.1, 2026-08-24, status:executed); tests/replay/conveyor-v4.3-focused-invariants ' +
+        '.test.mjs MIGRATED in the same Phase-3.1 commit (see its legacyTests entry)',
       ]),
     }),
     Object.freeze({
@@ -398,8 +428,9 @@ export const ADR_095_INVENTORY = Object.freeze({
     Object.freeze({
       kind: 'file',
       path: 'src/modules/discovery/domain/proposal-ref-bridge.ts',
-      detail: 'PROPOSAL_REF_SCHEMA bridge (phase 3 removes its live emission from products.ts)',
-      evidence: 'ADR-095 Decision 1 bullet 1+2; src reverse-dep scan: after phase 3 only the dead proposal tool imports it',
+      detail: 'PROPOSAL_REF_SCHEMA bridge (its live emission from products.ts was removed in ' +
+        'Phase 3.1, 2026-08-24)',
+      evidence: 'ADR-095 Decision 1 bullet 1+2; src reverse-dep scan: after Phase 3.1 only the dead proposal tool imports it',
       sameCommitObligations: Object.freeze([
         'tests/modules/discovery/proposal-ref-bridge.test.mjs imports it (unhosted legacy-only consumer — DELETE)',
         'tests/architecture/v4-target-conformance-ratchet.test.mjs (BLOCKING-hosted, architecture ' +
@@ -1051,6 +1082,8 @@ export const ADR_095_INVENTORY = Object.freeze({
       path: 'tests/replay/conveyor-v4.3-focused-invariants.test.mjs',
       verdict: 'migrate',
       phase: 3,
+      executedAt: '2026-08-24',
+      executedInPhase: '3.1',
       justification: 'MIXED (hosted in NO group — matrix-checked 2026-08-24). Live invariants to ' +
         'PRESERVE (10 of 11): executor-kind unification, capsule routing, retired-simulator ' +
         'exclusion, replay-capsule payload shape, idempotency binding, gate-rejected/failed-replay ' +
@@ -1058,7 +1091,11 @@ export const ADR_095_INVENTORY = Object.freeze({
         'infra. The phase-3 migration (SAME commit as the products.ts projection block removal): ' +
         'invariant 5 "Discovery proposal is a schema projection behind universal product_submit" ' +
         'drops its discovery-proposal-projection.js import and re-points to the projection-free ' +
-        'product_submit seam (the proposal DOMAIN type import stays — discovery-proposal.ts is KEPT).',
+        'product_submit seam (the proposal DOMAIN type import stays — discovery-proposal.ts is KEPT). ' +
+        'EXECUTED in Phase 3.1 (2026-08-24): the dead import is gone; the migrated invariant drives ' +
+        'the REAL product_submit handler and proves the negative (no discovery_proposal_id field, ' +
+        'no factory_proposals row, no proposal-ref side product), preserving invariant 6 (one ' +
+        'universal typed-product submit seam)',
     }),
   ]),
 
@@ -1619,9 +1656,47 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
 
   // Dead code-block entries live inside KEPT files (their host file survives;
   // only the block dies) — the host must be kept-live, not itself dead.
+  // Phase-3.1 machine truthfulness: every phase-3 code-block carries
+  // `status` ('executed'|'pending') + `contentMarkers`, and the on-disk host
+  // file must AGREE in BOTH directions:
+  //   status 'executed' → NO marker may remain in the host file (the block is
+  //     really gone; re-adding any removed surface fails here);
+  //   status 'pending'  → EVERY marker must still be present (the block is
+  //     really there; claiming execution prematurely fails here).
+  // The `listFilesOverride` hook does not apply here — markers always check
+  // the real on-disk host files.
   for (const e of inv.deadPhase3) {
     if (e.kind === 'code-block' && deadPaths.has(e.path)) {
       errors.push(`phase-3 code-block host is itself a dead file: ${e.path}`);
+    }
+    if (e.kind !== 'code-block') continue;
+    if (e.status !== 'executed' && e.status !== 'pending') {
+      errors.push(`phase-3 code-block without status 'executed'|'pending': ${e.path}`);
+      continue;
+    }
+    if (e.status === 'executed' && typeof e.executedAt !== 'string') {
+      errors.push(`executed phase-3 code-block without executedAt: ${e.path}`);
+    }
+    if (!Array.isArray(e.contentMarkers) || e.contentMarkers.length === 0) {
+      errors.push(`phase-3 code-block without contentMarkers: ${e.path}`);
+      continue;
+    }
+    const hostText = fs.readFileSync(joinPath(root, e.path), 'utf8');
+    for (const marker of e.contentMarkers) {
+      const present = hostText.includes(marker);
+      if (e.status === 'executed' && present) {
+        errors.push(
+          `phase-3 code-block claims status 'executed' but marker '${marker}' is still ` +
+            `present in ${e.path} — the removal has NOT landed (untruthful executed state)`,
+        );
+      }
+      if (e.status === 'pending' && !present) {
+        errors.push(
+          `phase-3 code-block claims status 'pending' but marker '${marker}' is absent ` +
+            `from ${e.path} — either the block was removed without updating this inventory ` +
+              'or the marker drifted (untruthful pending state)',
+        );
+      }
     }
   }
 

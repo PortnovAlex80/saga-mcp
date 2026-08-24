@@ -462,7 +462,7 @@ boot baseline) are executed under this point.
           build + blocking groups green (below, commit message). Bridge suite
           now 16 tests (BR1a-e, BR2a-b, BR3, BR4a-c, BR5, BR6a-d). The
           eight-ratchet set + mutation proofs (Phase 2 proper) remain OPEN.
-        **Phase-2C DONE 2026-08-24 (this commit, worktree
+        **Phase-2C DONE 2026-08-24 (commit `43a21f45`, worktree
         `saga-mcp-DISCOVERY-P2C`): the COMPLETE eight-ratchet set + non-vacuous
         mutation proofs are authored, hosted BLOCKING, and GREEN on the
         legacy-present tree — Phase 2 proper is CLOSED. Evidence record:
@@ -535,6 +535,33 @@ boot baseline) are executed under this point.
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
      + ensure*/lazy CREATE TABLE recreation removed BEFORE schema work;
      live v2 E2E green on the still-existing schema.
+     **Phase-3.1 DONE 2026-08-24 (commit `18a934b9`, worktree
+     `saga-mcp-DISCOVERY-P3-1`; integrated into canonical `saga4` by this
+     cherry-pick):** the FIRST phase-3 live-write block is
+     removed — `src/tools/products.ts` no longer imports/calls
+     `discovery-proposal-projection`, no longer emits the
+     `factory.discovery-proposal-ref.v1` side product, and the
+     `discovery_proposal_id` response field is gone; `product_submit`
+     behavior is otherwise unchanged (same transaction: submission +
+     universal desk product + final-presentation commitment). Same-commit
+     obligations executed: `tests/replay/conveyor-v4.3-focused-invariants
+     .test.mjs` invariant 5 MIGRATED (never deleted) to the projection-free
+     product_submit seam — it now drives the REAL handler and proves the
+     negative (no `discovery_proposal_id` field, zero `factory_proposals`
+     rows, zero proposal-ref desk products, idempotent resubmit stays
+     projection-free); the other 10 invariants are untouched. Inventory
+     (`tests/infrastructure/adr-095-removal-inventory.mjs`) amended:
+     `deadPhase3[0]` carries `status:'executed'` + `contentMarkers`, every
+     phase-3 entry's status is machine-enforced BOTH directions by
+     `validateAdr095Inventory`; BR7 (bridge ratchets) pins the executed /
+     pending split with mutation negatives. No file deleted; presence
+     counter untouched (36/27/9); no bucket changed. STILL OPEN in phase 3:
+     settlement-debug legacy Discovery query (deadPhase3[1], kernel-
+     admission-distance re-pin owed), runtimePersistence construction
+     (deadPhase3[2]), `ModuleSharedDeps.runtimePersistence` field
+     (deadPhase3[3]), and the full live-v2 E2E on the still-existing
+     schema as the phase-3 exit gate (the `discovery-live-v2` group is
+     green post-removal in this commit's validation).
   4. Atomic version bump + manifest repin (one-handler, digest =
      production-cell installation bytes) + code/resources deletion +
      existing-DB boot test (retired old installation rehydrates pinned
@@ -570,11 +597,14 @@ hosting + bridge ratchets; Phase-2B (worktree
 `saga-mcp-DISCOVERY-P2B`): audit-corrected complete partition (inventory
 schemaVersion 2), four more live suites hosted blocking, bidirectional
 partition scan + presence counter, hosted-dead-importer obligations;
-Phase-2C (this commit, worktree `saga-mcp-DISCOVERY-P2C`): the complete
+Phase-2C (commit `43a21f45`, worktree `saga-mcp-DISCOVERY-P2C`): the complete
 eight-ratchet suite + mutation proofs (inventory schemaVersion 3
 `removalSymbols`; pure checkers; 22-test blocking suite + G2k guard;
 evidence `DISCOVERY-PHASE2C-RATCHETS.md`). No
 production legacy was deleted; no oracle quarantined or weakened.
+Phase-3.1 (worktree `saga-mcp-DISCOVERY-P3-1`): products.ts projection block
+removed + invariant-5 migration + inventory status/contentMarkers machine
+truthfulness + BR7 — see the phase-3 record above.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

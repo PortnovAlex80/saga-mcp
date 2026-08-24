@@ -6,6 +6,9 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import os from 'node:os';
+import path from 'node:path';
+import { rmSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import {
@@ -24,8 +27,14 @@ import { computeReplayKey } from '../../dist/replay/replay-capsule.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 import { SqliteGateRepository } from '../../dist/infrastructure/workplace/sqlite-gate-repository.js';
 import { requireAcceptedCandidatePresentations } from '../../dist/infrastructure/replay/replay-presentation-authority.js';
-import { requiresDiscoveryProjection } from '../../dist/modules/discovery/infrastructure/discovery-proposal-projection.js';
-import { DISCOVERY_PROPOSAL_SCHEMA } from '../../dist/modules/discovery/domain/discovery-proposal.js';
+// KEPT live domain import (ADR-095 Decision 5: discovery-proposal.ts stays).
+// The dead discovery-proposal-projection.js import was removed with the
+// Phase-3.1 projection removal — invariant 5 now pins the projection-FREE
+// product_submit seam below.
+import {
+  DISCOVERY_PROPOSAL_SCHEMA,
+  validateDiscoveryProposal,
+} from '../../dist/modules/discovery/domain/discovery-proposal.js';
 
 function makeDb() {
   const db = new Database(':memory:');
@@ -120,13 +129,194 @@ test('3+4: routing cannot select the retired simulator executor', () => {
   assert.equal(starts, 0);
 });
 
-test('5+6: Discovery proposal is a schema projection behind universal product_submit', () => {
-  // Inference and replay both submit the same typed product through
-  // product_submit. The Discovery-specific factory_proposals row is a current
-  // deterministic compatibility projection, not another worker submit protocol
-  // and not capsule payload.
-  assert.ok(requiresDiscoveryProjection(DISCOVERY_PROPOSAL_SCHEMA));
-  assert.ok(!requiresDiscoveryProjection('some.other.schema.v1'));
+test('5+6: product_submit is projection-free — the Discovery proposal is an ordinary typed product on one desk', async () => {
+  // Invariant 6 (live, unchanged): inference and replay both submit the same
+  // typed product through the ONE universal product_submit — there is no
+  // Discovery-specific worker submit protocol and no capsule payload coupling.
+  //
+  // Invariant 5 (migrated at ADR-095 Phase 3.1): the legacy
+  // factory_proposals projection behind product_submit is DEAD. This test
+  // drives the REAL product_submit handler at the live seam and proves the
+  // NEGATIVE: a Discovery proposal submission can neither recreate the legacy
+  // projection row nor provide the legacy projection surface.
+  const { getDb, closeDb } = await import('../../dist/db.js');
+  const {
+    handlers: productHandlers,
+    _resetProductToolRepositoriesForTests,
+  } = await import('../../dist/tools/products.js');
+  const {
+    registerProductPayloadContract,
+    productPayloadContractDigest,
+  } = await import('../../dist/process-modules/application/product-payload-contract.js');
+  const { buildExecutionContext } = await import('../../dist/shared/authority/build-execution-context.js');
+  const { executionContextHash } = await import('../../dist/shared/authority/execution-context.js');
+
+  const contractId = 'discovery-proposal.v1';
+  const version = '1.0.0';
+  const definition = { type: 'object', required: ['problem_statement', 'recommended_outcome'] };
+  const contractDigest = productPayloadContractDigest({ schemaId: DISCOVERY_PROPOSAL_SCHEMA, contractId, version, definition });
+  registerProductPayloadContract({
+    schemaId: DISCOVERY_PROPOSAL_SCHEMA,
+    contractId,
+    version,
+    definition,
+    contractDigest,
+    validate(payload) {
+      return validateDiscoveryProposal(payload).errors;
+    },
+  });
+
+  const dbPath = path.join(os.tmpdir(),
+    `saga-v43-invariant5-${process.pid}-${Date.now()}.sqlite`);
+  const prevDbPath = process.env.DB_PATH;
+  const prevManaged = process.env.SAGA_MANAGED_EXECUTION;
+  const prevExecutionId = process.env.SAGA_EXECUTION_ID;
+  const prevTaskId = process.env.SAGA_TASK_ID;
+  process.env.DB_PATH = dbPath;
+  process.env.SAGA_MANAGED_EXECUTION = '1';
+  try {
+    const db = getDb();
+    const id = 4217;
+    const executionId = 'exec-invariant5';
+    const workplaceRef = `workplace/${id}/product-discovery@3.0.2/produce-proposal/singleton`;
+    db.prepare(`INSERT INTO projects (id,name) VALUES (?,?)`).run(id, 'p-invariant5');
+    db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (?,?,?)`).run(id, id, 'e-invariant5');
+    db.prepare(
+      `INSERT INTO factory_process_runs
+         (id,project_id,epic_id,module_name,module_version,module_ref_key,idempotency_key,
+          executor_kind,input_schema,input_snapshot,input_hash,status)
+       VALUES (?,?,?,'product-discovery','3.0.2','product-discovery@3.0.2',?,
+               'generic-flow','factory.input.v1','{}',?,'paused')`,
+    ).run(id, id, id, `run-${id}`, `input-${id}`);
+    const authority = {
+      enforcement: 'runtime',
+      allowed_tools: ['product_submit', 'worker_done'],
+      scope: workplaceRef,
+      snapshot_ref: workplaceRef,
+      payload_contract: { contractId, version, contractDigest },
+    };
+    db.prepare(
+      `INSERT INTO factory_work_intents
+         (id,epic_id,kind,objective,authority_scope,output_schema,status)
+       VALUES (?,?,?,?,?,?,'executing')`,
+    ).run(id, id, 'discovery', 'produce-proposal', JSON.stringify(authority), DISCOVERY_PROPOSAL_SCHEMA);
+    db.prepare(
+      `INSERT INTO factory_workplaces
+         (workplace_ref,process_run_id,module_ref,production_cell_id,work_key,
+          kanban_phase,loop_state,next_role,revision,active_reservation_ref)
+       VALUES (?,?,'product-discovery@3.0.2','produce-proposal','singleton',
+               'in_progress','running','author',2,?)`,
+    ).run(workplaceRef, id, executionId);
+    const metadata = {
+      process_run_id: id,
+      process_module_ref: 'product-discovery@3.0.2',
+      process_node_id: 'produce-proposal',
+      process_input_hash: `input-${id}`,
+      production_cell_id: 'produce-proposal',
+      // work_key pins the derived WorkplaceRef to the seeded singleton row
+      // (deriveWorkplaceRefFromTaskMetadata falls back to task-<id> without
+      // it, and the presentation-close path resolves the workplace by this
+      // convention).
+      work_key: 'singleton',
+      work_intent_id: id,
+    };
+    db.prepare(
+      `INSERT INTO tasks
+         (id,epic_id,title,status,assigned_to,current_execution_id,workplace_ref,
+          task_kind,execution_mode,metadata)
+       VALUES (?,?,?,'in_progress',?,?,?,'discovery','tracker_only',?)`,
+    ).run(id, id, 'produce-proposal', 'worker-invariant5', executionId, workplaceRef, JSON.stringify(metadata));
+    const intent = db.prepare('SELECT * FROM factory_work_intents WHERE id=?').get(id);
+    const executionContext = buildExecutionContext({
+      modelRoute: { provider: 'test', model: 'test', effort: 'low' },
+      workIntent: { ...intent, authority_scope: JSON.parse(intent.authority_scope) },
+      capturedAt: new Date().toISOString(),
+    });
+    db.prepare(
+      `INSERT INTO worker_executions
+         (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+          launcher,state,phase,metadata)
+       VALUES (?,?,?,?,?,?,?,'test','running','executing',?)`,
+    ).run(executionId, `dispatch-${id}`, id, id, id, 'worker-invariant5', 'machine', JSON.stringify({
+      execution_context: executionContext,
+      execution_context_hash: executionContextHash(executionContext),
+    }));
+    process.env.SAGA_EXECUTION_ID = executionId;
+    process.env.SAGA_TASK_ID = String(id);
+
+    const PROPOSAL_PAYLOAD = {
+      problem_statement: 'Focused invariant 5: the legacy Discovery projection is dead.',
+      observed_context: 'ADR-095 Phase 3.1 removed the product_submit projection block.',
+      stakeholders_or_actors: ['operator'],
+      assumptions: ['the universal desk is the only product surface'],
+      unknowns: [],
+      risks: [],
+      candidate_scope: 'projection-free product_submit seam',
+      evidence_refs: ['docs/architecture/decisions/095-complete-removal-of-dead-discovery-legacy.md'],
+      recommended_outcome: 'go',
+      rationale: 'The Discovery proposal is an ordinary typed product on one desk.',
+    };
+
+    _resetProductToolRepositoriesForTests();
+    const reply = productHandlers.product_submit({
+      schema: DISCOVERY_PROPOSAL_SCHEMA,
+      content: structuredClone(PROPOSAL_PAYLOAD),
+    });
+
+    // Invariant 6 — the universal seam accepted the Discovery proposal as an
+    // ordinary typed product (managed submission + desk product + response).
+    assert.equal(reply.accepted, true);
+    assert.equal(reply.product_ref.schemaId, DISCOVERY_PROPOSAL_SCHEMA);
+    assert.ok(reply.product_ref.ref.startsWith('managed-node-submission:'));
+    assert.equal(db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_managed_node_submissions
+        WHERE schema_version=? AND execution_id=?`,
+    ).get(DISCOVERY_PROPOSAL_SCHEMA, executionId).n, 1);
+    assert.equal(db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_process_products WHERE schema_id=?`,
+    ).get(DISCOVERY_PROPOSAL_SCHEMA).n, 1);
+
+    // Invariant 5 (negative proof) — product_submit CANNOT recreate or
+    // provide the legacy Discovery projection:
+    // (a) no legacy response field;
+    assert.equal(Object.hasOwn(reply, 'discovery_proposal_id'), false,
+      'product_submit must not provide the legacy discovery_proposal_id field');
+    // (b) no factory_proposals projection row on the still-existing table;
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_proposals').get().n, 0,
+      'product_submit must not recreate the legacy factory_proposals projection row');
+    // (c) no PROPOSAL_REF_SCHEMA side product on the universal desk.
+    assert.equal(db.prepare(
+      `SELECT COUNT(*) AS n FROM factory_process_products
+        WHERE schema_id='factory.discovery-proposal-ref.v1'`,
+    ).get().n, 0,
+      'product_submit must not emit the legacy proposal-ref side product');
+
+    // The submission fence is LIVE after the presentation close (the desk is
+    // in verifying): a repeat submit from the same execution is refused —
+    // the only accepted path is the one universal seam above, never a
+    // Discovery-specific projection lane.
+    assert.throws(
+      () => productHandlers.product_submit({
+        schema: DISCOVERY_PROPOSAL_SCHEMA,
+        content: structuredClone(PROPOSAL_PAYLOAD),
+      }),
+      /MANAGED_NODE_SUBMISSION_(PROCESS_NOT_RUNNING|EXECUTION_NOT_RUNNING|FENCE)/,
+    );
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_proposals').get().n, 0);
+
+    closeDb();
+  } finally {
+    if (prevDbPath === undefined) delete process.env.DB_PATH; else process.env.DB_PATH = prevDbPath;
+    if (prevManaged === undefined) delete process.env.SAGA_MANAGED_EXECUTION; else process.env.SAGA_MANAGED_EXECUTION = prevManaged;
+    if (prevExecutionId === undefined) delete process.env.SAGA_EXECUTION_ID; else process.env.SAGA_EXECUTION_ID = prevExecutionId;
+    if (prevTaskId === undefined) delete process.env.SAGA_TASK_ID; else process.env.SAGA_TASK_ID = prevTaskId;
+    // Best-effort cleanup: on Windows the just-closed WAL mapping can keep
+    // the file briefly undeletable (EPERM); a leftover temp file is harmless
+    // next to the other getDb()-based suites' temp DBs.
+    for (const suffix of ['', '-wal', '-shm']) {
+      try { rmSync(dbPath + suffix, { force: true }); } catch { /* best effort */ }
+    }
+  }
 });
 
 test('7: ReplayCapsule payload contains only generic worker production fields', () => {

@@ -37,7 +37,13 @@
 //        whole scoped universe" is machine-proved: virtual-tree mutation
 //        negatives show the scan fails on an UNCLASSIFIED scoped file, on a
 //        classified file ABSENT from the scanned set, and on a DOUBLE
-//        classification — the scan cannot pass vacuously.
+//        classification — the scan cannot pass vacuously;
+//   BR7  Phase-3.1 code-block truth (2026-08-24) — the products.ts projection
+//        block is EXECUTED (no removed marker remains in src), the other
+//        three phase-3 code-blocks are still PENDING (Phase 3 ≠ Phase 3.1),
+//        the migrated conveyor-v4.3 suite carries no dead projection import,
+//        and a lying executed/pending status fails validation (the inventory
+//        status can never drift from the code truth).
 //
 // Deliberately NOT duplicated here: the same-version six→one handler drift
 // negative (MODULE_INSTALLATION_INCOMPATIBLE_DRIFT) is already machine-proven
@@ -496,6 +502,93 @@ test('BR6d: a DOUBLE classification fails the scan (a path cannot be both kept a
     () => validateAdr095Inventory(REPO_ROOT, mutated),
     /MULTIPLE buckets/,
     'a file classified in two buckets must fail validation',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// BR7 — Phase-3.1 code-block state is MACHINE TRUTHFUL. The validator
+// (validateAdr095Inventory) enforces every deadPhase3 entry's status against
+// the on-disk host file content in BOTH directions; these tests pin the
+// expected Phase-3.1 state (products.ts projection block EXECUTED; the other
+// three phase-3 code-blocks still PENDING) and prove non-vacuously that a
+// lying status is rejected.
+// ---------------------------------------------------------------------------
+
+test('BR7a: Phase 3.1 is executed — products.ts carries none of the removed projection surface', () => {
+  const entry = ADR_095_INVENTORY.deadPhase3.find(
+    (e) => e.path === 'src/tools/products.ts',
+  );
+  assert.ok(entry, 'the products.ts phase-3 code-block entry must exist');
+  assert.equal(entry.status, 'executed',
+    'the products.ts projection block removal is Phase 3.1 EXECUTED');
+  assert.equal(entry.executedIn, 'Phase 3.1');
+  const src = readFileSync(path.join(REPO_ROOT, 'src', 'tools', 'products.ts'), 'utf8');
+  for (const marker of entry.contentMarkers) {
+    assert.ok(!src.includes(marker),
+      `removed projection surface marker '${marker}' re-introduced in src/tools/products.ts`);
+  }
+});
+
+test('BR7b: the other three phase-3 code-blocks are still PENDING (Phase 3 ≠ Phase 3.1)', () => {
+  const pending = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'pending');
+  assert.deepEqual(
+    pending.map((e) => e.path).sort(),
+    [
+      'src/app/product-lifecycle-runtime.ts',
+      'src/modules/module-registration.ts',
+      'src/tools/settlement-debug.ts',
+    ],
+    'phase 3 is NOT complete: settlement-debug legacy query, runtimePersistence construction, ' +
+      'and the ModuleSharedDeps field are still pending (their same-commit obligations stand)',
+  );
+});
+
+test('BR7c: a lying phase-3 status fails validation (the executed/pending state cannot drift)', () => {
+  // Mutate the executed products.ts entry back to 'pending' — the validator
+  // must reject it (its markers are absent from the host file, so 'pending'
+  // would be untruthful). This is the mutation-negative behind BR7a.
+  const mutated = {
+    ...ADR_095_INVENTORY,
+    deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
+      e.path === 'src/tools/products.ts'
+        ? { ...e, status: 'pending' }
+        : e),
+  };
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, mutated),
+    /marker 'projectDiscoveryProposal' is absent/,
+    'claiming the products.ts block is still pending while it is removed must fail validation',
+  );
+  // And the mirror direction: claiming a still-present block is executed.
+  const mutated2 = {
+    ...ADR_095_INVENTORY,
+    deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
+      e.path === 'src/tools/settlement-debug.ts'
+        ? { ...e, status: 'executed', executedAt: '2026-08-24' }
+        : e),
+  };
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, mutated2),
+    /marker 'factory_discovery_settlements' is still present/,
+    'claiming the settlement-debug block is executed while it is still present must fail validation',
+  );
+});
+
+test('BR7d: the migrated conveyor-v4.3 suite no longer imports the dead projection module', () => {
+  const raw = readFileSync(
+    path.join(REPO_ROOT, 'tests', 'replay', 'conveyor-v4.3-focused-invariants.test.mjs'),
+    'utf8',
+  );
+  // Comment-stripped (BR4b pattern): prose may legitimately NAME the removed
+  // module while explaining the migration; code may never import it.
+  const src = stripComments(raw);
+  assert.ok(
+    !src.includes('discovery-proposal-projection.js'),
+    'the migrated invariant-5 test must not import the dead discovery-proposal-projection module',
+  );
+  assert.ok(
+    src.includes("dist/modules/discovery/domain/discovery-proposal.js"),
+    'the KEPT proposal DOMAIN import (discovery-proposal.ts) stays per ADR-095 Decision 5',
   );
 });
 
