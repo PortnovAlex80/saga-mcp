@@ -57,16 +57,11 @@
 //        and a lying status throws (real flip-backs + synthetic mutated
 //        inventory for the no-longer-populated pending direction).
 //
-// Phase-2C boundary honesty (no overclaim): ratchets 3/4/5 post-removal
-// arms and ratchet 2's post-cutover arm CANNOT be green on today's
-// legacy-present tree — they testify over the phase-4/5 end states. The
-// two-armed design keys every arm on machine-derived phase markers (the
-// atomic product-discovery version bump; the schema-closure DDL state), so
-// the suite is GREEN today where the ADR intends (the pre-state truths and
-// the mutation negatives) and flips to the post-state assertions in the
-// same commit-train as the removal it pins — no consolidated red tip.
-// The demonstrated RED of each post-arm against TODAY's tree is recorded in
-// docs/factory-run/stage22-elite9/DISCOVERY-PHASE2C-RATCHETS.md.
+// Phase-boundary honesty: real-tree assertions select their arm from
+// machine-derived state (the coherent product-discovery version and the
+// fresh-schema closure). Phase 4 is now landed: the one-handler/source/dist
+// absence arms are live, while the schema closure remains present until
+// Phase 5. Explicit pre-cutover calls below are mutation counterfactuals.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -110,7 +105,7 @@ const LEGACY_VERSION = ADR_095_INVENTORY.moduleIdentity.version; // '3.0.2'
 // State-marker sanity — the arms must key on real, coherent markers.
 // ===========================================================================
 
-test('R0: ratchet state markers are coherent (dist built, version marker readable, pre-cutover today)', () => {
+test('R0: ratchet state markers are coherent at the Phase-4 post-cutover boundary', () => {
   assert.ok(state.distAvailable, 'dist/ must be built before the ratchet suite can testify (npm run build)');
   assert.ok(semverGt(state.srcVersion, LEGACY_VERSION),
     `the cutover version must be above ${LEGACY_VERSION} (got ${state.srcVersion})`);
@@ -155,7 +150,7 @@ test('R1b: MUTATION — a Discovery-scoped allowlist edge (or a raised baseline)
 // R2 — exact one-handler manifest/digest across the versioned boundary
 // ===========================================================================
 
-test('R2a: pre-cutover arm — the manifest holds the EXACT censused six-handler baseline with the dead-dist digest (real tree GREEN)', async () => {
+test('R2a: real-tree arm — the manifest holds exactly the live one-handler post-cutover surface', async () => {
   const errors = checkR2(state, { ...manifestFacts, srcVersion: state.srcVersion, distVersion: state.distVersion });
   assert.deepEqual(errors, [],
     `the one-handler production-cell manifest must be GREEN: ${errors.join(' | ')}`);
@@ -238,10 +233,10 @@ test('R2e: MUTATION — post-cutover handler version NOT bumped turns ratchet 2 
 // R3 — full src symbol/table absence (ratchet 3)
 // ===========================================================================
 
-test('R3a: pre-state arm — every removal symbol sits INSIDE its pinned allowed sites (real tree GREEN)', () => {
-  const errors = checkR3(srcScan, /* phase4Landed */ false, /* closureInSchema */ true);
+test('R3a: real-tree arm — removed symbols are absent outside the state-derived allowed sites', () => {
+  const errors = checkR3(srcScan, state.phase4Landed, state.closureInSchema);
   assert.deepEqual(errors, [],
-    `today all dead symbols must be confined to the classified dead files + the pinned allowedOutside hosts: ${errors.join(' | ')}`);
+    `removed symbols must satisfy the state-derived source-absence boundary: ${errors.join(' | ')}`);
 });
 
 test('R3b: MUTATION — a legacy dead tool import in a live file turns ratchet 3 RED (both arms)', () => {
@@ -291,11 +286,11 @@ test('R3e: MUTATION — a legacy table reference outside schema.ts REDs in the p
     `a legacy table reference outside schema.ts must RED post-cutover (got: ${errors.join(' | ')})`);
 });
 
-test('R3f: MUTATION — the REINTRODUCED Discovery settlement query in settlement-debug.ts REDs in TODAY\'s pre-cutover arm (Phase 3.2)', () => {
+test('R3f: MUTATION — a reintroduced Discovery settlement query REDs in both boundary arms', () => {
   // Mutation class (ratchet 8): "a reintroduced legacy query". Before Phase
   // 3.2 this exact text was the tolerated baseline; after the removal the
   // settlement-debug table allowance is GONE, so re-adding the block is RED
-  // in every arm — including the current pre-cutover arm.
+  // in every arm, including the historical pre-cutover counterfactual.
   const mutated = srcScan.map(([rel, t]) =>
     rel === 'src/tools/settlement-debug.ts'
       ? [rel, t + "\nconst legacy = db.prepare(`SELECT ds.decision FROM factory_discovery_settlements ds WHERE ds.process_run_id = ?`);\n"]
@@ -313,10 +308,10 @@ test('R3f: MUTATION — the REINTRODUCED Discovery settlement query in settlemen
 // R4 — dist-aware clean-build absence (ratchet 4)
 // ===========================================================================
 
-test('R4a: pre-state arm — the clean build emits every still-present dead module (build faithfulness, real tree GREEN)', () => {
+test('R4a: real-tree arm — the clean build contains no removed Phase-4 module', () => {
   const errors = checkR4(state);
   assert.deepEqual(errors, [],
-    `the dist must faithfully mirror the present dead files today (no stale dist): ${errors.join(' | ')}`);
+    `the clean dist must contain no emitted Phase-4 legacy module: ${errors.join(' | ')}`);
 });
 
 test('R4b: MUTATION — an emitted dead module surviving in dist post-cutover turns ratchet 4 RED (F6)', () => {
@@ -339,16 +334,16 @@ test('R4b: MUTATION — an emitted dead module surviving in dist post-cutover tu
 // R5 — fresh DB lacks the full closure (ratchet 5)
 // ===========================================================================
 
-test('R5a: real fresh DB through dist/db.js getDb carries the COMPLETE closure today (pre-state GREEN)', async () => {
+test('R5a: real fresh DB carries the complete inert closure in the Phase-4 to Phase-5 intermediate state', async () => {
   const fresh = await createFreshDbObjects(REPO_ROOT);
-  const errors = checkR5(fresh, /* phase4Landed */ false);
+  const errors = checkR5(fresh, state.phase4Landed);
   assert.deepEqual(errors, [],
-    `the fresh-DB closure must be COMPLETE (all ten tables + nineteen indexes) pre-removal: ${errors.join(' | ')}`);
+    `the fresh-DB closure must remain complete until the atomic Phase-5 removal: ${errors.join(' | ')}`);
   for (const t of ADR_095_INVENTORY.deadPhase5Tables) {
-    assert.ok(fresh.tables.has(t), `pre-state fact: fresh DB creates ${t}`);
+    assert.ok(fresh.tables.has(t), `Phase-4 intermediate fact: fresh DB creates ${t}`);
   }
   for (const i of ADR_095_INVENTORY.deadPhase5Indexes) {
-    assert.ok(fresh.indexes.has(i), `pre-state fact: fresh DB creates ${i}`);
+    assert.ok(fresh.indexes.has(i), `Phase-4 intermediate fact: fresh DB creates ${i}`);
   }
 });
 

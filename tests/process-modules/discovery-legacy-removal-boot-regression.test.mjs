@@ -51,6 +51,11 @@ import Database from 'better-sqlite3';
 const { installProductionModules } = await import(
   '../../dist/process-modules/installation/production-install.js'
 );
+const {
+  FilesystemModulePackageStore,
+  SqliteModuleInstallationRepository,
+  installPackage,
+} = await import('../../dist/process-modules/installation/index.js');
 const { SCHEMA_SQL } = await import('../../dist/schema.js');
 const { ensureFactoryProcessRunSchema } = await import(
   '../../dist/process-modules/persistence/sqlite-process-run-repository.js'
@@ -76,10 +81,52 @@ const LEGACY_HANDLER_REFS = Object.freeze(LEGACY_HANDLER_IDS.map((logicalId) => 
   digest: '95'.repeat(32),
 })));
 
+// Frozen pre-cutover resource shape from product-discovery@3.0.2. The bytes
+// are embedded deliberately: Phase 4 deleted several source paths below, but
+// a retained package must remain readable solely from its content-addressed
+// snapshot. Keeping all 18 entries (including normalizer and diagnosis) makes
+// the compatibility proof exercise resource reconstruction instead of the
+// vacuous zero-resource case.
+const LEGACY_RESOURCE_FIXTURES = Object.freeze([
+  ['discovery.skill.proposal-worker', 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-worker/SKILL.md', 'skill'],
+  ['discovery.skill.normalizer', 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-normalizer/SKILL.md', 'skill'],
+  ['discovery.skill.readiness-advisor', 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-readiness-advisor/SKILL.md', 'skill'],
+  ['discovery.skill.diagnosis-advisor', 'src/process-modules/modules/discovery/package/resources/skills/saga-discovery-diagnosis-advisor/SKILL.md', 'skill'],
+  ['discovery.skill.process-protocol', 'skills/saga-process-module-worker-protocol/SKILL.md', 'instruction'],
+  ['discovery.template.proposal-doc', 'src/process-modules/modules/discovery/package/resources/discovery-doc-template.md', 'template'],
+  ['discovery.template.proposal-call', 'src/process-modules/modules/discovery/package/resources/proposal-call-template.json', 'mcp-call-template'],
+  ['discovery.tracker.proposal-stage', 'src/process-modules/modules/discovery/package/resources/proposal-stage-tracker.md', 'template'],
+  ['discovery.checklist.proposal', 'src/process-modules/modules/discovery/package/resources/proposal-checklist.md', 'checklist'],
+  ['discovery.template.normalization-call', 'src/process-modules/modules/discovery/package/resources/normalization-call-template.json', 'mcp-call-template'],
+  ['discovery.tracker.normalization-stage', 'src/process-modules/modules/discovery/package/resources/normalization-stage-tracker.md', 'template'],
+  ['discovery.checklist.normalization', 'src/process-modules/modules/discovery/package/resources/normalization-checklist.md', 'checklist'],
+  ['discovery.template.readiness-call', 'src/process-modules/modules/discovery/package/resources/readiness-call-template.json', 'mcp-call-template'],
+  ['discovery.tracker.readiness-stage', 'src/process-modules/modules/discovery/package/resources/readiness-stage-tracker.md', 'template'],
+  ['discovery.checklist.readiness', 'src/process-modules/modules/discovery/package/resources/readiness-checklist.md', 'checklist'],
+  ['discovery.template.diagnosis-call', 'src/process-modules/modules/discovery/package/resources/diagnosis-call-template.json', 'mcp-call-template'],
+  ['discovery.tracker.diagnosis-stage', 'src/process-modules/modules/discovery/package/resources/diagnosis-stage-tracker.md', 'template'],
+  ['discovery.checklist.diagnosis', 'src/process-modules/modules/discovery/package/resources/diagnosis-checklist.md', 'checklist'],
+].map(([logicalId, resourcePath, kind]) => Object.freeze({ logicalId, path: resourcePath, kind })));
+
+function legacyResourceBlobs() {
+  const encoder = new TextEncoder();
+  return LEGACY_RESOURCE_FIXTURES.map((entry, index) => {
+    const bytes = encoder.encode(
+      `frozen product-discovery@3.0.2 resource ${index}: ${entry.logicalId}\n`,
+    );
+    return {
+      logicalId: entry.logicalId,
+      kind: entry.kind,
+      bytes,
+      digest: createHash('sha256').update(bytes).digest('hex'),
+    };
+  });
+}
+
 /**
- * Frozen census fixture.  No field is copied from the current manifest: this
- * must remain capable of constructing the retired 3.0.2 installation after
- * the live package evolves again.
+ * Frozen census fixture. No field is copied from the current manifest: this
+ * remains capable of constructing the retired six-handler, resource-bearing
+ * 3.0.2 installation after the live package evolves again.
  */
 function legacyFixtureManifest() {
   return {
@@ -101,7 +148,10 @@ function legacyFixtureManifest() {
       invariants: [],
       executionProfiles: [],
     },
-    resourceIndex: [],
+    resourceIndex: LEGACY_RESOURCE_FIXTURES.map((entry) => ({
+      ...entry,
+      digest: 'pending@wave-2',
+    })),
     handlerRefs: LEGACY_HANDLER_REFS,
     inputContractRef: {
       schemaId: 'factory.discovery-case.v1', version: '1.0.0', digest: 'pending@wave-2',
@@ -140,13 +190,18 @@ async function buildExistingLegacyDb(storeRoot, dbPath = ':memory:', retire = fa
   // factory_process_runs is created lazily by its single SQL owner (the
   // process-run repository), exactly as on a production database.
   ensureFactoryProcessRunSchema(db);
-  const legacy = await installProductionModules(
-    db, repoRoot, [legacyFixtureManifest()], storeRoot,
+  const store = new FilesystemModulePackageStore(storeRoot);
+  const repository = new SqliteModuleInstallationRepository(db);
+  const legacyRecord = await installPackage(
+    legacyFixtureManifest(),
+    legacyResourceBlobs(),
+    { store, repo: repository },
   );
-  const legacyRecord = legacy.records.get('product-discovery');
   assert.ok(legacyRecord, 'legacy production-discovery installs');
   assert.equal(legacyRecord.version, '3.0.2');
   assert.equal(legacyRecord.handlerRefs.length, 6, 'censused legacy shape: six handlers');
+  const frozenPackage = await store.read(legacyRecord.packageDigest);
+  assert.equal(frozenPackage.resources.length, 18, 'frozen legacy package carries all 18 resources');
 
   const inputSnapshot = '{}';
   // better-sqlite3 enforces FKs; satisfy the run's project binding.
@@ -166,7 +221,7 @@ async function buildExistingLegacyDb(storeRoot, dbPath = ':memory:', retire = fa
     'paused', legacyRecord.id, legacyRecord.packageDigest,
     "ProcessRun 1 paused at node 'produce-proposal' and can be resumed (human_required)",
   );
-  if (retire) legacy.repository.retire(legacyRecord.id);
+  if (retire) repository.retire(legacyRecord.id);
   return { db, legacyRecord };
 }
 
@@ -228,7 +283,14 @@ test('ADR-095 F5: spawned install host boots with a retired 3.0.2 installation a
         const old = boot.repository.getByPackageDigest(process.env.ADR095_LEGACY_DIGEST);
         if (!old || old.status !== 'retired') throw new Error('RETIRED_LEGACY_INSTALLATION_NOT_REHYDRATED');
         if (!boot.packages.has(process.env.ADR095_LEGACY_DIGEST)) throw new Error('PINNED_LEGACY_PACKAGE_NOT_MATERIALIZED');
-        process.stdout.write(JSON.stringify({ oldStatus: old.status, nextVersion: boot.records.get('product-discovery').version }));
+        const frozen = boot.packages.get(process.env.ADR095_LEGACY_DIGEST);
+        process.stdout.write(JSON.stringify({
+          oldStatus: old.status,
+          nextVersion: boot.records.get('product-discovery').version,
+          packageDigest: frozen.packageDigest,
+          handlerIds: frozen.manifest.handlerRefs.map((ref) => ref.logicalId),
+          resourceIds: frozen.resources.map((resource) => resource.logicalId),
+        }));
       } finally { db.close(); }
     `;
     const spawned = spawnSync(process.execPath, ['--input-type=module', '--eval', childScript], {
@@ -243,7 +305,14 @@ test('ADR-095 F5: spawned install host boots with a retired 3.0.2 installation a
       timeout: 30_000,
     });
     assert.equal(spawned.status, 0, `spawned host failed: ${spawned.stderr || spawned.stdout}`);
-    assert.deepEqual(JSON.parse(spawned.stdout), { oldStatus: 'retired', nextVersion: '4.0.0' });
+    const proof = JSON.parse(spawned.stdout);
+    assert.equal(proof.oldStatus, 'retired');
+    assert.equal(proof.nextVersion, '4.0.0');
+    assert.equal(proof.packageDigest, legacyRecord.packageDigest);
+    assert.deepEqual(proof.handlerIds, LEGACY_HANDLER_IDS);
+    assert.equal(proof.resourceIds.length, 18);
+    assert.ok(proof.resourceIds.includes('discovery.skill.normalizer'));
+    assert.ok(proof.resourceIds.includes('discovery.skill.diagnosis-advisor'));
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
@@ -272,7 +341,7 @@ test('ADR-095 F5: module-version bump with the legacy installation preserved boo
     // Legacy installation PRESERVED: the exact old row (same id, same digest)
     // is still present for the pinned run's rehydration path to resolve by
     // digest. The active-status assertions immediately below characterize
-    // TODAY's per-(name, version) unique-active baseline (3.0.2 and 3.1.0
+    // TODAY's per-(name, version) unique-active baseline (3.0.2 and 4.0.0
     // coexist as two active rows); they are NOT an ADR-095 Phase-4
     // requirement — the ADR requires the preserved old row to stay
     // rehydratable, which a future retired-status row would equally satisfy.
@@ -288,7 +357,7 @@ test('ADR-095 F5: module-version bump with the legacy installation preserved boo
     assert.equal(rows.length, 2, 'exactly the legacy and bumped installations exist');
     assert.equal(
       rows.filter((r) => r.status === 'active').length, 2,
-      'current-baseline characterization (not an ADR-095 requirement): one active slot per (name, version) lets 3.0.2 and 3.1.0 coexist active today',
+      'current-baseline characterization (not an ADR-095 requirement): one active slot per (name, version) lets 3.0.2 and 4.0.0 coexist active today',
     );
 
     // The pinned nonterminal run rehydrates its EXACT persisted package:
@@ -302,11 +371,20 @@ test('ADR-095 F5: module-version bump with the legacy installation preserved boo
       'the pinned run\'s exact legacy package snapshot is verified and materialized at boot',
     );
     const legacyPackage = boot.packages.get(legacyRecord.packageDigest);
+    assert.equal(legacyPackage.packageDigest, legacyRecord.packageDigest);
     assert.equal(
       legacyPackage.manifest.definition.identity.version, '3.0.2',
       'rehydrated snapshot is the legacy six-handler package, not the new one',
     );
-    assert.equal(legacyPackage.manifest.handlerRefs.length, 6);
+    assert.deepEqual(
+      legacyPackage.manifest.handlerRefs.map((ref) => ref.logicalId),
+      LEGACY_HANDLER_IDS,
+    );
+    assert.equal(legacyPackage.resources.length, 18);
+    assert.deepEqual(
+      legacyPackage.resources.map((resource) => resource.logicalId),
+      LEGACY_RESOURCE_FIXTURES.map((resource) => resource.logicalId),
+    );
   } finally {
     db.close();
     rmSync(storeRoot, { recursive: true, force: true });
@@ -317,8 +395,8 @@ test('ADR-095 F5 counterfactual: the bumped boot alone does not satisfy the drif
   // Ordering proof (Phase-4 atomicity): after the bumped version is active,
   // a LATER same-version six-handler reinstall attempt (the legacy manifest
   // back at 3.0.2 against the still-active legacy slot) stays idempotent —
-  // and a same-version flip of the BUMPED slot (3.1.0 → different handler
-  // set at 3.1.0) still fails closed. The drift guard is version-scoped,
+  // and a same-version flip of the BUMPED slot (4.0.0 → different handler
+  // set at 4.0.0) still fails closed. The drift guard is version-scoped,
   // so the bump removes the collision ONLY by moving to a new version.
   const storeRoot = mkdtempSync(path.join(os.tmpdir(), 'adr095-postbump-'));
   const { db } = await buildExistingLegacyDb(storeRoot);

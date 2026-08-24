@@ -313,123 +313,12 @@ test('W9-A8 restart delivery: output repository is write-once (same hash replays
   }
 });
 
-test('ADR-095 restart discovery: retired duplicate certificate store stays absent', async () => {
+test('ADR-095 restart discovery: retired duplicate certificate store stays absent', () => {
   assert.equal(
     existsSync(path.join(REPO_ROOT, 'src/modules/discovery/infrastructure/discovery-settlement-repository.ts')),
     false,
     'ADR-095 retired the legacy repository; live certificate replay is covered by production-cell output/certificate suites',
   );
-  return;
-  // Discovery's authoritative durable artifact is the outcome certificate,
-  // issued atomically by issueCertificateAtomically (write-once on
-  // settlement_id). This mirrors the W8-A8 formalization certificate restart
-  // contract applied to Discovery's own certificate store. The fixture seeds
-  // the minimal FK chain (project/epic/episode/task/work-intent/proposal) the
-  // certificate row REFERENCES, the same pattern used by the d4-settlement
-  // atomicity suite.
-  const temp = freshDb();
-  try {
-    const { getDb } = await import('../../dist/db.js');
-    const db = getDb();
-    db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
-    db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (10,1,'D')`).run();
-    db.prepare(`INSERT INTO episode_workflows (epic_id,stage,metadata) VALUES (10,'discovery','{}')`).run();
-    db.prepare(`INSERT INTO tasks (id,epic_id,title,status,task_kind) VALUES (100,10,'D','done','discovery.work')`).run();
-    db.prepare(`INSERT INTO factory_work_intents (id,epic_id,kind,objective,authority_scope,output_schema,token_budget,retry_budget,projected_task_id,status) VALUES (1,10,'discovery','o','{}','factory.work-intent.discovery.v1',0,0,100,'concluded')`).run();
-    db.prepare(`INSERT INTO factory_proposals (id,intent_id,task_id,execution_id,kind,schema_version,payload,content_hash,status,provenance) VALUES (50,1,100,'exec','discovery','factory.discovery-proposal.v1','{}','${'a'.repeat(64)}','submitted','{}')`).run();
-    const {
-      ensureFactorySettlementSchema,
-      insertSettlement,
-      issueCertificateAtomically,
-    } = await import(
-      '../../dist/modules/discovery/infrastructure/discovery-settlement-repository.js'
-    );
-    ensureFactorySettlementSchema(db);
-
-    const { canonicalJson } = await import(
-      '../../dist/shared/canonical-json.js'
-    );
-    const inputSnapshot = {
-      schema_version: 'factory.discovery-settlement-input.v1',
-      epic_id: 10,
-      proposal: { id: 50, content_hash: 'a'.repeat(64) },
-      readiness: { status: 'accepted_by_kernel', assessment_id: 7, content_hash: 'b'.repeat(64), payload: null },
-      policy: { version: '1.0.0', content_hash: 'q'.repeat(64) },
-      captured_at: '2026-07-29T00:00:00.000Z',
-    };
-    const snapshotText = canonicalJson(inputSnapshot);
-    const inputHash = sha256(snapshotText);
-    const { record: settlement } = insertSettlement(db, {
-      epicId: 10,
-      key: {
-        proposalId: 50,
-        proposalContentHash: 'a'.repeat(64),
-        readinessTarget: 'accepted:' + 'b'.repeat(64),
-        policyVersion: '1.0.0',
-        policyHash: 'q'.repeat(64),
-      },
-      readinessAssessmentId: 7,
-      inputSnapshot,
-      decision: 'go',
-      reasonCodes: ['GO_READY_AND_GROUNDED'],
-      rationale: 'sufficient evidence',
-    });
-
-    const certificatePayload = {
-      schemaVersion: 'factory.discovery-outcome-certificate.v1',
-      decision: 'go',
-      reasonCodes: ['GO_READY_AND_GROUNDED'],
-      rationale: 'sufficient evidence',
-      inputHash,
-    };
-    const payloadText = canonicalJson(certificatePayload);
-    const expectedHash = sha256(payloadText);
-
-    const base = {
-      settlementId: settlement.id,
-      epicId: 10,
-      proposalId: 50,
-      proposalContentHash: 'a'.repeat(64),
-      readinessAssessmentId: 7,
-      readinessAssessmentHash: 'accepted:' + 'b'.repeat(64),
-      policyVersion: '1.0.0',
-      policyHash: 'q'.repeat(64),
-      decision: 'go',
-      reasonCodes: ['GO_READY_AND_GROUNDED'],
-      inputHash,
-      certificatePayload,
-      expectedCertificateHash: expectedHash,
-      issuedAt: settlement.created_at,
-      inputSnapshotText: settlement.input_snapshot,
-      rationale: 'sufficient evidence',
-    };
-
-    const first = issueCertificateAtomically(db, base);
-    assert.equal(first.inserted, true, 'first issuance must insert');
-
-    // RESTART: same payload -> idempotent replay (inserted=false), same row.
-    const replay = issueCertificateAtomically(db, base);
-    assert.equal(replay.inserted, false, 'restart with same hash must replay');
-    assert.equal(replay.record.id, first.record.id,
-      'replay must return the SAME certificate id');
-    assert.equal(replay.record.certificateHash, first.record.certificateHash,
-      'replay must preserve the certificate hash');
-
-    // A DIFFERENT payload for the same settlement is rejected (write-once).
-    const divergentPayload = { ...certificatePayload, rationale: 'tampered' };
-    const divergentText = canonicalJson(divergentPayload);
-    assert.throws(
-      () => issueCertificateAtomically(db, {
-        ...base,
-        certificatePayload: divergentPayload,
-        expectedCertificateHash: sha256(divergentText),
-      }),
-      /does not match the expected canonical payload|certificate_hash|disagrees/,
-      'a divergent certificate payload for the same settlement must be rejected',
-    );
-  } finally {
-    await teardownDb(temp);
-  }
 });
 
 // ===========================================================================
@@ -566,51 +455,12 @@ test('W9-A8 exact-output delivery: settlement policy is a pure function (same in
     'settlement result must carry a 64-char inputHash');
 });
 
-test('ADR-095 exact-output discovery: retired duplicate certificate projection stays absent', async () => {
+test('ADR-095 exact-output discovery: retired duplicate certificate projection stays absent', () => {
   assert.equal(
     existsSync(path.join(REPO_ROOT, 'src/modules/discovery/application/discovery-outcome-certificate-projection.ts')),
     false,
     'ADR-095 retired the duplicate projection; live exact output is emitted by the production-cell settlement handler',
   );
-  return;
-  // Discovery's authoritative output is its outcome certificate; the
-  // DiscoveryOutcomeCertificateProjection re-shapes it into the generic
-  // ProcessOutcomeCertificate on the fly. That projection must be a pure
-  // function: the same record + projectId yields the same generic certificate
-  // (same decision, reasonCodes, inputHash, certificateHash) every time.
-  const { projectDiscoveryCertificate } = await import(
-    '../../dist/modules/discovery/application/discovery-outcome-certificate-projection.js'
-  );
-  const cert = {
-    id: 42,
-    settlement_id: 7,
-    epic_id: 10,
-    proposal_id: 1,
-    proposal_content_hash: 'p'.repeat(64),
-    readiness_assessment_id: null,
-    readiness_assessment_hash: 'r'.repeat(64),
-    policy_version: '1.0.0',
-    policy_hash: 'q'.repeat(64),
-    decision: 'go',
-    reason_codes: [],
-    input_hash: 'i'.repeat(64),
-    certificate_payload: JSON.stringify({
-      decision: 'go',
-      reasonCodes: [],
-      rationale: 'sufficient evidence',
-      inputHash: 'i'.repeat(64),
-    }),
-    certificate_hash: 'c'.repeat(64),
-    issued_at: '2026-07-29T00:00:00Z',
-  };
-  const a = projectDiscoveryCertificate(cert, 1);
-  const b = projectDiscoveryCertificate(cert, 1);
-  assert.deepEqual(a, b, 'projection must be deterministic for identical record + projectId');
-  assert.equal(a.decision, 'go');
-  assert.equal(a.inputHash, 'i'.repeat(64));
-  assert.equal(a.certificateHash, 'c'.repeat(64));
-  assert.equal(a.moduleRef.name, 'product-discovery');
-  assert.equal(a.moduleRef.version, '3.0.2');
 });
 
 // ===========================================================================

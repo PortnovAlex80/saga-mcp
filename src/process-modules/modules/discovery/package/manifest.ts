@@ -20,14 +20,13 @@
  *                                  (`discovery-process-module.ts`). Wraps it;
  *                                  does not duplicate it.
  *   - `resourceIndex`            — every skill, template, call-template,
- *                                  checklist and tracker the four discovery
+ *                                  checklist and tracker the two live Discovery
  *                                  execution profiles reference. Pinned by
  *                                  `logicalId` + module-relative `path` so the
  *                                  runtime never does global resource lookup.
  *   - `handlerRefs`              — stable, content-addressed references to the
- *                                  six discovery kernel handlers declared in
- *                                  `discovery-installation.ts`
- *                                  (`createDiscoveryKernelHandlers`).
+ *                                  sole Discovery-owned kernel handler in
+ *                                  `discovery-production-cell-installation.ts`.
  *   - `inputContractRef` /
  *     `outputContractRef`        — the DiscoveryCase input contract and the
  *                                  DiscoveryOutcomeCertificate output contract.
@@ -83,9 +82,9 @@ export const DISCOVERY_MODULE_KEY =
   `${DISCOVERY_PROCESS_MODULE_REF.name}@${DISCOVERY_PROCESS_MODULE_REF.version}`;
 
 /**
- * The six discovery-owned kernel handler ids. Each matches a key returned by
- * `createDiscoveryKernelHandlers` (discovery-installation.ts) AND the
- * `handler:` field on the corresponding kernel node in
+ * The sole Discovery-owned kernel handler id. It matches the key returned by
+ * `createDiscoveryProductionCellKernelHandlers` and the `handler:` field on
+ * the corresponding kernel node in
  * `discovery-process-module.ts`. The generic `process-outcome-emitter` is
  * runtime-owned (not module-owned) and is intentionally excluded — same
  * boundary Formalization draws.
@@ -138,9 +137,9 @@ export const DISCOVERY_RUNTIME_COMPATIBILITY_RANGE = '^3.0.0';
 // Resource index.
 //
 // Every skill, tracker template, workspace template, call-template and
-// checklist the four discovery execution profiles
-// (discovery-proposal-worker / discovery-normalizer / discovery-readiness-
-// advisor / discovery-diagnosis-advisor) reference is declared here. Paths are
+// checklist the two live Discovery execution profiles
+// (discovery-proposal-worker / discovery-readiness-advisor) reference is
+// declared here. Paths are
 // module-RELATIVE POSIX paths rooted at the repository root — the Wave 2
 // installer resolves each under the package root and rejects absolute /
 // traversal paths. `logicalId` is the stable, module-namespaced identifier the
@@ -259,9 +258,9 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
 // ---------------------------------------------------------------------------
 // Handler refs.
 //
-// Stable, content-addressed references to the six kernel handlers the
-// discovery flow wires up in `discovery-installation.ts`
-// (`createDiscoveryKernelHandlers`). Handlers are NOT shipped in the manifest
+// Stable, content-addressed reference to the sole Discovery-owned kernel
+// handler wired by `discovery-production-cell-installation.ts`. Handlers are
+// NOT shipped in the manifest
 // — only stable references. The adapter registry resolves each `logicalId` to
 // the concrete `KernelHandler` by name.
 //
@@ -270,7 +269,7 @@ export const DISCOVERY_RESOURCE_INDEX: readonly ResourceIndexEntry[] = [
 // `modules-ext/external-seo/manifest.mjs`). A placeholder here made
 // composition unprovable — binding receipts compared a constant, so a handler
 // edit during a live run was invisible. Now editing
-// `discovery-installation.ts` changes every handlerRef digest → changes the
+// `discovery-production-cell-installation.ts` changes the handlerRef digest → changes the
 // packageDigest → forces an explicit resume-compatibility decision instead of
 // a trivially-passing placeholder comparison.
 // ---------------------------------------------------------------------------
@@ -282,10 +281,9 @@ const HANDLER_VERSION = '2.0.0';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Content address of `createDiscoveryKernelHandlers` — the module the
- * composition root calls to register every handler pinned below. All six
- * handlers are created by this single installation module, so they share its
- * digest; editing ANY of them changes it. Computed by the canonical shared
+ * Content address of `createDiscoveryProductionCellKernelHandlers` — the module the
+ * composition root calls to register the handler pinned below. Editing its
+ * implementation changes the digest. Computed by the canonical shared
  * digester (K3): sha256 over the module's raw bytes, resolved from HERE.
  */
 const DISCOVERY_HANDLER_IMPLEMENTATION_DIGEST = handlerImplementationDigest(
@@ -303,10 +301,10 @@ function discoveryHandlerRef(logicalId: string): HandlerRef {
 }
 
 /**
- * The complete set of kernel handler references for the discovery package.
- * Each `logicalId` matches the `handler:` field declared on the corresponding
- * kernel node in `discovery-process-module.ts` and a key registered by
- * `createDiscoveryKernelHandlers` (discovery-installation.ts). The generic
+ * The complete kernel-handler reference set for the Discovery package.
+ * Its `logicalId` matches the `handler:` field declared on the corresponding
+ * kernel node in `discovery-process-module.ts` and the key registered by
+ * `createDiscoveryProductionCellKernelHandlers`. The generic
  * `process-outcome-emitter` is runtime-owned and intentionally excluded.
  */
 export const DISCOVERY_HANDLER_REFS: readonly HandlerRef[] = [
