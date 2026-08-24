@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 import { SCHEMA_SQL } from '../../dist/schema.js';
 import { adoptTerminalExecutionsAtEngineStart } from
@@ -377,5 +380,216 @@ test('F2 regression: spawn-failed reviewer repair binds the CURRENT generation, 
       'the superseded (newest) reviewer card was NOT retargeted');
   } finally {
     db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M1 (task-shadow hardening follow-up) — the no-receipt repair previously
+// collapsed absent exact binding and exact-generation duplicate/fence errors
+// into skippedNoReceipt with NO diagnostic (unlike spawn-failed). These
+// regressions pin the emitted observability: one engine-log + stderr line per
+// stranded pair with workplace/execution/loopState and a TYPED cause that
+// separates expected exact-null absence from thrown corruption — while the
+// repair stays fail-closed and idempotent.
+// ---------------------------------------------------------------------------
+
+function seedProjectEpicTasks(db, ref, cards) {
+  db.prepare(
+    `INSERT INTO projects (id, name) VALUES (1, 'p') ON CONFLICT(id) DO NOTHING`,
+  ).run();
+  db.prepare(
+    `INSERT INTO epics (id, project_id, name) VALUES (1, 1, 'e') ON CONFLICT(id) DO NOTHING`,
+  ).run();
+  for (const card of cards) {
+    db.prepare(
+      `INSERT INTO tasks (epic_id, title, status, workplace_ref, metadata)
+       VALUES (1, ?, ?, ?, ?)`,
+    ).run(card.title, card.status, ref, JSON.stringify(card.metadata));
+  }
+}
+
+function captureDiagnostics(t) {
+  // Intercept stderr (restored automatically by node:test after the test)
+  // and point the durable engine log at a temp file (M1 proves BOTH sinks).
+  const writes = [];
+  t.mock.method(process.stderr, 'write', (chunk) => {
+    writes.push(String(chunk));
+    return true;
+  });
+  const logDir = mkdtempSync(path.join(tmpdir(), 'saga-m1-engine-log-'));
+  const logPath = path.join(logDir, 'engine.log');
+  const prevLog = process.env.SAGA_ENGINE_LOG;
+  process.env.SAGA_ENGINE_LOG = logPath;
+  const restore = () => {
+    if (prevLog === undefined) delete process.env.SAGA_ENGINE_LOG;
+    else process.env.SAGA_ENGINE_LOG = prevLog;
+    rmSync(logDir, { recursive: true, force: true });
+  };
+  const stderr = () => writes.join('');
+  const engineLogFile = () => (existsSync(logPath) ? readFileSync(logPath, 'utf8') : '');
+  return { restore, stderr, engineLogFile };
+}
+
+test('M1 regression: absent exact binding emits the EXACT_ROLE_TASK_ABSENT diagnostic (engine log + stderr), pair stays stranded and untouched', (t) => {
+  const capture = captureDiagnostics(t);
+  const db = fresh();
+  try {
+    const ref = 'workplace/1/m@1/cell/absent-binding-diagnostic';
+    const exec = 'worker-execution:dead-absent-binding';
+    seedWorkplace(db, { ref, loopState: 'verifying', reservation: exec, nextRole: 'author' });
+    seedExecution(db, { executionId: exec, state: 'lost' });
+    // A neighbor card WITHOUT the durable $.role binding: the exact read
+    // resolves absence (expected exact-null), never a newest-row fallback.
+    seedProjectEpicTasks(db, ref, [
+      { title: 'unbound', status: 'in_progress', metadata: {} },
+    ]);
+
+    const result = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(result.repaired.length, 0);
+    assert.equal(result.skippedNoReceipt, 1);
+
+    // The diagnostic names the workplace, the execution, the loop state and
+    // the typed cause, and reaches BOTH observability sinks.
+    const expected = new RegExp(
+      `\\[engine-start-adoption\\] no-receipt repair skipped `
+      + `execution=${exec.replace(/:/g, '\\:')} workplace=${ref.replace(/\//g, '\\/')} `
+      + `loopState=verifying cause=EXACT_ROLE_TASK_ABSENT: `
+      + `no exact task binding for role=author`,
+    );
+    assert.match(capture.stderr(), expected);
+    assert.match(capture.stderr(), /fail-closed skip, chronology must not choose the binding/);
+    assert.match(capture.engineLogFile(), expected);
+
+    // Fail-closed: nothing was rewritten, the pair stays for the next pass.
+    const wp = db.prepare(
+      'SELECT loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(ref);
+    assert.equal(wp.loop_state, 'verifying');
+    assert.equal(wp.active_reservation_ref, exec);
+    const task = db.prepare('SELECT status FROM tasks WHERE workplace_ref=?').get(ref);
+    assert.equal(task.status, 'in_progress', 'the unbound neighbor row is untouched');
+  } finally {
+    db.close();
+    capture.restore();
+  }
+});
+
+test('M1 regression: duplicate of the exact CURRENT reviewer generation emits the corruption diagnostic and fails closed (no newest-row rescue)', (t) => {
+  const capture = captureDiagnostics(t);
+  const db = fresh();
+  try {
+    const ref = 'workplace/1/m@1/cell/dup-current-generation';
+    const exec = 'worker-execution:dead-dup-generation';
+    seedWorkplace(db, { ref, loopState: 'verifying', reservation: exec, nextRole: 'reviewer' });
+    seedExecution(db, { executionId: exec, state: 'lost' });
+    // TWO reviewer cards for the SAME subject as the authority head: a
+    // duplicate of the exact CURRENT generation — a broken idempotence fence.
+    // The exact-key reader must throw, and the repair must log the thrown
+    // corruption (NOT silently collapse it into the skip counter, and NOT
+    // rescue the pair by picking either row by chronology).
+    seedProjectEpicTasks(db, ref, [
+      { title: 'author', status: 'done', metadata: { role: 'author' } },
+      { title: 'rev-dup-1', status: 'review', metadata: { role: 'reviewer', subject_candidate_set_ref: 'cs:dup' } },
+      { title: 'rev-dup-2', status: 'done', metadata: { role: 'reviewer', subject_candidate_set_ref: 'cs:dup' } },
+    ]);
+    db.prepare(
+      `INSERT INTO factory_accepted_authority_head
+         (workplace_ref, accepted_author_candidate_set_ref,
+          accepted_author_gate_decision_key, revision, recorded_at)
+       VALUES (?, 'cs:dup', 'gate:decision:dup', 1, datetime('now'))`,
+    ).run(ref);
+
+    const result = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(result.repaired.length, 0);
+    assert.equal(result.skippedNoReceipt, 1);
+
+    const expected = new RegExp(
+      `\\[engine-start-adoption\\] no-receipt repair skipped `
+      + `execution=${exec.replace(/:/g, '\\:')} workplace=${ref.replace(/\//g, '\\/')} `
+      + `loopState=verifying cause=EXACT_ROLE_TASK_READ_FAILED: `
+      + `the exact-key role-task read threw for role=reviewer: `
+      + `.*PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE`,
+    );
+    assert.match(capture.stderr(), expected);
+    assert.match(capture.engineLogFile(), expected);
+
+    // Fail-closed: the workplace is NOT rewritten and neither duplicate row
+    // is retargeted (no newest-wins tiebreak, no partial repair).
+    const wp = db.prepare(
+      'SELECT loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(ref);
+    assert.equal(wp.loop_state, 'verifying');
+    assert.equal(wp.active_reservation_ref, exec);
+    const statuses = db.prepare(
+      "SELECT json_extract(metadata,'$.subject_candidate_set_ref') AS subject, status "
+      + 'FROM tasks WHERE workplace_ref=? ORDER BY id',
+    ).all(ref);
+    assert.deepEqual(
+      statuses.map(row => [row.subject, row.status]),
+      [[null, 'done'], ['cs:dup', 'review'], ['cs:dup', 'done']],
+      'no duplicate row was retargeted by the failed repair',
+    );
+  } finally {
+    db.close();
+    capture.restore();
+  }
+});
+
+test('M1 regression: legal current+superseded reviewer generations repair through the exact key with NO skip diagnostic', (t) => {
+  const capture = captureDiagnostics(t);
+  const db = fresh();
+  try {
+    const ref = 'workplace/1/m@1/cell/legal-generations';
+    const exec = 'worker-execution:dead-legal-generations';
+    seedWorkplace(db, { ref, loopState: 'verifying', reservation: exec, nextRole: 'reviewer' });
+    seedExecution(db, { executionId: exec, state: 'lost' });
+    // The LEGAL multi-generation desk: the CURRENT generation is the
+    // head-bound subject 'cs:current'; a superseded generation coexists and
+    // is deliberately the NEWEST row. The exact binding must repair the
+    // current generation cleanly — no diagnostic, no chronology.
+    seedProjectEpicTasks(db, ref, [
+      { title: 'author', status: 'done', metadata: { role: 'author' } },
+      { title: 'rev-current', status: 'review', metadata: { role: 'reviewer', subject_candidate_set_ref: 'cs:current' } },
+      { title: 'rev-superseded', status: 'done', metadata: { role: 'reviewer', subject_candidate_set_ref: 'cs:old' } },
+    ]);
+    db.prepare(
+      `INSERT INTO factory_accepted_authority_head
+         (workplace_ref, accepted_author_candidate_set_ref,
+          accepted_author_gate_decision_key, revision, recorded_at)
+       VALUES (?, 'cs:current', 'gate:decision:current', 1, datetime('now'))`,
+    ).run(ref);
+
+    const result = adoptTerminalExecutionsAtEngineStart(db);
+    assert.equal(result.repaired.length, 1);
+    assert.equal(result.skippedNoReceipt, 0);
+    assert.equal(result.repaired[0].executionId, exec);
+    assert.doesNotMatch(
+      capture.stderr(),
+      /no-receipt repair skipped/,
+      'a successful exact-key repair emits no skip diagnostic',
+    );
+    assert.equal(capture.engineLogFile(), '');
+
+    // verifying → repair_wait through the operator-recovery transition; the
+    // fence is cleared and the CURRENT generation's card receives the
+    // projection while the superseded (newest) row is untouched.
+    const wp = db.prepare(
+      'SELECT loop_state, active_reservation_ref FROM factory_workplaces WHERE workplace_ref=?',
+    ).get(ref);
+    assert.equal(wp.loop_state, 'repair_wait');
+    assert.equal(wp.active_reservation_ref, null);
+    const statuses = db.prepare(
+      `SELECT json_extract(metadata,'$.subject_candidate_set_ref') AS subject, status
+         FROM tasks WHERE workplace_ref=? ORDER BY id`,
+    ).all(ref);
+    const bySubject = new Map(statuses.map(row => [row.subject, row.status]));
+    assert.equal(bySubject.get('cs:current'), 'review_in_progress',
+      'the CURRENT generation received the repair projection');
+    assert.equal(bySubject.get('cs:old'), 'done',
+      'the superseded (newest) reviewer card was NOT retargeted');
+    assert.equal(bySubject.get(null), 'done', 'the author card is untouched');
+  } finally {
+    db.close();
+    capture.restore();
   }
 });

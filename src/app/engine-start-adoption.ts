@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
 import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import { engineLog } from '../runtime/engine-file-logger.js';
 
 /**
  * TB-9 engine-start adoption.
@@ -42,6 +43,16 @@ import { createSqliteProductionCellProjectionPersistence } from '../infrastructu
  * LIMIT 1` reads were newest-wins: in a multi-task singleton workplace they
  * bound the repair to the reviewer's row while the author was the repair
  * target — the same shadow class the budget fix removed (SM-14/MM-3).
+ *
+ * M1 (audit follow-up) — every no-receipt skip is now OBSERVABLE: one
+ * engine-log/stderr line per stranded pair carrying workplace/execution/
+ * loopState plus a typed cause that separates expected exact-null absence
+ * (EXACT_ROLE_TASK_ABSENT) from thrown corruption (duplicate of the exact
+ * current generation → EXACT_ROLE_TASK_READ_FAILED) and from a failed
+ * conveyor command (REJECT_INCOMPLETE_COMPLETION_FAILED). The repair itself
+ * stays fail-closed and idempotent: chronology never picks the binding, and
+ * legal multi-generation desks (current + superseded reviewer rounds) keep
+ * repairing through the exact current-generation key.
  */
 
 export const ENGINE_START_ADOPTION_POLICY_REF = 'factory.engine-start-adoption.v1';
@@ -143,25 +154,84 @@ export function adoptTerminalExecutionsAtEngineStart(
     return true;
   });
 
+  // M1 (task-shadow hardening) — the no-receipt branch previously collapsed
+  // "no exact binding", "the exact-key reader THREW (duplicate of the exact
+  // current generation)" and "the repair command itself threw" into a bare
+  // skippedNoReceipt counter with no diagnostic (unlike the spawn-failed
+  // branch, which logs). The repair stays fail-closed and idempotent; the
+  // skip now carries its typed cause to the engine log + stderr so a stranded
+  // pair is diagnosable from the log a human reads:
+  //   WORKPLACE_ROW_MISSING               — the workplace vanished mid-pass
+  //                                          (concurrent writer); expected rare.
+  //   EXACT_ROLE_TASK_ABSENT              — the exact-key reader resolved NO
+  //                                          binding for the role. EXPECTED
+  //                                          absence (exact null), e.g. rows
+  //                                          without the durable $.role
+  //                                          binding; fail-closed skip, there
+  //                                          is no newest-row fallback.
+  //   EXACT_ROLE_TASK_READ_FAILED         — the reader THREW: corruption or a
+  //                                          broken idempotence fence (a
+  //                                          duplicate of the exact CURRENT
+  //                                          generation throws
+  //                                          PRODUCTION_CELL_ROLE_TASK_
+  //                                          PROJECTION_NOT_UNIQUE). Never
+  //                                          resolved by chronology.
+  //   REJECT_INCOMPLETE_COMPLETION_FAILED — the conveyor command threw (fence
+  //                                          mismatch / concurrent writer /
+  //                                          illegal source state).
+  type NoReceiptRepairOutcome =
+    | { repaired: true }
+    | { repaired: false; cause: string; detail: string };
+
   const repairWithoutReceipt = db.transaction(
-    (row: { execution_id: string; workplace_ref: string; loop_state: string }) => {
+    (row: { execution_id: string; workplace_ref: string; loop_state: string }): NoReceiptRepairOutcome => {
       const workplace = db.prepare(
         `SELECT next_role FROM factory_workplaces WHERE workplace_ref=?`,
       ).get(row.workplace_ref) as { next_role: 'author' | 'reviewer' } | undefined;
-      if (!workplace) return false;
+      if (!workplace) {
+        return {
+          repaired: false,
+          cause: 'WORKPLACE_ROW_MISSING',
+          detail: 'the workplace row vanished between selection and repair (concurrent writer?)',
+        };
+      }
+      let task: { taskId: number } | null;
       try {
         // TASK-SHADOW F2 — exact CURRENT-role binding (generation-exact for
         // the reviewer via the authority head, inside the production reader).
-        const task = readExactCurrentRoleTask(row.workplace_ref, workplace.next_role);
-        if (!task) return false;
+        task = readExactCurrentRoleTask(row.workplace_ref, workplace.next_role);
+      } catch (err) {
+        return {
+          repaired: false,
+          cause: 'EXACT_ROLE_TASK_READ_FAILED',
+          detail: `the exact-key role-task read threw for role=${workplace.next_role}: `
+            + `${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+      if (!task) {
+        return {
+          repaired: false,
+          cause: 'EXACT_ROLE_TASK_ABSENT',
+          detail: `no exact task binding for role=${workplace.next_role} `
+            + '(expected absence — the exact-key reader resolved null; '
+            + 'fail-closed skip, chronology must not choose the binding)',
+        };
+      }
+      try {
         new ConveyorRuntime(db).rejectIncompleteCompletion({
           workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
           taskId: task.taskId,
           role: workplace.next_role,
         });
-        return true;
-      } catch {
-        return false;
+        return { repaired: true };
+      } catch (err) {
+        return {
+          repaired: false,
+          cause: 'REJECT_INCOMPLETE_COMPLETION_FAILED',
+          detail: `rejectIncompleteCompletion threw for task=${task.taskId} `
+            + `role=${workplace.next_role}: `
+            + `${err instanceof Error ? err.message : String(err)}`,
+        };
       }
     },
   );
@@ -173,14 +243,24 @@ export function adoptTerminalExecutionsAtEngineStart(
         workplaceRef: row.workplace_ref,
         loopState: row.loop_state,
       });
-    } else if (repairWithoutReceipt(row)) {
-      repaired.push({
-        executionId: row.execution_id,
-        workplaceRef: row.workplace_ref,
-        loopState: row.loop_state,
-      });
     } else {
-      skippedNoReceipt += 1;
+      const attempt = repairWithoutReceipt(row);
+      if (attempt.repaired) {
+        repaired.push({
+          executionId: row.execution_id,
+          workplaceRef: row.workplace_ref,
+          loopState: row.loop_state,
+        });
+      } else {
+        skippedNoReceipt += 1;
+        // Observability only (M1): the DB stays untouched on every skip path —
+        // the next engine start re-evaluates the pair idempotently.
+        const line = `[engine-start-adoption] no-receipt repair skipped `
+          + `execution=${row.execution_id} workplace=${row.workplace_ref} `
+          + `loopState=${row.loop_state} cause=${attempt.cause}: ${attempt.detail}`;
+        engineLog(line);
+        process.stderr.write(`${line}\n`);
+      }
     }
   }
 

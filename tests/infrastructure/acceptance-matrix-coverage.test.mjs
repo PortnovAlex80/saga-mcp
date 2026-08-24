@@ -211,6 +211,23 @@ test('G2j: migration-conformance is hosted blocking green-on-legacy-baseline (AD
   );
 });
 
+// G2k — TASK-SHADOW M2 per-file hosting guard (runSet-only, quarantine does
+// not count): tests/infrastructure/engine-start-adoption.test.mjs carries the
+// F2 exact-binding regressions AND the M1 no-receipt diagnostic regressions
+// (absent exact binding / duplicate exact current generation / legal
+// current+superseded repair). It was a CI orphan once already (found while
+// adding the F2 regressions); removing the exact file from the
+// process-modules run-set — by deletion or by de-hosting — must fail HERE,
+// not silently orphan the proof again. Asserted against runSet only (not
+// run-or-quarantined): reclassifying the suite as FLAKY/PRE-EXISTING-RED is
+// not an honest way to drop it.
+test('G2k: engine-start-adoption exact-binding + no-receipt-diagnostic regressions are hosted blocking (task-shadow)', () => {
+  assert.ok(
+    runSet.has('tests/infrastructure/engine-start-adoption.test.mjs'),
+    'engine-start-adoption must stay in a blocking run-set (task-shadow F2 exact-binding + M1 diagnostics proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [

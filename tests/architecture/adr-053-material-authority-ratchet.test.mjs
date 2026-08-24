@@ -256,26 +256,134 @@ test('TASK-SHADOW ratchet: the readTaskForWorkplace port stays deleted in src/',
   );
 });
 
-test('TASK-SHADOW ratchet: no newest-wins workplace task selection in src/', () => {
+// TASK-SHADOW L1 (2026-08-24) — the newest-wins pin below originally matched
+// only the EXACT retired spelling (`FROM tasks WHERE workplace_ref=? ORDER BY
+// id DESC LIMIT 1`). Equivalent task-selection chronology could evade by
+// trivially re-spelling the selector. The detector now covers the audited
+// evasion shapes while staying scoped to TASK selection by workplace:
+//   (a) MAX(id)/MAX(rowid) aggregates (scalar subquery or plain aggregate);
+//   (b) ORDER BY created_at/updated_at/rowid DESC (any task-row chronology
+//       column, not just id);
+//   (c) ORDER BY <col> DESC with NO LIMIT — the caller takes the first row
+//       of the result set (`.get()`), same newest-wins semantics;
+//   (d) predicate/alias formatting — `workplace_ref = ?`, `t.workplace_ref`,
+//       JOIN ... ON workplace_ref, extra predicates between FROM and ORDER
+//       BY, `tasks AS t`, quoted identifiers, secondary sort keys
+//       (`ORDER BY sort_order, id DESC`).
+// Scope guard (what must NOT fire): chronology over NON-task columns (an
+// execution-attempt frontier inside an already-exact task, e.g.
+// `ORDER BY we.reserved_at DESC`), exact append-frontiers keyed by a logical
+// key other than the workplace (e.g. `WHERE generation_key=? ORDER BY id
+// DESC LIMIT 1`), ascending full-chain reads, and workplace-UNSCOPED
+// newest-first operator listings. These stay classified/legal.
+const SQL_KEYWORDS = new Set([
+  'where', 'group', 'order', 'join', 'left', 'inner', 'outer', 'right', 'on',
+  'using', 'limit', 'union', 'set', 'values', 'having', 'as', 'cross',
+  'natural', 'full',
+]);
+
+function detectNewestWinsTaskSelections(src) {
+  const findings = [];
+  const fromTasks = /\bfrom\s+["'`[]?tasks["'`\]]?(?:\s+(?:as\s+)?([a-z_][a-z0-9_]*))?/gi;
+  for (const match of src.matchAll(fromTasks)) {
+    const rawAlias = (match[1] ?? '').toLowerCase();
+    const alias = rawAlias && !SQL_KEYWORDS.has(rawAlias) ? rawAlias : null;
+    const afterStart = match.index + match[0].length;
+    const after = src.slice(afterStart, afterStart + 420);
+    // Task selection BY WORKPLACE: the workplace predicate (WHERE/JOIN ON)
+    // must follow the tasks reference.
+    if (!/workplace_ref/i.test(after)) continue;
+    const qualifiedOrder = /(?:order\s+by|,)\s*([a-z_][a-z0-9_]*)\s*\.\s*(id|rowid|created_at|updated_at)\s+desc/i.exec(after);
+    const bareOrder = /(?:order\s+by|,)\s*(id|rowid|created_at|updated_at)\s+desc/i.exec(after);
+    if (qualifiedOrder ?? bareOrder) {
+      // A qualified column of a DIFFERENT table is not task-row chronology
+      // (e.g. `ORDER BY we.reserved_at DESC` — an execution frontier).
+      const qualifier = qualifiedOrder ? qualifiedOrder[1].toLowerCase() : null;
+      if (!qualifier || qualifier === 'tasks' || qualifier === alias) {
+        findings.push(
+          `${src.slice(match.index, Math.min(src.length, afterStart + 200)).replace(/\s+/gu, ' ').trim()}`,
+        );
+      }
+    }
+    // MAX(id)/MAX(rowid) directly before `FROM tasks` (aggregate select list
+    // or scalar subquery head): `SELECT MAX(id) FROM tasks WHERE workplace_ref=?`.
+    const before = src.slice(Math.max(0, match.index - 120), match.index);
+    const qualifiedMax = /max\s*\(\s*(?:distinct\s+)?([a-z_][a-z0-9_]*)\s*\.\s*(id|rowid)\s*\)/i.exec(before);
+    const bareMax = /max\s*\(\s*(?:distinct\s+)?(id|rowid)\s*\)/i.exec(before);
+    if (qualifiedMax ?? bareMax) {
+      const qualifier = qualifiedMax ? qualifiedMax[1].toLowerCase() : null;
+      if (!qualifier || qualifier === 'tasks' || qualifier === alias) {
+        findings.push(
+          `${src.slice(Math.max(0, match.index - 120), Math.min(src.length, afterStart + 120)).replace(/\s+/gu, ' ').trim()}`,
+        );
+      }
+    }
+  }
+  return findings;
+}
+
+test('TASK-SHADOW ratchet: no newest-wins workplace task selection in src/ (audited evasion shapes included)', () => {
   const files = collectFiles();
   const sites = [];
-  // `FROM tasks WHERE workplace_ref=... ORDER BY id DESC ... LIMIT 1` — the
-  // retired newest-row selector (case-insensitive, multi-line SQL strings).
-  const winner = /from\s+tasks\s+where\s+workplace_ref[\s\S]{0,160}?order\s+by\s+id\s+desc[\s\S]{0,80}?limit\s+1/giu;
   for (const { rel, abs } of files) {
     const src = stripComments(readFileSync(abs, 'utf8'));
-    const matches = src.match(winner) ?? [];
-    for (const match of matches) sites.push(`${rel}: ${match.replace(/\s+/gu, ' ').trim()}`);
+    for (const finding of detectNewestWinsTaskSelections(src)) {
+      sites.push(`${rel}: ${finding}`);
+    }
   }
   assert.equal(
     sites.length,
     0,
     `TASK-SHADOW REGRESSION: a newest-wins workplace task read reappeared `
-      + `under src/ (src/app included — F3). Resolve the CURRENT role's task `
-      + `through the exact-key readProjectedRoleTask; chronology must never `
-      + `select the task a budget/repair/widening binds to:\n  - `
-      + sites.join('\n  - '),
+      + `under src/ (src/app included — F3; MAX(id), non-id chronology columns, `
+      + `LIMIT-less first-row reads and predicate re-formatting included — L1). `
+      + `Resolve the CURRENT role's task through the exact-key `
+      + `readProjectedRoleTask; chronology must never select the task a `
+      + `budget/repair/widening binds to:\n  - ${sites.join('\n  - ')}`,
   );
+});
+
+test('TASK-SHADOW ratchet: the newest-wins detector catches every audited evasion shape and spares the classified-legal ones', () => {
+  // Mutation fixtures — each audited evasion spelling MUST fire. These are
+  // permanent: a future weakening of the detector (e.g. restoring an
+  // exact-literal regex) fails here even when src/ itself is clean.
+  const evasions = [
+    ['retired exact spelling', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1`'],
+    ['MAX(id) aggregate', '`SELECT MAX(id) AS id FROM tasks WHERE workplace_ref=?`'],
+    ['qualified MAX(t.id)', "`SELECT MAX(t.id) FROM tasks AS t WHERE t.workplace_ref = ?`"],
+    ['scalar-subquery MAX(id)', "`SELECT ... FROM x WHERE id=(SELECT MAX(id) FROM tasks WHERE workplace_ref=?)`"],
+    ['ORDER BY created_at DESC LIMIT 1', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY created_at DESC LIMIT 1`'],
+    ['ORDER BY updated_at DESC LIMIT 1', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY updated_at DESC LIMIT 1`'],
+    ['ORDER BY rowid DESC LIMIT 1', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY rowid DESC LIMIT 1`'],
+    ['ORDER BY id DESC then first row (no LIMIT)', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC`'],
+    ['predicate formatting + alias + extra predicates', "`SELECT t.id FROM tasks AS t WHERE t.workplace_ref = ? AND json_extract(t.metadata,'$.role')='author' ORDER BY t.id DESC LIMIT 1`"],
+    ['JOIN-scoped workplace predicate', '`SELECT t.id FROM tasks t JOIN factory_workplaces w ON w.workplace_ref=t.workplace_ref ORDER BY t.id DESC LIMIT 1`'],
+    ['secondary sort key DESC', '`SELECT id FROM tasks WHERE workplace_ref=? ORDER BY sort_order, id DESC`'],
+    ['lowercase sql', "`select id from tasks where workplace_ref=? order by id desc limit 1`"],
+  ];
+  for (const [name, sql] of evasions) {
+    assert.ok(
+      detectNewestWinsTaskSelections(sql).length >= 1,
+      `evasion shape must be caught: ${name}`,
+    );
+  }
+  // Classified-legal shapes must NOT fire (scope guard — see the block
+  // comment above): exact append-frontiers and non-task chronology stay out.
+  const legal = [
+    ['exact generation_key append frontier (no workplace chronology)', '`SELECT id FROM tasks WHERE generation_key=? ORDER BY id DESC LIMIT 1`'],
+    ['execution-attempt frontier inside the exact author task', "`FROM tasks t JOIN worker_executions we ON we.task_id=t.id WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='author' ORDER BY we.reserved_at DESC,we.execution_id DESC LIMIT 1`"],
+    ['ascending full-chain read', '`FROM tasks t JOIN factory_workplaces w ON w.workplace_ref = t.workplace_ref ORDER BY t.id`'],
+    ['ascending single-read tiebreak', "`SELECT t.id FROM tasks t WHERE t.workplace_ref=? AND json_extract(t.metadata,'$.role')='author' ORDER BY t.id LIMIT 1`"],
+    ['workplace-unscoped newest-first operator listing', '`SELECT * FROM tasks ORDER BY created_at DESC LIMIT 50`'],
+    ['workplace projection without chronology', '`SELECT id FROM tasks WHERE workplace_ref=?`'],
+  ];
+  for (const [name, sql] of legal) {
+    assert.deepEqual(
+      detectNewestWinsTaskSelections(sql),
+      [],
+      `classified-legal shape must not fire: ${name}`,
+    );
+  }
 });
 
 // ===========================================================================

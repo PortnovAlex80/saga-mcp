@@ -62,6 +62,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -151,6 +152,45 @@ test('K7: every newest-wins selector in authority persistence is classified, and
     + 'baseline (both growth and staleness fail). If you removed a selector, '
     + 're-run `node tools/legacy-freeze.mjs --snapshot` in the same commit.',
   );
+});
+
+test('K2 provenance: legacy-allowlist capturedAtSha names a commit whose tree contains every allowlisted file', () => {
+  // TASK-SHADOW L3 (2026-08-24): the re-snapshot that admitted
+  // sqlite-recovery-epoch-ledger.ts had recorded capturedAtSha=ee4090207ff8 —
+  // the pre-commit HEAD — but that tree does NOT contain the file (the
+  // snapshot content first exists in c33ee9e2's tree). `--snapshot` runs
+  // before its own commit, so the honest provenance value is the FIRST
+  // commit whose tree actually carries the captured baseline. This check
+  // makes that contract machine-enforced: every allowlisted file must exist
+  // in the tree of the named commit, so a future re-snapshot cannot point at
+  // a tree that predates the files it claims to have captured.
+  assert.match(
+    String(allowlist.capturedAtSha),
+    /^[0-9a-f]{7,40}$/u,
+    'legacy-allowlist.json must record a commit hash as capturedAtSha',
+  );
+  const ls = spawnSync(
+    'git',
+    ['-C', REPO_ROOT, 'ls-tree', '-r', '--name-only', String(allowlist.capturedAtSha)],
+    { encoding: 'utf8' },
+  );
+  assert.equal(
+    ls.status,
+    0,
+    `capturedAtSha '${allowlist.capturedAtSha}' must name an existing commit: ${ls.stderr}`,
+  );
+  const treeFiles = new Set(ls.stdout.split(/\r?\n/));
+  for (const [category, entry] of Object.entries(allowlist.categories)) {
+    for (const file of entry.files ?? []) {
+      assert.ok(
+        treeFiles.has(file),
+        `capturedAtSha ${allowlist.capturedAtSha} (category '${category}') does not contain `
+          + `allowlisted file ${file} — the provenance sha must name a commit whose tree `
+          + `actually carries the captured baseline; never invent a hash, point at the `
+          + `first commit that truly contains the snapshot content`,
+      );
+    }
+  }
 });
 
 test('K7: no K7-owned file remains unclassified as authority-latest-wins', () => {
