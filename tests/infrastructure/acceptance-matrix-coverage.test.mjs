@@ -426,6 +426,52 @@ test('G2s: BOTH snapshot corpus suites are hosted blocking (per-file removal/de-
   }
 });
 
+// G2t — ADR-096 gate item 2 (W3, 2026-08-25): the K4 crash/fault edges are
+// BLOCKING. The four ADR-048 worker-boundary crash suites (exit before
+// product submission / exit after submission before worker_done / accepted
+// receipt authoritative / terminal execution with stale host) were
+// quarantined whole-directory as FLAKY by CI-02; re-validated green on the
+// current baseline (isolation AND the hosted k4-fault-edges group form),
+// they were de-quarantined into that blocking group — the STAGE-23
+// revalidation precedent. Deleting any file, dropping it from the run-set,
+// or re-quarantining it must fail HERE, not silently unblock the ADR-096
+// gate. Asserted against runSet only: quarantining a crash-edge proof is
+// not an honest way to drop it.
+test('G2t: the four ADR-048 worker-boundary crash suites are hosted blocking (K4 fault edges, ADR-096 gate item 2)', () => {
+  const required = [
+    'tests/factory-temporal/worker-boundary-1-exit-pre-submit.test.mjs',
+    'tests/factory-temporal/worker-boundary-2-exit-post-submit.test.mjs',
+    'tests/factory-temporal/worker-boundary-3-receipt-authoritative.test.mjs',
+    'tests/factory-temporal/worker-boundary-4-stale-host.test.mjs',
+  ];
+  for (const f of required) {
+    assert.ok(
+      runSet.has(f),
+      `${f} must stay in a blocking run-set (K4 crash/fault edges are blocking per ADR-096 gate item 2)`,
+    );
+    assert.ok(
+      !qSet.has(f),
+      `${f} must NOT be re-quarantined — it was de-quarantined 2026-08-25 after per-file revalidation; a fresh failing run is required first`,
+    );
+  }
+});
+
+// G2u — ADR-096 gate item 2 (W3, 2026-08-25): the measured, non-zero,
+// deterministic mutation-kill floor is BLOCKING.
+// tests/factory-proof/mutation-kill-floor.test.mjs compiles the pinned
+// register of architectural-ban mutants (execution-scoped lookup, latest-wins
+// selection, scope-fence bypass, authority digest skip) through the shared
+// mutation algebra and measures the kills against real dist/ rejection
+// boundaries (21/21, zero survivors). Removing the exact file or dropping it
+// from the factory-proof run-set must fail HERE — an unhosted kill floor
+// proves nothing. Asserted against runSet only.
+test('G2u: the ADR-096 mutation-kill floor suite is hosted blocking (measured, non-zero)', () => {
+  assert.ok(
+    runSet.has('tests/factory-proof/mutation-kill-floor.test.mjs'),
+    'mutation-kill-floor must stay in a blocking run-set (ADR-096 gate item 2: non-zero mutation kill floor is blocking)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 // STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
 // the required list — re-validated GREEN (2/2) on the current baseline; the
@@ -443,9 +489,16 @@ test('G3: known flaky / pre-existing-red files are quarantined', () => {
   assert.ok(!qSet.has('tests/process-modules/development-task-graph-diagnostics.test.mjs'),
     'development-task-graph-diagnostics was de-quarantined 2026-08-24 (re-validated green) '
     + 'and must not be re-quarantined without a fresh failing run');
-  // factory-temporal: the whole suite is quarantined (>= 5 files).
+  // factory-temporal: the L3 composition files stay quarantined. The four
+  // worker-boundary crash suites were de-quarantined 2026-08-25 (ADR-096
+  // gate item 2, hosted blocking in k4-fault-edges, guard G2t) — only the
+  // remaining composition files keep the FLAKY quarantine.
   const temporal = quarantine.filter(q => q.path.startsWith('tests/factory-temporal/'));
   assert.ok(temporal.length >= 5, `factory-temporal quarantine incomplete: ${temporal.length}`);
+  for (const q of temporal) {
+    assert.ok(!q.path.includes('worker-boundary'),
+      `${q.path}: the worker-boundary crash suites were de-quarantined 2026-08-25 and must not be re-quarantined (G2t)`);
+  }
 });
 
 test('G3b: flaky quarantine entries reference either the W9 replacement or a stabilization plan', () => {

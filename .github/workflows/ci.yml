@@ -51,7 +51,10 @@ jobs:
       # driven suites; it is out of this matrix's scope until those cards land.
       #
       # Quarantined at CI-02 (single source of truth: tools/run-acceptance-matrix.mjs):
-      #   FLAKY            golden-path, parallel-git-desk, factory-temporal/*
+      #   FLAKY            golden-path, parallel-git-desk, six factory-temporal
+      #                    L3 composition files (the four worker-boundary crash
+      #                    suites were de-quarantined 2026-08-25 into the
+      #                    blocking k4-fault-edges group — ADR-096 gate item 2)
       #   PRE-EXISTING-RED development-task-graph-diagnostics,
       #                    worker-done-completion-authority (deleted module),
       #                    submission-validator-diagnostics (assertion drift),
@@ -102,6 +105,15 @@ jobs:
       # same commit it lands.
       - name: Matrix — R1 omnibus (W9 deterministic E2E)
         run: node tools/run-acceptance-matrix.mjs --group e2e-deterministic
+
+      # ADR-096 gate item 2 (2026-08-25): the K4 crash/fault edges are
+      # BLOCKING. The four ADR-048 worker-boundary crash suites were
+      # de-quarantined after per-file revalidation (green in isolation and in
+      # this exact group form) and hosted here; the measured non-zero
+      # mutation-kill floor runs inside the factory-proof group. Per-file
+      # removal guard G2t in the matrix-coverage step.
+      - name: Matrix — K4 fault edges (ADR-096 gate item 2)
+        run: node tools/run-acceptance-matrix.mjs --group k4-fault-edges
 
       - name: Matrix — R1 omnibus (conveyor app zone)
         run: node tools/run-acceptance-matrix.mjs --group conveyor-app

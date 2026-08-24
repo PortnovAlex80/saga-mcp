@@ -464,6 +464,30 @@ const GROUPS = {
     concurrency: 1,
     note: 'R1 omnibus closure: execution hooks, carry-forward adversarial matrix, dispatcher-race test files, routing, tracker-view, docs-graph, restore-from-checkpoint, module-authoring/scenario kits, ADR registry, modules-ext, root singles. G2l keeps the whole repo orphan-free.',
   },
+  // ADR-096 gate item 2 (W3, 2026-08-25): the K4 crash/fault edges are
+  // BLOCKING. The four ADR-048 worker-boundary crash suites (exit before
+  // product submission / exit after submission before worker_done / accepted
+  // receipt is authoritative / terminal execution with a stale host) were
+  // quarantined WHOLE-DIRECTORY as FLAKY by CI-02 ("whole suite churns
+  // run-to-run"); re-validated 2026-08-25 on this baseline they are
+  // deterministic-green — each in isolation (75-83s) AND in the exact hosted
+  // form below (one node --test process, concurrency 1, 4/4 in 294s). The
+  // STAGE-23 precedent (development-task-graph-diagnostics de-quarantine):
+  // quarantine entries must be revalidated when their subject moves. The
+  // REMAINING factory-temporal L3 composition suites stay quarantined (see
+  // QUARANTINE) — only the crash-edge files split out. Exact files on
+  // purpose: the hosted fault-edge surface cannot silently widen. Per-file
+  // removal guard G2t in tests/infrastructure/acceptance-matrix-coverage.test.mjs.
+  'k4-fault-edges': {
+    globs: [
+      'tests/factory-temporal/worker-boundary-1-exit-pre-submit.test.mjs',
+      'tests/factory-temporal/worker-boundary-2-exit-post-submit.test.mjs',
+      'tests/factory-temporal/worker-boundary-3-receipt-authoritative.test.mjs',
+      'tests/factory-temporal/worker-boundary-4-stale-host.test.mjs',
+    ],
+    concurrency: 1,
+    note: 'ADR-096 gate item 2 — the ADR-048 worker-boundary crash edges BLOCKING (exit pre-submit / exit post-submit / authoritative receipt / stale host): every crash converges to progress, typed wait or terminal incident (CONVEYOR §23 L4). De-quarantined 2026-08-25 after per-file revalidation (green in isolation AND hosted form).',
+  },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
@@ -496,6 +520,13 @@ const GROUPS = {
       // multi-phase 61s proofs stay in the manual harvest path, NOT here.
       'tests/factory-proof/conformance-engine.test.mjs',
       'tests/factory-proof/coverage-kernel.test.mjs',
+      // ADR-096 gate item 2 (W3, 2026-08-25): the MEASURED, NON-ZERO,
+      // deterministic mutation-kill floor — 21 declared architectural-ban
+      // mutants (execution-scoped lookup, latest-wins selection, scope-fence
+      // bypass, authority digest skip) killed by real dist/ boundaries
+      // through the shared mutation algebra. Exact file on purpose; removal
+      // guard G2u in tests/infrastructure/acceptance-matrix-coverage.test.mjs.
+      'tests/factory-proof/mutation-kill-floor.test.mjs',
       'tests/factory-proof/delivery-kernel-unification.test.mjs',
       'tests/factory-proof/development-scenario-pack.test.mjs',
       'tests/factory-proof/discovery-resilience-pack.test.mjs',
@@ -529,9 +560,31 @@ const QUARANTINE = [
   { glob: 'tests/factory-contract/parallel-git-desk.test.mjs',
     kind: 'FLAKY',
     reason: 'drives orchestrate-cli (concurrency=2 worktree isolation); REPLAY_CAPSULE_CONTEXT_INVALID. W9 scripted E2E replaces it.' },
-  { glob: 'tests/factory-temporal/*.test.mjs',
+  // factory-temporal — the four ADR-048 worker-boundary CRASH suites were
+  // DE-QUARANTINED 2026-08-25 (ADR-096 gate item 2): re-validated green in
+  // isolation AND in the hosted k4-fault-edges group form; they now run
+  // BLOCKING (per-file guard G2t). The directory glob is replaced by the
+  // explicit remaining L3 composition files so the de-quarantine cannot
+  // accidentally re-admit a churny file (STAGE-23 precedent: quarantine
+  // entries must be revalidated when their subject moves).
+  { glob: 'tests/factory-temporal/candidate-gate.test.mjs',
     kind: 'FLAKY',
-    reason: 'whole suite churns run-to-run (temporal / orchestrate-cli driven). W9 scripted E2E replaces it.' },
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
+  { glob: 'tests/factory-temporal/dispatch-concurrency.test.mjs',
+    kind: 'FLAKY',
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
+  { glob: 'tests/factory-temporal/external-effects.test.mjs',
+    kind: 'FLAKY',
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
+  { glob: 'tests/factory-temporal/foundation.test.mjs',
+    kind: 'FLAKY',
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
+  { glob: 'tests/factory-temporal/lifecycle-routing.test.mjs',
+    kind: 'FLAKY',
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
+  { glob: 'tests/factory-temporal/package-replay-drift.test.mjs',
+    kind: 'FLAKY',
+    reason: 'L3 temporal composition churns run-to-run (orchestrate-cli driven). W9 scripted E2E replaces its lane; the worker-boundary crash edges were split out into the blocking k4-fault-edges group 2026-08-25.' },
   // STAGE-23 (2026-08-24): tests/process-modules/development-task-graph-diagnostics.test.mjs
   // was de-quarantined — re-validated GREEN (2/2, exit 0) on the current
   // baseline; the 'stale producerExecutionRef mock' rotted away upstream but
