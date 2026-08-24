@@ -110,7 +110,7 @@ const LEGACY_VERSION = ADR_095_INVENTORY.moduleIdentity.version; // '3.0.2'
 // State-marker sanity — the arms must key on real, coherent markers.
 // ===========================================================================
 
-test('R0: ratchet state markers are coherent (dist built, version marker readable, pre-cutover today)', () => {
+test('R0: Phase-5 state markers are coherent (dist built, versioned cutover, closure absent)', () => {
   assert.ok(state.distAvailable, 'dist/ must be built before the ratchet suite can testify (npm run build)');
   assert.ok(semverGt(state.srcVersion, LEGACY_VERSION),
     `the cutover version must be above ${LEGACY_VERSION} (got ${state.srcVersion})`);
@@ -118,8 +118,8 @@ test('R0: ratchet state markers are coherent (dist built, version marker readabl
     'src and dist version markers must agree (rebuild in the same commit as any bump)');
   assert.equal(state.phase4Landed, true, 'the module-version marker arms the post-cutover checks');
   assert.equal(state.deadFilesRemaining.length, 0, 'all classified dead phase-4 files are absent');
-  assert.equal(state.closureInSchema, true,
-    'the fresh schema still creates the legacy closure today (removal is Phase 5)');
+  assert.equal(state.closureInSchema, false,
+    'the fresh schema no longer creates any member of the legacy closure');
 });
 
 // ===========================================================================
@@ -238,8 +238,8 @@ test('R2e: MUTATION — post-cutover handler version NOT bumped turns ratchet 2 
 // R3 — full src symbol/table absence (ratchet 3)
 // ===========================================================================
 
-test('R3a: pre-state arm — every removal symbol sits INSIDE its pinned allowed sites (real tree GREEN)', () => {
-  const errors = checkR3(srcScan, /* phase4Landed */ false, /* closureInSchema */ true);
+test('R3a: post-Phase-5 arm has no removed symbol or table in src (real tree GREEN)', () => {
+  const errors = checkR3(srcScan, /* phase4Landed */ true, /* closureInSchema */ false);
   assert.deepEqual(errors, [],
     `today all dead symbols must be confined to the classified dead files + the pinned allowedOutside hosts: ${errors.join(' | ')}`);
 });
@@ -313,7 +313,7 @@ test('R3f: MUTATION — the REINTRODUCED Discovery settlement query in settlemen
 // R4 — dist-aware clean-build absence (ratchet 4)
 // ===========================================================================
 
-test('R4a: pre-state arm — the clean build emits every still-present dead module (build faithfulness, real tree GREEN)', () => {
+test('R4a: post-cutover clean build emits no dead module (real tree GREEN)', () => {
   const errors = checkR4(state);
   assert.deepEqual(errors, [],
     `the dist must faithfully mirror the present dead files today (no stale dist): ${errors.join(' | ')}`);
@@ -339,16 +339,16 @@ test('R4b: MUTATION — an emitted dead module surviving in dist post-cutover tu
 // R5 — fresh DB lacks the full closure (ratchet 5)
 // ===========================================================================
 
-test('R5a: real fresh DB through dist/db.js getDb carries the COMPLETE closure today (pre-state GREEN)', async () => {
+test('R5a: real fresh DB through dist/db.js carries none of the legacy closure', async () => {
   const fresh = await createFreshDbObjects(REPO_ROOT);
-  const errors = checkR5(fresh, /* phase4Landed */ false);
+  const errors = checkR5(fresh, /* phase4Landed */ true);
   assert.deepEqual(errors, [],
-    `the fresh-DB closure must be COMPLETE (all ten tables + nineteen indexes) pre-removal: ${errors.join(' | ')}`);
+    `the fresh-DB closure must be absent after removal: ${errors.join(' | ')}`);
   for (const t of ADR_095_INVENTORY.deadPhase5Tables) {
-    assert.ok(fresh.tables.has(t), `pre-state fact: fresh DB creates ${t}`);
+    assert.equal(fresh.tables.has(t), false, `fresh DB must not create ${t}`);
   }
   for (const i of ADR_095_INVENTORY.deadPhase5Indexes) {
-    assert.ok(fresh.indexes.has(i), `pre-state fact: fresh DB creates ${i}`);
+    assert.equal(fresh.indexes.has(i), false, `fresh DB must not create ${i}`);
   }
 });
 
@@ -357,6 +357,7 @@ test('R5b: MUTATION — ONE reintroduced legacy CREATE TABLE post-phase-5 turns 
   const mutated = {
     tables: new Set(['factory_proposals', ...ADR_095_INVENTORY.keptLive.keptTables]),
     indexes: new Set(ADR_095_INVENTORY.keptLive.keptIndexes),
+    triggers: new Set(ADR_095_INVENTORY.keptLive.keptTriggers),
   };
   const errors = checkR5(mutated, /* phase4Landed */ true);
   assert.ok(errors.some((e) => e.includes('PARTIAL legacy closure') && e.includes('factory_proposals')),
@@ -367,6 +368,7 @@ test('R5c: MUTATION — schema closure removed BEFORE the phase-4 cutover turns 
   const mutated = {
     tables: new Set(ADR_095_INVENTORY.keptLive.keptTables),
     indexes: new Set(ADR_095_INVENTORY.keptLive.keptIndexes),
+    triggers: new Set(ADR_095_INVENTORY.keptLive.keptTriggers),
   };
   const errors = checkR5(mutated, /* phase4Landed */ false);
   assert.ok(errors.some((e) => e.includes('F2') || e.includes('Decision 3')),
@@ -374,7 +376,14 @@ test('R5c: MUTATION — schema closure removed BEFORE the phase-4 cutover turns 
 });
 
 test('R5d: MUTATION — losing the KEPT factory_work_intents table REDs in every state (never part of the removal)', () => {
-  const mutated = { tables: new Set(ADR_095_INVENTORY.deadPhase5Tables), indexes: new Set(ADR_095_INVENTORY.deadPhase5Indexes) };
+  const mutated = {
+    tables: new Set(ADR_095_INVENTORY.deadPhase5Tables),
+    indexes: new Set([
+      ...ADR_095_INVENTORY.deadPhase5Indexes,
+      ...ADR_095_INVENTORY.keptLive.keptIndexes,
+    ]),
+    triggers: new Set(ADR_095_INVENTORY.keptLive.keptTriggers),
+  };
   const errors = checkR5(mutated, /* phase4Landed */ false);
   assert.ok(errors.some((e) => e.includes('factory_work_intents')),
     `dropping the kept shared-protocol table must RED (got: ${errors.join(' | ')})`);
@@ -551,7 +560,7 @@ test('P3b: MUTATION — a LYING phase-3 status is rejected by the inventory vali
 // R8 — consolidated gate: every checker GREEN over the real tree, today
 // ===========================================================================
 
-test('R8: consolidated real-tree gate — R1..R5 checkers all GREEN on the legacy-present tree', async () => {
+test('R8: consolidated real-tree gate — R1..R5 checkers all GREEN after Phase 5', async () => {
   const r1 = checkR1(depTestSource).errors;
   const r2 = checkR2(state, { ...manifestFacts, srcVersion: state.srcVersion, distVersion: state.distVersion });
   const r3 = checkR3(srcScan, state.phase4Landed, state.closureInSchema);

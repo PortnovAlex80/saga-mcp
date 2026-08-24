@@ -177,18 +177,14 @@ function compositionDeps(db) {
 test('P3.3-1: the REAL product-lifecycle composition boots without recreating the dropped legacy closure (F2 seam closed)', async () => {
   const fx = openFreshDb();
   try {
-    // Precondition — the still-existing legacy schema (Phase 5 has NOT
-    // landed): a fresh production DB carries the whole closure natively.
+    // Phase-5 truth: a fresh production DB carries none of the closure.
     for (const table of CLOSURE_TABLES) {
-      assert.ok(tableExists(fx.db, table), `fresh schema still creates ${table}`);
+      assert.equal(tableExists(fx.db, table), false, `fresh schema must not create ${table}`);
     }
 
-    // The counterfactual: the post-Phase-5 fresh-schema world (closure
-    // absent). Pre-3.3 the composition line `new SqliteFactoryDiscoveryRuntime()`
+    // Pre-3.3 the composition line `new SqliteFactoryDiscoveryRuntime()`
     // ran its four ensure* constructors HERE and silently REGREW the closure
     // (F2) — on this tree the composition must leave it absent.
-    dropClosure(fx.db);
-
     const runtime = createProductLifecycleRuntime(compositionDeps(fx.db));
     // The composition really executed and registered the modules.
     assert.deepEqual(
@@ -278,6 +274,7 @@ test('P3.3-2 positive control: the dead adapter still lazily recreates its closu
     // Case A — regrow: drop ONLY the seven constructor-ensured tables
     // (factory_proposals stays so the adapter's follow-up ALTER is a no-op);
     // constructing the dead adapter must bring all seven back.
+    fx.db.exec('CREATE TABLE factory_proposals (id INTEGER PRIMARY KEY)');
     fx.db.pragma('foreign_keys = OFF');
     for (const table of CONSTRUCTOR_ENSURED_TABLES) fx.db.exec(`DROP TABLE IF EXISTS ${table}`);
     fx.db.pragma('foreign_keys = ON');

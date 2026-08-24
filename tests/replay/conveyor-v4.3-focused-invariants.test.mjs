@@ -281,9 +281,10 @@ test('5+6: product_submit is projection-free — the Discovery proposal is an or
     // (a) no legacy response field;
     assert.equal(Object.hasOwn(reply, 'discovery_proposal_id'), false,
       'product_submit must not provide the legacy discovery_proposal_id field');
-    // (b) no factory_proposals projection row on the still-existing table;
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_proposals').get().n, 0,
-      'product_submit must not recreate the legacy factory_proposals projection row');
+    // (b) the retired factory_proposals table is absent from the fresh schema;
+    assert.equal(db.prepare(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='factory_proposals'",
+    ).get().n, 0, 'fresh schema must not contain the legacy factory_proposals table');
     // (c) no PROPOSAL_REF_SCHEMA side product on the universal desk.
     assert.equal(db.prepare(
       `SELECT COUNT(*) AS n FROM factory_process_products
@@ -302,7 +303,9 @@ test('5+6: product_submit is projection-free — the Discovery proposal is an or
       }),
       /MANAGED_NODE_SUBMISSION_(PROCESS_NOT_RUNNING|EXECUTION_NOT_RUNNING|FENCE)/,
     );
-    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM factory_proposals').get().n, 0);
+    assert.equal(db.prepare(
+      "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='factory_proposals'",
+    ).get().n, 0);
 
     closeDb();
   } finally {

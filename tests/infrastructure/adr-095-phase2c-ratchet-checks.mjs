@@ -186,12 +186,13 @@ export async function createFreshDbObjects(repoRoot) {
     const { getDb, closeDb } = await import(pathToFileURL(path.join(repoRoot, 'dist', 'db.js')).href);
     const db = getDb();
     const rows = db
-      .prepare("SELECT type, name FROM sqlite_master WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%'")
+      .prepare("SELECT type, name FROM sqlite_master WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%'")
       .all();
     closeDb();
     return {
       tables: new Set(rows.filter((r) => r.type === 'table').map((r) => r.name)),
       indexes: new Set(rows.filter((r) => r.type === 'index').map((r) => r.name)),
+      triggers: new Set(rows.filter((r) => r.type === 'trigger').map((r) => r.name)),
     };
   } finally {
     delete process.env.DB_PATH;
@@ -576,7 +577,7 @@ export function checkR4(state) {
  */
 export function checkR5(freshDbObjects, phase4Landed) {
   const errors = [];
-  const { tables, indexes } = freshDbObjects;
+  const { tables, indexes, triggers } = freshDbObjects;
   const deadTables = INVENTORY.deadPhase5Tables;
   const deadIndexes = INVENTORY.deadPhase5Indexes;
 
@@ -587,6 +588,16 @@ export function checkR5(freshDbObjects, phase4Landed) {
   for (const t of INVENTORY.keptLive.keptTables) {
     if (!tables.has(t)) {
       errors.push(`R5: kept live table MISSING from the fresh DB: ${t} (never part of the removal)`);
+    }
+  }
+  for (const i of INVENTORY.keptLive.keptIndexes) {
+    if (!indexes.has(i)) {
+      errors.push(`R5: kept live index MISSING from the fresh DB: ${i} (never part of the removal)`);
+    }
+  }
+  for (const trigger of INVENTORY.keptLive.keptTriggers) {
+    if (!triggers.has(trigger)) {
+      errors.push(`R5: kept live trigger MISSING from the fresh DB: ${trigger} (never part of the removal)`);
     }
   }
 
