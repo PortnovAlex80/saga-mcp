@@ -94,6 +94,24 @@ jobs:
         # neither hosted nor quarantined.
         run: node tools/run-acceptance-matrix.mjs --group desk-coverage
 
+      # R1 omnibus closure (2026-08-24 orphan research, operator-approved):
+      # every remaining repo orphan probed in isolation — 185/186 green and
+      # deterministic — hosted as four contention-isolated zone groups.
+      # G2l in the matrix-coverage step keeps the repo orphan-free: a new
+      # test file must be hosted (or quarantined/live-allowlisted) in the
+      # same commit it lands.
+      - name: Matrix — R1 omnibus (W9 deterministic E2E)
+        run: node tools/run-acceptance-matrix.mjs --group e2e-deterministic
+
+      - name: Matrix — R1 omnibus (conveyor app zone)
+        run: node tools/run-acceptance-matrix.mjs --group conveyor-app
+
+      - name: Matrix — R1 omnibus (conveyor infra zone)
+        run: node tools/run-acceptance-matrix.mjs --group conveyor-infra
+
+      - name: Matrix — R1 omnibus (conveyor periphery zone)
+        run: node tools/run-acceptance-matrix.mjs --group conveyor-periphery
+
       - name: Dispatcher race gate (concurrency safety)
         # Concurrent worker_next must never double-claim a card. These are plain
         # .mjs scripts (not auto-discovered by `node --test`), so they have their

@@ -233,6 +233,37 @@ test('G2k: every workshop desk suite is hosted or quarantined (desk-zone complet
     + 'group (or quarantined with a documented reason) in the same commit it lands');
 });
 
+// G2l — R1 omnibus closure ratchet (2026-08-24 orphan research): NO test file
+// in the repository may be an orphan. Every *.test.mjs must be hosted in a
+// blocking run-set, quarantined with a reason, or on the explicit LIVE
+// allowlist (declared live-sandbox preconditions that skip everywhere —
+// hosting them adds no CI signal and would fake coverage with a green dot).
+// This makes the CC-GAP-8 orphan class (committed but never executed)
+// structurally impossible repo-wide.
+const LIVE_SANDBOX_ALLOWLIST = new Set([
+  'tests/app/factory-redevelopment.test.mjs',
+  'tests/infrastructure/development-verification-continuation-live.test.mjs',
+]);
+test('G2l: the repository has ZERO orphan test files (R1 omnibus ratchet)', () => {
+  const tracked = spawnSync('git', ['ls-files', '*.test.mjs'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(tracked.status, 0, 'git ls-files must succeed');
+  const ciText = readFileSync(ciPath, 'utf8');
+  const ciInvoked = new Set(
+    [...ciText.matchAll(/(?:node(?:\s+--test)?\s+)((?:tests|tools)\/[A-Za-z0-9_\/.-]+\.mjs)/g)].map((m) => m[1]),
+  );
+  const orphans = [];
+  for (const file of tracked.stdout.trim().split('\n').filter(Boolean)) {
+    if (runSet.has(file) || qSet.has(file) || LIVE_SANDBOX_ALLOWLIST.has(file) || ciInvoked.has(file)) continue;
+    orphans.push(file);
+  }
+  assert.deepEqual(orphans, [],
+    'orphan test files found — every suite must be hosted in a blocking group, quarantined '
+    + 'with a reason, or (live-sandbox class) added to LIVE_SANDBOX_ALLOWLIST in the same '
+    + 'commit it lands');
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 // STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
 // the required list — re-validated GREEN (2/2) on the current baseline; the
