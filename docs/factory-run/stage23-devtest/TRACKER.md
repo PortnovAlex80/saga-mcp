@@ -6,7 +6,16 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
-## Status: STOPPED (operator directive, 2026-08-24 ~11:50 local) — resume protocol below
+## Status: RESUMED (operator directive, 2026-08-24 10:50 UTC / 13:50 local)
+
+Resume executed per protocol: unpark released 1 operator hold (0 parked workplaces
+needed requeue), engine restarted as pid 29992 adopting the SAME launch
+`cdc27a79` (correct — the launch stayed active across the stop), controls
+running/concurrency 8, watchdog restarted (12h). The two stop-fenced tasks were
+immediately re-dispatched with FRESH executions (task 29 → `6717f79f…` pid 29044,
+task 30 → `e54525a6…` pid 49160, both running/executing within 6s of engine start).
+
+## (historical) STOPPED (operator directive, 2026-08-24 ~11:50 local) — resume protocol below
 
 **Stop evidence:** `factory.mjs stop --all --reason "operator directive: full stop,
 continue later"` — engine epic=1 pid 26996 braked (2 stale engine pids already dead),
