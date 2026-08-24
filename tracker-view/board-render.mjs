@@ -589,6 +589,22 @@ export function createBoardRenderApi({
       });
       const runnerConcurrency = document.getElementById('agent-concurrency');
       const runnerStatus = document.getElementById('agent-run-status');
+      // STAGE-23 one-entry law: this selector is the ONLY writer of the worker
+      // rate limit — POST /api/engine/concurrency updates controls.concurrency,
+      // which the engine's admission reads live. Every other layer (env stamps,
+      // catalog limits, resume re-stamping) is advisory or removed; an absent
+      // field falls back to 1.
+      runnerConcurrency.addEventListener('change', async () => {
+        const value = Number(runnerConcurrency.value);
+        const epicId = window.__sagaEpicId || ${controlEpic ? controlEpic.id : 'null'} || 1;
+        runnerConcurrency.disabled = true;
+        try {
+          await postOperation('/api/engine/concurrency', { value, epic_id: epicId });
+        } catch (err) {
+          alert('Не удалось установить concurrency: ' + err.message);
+          runnerConcurrency.disabled = false;
+        }
+      });
       function applyRunnerState(run) {
         const active = run?.active?.length || 0;
         // In v3 the agent-runner block is concurrency-only (no start/stop
