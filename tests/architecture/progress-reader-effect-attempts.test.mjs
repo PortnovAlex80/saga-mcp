@@ -94,8 +94,10 @@ test('the live-incident shape classifies without throwing (no phantom id column)
   const explanations = classifyFactoryProgress(db);
   const idle = explanations.find(e => e.scopeRef === IDLE_WP);
   assert.ok(idle, `idle workplace must be classified; got ${explanations.map(e => e.scopeRef).join(', ')}`);
-  assert.equal(idle.classification, 'typed_wait');
-  assert.match(idle.reason, /1 dependency edge/, 'the failed dependency must be named');
+  assert.equal(idle.classification, 'stalled',
+    'a terminal failed predecessor is a dead wake source, never a healthy typed wait');
+  assert.match(idle.reason, /1 dependency edge.*dead wake source/,
+    'the failed dependency and the absence of a wake source must be named');
 });
 
 test.after(() => {

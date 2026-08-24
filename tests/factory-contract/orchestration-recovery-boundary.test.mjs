@@ -25,7 +25,9 @@ function setupLifecycleScope() {
     CREATE TABLE factory_workplaces (
       workplace_ref TEXT PRIMARY KEY,
       process_run_id INTEGER NOT NULL,
-      loop_state TEXT NOT NULL
+      loop_state TEXT NOT NULL,
+      terminal_reason TEXT,
+      active_reservation_ref TEXT
     );
   `);
   // Deliberately make StageRun id != ProcessRun id. A direct
@@ -72,6 +74,8 @@ test('repair_wait/verifying/effect_pending are kernel progress but paused is hum
     assert.equal(state.kernelProgressCount, 3);
     assert.equal(state.humanPausedCount, 1);
     assert.equal(state.otherNonTerminalCount, 1);
+    assert.equal(state.stalledCount, 2,
+      'verifying/effect_pending without obligations are named stalls, not reasons to wait');
     assert.equal(state.states.terminal, undefined);
   } finally {
     db.close();
@@ -84,9 +88,9 @@ test('orchestrate-cli performs on-demand supervision and never treats paused as 
     'utf8',
   );
   assert.match(source, /supervisionHandle\.reconcileOnce\(\)/);
-  assert.match(source, /humanPausedCount > 0/);
+  assert.match(source, /idleDecision === 'stop-human-paused'/);
   assert.match(source, /require explicit resume/);
-  assert.match(source, /kernelProgressCount > 0/);
+  assert.match(source, /idleDecision === 'resume-runnable'/);
   assert.doesNotMatch(
     source,
     /lr\.current_stage_run_id\s*=\s*w\.process_run_id/,

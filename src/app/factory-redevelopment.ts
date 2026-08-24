@@ -27,8 +27,7 @@
 import { execFileSync } from 'node:child_process';
 import type Database from 'better-sqlite3';
 
-import { DEVELOPMENT_PROCESS_MODULE_REF } from '../process-modules/modules/development/development-process-module.js';
-import { DEVELOPMENT_CASE_SCHEMA } from '../modules/development/domain/development-schemas.js';
+import { developmentRedevelopmentPolicy } from '../modules/development/application/development-redevelopment-policy.js';
 import { SqliteLifecycleRunRepository } from '../process-modules/persistence/sqlite-lifecycle-run-repository.js';
 import { SqliteLifecycleContinuationRepository } from '../process-modules/persistence/sqlite-lifecycle-continuation-repository.js';
 import { sha256Hex } from '../shared/canonical-json.js';
@@ -154,25 +153,23 @@ export function prepareDevelopmentRedevelopment(
   // (live: impl-shared-core failed under 7 integration conflicts, redevelop
   // refused the blocked parent, continue's baseline adoption refused the
   // pre-C13 digests of all merged candidates).
-  const parentTerminatedFailed = parent !== undefined
-    && parent.status === 'completed'
-    && (parent.terminal_status === 'failed'
-      || parent.terminal_status === 'development-blocked');
   const lastStage = db.prepare(
     `SELECT stage_id, local_outcome FROM factory_stage_runs
       WHERE lifecycle_run_id=? ORDER BY id DESC LIMIT 1`,
   ).get(command.parentLifecycleRunId) as { stage_id: string; local_outcome: string } | undefined;
-  const failedAtSolutionDevelopment
-    = parent?.current_stage_id === 'solution-development'
-      || (lastStage?.stage_id === 'solution-development'
-        && (lastStage?.local_outcome === 'failed'
-          || (lastStage?.local_outcome === 'blocked'
-            && parent?.terminal_status === 'development-blocked')));
+  const acceptedByModulePolicy = parent !== undefined
+    && developmentRedevelopmentPolicy.acceptsParent({
+      status: parent.status,
+      currentStageId: parent.current_stage_id,
+      terminalStatus: parent.terminal_status,
+    }, lastStage ? {
+      stageId: lastStage.stage_id,
+      localOutcome: lastStage.local_outcome,
+    } : undefined);
   if (
     !parent
     || parent.epic_id === null
-    || !(parent.status === 'failed' || parentTerminatedFailed)
-    || !failedAtSolutionDevelopment
+    || !acceptedByModulePolicy
   ) {
     throw new Error('DEVELOPMENT_REDEVELOPMENT_PARENT_NOT_EXACT');
   }
@@ -198,9 +195,12 @@ export function prepareDevelopmentRedevelopment(
   const failedStage = db.prepare(
     `SELECT sr.process_run_id
        FROM factory_stage_runs sr
-      WHERE sr.lifecycle_run_id=? AND sr.stage_id='solution-development'
+      WHERE sr.lifecycle_run_id=? AND sr.stage_id=?
       ORDER BY sr.attempt DESC, sr.id DESC LIMIT 1`,
-  ).get(command.parentLifecycleRunId) as { process_run_id: number } | undefined;
+  ).get(
+    command.parentLifecycleRunId,
+    developmentRedevelopmentPolicy.stageId,
+  ) as { process_run_id: number } | undefined;
   if (!failedStage) {
     throw new Error('DEVELOPMENT_REDEVELOPMENT_CAPSULE_MISSING');
   }
@@ -212,7 +212,7 @@ export function prepareDevelopmentRedevelopment(
     input_snapshot: string;
     input_hash: string;
   } | undefined;
-  if (!processRun || processRun.input_schema !== DEVELOPMENT_CASE_SCHEMA) {
+  if (!processRun || processRun.input_schema !== developmentRedevelopmentPolicy.capsuleSchema) {
     throw new Error('DEVELOPMENT_REDEVELOPMENT_CAPSULE_MISSING');
   }
   // Integrity: the stored snapshot must still hash to its frozen input_hash —
@@ -235,7 +235,7 @@ export function prepareDevelopmentRedevelopment(
   const authorization = continuations.authorize({
     orderRef: command.orderRef,
     parentLifecycleRunId: command.parentLifecycleRunId,
-    resumeStageId: 'solution-development',
+    resumeStageId: developmentRedevelopmentPolicy.stageId,
     expectedParentError: parent.error
       ?? `TERMINAL_OUTCOME:${parent.terminal_status ?? 'missing'}`,
     actorId: command.actorId,
@@ -253,11 +253,11 @@ export function prepareDevelopmentRedevelopment(
       redevelopment: capsule,
     },
     stageOverrides: [{
-      stageId: 'solution-development',
+      stageId: developmentRedevelopmentPolicy.stageId,
       // The STANDARD module — NOT the managed recovery variant: the
       // planner re-carves the graph, real authors write real git worktrees,
       // the stage-18 gates (R1/R2/R3) stand in their production path.
-      moduleRef: DEVELOPMENT_PROCESS_MODULE_REF,
+      moduleRef: developmentRedevelopmentPolicy.moduleRef,
       additiveInputMapping: REDEVELOPMENT_INPUT_MAPPING,
     }],
   });

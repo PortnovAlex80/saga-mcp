@@ -654,13 +654,14 @@ test('authorized author production is carried into a new current CandidateSet an
   h.db.close();
 });
 
-test('a terminal-FAILED dependency root settles the node failed instead of pausing forever', async () => {
+test('a terminal-FAILED dependency root is not masked by dependent, independent, or human-paused siblings', async () => {
   // Live Elite-9 deadlock shape (2026-08-24): the shared-core root terminally
   // failed under post-acceptance effect exhaustion; every dependent returned
   // pendingOutcome (its wake source is dead), and pending masked failed in the
   // node's outcome aggregation — paused/worker_active forever, the honest
   // domain failure never reached the stage. Doomed pending must count as
-  // failed; independent branches (none here) must still defer the verdict.
+  // failed; neither an unrelated runnable branch nor a human park may erase
+  // the irreversible terminal failure fact.
   const h = harness();
   const definition = cell({ fanout: true });
   definition.materialization.dependencySelector = 'dependsOnKeys';
@@ -674,6 +675,8 @@ test('a terminal-FAILED dependency root settles the node failed instead of pausi
           items: [
             { key: 'root', dependsOnKeys: [] },
             { key: 'dependent', dependsOnKeys: ['root'] },
+            { key: 'independent', dependsOnKeys: [] },
+            { key: 'human', dependsOnKeys: [] },
           ],
         },
       },
@@ -703,6 +706,11 @@ test('a terminal-FAILED dependency root settles the node failed instead of pausi
         SET kanban_phase='failed', loop_state='terminal', terminal_reason='failed'
       WHERE workplace_ref=?`,
   ).run(rootRef);
+  h.db.prepare(
+    `UPDATE factory_workplaces
+        SET kanban_phase='blocked', loop_state='paused'
+      WHERE work_key='human'`,
+  ).run();
   const result = await h.executor.execute(ctx);
   assert.equal(result.runtimeEvent, 'completed');
   assert.equal(result.domainEvent, 'failed');

@@ -533,21 +533,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       ));
     }
 
-    // Both branches yield the same flow-control literal, but they are opposite
-    // facts (CONVEYOR §23): a human park has no machine wake source, while
-    // pending production is owned by a fenced worker/gate and will move on its
-    // own. `pause.kind` preserves that distinction for diagnostics and the
-    // progress-obligation classifier.
-    if (outcomes.some(outcome => outcome.paused)) {
-      return {
-        runtimeEvent: 'paused',
-        pause: {
-          kind: 'human_required',
-          reason: `cell '${cell.id}' parked awaiting a human decision`,
-        },
-        production: this.manifestProduction(cell, workplaces, outcomes, false),
-      };
-    }
     // A pending item whose dependency closure holds a terminal-FAILED
     // workplace has no wake source: it can never be admitted, so its pending
     // is a wait on a dead predecessor. Counting such items as pending let a
@@ -589,6 +574,33 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
       outcomes[index]!.failed || (outcomes[index]!.pending && doomedItemIds.has(workplaces[index]!.itemId))
         ? 'failed'
         : outcomes[index]!.pending ? 'pending' : 'settled';
+    // A terminal failure is an irreversible fact. An independent pending or
+    // human-paused sibling must not erase it by winning an aggregation-order
+    // race. The universal cell reports the honest failure; whether a
+    // particular workshop may re-enter, continue from a capsule, or await an
+    // operator is module-owned recovery policy outside this executor.
+    if (outcomes.some((_, index) => outcomeFor(index) === 'failed')) {
+      return {
+        runtimeEvent: 'completed',
+        domainEvent: 'failed',
+        production: this.manifestProduction(cell, workplaces, outcomes, true),
+      };
+    }
+    // Both branches yield the same flow-control literal, but they are opposite
+    // facts (CONVEYOR §23): a human park has no machine wake source, while
+    // pending production is owned by a fenced worker/gate and will move on its
+    // own. `pause.kind` preserves that distinction for diagnostics and the
+    // progress-obligation classifier.
+    if (outcomes.some(outcome => outcome.paused)) {
+      return {
+        runtimeEvent: 'paused',
+        pause: {
+          kind: 'human_required',
+          reason: `cell '${cell.id}' parked awaiting a human decision`,
+        },
+        production: this.manifestProduction(cell, workplaces, outcomes, false),
+      };
+    }
     if (outcomes.some((_, index) => outcomeFor(index) === 'pending')) {
       return {
         runtimeEvent: 'paused',
@@ -600,14 +612,6 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         production: this.manifestProduction(cell, workplaces, outcomes, false),
       };
     }
-    if (outcomes.some((_, index) => outcomeFor(index) === 'failed')) {
-      return {
-        runtimeEvent: 'completed',
-        domainEvent: 'failed',
-        production: this.manifestProduction(cell, workplaces, outcomes, true),
-      };
-    }
-
     const acceptedCount = outcomes.filter(outcome => outcome.accepted).length;
     const satisfied = completionSatisfied(cell, acceptedCount, outcomes.length);
     if (!satisfied) {

@@ -79,6 +79,9 @@ export function classifyFactoryProgress(
       unsatisfiedDependencies: hasDependencies
         ? countUnsatisfiedDependencies(db, workplace.workplace_ref)
         : 0,
+      terminalFailedDependencies: hasDependencies
+        ? countTerminalFailedDependencies(db, workplace.workplace_ref)
+        : 0,
       repairAttempts: hasEpochs ? readRepairAttempts(db, workplace.workplace_ref) : null,
       repairCap: hasEpochs ? readRepairCap(db, workplace.workplace_ref) : null,
       effectAttemptCap: defaultEffectAttemptCap(),
@@ -179,6 +182,21 @@ function countUnsatisfiedDependencies(
        JOIN factory_workplaces w ON w.workplace_ref=d.depends_on_workplace_ref
       WHERE d.workplace_ref=?
         AND NOT (w.loop_state='terminal' AND w.terminal_reason='accepted')`,
+  ).get(workplaceRef) as { n: number };
+  return row.n;
+}
+
+function countTerminalFailedDependencies(
+  db: Database.Database,
+  workplaceRef: string,
+): number {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n
+       FROM factory_workplace_dependencies d
+       JOIN factory_workplaces w ON w.workplace_ref=d.depends_on_workplace_ref
+      WHERE d.workplace_ref=?
+        AND w.loop_state='terminal'
+        AND (w.terminal_reason IS NULL OR w.terminal_reason<>'accepted')`,
   ).get(workplaceRef) as { n: number };
   return row.n;
 }

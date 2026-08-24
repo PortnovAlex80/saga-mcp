@@ -548,7 +548,7 @@ async function main() {
         // The lifecycle pause reason and the Workplace loop state are different
         // channels. Read ONLY the exact current StageRun -> ProcessRun scope;
         // LifecycleRun.current_stage_run_id is not a ProcessRun id.
-        const { readCurrentStageWorkplaceState } = await import(
+        const { readCurrentStageWorkplaceState, decideEmptyDispatch } = await import(
           './app/orchestration-idle-state.js'
         );
         const workplaceState = readCurrentStageWorkplaceState(
@@ -556,7 +556,26 @@ async function main() {
           lastResult?.lifecycleRun?.id ?? 0,
         );
 
-        if (workplaceState.humanPausedCount > 0) {
+        const idleDecision = decideEmptyDispatch(workplaceState);
+
+        if (idleDecision === 'stop-unhealthy') {
+          // A nonterminal scope without exactly one truthful progress
+          // explanation is not a wait. In particular, a queued Workplace
+          // whose predecessor is terminal(non-accepted) has a dead wake
+          // source. Stop loudly so module-owned settlement/recovery policy can
+          // route the honest failure; the universal engine never guesses a
+          // workshop-specific recovery action.
+          enginePhaseMark('stop-unhealthy-progress');
+          engineLog(
+            `[orchestrate-cli] empty dispatch exposed stalled/inconsistent progress: `
+            + `${JSON.stringify(workplaceState.progress.filter(explanation =>
+              explanation.classification === 'stalled'
+              || explanation.classification === 'inconsistent_state'))}`,
+          );
+          break;
+        }
+
+        if (idleDecision === 'stop-human-paused') {
           // `paused` is the explicit onExhausted/human-required boundary. It is
           // intentionally invisible to normal dispatch and supervision. Do not
           // wait forever pretending this is automatic recovery.
@@ -568,7 +587,7 @@ async function main() {
           break;
         }
 
-        if (workplaceState.kernelProgressCount > 0) {
+        if (idleDecision === 'resume-runnable') {
           // repair_wait/verifying/effect_pending are driven synchronously by
           // the ProductionCellNodeExecutor on the NEXT runEpisode call. They do
           // not wait for the 30s worker-supervision timer. Resume the kernel
@@ -576,26 +595,19 @@ async function main() {
           emptyDispatchStreak = 0;
           enginePhaseMark('resume-kernel');
           engineLog(
-            `[orchestrate-cli] kernel-owned workplace progress pending `
+            `[orchestrate-cli] durable runnable/transition progress pending `
             + `${JSON.stringify(workplaceState.states)} — resuming lifecycle`,
           );
           await new Promise(resolve => setTimeout(resolve, 250));
           continue;
         }
 
-        if (workplaceState.otherNonTerminalCount > 0) {
-          // ADR-047 Decision 5, as written (Elite-9 incident, 2026-08-24):
-          // the bounded empty-queue streak is lawful ONLY when NOTHING
-          // explains the pause. Non-terminal stage work IS an explanation —
-          // the 8-idle-cards firing showed "empty dispatch result" can mean
-          // "the queue holds cards filtered out by the admission/dependency
-          // gates", which is waiting material, not emptiness. The streak
-          // must not count cycles explained by non-terminal work.
+        if (idleDecision === 'wait-proven') {
           emptyDispatchStreak = 0;
-          enginePhaseMark('wait-nonterminal-work');
+          enginePhaseMark('wait-proven-progress');
           engineLog(
-            `[orchestrate-cli] ${workplaceState.otherNonTerminalCount} non-terminal workplace(s) `
-            + `(${JSON.stringify(workplaceState.states)}) not claimable this cycle — waiting`,
+            `[orchestrate-cli] empty dispatch has a typed wait/live owner: `
+            + `${JSON.stringify(workplaceState.progress)}`,
           );
           await new Promise(resolve => setTimeout(resolve, 2000));
           continue;

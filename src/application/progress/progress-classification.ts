@@ -72,6 +72,8 @@ export interface WorkplaceProgressFacts {
   readonly effectAttempts: readonly { readonly attemptNo: number; readonly outcome: string }[];
   /** Dependencies that have not reached final acceptance + integration yet. */
   readonly unsatisfiedDependencies: number;
+  /** Unsatisfied predecessors that are already terminal and non-accepted. */
+  readonly terminalFailedDependencies?: number;
   /** Recovery attempts consumed against the declared total cap, when in repair. */
   readonly repairAttempts: number | null;
   readonly repairCap: number | null;
@@ -167,6 +169,13 @@ export function classifyWorkplaceProgress(
 
     case 'idle':
     case 'queued': {
+      if ((facts.terminalFailedDependencies ?? 0) > 0) {
+        return explain(
+          'stalled',
+          `${facts.terminalFailedDependencies ?? 0} dependency edge(s) end at terminal `
+            + 'non-accepted predecessors; predecessor settlement is a dead wake source',
+        );
+      }
       if (facts.unsatisfiedDependencies > 0) {
         return explain(
           'typed_wait',
