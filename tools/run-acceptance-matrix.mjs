@@ -204,6 +204,20 @@ const GROUPS = {
       // the exact mechanism the development-only entry used on 2026-08-24).
       'tests/app/factory-redevelopment-guard.test.mjs',
       'tests/infrastructure/replay-certification-sweep.test.mjs',
+      // Desk-suspect sweep (same audit, second pass — files OUTSIDE the desk
+      // zones whose subject is still a desk): the SRS-004 AC-9 planner
+      // (impact cascade, topology switch, theme-brief pipeline — 25 tests)
+      // and two implementation-desk behavior suites (effective desk base;
+      // repair-code preservation — the reviewer sees the rejected attempt's
+      // code, the author must stay blind to it). All deterministic-green in
+      // isolation. NOT hosted: development-verification-continuation-live
+      // (skips everywhere without the live sandbox — the declared-precondition
+      // class of factory-redevelopment.test.mjs; hosting adds no CI signal).
+      'tests/planner-ac9/cascade.test.mjs',
+      'tests/planner-ac9/theme-brief-pipeline.test.mjs',
+      'tests/planner-ac9/topology.test.mjs',
+      'tests/infrastructure/effective-desk-base.test.mjs',
+      'tests/infrastructure/previous-attempt-desk.test.mjs',
     ],
     concurrency: 1,
     note: 'STAGE-23 desk-coverage audit — every workshop desk suite hosted (33 ex-orphans + the redevelop guard + the replay-adoption sweep); G2k ratchets the desk zones closed',

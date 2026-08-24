@@ -214,6 +214,9 @@ test('G2k: every workshop desk suite is hosted or quarantined (desk-zone complet
     'tests/modules/formalization',
     'tests/modules/development',
     'tests/modules/delivery',
+    // second sweep (2026-08-24): the SRS-004 AC-9 planner directory is a
+    // desk zone sitting outside tests/modules — same ratchet.
+    'tests/planner-ac9',
   ];
   const orphans = [];
   for (const zone of deskZones) {
