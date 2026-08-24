@@ -176,9 +176,11 @@ const ALLOWED_TASK_KIND_SWITCHES = [
   // artifacts.ts — verification.ac verified_by trace binding.
   // Retires with tasks.ts (same declarative policy).
   'src/tools/artifacts.ts',
-  // settlement-debug.ts — discovery module_ref_key debug surface.
-  // Retires when discovery read-switch lands (3.B.3).
-  'src/tools/settlement-debug.ts',
+  // settlement-debug.ts LEFT this shrinkage whitelist at ADR-095 Phase 3.2
+  // (2026-08-24): the legacy discovery module_ref_key debug surface was
+  // removed with the Discovery settlement query — the file no longer switches
+  // on a module name, so keeping the entry would violate the honest-shrinkage
+  // test below.
 ];
 
 // Match task_kind / module_ref_key / taskKind equality switches and case

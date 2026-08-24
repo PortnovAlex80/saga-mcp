@@ -68,7 +68,9 @@
 //             deletion + existing-DB boot test (one commit);
 //   phase 5 = fresh-schema closure removal from SCHEMA_SQL (no DROP).
 // AMENDED at Phase 3.1 (2026-08-24): deadPhase3[0] (the products.ts
-// projection block) is EXECUTED; every deadPhase3 entry now carries
+// projection block) is EXECUTED; AMENDED at Phase 3.2 (2026-08-24):
+// deadPhase3[1] (the settlement-debug legacy Discovery query) is EXECUTED
+// in the canonical lineage; every deadPhase3 entry now carries
 // status/contentMarkers enforced machine-side by the validator (see the
 // deadPhase3 section comment). No bucket changed; no file deleted; the
 // presence counter is untouched (phase 3 contributes code-blocks only).
@@ -125,7 +127,10 @@ export const ADR_095_INVENTORY = Object.freeze({
   // tables still exist; nothing here deletes a production legacy file.
   //
   // Phase-3.1 (2026-08-24): entry[0] (the products.ts projection block) is
-  // EXECUTED; entries[1..3] remain PENDING. Machine truthfulness: every entry
+  // EXECUTED; Phase-3.2 (2026-08-24): entry[1] (the settlement-debug legacy
+  // Discovery query) is EXECUTED; entries[2] and [3] remain PENDING (the
+  // Phase-3.3 slice: runtimePersistence construction +
+  // ModuleSharedDeps.runtimePersistence). Machine truthfulness: every entry
   // carries `status` ('executed'|'pending') plus `contentMarkers` (strings
   // that MUST be absent from the host file once executed, MUST be present
   // while pending) — validateAdr095Inventory enforces BOTH directions against
@@ -165,16 +170,29 @@ export const ADR_095_INVENTORY = Object.freeze({
     Object.freeze({
       kind: 'code-block',
       path: 'src/tools/settlement-debug.ts',
-      status: 'pending',
+      status: 'executed',
+      executedAt: '2026-08-24',
+      executedIn: 'Phase 3.2',
       contentMarkers: Object.freeze(['factory_discovery_settlements']),
       detail: 'settlement_explain legacy Discovery query over factory_discovery_settlements ' +
-        '(discoverySettlement block; the TOOL ITSELF STAYS for non-Discovery traces)',
-      evidence: 'ADR-095 Decision 1 bullet 1; map CONTRADICTIONS context (settlement-debug.ts:117-139)',
+        '(discoverySettlement block) — REMOVED (Phase 3.2, 2026-08-24); the TOOL ITSELF ' +
+        'STAYS for non-Discovery traces; the discoverySettlement response key is gone',
+      evidence: 'ADR-095 Decision 1 bullet 1; map CONTRADICTIONS context (settlement-debug.ts:117-139); ' +
+        'corroborating code fact: the legacy query selected ds.process_run_id/ds.settlement_hash, ' +
+        'columns absent from the D4 DDL, so better-sqlite3 prepare() always threw and the ' +
+        'catch block swallowed it — the block could never return data on the current schema',
       sameCommitObligations: Object.freeze([
         'tests/architecture/kernel-admission-distance.test.mjs (BLOCKING-hosted, architecture ' +
-        'group) carries DRIFT_REPORTED anchor "module_ref_key === \'discovery\'" on this file ' +
-        'plus FROZEN_REGISTER_COUNTS drift:16 — removing this block makes the register entry ' +
-        'STALE and the suite RED: same-commit re-pin (drop the anchor, drift 16→15)',
+        'group) carried DRIFT_REPORTED anchor "module_ref_key === \'discovery\'" on this file ' +
+        'plus FROZEN_REGISTER_COUNTS drift:16 — SATISFIED in the same Phase-3.2 commit ' +
+        '(anchor dropped, drift 16→15; code evidence: exactly this one behavioural site died)',
+        'ADDITIONAL same-commit repin discovered during execution (not recorded at Phase-2C): ' +
+        'tests/architecture/v4-target-conformance-ratchet.test.mjs ALLOWED_TASK_KIND_SWITCHES ' +
+        'whitelisted src/tools/settlement-debug.ts (its honest-shrinkage test fails on dead ' +
+        'entries) — SATISFIED: entry removed in the same Phase-3.2 commit',
+        'tableAllowedOutsideSpecific below dropped its factory_discovery_settlements live ' +
+        'site and checkR3 dropped the settlement-debug pre-cutover table allowance in the ' +
+        'same Phase-3.2 commit — reintroducing the query is RED from every arm',
       ]),
     }),
     Object.freeze({
@@ -1121,8 +1139,9 @@ export const ADR_095_INVENTORY = Object.freeze({
         'three known copies" includes src/modules/discovery/infrastructure/sqlite-discovery-' +
         'runtime.ts:413 — Phase-4 same-commit re-pin of the copies list (three → two); ' +
         '(b) DRIFT_REPORTED anchor src/tools/settlement-debug.ts "module_ref_key === ' +
-        '\'discovery\'" + FROZEN_REGISTER_COUNTS drift:16 — Phase-3 same-commit re-pin ' +
-        '(drop the anchor, drift 16→15) with the settlement-debug block removal',
+        '\'discovery\'" + FROZEN_REGISTER_COUNTS drift:16 — SATISFIED at Phase 3.2 ' +
+        '(2026-08-24): anchor dropped, drift 16→15, same commit as the settlement-debug ' +
+        'block removal',
     }),
     Object.freeze({
       file: 'tests/architecture/v4-target-conformance-ratchet.test.mjs',
@@ -1433,14 +1452,15 @@ export const ADR_095_INVENTORY = Object.freeze({
       'src/process-modules/modules/discovery/package/manifest.ts',
       'src/process-modules/modules/discovery/package/contributions/reviewer-skills.ts',
     ]),
-    // Table/index name allowed live sites TODAY: the fresh DDL home for all
-    // ten tables + nineteen indexes, plus the ONE legacy query host
-    // (settlement_explain over factory_discovery_settlements — its block
-    // dies at phase 3). Table absence under src/ is enforced from phase 5
+    // Table/index name allowed live sites: the fresh DDL home for all ten
+    // tables + nineteen indexes. The ONE legacy query host
+    // (settlement_explain over factory_discovery_settlements) was emptied at
+    // Phase 3.2 (2026-08-24) when the query died — no live src site may name
+    // a dead table anymore. Table absence under src/ is enforced from phase 5
     // (ratchet 3 table arm keys on the schema-closure state, not phase 4).
     tableAllowedOutsideCommon: Object.freeze(['src/schema.ts']),
     tableAllowedOutsideSpecific: Object.freeze({
-      factory_discovery_settlements: Object.freeze(['src/tools/settlement-debug.ts']),
+      factory_discovery_settlements: Object.freeze([]),
     }),
   }),
 
@@ -1687,7 +1707,7 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
 
   // Dead code-block entries live inside KEPT files (their host file survives;
   // only the block dies) — the host must be kept-live, not itself dead.
-  // Phase-3.1 machine truthfulness: every phase-3 code-block carries
+  // Phase-3.1/3.2 machine truthfulness: every phase-3 code-block carries
   // `status` ('executed'|'pending') + `contentMarkers`, and the on-disk host
   // file must AGREE in BOTH directions:
   //   status 'executed' → NO marker may remain in the host file (the block is

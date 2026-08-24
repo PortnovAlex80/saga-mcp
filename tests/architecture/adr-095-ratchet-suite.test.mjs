@@ -17,8 +17,10 @@
 //        bytes with a bumped handler version) + handler-digest-runtime-
 //        consistency (generic per-workshop digest==dist re-pin, phases 4+).
 //   R3 full src symbol/table absence
-//        R3a-R3e HERE, driven by inventory.removalSymbols (schemaVersion 3).
+//        R3a-R3f HERE, driven by inventory.removalSymbols (schemaVersion 3).
 //        Retired-handler-ID fan-out is owned by BR5 (not duplicated).
+//        R3f pins the Phase-3.2 fact: the settlement-debug legacy query host
+//        allowance is GONE — reintroduction REDs in every arm.
 //   R4 dist-aware clean-build absence
 //        R4a/R4b HERE (pre-arm build faithfulness; post-arm zero emitted
 //        dead modules; stale-dist fail-closed).
@@ -47,6 +49,10 @@
 //        real tree takes; the GREEN direction is the real-tree tests. The
 //        Phase-6 deliberate cycle re-executes these classes against the
 //        removed tree and records them.
+//   P3 phase-3 executed/pending truth (Phase 3.2, 2026-08-24)
+//        P3a/P3b HERE — the inventory's deadPhase3 status split is pinned to
+//        the on-disk code both ways: the settlement-debug block executed,
+//        everything else pending, and a lying status throws.
 //
 // Phase-2C boundary honesty (no overclaim): ratchets 3/4/5 post-removal
 // arms and ratchet 2's post-cutover arm CANNOT be green on today's
@@ -67,6 +73,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ADR_095_INVENTORY,
+  validateAdr095Inventory,
 } from '../infrastructure/adr-095-removal-inventory.mjs';
 import {
   readRatchetState,
@@ -277,6 +284,24 @@ test('R3e: MUTATION — a legacy table reference outside schema.ts REDs in the p
     `a legacy table reference outside schema.ts must RED post-cutover (got: ${errors.join(' | ')})`);
 });
 
+test('R3f: MUTATION — the REINTRODUCED Discovery settlement query in settlement-debug.ts REDs in TODAY\'s pre-cutover arm (Phase 3.2)', () => {
+  // Mutation class (ratchet 8): "a reintroduced legacy query". Before Phase
+  // 3.2 this exact text was the tolerated baseline; after the removal the
+  // settlement-debug table allowance is GONE, so re-adding the block is RED
+  // in every arm — including the current pre-cutover arm.
+  const mutated = srcScan.map(([rel, t]) =>
+    rel === 'src/tools/settlement-debug.ts'
+      ? [rel, t + "\nconst legacy = db.prepare(`SELECT ds.decision FROM factory_discovery_settlements ds WHERE ds.process_run_id = ?`);\n"]
+      : [rel, t]);
+  for (const phase4Landed of [false, true]) {
+    const errors = checkR3(mutated, phase4Landed, /* closureInSchema */ true);
+    assert.ok(
+      errors.some((e) => e.includes('factory_discovery_settlements') && e.includes('src/tools/settlement-debug.ts')),
+      `the reintroduced Discovery settlement query must RED in the phase4Landed=${phase4Landed} arm (got: ${errors.join(' | ')})`,
+    );
+  }
+});
+
 // ===========================================================================
 // R4 — dist-aware clean-build absence (ratchet 4)
 // ===========================================================================
@@ -395,6 +420,52 @@ test('R7a: the boot-regression owner still carries the F5 drift oracle (MODULE_I
     'the proof must keep binding to the engine boot entry (the Phase-1 red-team correction)');
   assert.match(owner, /rehydrate/,
     'the pinned-run exact-package rehydration assertion must stay');
+});
+
+// ===========================================================================
+// P3 — Phase-3.2 executed/pending truth (settlement-debug block)
+// ===========================================================================
+
+test('P3a: the phase-3 executed set is EXACTLY the settlement-debug block; the inventory validates against disk', () => {
+  // Real-tree truth: only deadPhase3[1] (settlement-debug) is executed on
+  // this branch; the projection block, runtimePersistence construction, and
+  // the ModuleSharedDeps field are still PENDING (their markers are on disk).
+  const byPath = Object.fromEntries(ADR_095_INVENTORY.deadPhase3.map((e) => [e.path, e]));
+  assert.equal(byPath['src/tools/settlement-debug.ts'].status, 'executed',
+    'Phase 3.2 executes exactly the settlement-debug legacy query block');
+  assert.equal(byPath['src/tools/products.ts'].status, 'pending');
+  assert.equal(byPath['src/app/product-lifecycle-runtime.ts'].status, 'pending');
+  assert.equal(byPath['src/modules/module-registration.ts'].status, 'pending');
+  // And the full validator (including the BOTH-direction contentMarker
+  // enforcement over the on-disk host files) passes on the real tree.
+  validateAdr095Inventory(REPO_ROOT);
+});
+
+test('P3b: MUTATION — a LYING phase-3 status is rejected by the inventory validator in both directions', () => {
+  // (a) Lying 'executed': flip the still-present products.ts block to
+  //     executed — its markers ARE on disk, so the validator must refuse.
+  const lyingExecuted = structuredClone(ADR_095_INVENTORY);
+  const pe = lyingExecuted.deadPhase3.find((e) => e.path === 'src/tools/products.ts');
+  pe.status = 'executed';
+  pe.executedAt = '2026-08-24';
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, lyingExecuted),
+    /projectDiscoveryProposal.*untruthful executed state/,
+    'claiming execution while the projection block is still on disk must throw',
+  );
+
+  // (b) Lying 'pending': flip the EXECUTED settlement-debug block back to
+  //     pending — its marker is ABSENT from disk, so the validator must
+  //     refuse (prevents quietly un-executing a landed removal).
+  const lyingPending = structuredClone(ADR_095_INVENTORY);
+  const se = lyingPending.deadPhase3.find((e) => e.path === 'src/tools/settlement-debug.ts');
+  se.status = 'pending';
+  delete se.executedAt;
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, lyingPending),
+    /factory_discovery_settlements.*untruthful pending state/,
+    'claiming the settlement-debug block is still present must throw',
+  );
 });
 
 // ===========================================================================

@@ -521,16 +521,63 @@ boot baseline) are executed under this point.
           closure CREATEs post-phase-5 is GREEN by design — that is the
           ADR-095 Phase-5 rollback boundary; the ratchet-8 class (ONE
           reintroduced instance) is RED in every arm.
-        - Validation: clean `npm run build` exit 0; architecture 477/477;
-          process-modules 1461/1461; discovery-live-v2 134/134;
-          matrix-coverage 23/23 (G2k live). No production legacy deleted, no
-          schema change, no checked-in dist, nothing weakened/quarantined.
-          **Phase-3 gate: NOT green by design** (Phase 3 has not executed —
-          no production code changed here); Phase-2C closes the Phase-3
-          ENTRY gate only. The Phase-3 EXIT gate is enforced after its
-          commit by R3's empty post-phase-3 host expectations + the hosted
-          suites.
-  3. Live side effects removed + v2 E2E — projection/proposal-ref/
+         - Validation: clean `npm run build` exit 0; architecture 477/477;
+           process-modules 1461/1461; discovery-live-v2 134/134;
+           matrix-coverage 23/23 (G2k live). No production legacy deleted, no
+           schema change, no checked-in dist, nothing weakened/quarantined.
+           **Phase-3 gate: NOT green by design** (Phase 3 has not executed —
+           no production code changed here); Phase-2C closes the Phase-3
+           ENTRY gate only. The Phase-3 EXIT gate is enforced after its
+           commit by R3's empty post-phase-3 host expectations + the hosted
+           suites.
+       **Phase-3.2 DONE 2026-08-24 (commit `dc96c3b5`, worktree
+       `saga-mcp-DISCOVERY-P3-2`, branch `stage22/discovery-phase3-2` from
+       the Phase-2C tip `43a21f45`; integrated into canonical `saga4` by
+       cherry-pick over Phase 3.1 + the Red Team LOW follow-up): the
+       settlement-debug legacy Discovery
+       query is REMOVED. Scope discipline: this phase touches ONLY the
+       settlement-debug block and its same-commit truth/ratchet repins — no
+       schema table, no dead file, no runtimePersistence surface (later
+       phases).**
+       - `src/tools/settlement-debug.ts`: the legacy
+         `factory_discovery_settlements` query block (the discoverySettlement
+         section + response key + the Discovery sentence in the tool
+         description) is deleted; the generic `settlement_explain` tool
+         (certificate + node trace) stays for every module. Corroborating
+         deadness fact recorded in the inventory: the legacy query selected
+         `ds.process_run_id`/`ds.settlement_hash`, columns ABSENT from the D4
+         DDL — better-sqlite3 `prepare()` always threw and the catch block
+         swallowed it, so the block could never return data on the current
+         schema.
+       - Same-commit ratchet repins (each proof-executed): (1)
+         kernel-admission-distance DRIFT_REPORTED anchor dropped with
+         FROZEN_REGISTER_COUNTS drift 16→15 — code evidence: exactly the one
+         behavioural site `module_ref_key === 'discovery'` died and no new
+         name-branch line appeared; (2) v4-target-conformance
+         ALLOWED_TASK_KIND_SWITCHES whitelist entry removed (obligation
+         discovered during execution — Phase-2C had recorded only (1); the
+         suite's honest-shrinkage test fails on dead entries); (3) the
+         removal inventory `tableAllowedOutsideSpecific` live site emptied
+         and `checkR3`'s hardcoded settlement-debug pre-cutover table
+         allowance deleted — a REINTRODUCED Discovery settlement query is RED
+         in every arm from this commit (new mutation negative R3f).
+       - Inventory truth (canonical merged lineage): `deadPhase3` carries
+         machine-verified status/contentMarkers (validator enforces BOTH
+         directions against the on-disk host files — untruthful executed AND
+         untruthful pending both throw): settlement-debug = executed
+         (Phase 3.2); products.ts projection block = executed (Phase 3.1,
+         integrated into canonical `saga4` below); runtimePersistence
+         construction + `ModuleSharedDeps` field = pending (the Phase-3.3
+         slice). No bucket/file/count changed; the presence counter is
+         untouched.
+       - Behavioral non-vacuity (hosted in the process-modules group):
+         settlement-debug.test.mjs pins the key-ABSENT response shape and a
+         new Discovery-run scenario that seeds a live row in the still-
+         existing legacy table, traces every prepared statement, and asserts
+         zero queries over it while the generic trace stays fully
+         functional — RED against the pre-Phase-3.2 code (key existed; SQL
+         contained the table name), GREEN after.
+   3. Live side effects removed + v2 E2E — projection/proposal-ref/
      `discovery_proposal_id`/settlement-debug legacy query gone;
      runtimePersistence construction + `ModuleSharedDeps.runtimePersistence`
      + ensure*/lazy CREATE TABLE recreation removed BEFORE schema work;
@@ -557,13 +604,16 @@ boot baseline) are executed under this point.
      phase-3 entry's status is machine-enforced BOTH directions by
      `validateAdr095Inventory`; BR7 (bridge ratchets) pins the executed /
      pending split with mutation negatives. No file deleted; presence
-     counter untouched (36/27/9); no bucket changed. STILL OPEN in phase 3:
-     settlement-debug legacy Discovery query (deadPhase3[1], kernel-
-     admission-distance re-pin owed), runtimePersistence construction
-     (deadPhase3[2]), `ModuleSharedDeps.runtimePersistence` field
-     (deadPhase3[3]), and the full live-v2 E2E on the still-existing
-     schema as the phase-3 exit gate (the `discovery-live-v2` group is
-     green post-removal in this commit's validation).
+     counter untouched (36/27/9); no bucket changed. STILL OPEN in phase 3
+     after the canonical Phase-3.2 integration: runtimePersistence
+     construction (deadPhase3[2]), `ModuleSharedDeps.runtimePersistence`
+     field (deadPhase3[3]) — the Phase-3.3 slice — and the full live-v2 E2E
+     on the still-existing schema as the phase-3 exit gate (the
+     `discovery-live-v2` group is green post-removal in this commit's
+     validation). The settlement-debug legacy Discovery query
+     (deadPhase3[1]) named here as open at Phase-3.1 time is CLOSED by the
+     Phase-3.2 record above (kernel-admission-distance re-pin included
+     there).
   4. Atomic version bump + manifest repin (one-handler, digest =
      production-cell installation bytes) + code/resources deletion +
      existing-DB boot test (retired old installation rehydrates pinned
@@ -625,6 +675,16 @@ machine-readably (inventory `mandatoryPhase5Repins` + validator structural
 rules + the item-5 record above); LOW-3 the phase-3 record's resubmit
 wording corrected from "idempotent resubmit" to the typed fenced/refused
 resubmit truth (one effective submission).
+Phase-3.2 (commit `dc96c3b5`, worktree `saga-mcp-DISCOVERY-P3-2`, branch
+`stage22/discovery-phase3-2` from the Phase-2C tip `43a21f45`; integrated
+into canonical `saga4` by cherry-pick over Phase 3.1 + the LOW follow-up,
+conflicts resolved semantically — both phase-3 slices kept, Phase-3.2's
+sibling-branch pending wording re-pointed to the merged executed truth):
+settlement-debug legacy Discovery query removed + same-commit ratchet repins
+(kernel-admission-distance anchor/drift, v4-target whitelist entry, R3
+table-allowance) + deadness corroboration + behavioral non-vacuity with the
+SQL-trace positive control (follow-up commit `7ba9cb3b`) — see the
+phase-3 record above.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

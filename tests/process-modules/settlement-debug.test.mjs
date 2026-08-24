@@ -192,8 +192,11 @@ test('settlement_explain: returns full causal trace for an inconsistent run', ()
     assert.ok(n2.completion.certificateRef, 'settlement node has certificate ref');
     assert.equal(n2.completion.certificateRef.ref, 42);
 
-    // No discovery settlement for a formalization run.
-    assert.equal(result.discoverySettlement, null);
+    // No discovery settlement section at all: the legacy Discovery query was
+    // removed (ADR-095 Phase 3.2) — the key must be ABSENT from the response
+    // shape, not merely null.
+    assert.equal('discoverySettlement' in result, false,
+      'the discoverySettlement key must not exist in the settlement_explain response');
   } finally {
     cleanup(temp);
   }
@@ -244,6 +247,168 @@ test('settlement_explain: handles run without certificate or node runs gracefull
     assert.equal(result.run.status, 'running');
     assert.equal(result.certificate, null, 'no certificate for a running process');
     assert.equal(result.nodeTrace.length, 0, 'no node runs yet');
+  } finally {
+    cleanup(temp);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ADR-095 Phase 3.2 — the legacy Discovery settlement query is GONE.
+//
+// Non-vacuity contract of this test (deliberate-mutation RED/GREEN): against
+// the pre-Phase-3.2 code this test FAILS twice — (a) the response carried a
+// `discoverySettlement` key (null, because the legacy query selected columns
+// that no longer exist in the D4 DDL and its throw was silently swallowed),
+// and (b) the traced SQL contained the legacy settlement table name. The
+// removal must keep both negative facts true while the generic trace stays
+// fully functional for a Discovery-module run whose legacy table still holds
+// a row (the table itself is only removed from the fresh schema at Phase 5).
+// ---------------------------------------------------------------------------
+
+const DISCOVERY_PROCESS_RUN_ID = 8001;
+const LEGACY_SETTLEMENT_TABLE = 'factory_discovery_settlements';
+
+test('settlement_explain: discovery run traced generically, legacy settlement query absent (ADR-095 Phase 3.2)', () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'factory-setdbg-disc-'));
+  process.env.DB_PATH = path.join(temp, 'disc.db');
+  let db;
+  try {
+    db = getDb();
+    new SqliteProcessRunRepository(db);
+    ensureFactoryProcessOutcomeCertificateSchema(db);
+    ensureFactoryNodeRunSchema(db);
+
+    db.prepare(`INSERT INTO projects (id,name,status) VALUES (1,'P','active')`).run();
+    db.prepare(`INSERT INTO epics (id,project_id,name) VALUES (100,1,'Disc')`).run();
+
+    // A settled DISCOVERY-module ProcessRun — the exact module_ref_key shape
+    // ('discovery') that used to arm the legacy query block.
+    db.prepare(`
+      INSERT INTO factory_process_runs
+        (id, project_id, epic_id,
+         module_name, module_version, module_ref_key,
+         idempotency_key, executor_kind,
+         input_schema, input_snapshot, input_hash,
+         status, local_outcome, authority,
+         created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      DISCOVERY_PROCESS_RUN_ID, 1, 100,
+      'product-discovery', '3.0.2', 'discovery',
+      `idemp-${DISCOVERY_PROCESS_RUN_ID}`, 'generic-flow',
+      'factory.discovery-settlement-input.v1', '{}', 'hash-8001',
+      'completed', 'go', 'discovery_settlement_policy',
+      new Date().toISOString(), new Date().toISOString(),
+    );
+
+    // Generic certificate for the discovery run.
+    db.prepare(`
+      INSERT INTO factory_process_outcome_certificates
+        (process_run_id, project_id, epic_id,
+         module_name, module_version, module_ref_key, schema_version,
+         decision, reason_codes, rationale, input_hash,
+         certificate_payload, certificate_hash,
+         authority, issued_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      DISCOVERY_PROCESS_RUN_ID, 1, 100,
+      'product-discovery', '3.0.2', 'discovery',
+      'factory.discovery-outcome-certificate.v1',
+      'go',
+      JSON.stringify(['GO_READY_AND_GROUNDED']),
+      'Proposal is ready, grounded, and confident enough to proceed',
+      'hash-8001',
+      JSON.stringify({ bundleHash: 'ddd', acceptanceBaselineHash: 'eee' }),
+      'cert-hash-8001',
+      'discovery_settlement_policy',
+      new Date().toISOString(),
+    );
+
+    // One generic NodeRun row.
+    db.prepare(`
+      INSERT INTO factory_node_runs
+        (id, process_run_id, node_id, node_kind, attempt, status,
+         output_schema, output_hash, output_bindings,
+         completion, completion_hash,
+         execution_receipt, started_at, completed_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      9001, DISCOVERY_PROCESS_RUN_ID, 'discovery-settlement-policy', 'kernel', 1, 'completed',
+      'factory.discovery-outcome-certificate.v1', 'h8001',
+      JSON.stringify({ gap: null, traceDigest: 'td8001', categoryBindings: { PROPOSAL: 1 } }),
+      JSON.stringify({
+        outcome: 'go',
+        terminal: true,
+        outputEnvelope: {
+          certificateRef: { schema: 'factory.discovery-outcome-certificate.v1', ref: 43, hash: 'cert-hash-8001' },
+        },
+      }),
+      'comp-hash-8001',
+      JSON.stringify({ taskId: 300, executionId: 'exec-300' }),
+      new Date().toISOString(), new Date().toISOString(),
+    );
+
+    // Seed the legacy D4 settlement table with a live row (FK chain of the
+    // legacy closure is out of scope for this fixture — toggle FK for the
+    // seed insert only). The row MUST be ignored by the tool.
+    db.pragma('foreign_keys = OFF');
+    try {
+      db.prepare(`
+        INSERT INTO ${LEGACY_SETTLEMENT_TABLE}
+          (epic_id, proposal_id, proposal_content_hash,
+           readiness_assessment_hash, policy_version, policy_hash,
+           input_snapshot, input_hash, decision, rationale)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+      `).run(
+        100, 1, 'deadbeef',
+        'none', 'factory.discovery-settlement-policy.v1', 'policy-hash',
+        JSON.stringify({ proposal: 'legacy' }), 'input-hash', 'go',
+        'legacy row that must never be read by settlement_explain',
+      );
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
+    const seeded = db.prepare(`SELECT COUNT(*) AS n FROM ${LEGACY_SETTLEMENT_TABLE}`).get();
+    assert.equal(seeded.n, 1, 'fixture fact: the legacy table exists and holds one row');
+
+    // Trace every prepared statement while the handler runs.
+    const tracedSql = [];
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = (sql) => {
+      tracedSql.push(String(sql));
+      return originalPrepare(sql);
+    };
+    let result;
+    try {
+      result = handlers.settlement_explain({ process_run_id: DISCOVERY_PROCESS_RUN_ID });
+    } finally {
+      delete db.prepare; // restore the prototype method
+    }
+
+    // (1) Generic behavior remains for a Discovery-module run.
+    assert.equal(result.run.processRunId, DISCOVERY_PROCESS_RUN_ID);
+    assert.equal(result.run.status, 'completed');
+    assert.equal(result.run.localOutcome, 'go');
+    assert.equal(result.run.authority, 'discovery_settlement_policy');
+    assert.equal(result.certificate.decision, 'go');
+    assert.deepEqual(result.certificate.reasonCodes, ['GO_READY_AND_GROUNDED']);
+    assert.equal(result.nodeTrace.length, 1);
+    assert.equal(result.nodeTrace[0].nodeId, 'discovery-settlement-policy');
+    assert.equal(result.nodeTrace[0].completion.certificateRef.ref, 43);
+
+    // (2) The Discovery section is absent from the response shape entirely.
+    assert.equal('discoverySettlement' in result, false,
+      'settlement_explain must not carry a discoverySettlement key after ADR-095 Phase 3.2');
+
+    // (3) The legacy query is absent at the SQL seam: no prepared statement
+    // touches the legacy settlement table.
+    const legacyReads = tracedSql.filter((sql) => sql.includes(LEGACY_SETTLEMENT_TABLE));
+    assert.deepEqual(legacyReads, [],
+      `settlement_explain must not query ${LEGACY_SETTLEMENT_TABLE} (got: ${legacyReads.join(' | ')})`);
+
+    // (4) The seeded legacy row is untouched — the tool neither read nor
+    // altered it (read-only generic trace only).
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${LEGACY_SETTLEMENT_TABLE}`).get().n, 1);
   } finally {
     cleanup(temp);
   }

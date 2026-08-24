@@ -28,8 +28,7 @@ export const definitions: Tool[] = [
       'Explain WHY a ProcessRun settled with its decision. Returns the full causal trace: ' +
       'the certificate (decision, reason_codes, rationale, decoded payload), plus each node\'s ' +
       'output bindings (gap string, unaccepted artifacts, baseline drift, trace digest, ' +
-      'ledger write ids) in execution order. For Discovery runs, also returns the full ' +
-      'settlement input snapshot. Read-only diagnostic — use this to answer "why did ' +
+      'ledger write ids) in execution order. Read-only diagnostic — use this to answer "why did ' +
       'settlement produce inconsistent/clarification-required/reject?" without manual SQL.',
     annotations: {
       title: 'Settlement: Explain Decision',
@@ -114,33 +113,11 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
     // Table may not exist on old DBs — nodeTrace stays empty.
   }
 
-  // 4. Discovery-specific settlement (richer: full input snapshot).
-  let discoverySettlement = null;
-  if (run.module_ref_key === 'discovery' || run.module_ref_key === 'factory.discovery') {
-    try {
-      const ds = db.prepare(`
-        SELECT ds.decision, ds.reason_codes, ds.rationale,
-               ds.input_snapshot, ds.policy_version, ds.policy_hash,
-               ds.settlement_hash
-          FROM factory_discovery_settlements ds
-         WHERE ds.process_run_id = ?
-         ORDER BY ds.id DESC LIMIT 1
-      `).get(processRunId) as Record<string, unknown> | undefined;
-      if (ds) {
-        discoverySettlement = {
-          decision: ds.decision,
-          reasonCodes: safeJsonArray(ds.reason_codes),
-          rationale: ds.rationale,
-          inputSnapshot: safeJson(ds.input_snapshot),
-          policyVersion: ds.policy_version,
-          policyHash: ds.policy_hash,
-          settlementHash: ds.settlement_hash,
-        };
-      }
-    } catch {
-      // Optional — discovery tables may not exist for non-discovery runs.
-    }
-  }
+  // 4. Discovery-specific settlement — REMOVED (ADR-095 Phase 3.2, 2026-08-24):
+  // the legacy Discovery settlement-snapshot query over the D4 legacy table is
+  // gone; the generic certificate/node trace above is the tool's whole surface.
+  // The tool itself stays for non-Discovery traces; no live code reads the
+  // legacy settlement table anymore.
 
   return {
     run: {
@@ -164,7 +141,6 @@ function handleSettlementExplain(args: Record<string, unknown>): unknown {
     },
     certificate,
     nodeTrace,
-    discoverySettlement,
   };
 }
 

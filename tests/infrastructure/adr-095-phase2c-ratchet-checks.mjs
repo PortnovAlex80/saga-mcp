@@ -442,9 +442,13 @@ function buildAllowedSets(phase4Landed, closureInSchema) {
  * Scans comment-stripped src text for every removal symbol outside its
  * allowed live sites. `scanEntries` is an iterable of [relPath, text] so
  * mutation negatives can inject virtual files. Tables/indexes follow the
- * PHASE-5 boundary (allowed only in schema.ts while the closure DDL exists —
- * plus the settlement-debug legacy query host pre-cutover); all other symbol
- * classes follow the PHASE-4 boundary (allowed live sites empty post-bump).
+ * PHASE-5 boundary (allowed only in schema.ts while the closure DDL exists);
+ * all other symbol classes follow the PHASE-4 boundary (allowed live sites
+ * empty post-bump). Phase 3.2 (2026-08-24) removed the settlement-debug
+ * legacy query host allowance — the former one live site outside schema.ts
+ * is gone, so ANY dead-table reference outside schema.ts/dead files is RED
+ * in EVERY arm, including today's pre-cutover arm (reintroducing the
+ * Discovery settlement query is a ratchet-8 mutation class).
  */
 export function checkR3(scanEntries, phase4Landed, closureInSchema) {
   const errors = [];
@@ -453,9 +457,6 @@ export function checkR3(scanEntries, phase4Landed, closureInSchema) {
 
   const tableAllowed = new Set(deadSet);
   if (closureInSchema) tableAllowed.add('src/schema.ts');
-  if (!phase4Landed) {
-    tableAllowed.add('src/tools/settlement-debug.ts');
-  }
   const tableSpecificAllowed = (table) => {
     if (phase4Landed) return new Set(deadSet);
     const specific = symbols.tableAllowedOutsideSpecific[table] ?? [];
