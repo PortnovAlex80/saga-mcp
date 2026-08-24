@@ -49,6 +49,10 @@ import {
   type SrsModuleManifest,
 } from '../domain/srs-module-manifest.js';
 import {
+  buildSrsFileIdentityManifest,
+  canonicalTokenPath,
+} from '../domain/srs-file-identity.js';
+import {
   readDevelopmentCaseSrsContent,
   type DevelopmentSrsContentResult,
 } from './development-srs-artifact-content.js';
@@ -61,7 +65,15 @@ import {
 
 export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
   'development.task-graph-contract.v1';
-export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.2.0';
+// v1.3.0 — BM-5/MM-4 repair (Elite-8 counterexample): §2.2 manifest tokens
+// are identity-resolved against the canonical §D2/§D1 file surface
+// (srs-file-identity.ts) before coverage evaluation — a bare §2.2 filename
+// whose unique basename matches a declared full path is covered by scopes
+// containing that path. An AMBIGUOUS basename (≥2 surface files share it)
+// fails TYPED `srs-file-identity-conflict` with the candidates as witnesses,
+// plan-independently, before any implementation worker is spawned — the
+// conjunction is unsatisfiable in the frozen SRS itself, not in the plan.
+export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.3.0';
 
 /**
  * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 gate check. Runs ONLY in
@@ -1006,6 +1018,21 @@ function scopeFailure(
  * skip — a register-bearing corpus cannot dodge the coverage exit criterion
  * by omitting a document section. The typed legacy skip survives ONLY for
  * the registerless corpus (the sole grandfather condition).
+ *
+ * BM-5 repair (v1.3.0) — identity before coverage: §2.2 tokens are resolved
+ * against the canonical §D2/§D1 file surface BEFORE any plan-dependent
+ * verdict, so the individually-correct obligations ("every §2.2 file inside
+ * some changeScope" × "scopes follow the §D2/§D1 surface") are JOINTLY
+ * satisfiable whenever the SRS itself has one file identity per token:
+ *   - an AMBIGUOUS token (≥2 surface files share the basename) fails the
+ *     typed `srs-file-identity-conflict` regardless of the plan and of the
+ *     register — no plan can repair a frozen-SRS identity defect, and a
+ *     verdict computed over an undecidable identity would be arbitrary;
+ *   - a resolved token (exact or unique basename) is evaluated at its
+ *     canonical path — the Elite-8 shape (§2.2 bare filename vs §D2/§D1 full
+ *     path) becomes satisfiable by the plan scoping the REAL files;
+ *   - a token not on the surface at all keeps the as-declared semantics
+ *     (workshop P07/P08: an undeclared §2.2 file is still a coverage gap).
  */
 function assessSrsModuleManifestCoverage(
   subjectRef: string,
@@ -1077,7 +1104,40 @@ function assessSrsModuleManifestCoverage(
       }),
     };
   }
-  const coverage = evaluateSrsModuleManifestCoverage(manifest, implementationItems);
+  // Satisfiability FIRST: an ambiguous §2.2 basename has no single file
+  // identity, so every plan-dependent verdict over it would be arbitrary.
+  // The failure is plan-independent (decided from the frozen SRS alone) and
+  // names the candidate surface paths as witnesses — the Elite-8 trap class
+  // converted from "burn budget on every plan" into one typed pre-worker red.
+  const identity = buildSrsFileIdentityManifest(srs.content);
+  if (identity.ambiguous.length > 0) {
+    return {
+      failure: encodeCheckDiagnostic({
+        code: 'srs-file-identity-conflict',
+        message: identity.ambiguous.map(entry =>
+          `SRS §2.2 declares '${entry.token}' while the §D2/§D1 file surface carries multiple `
+          + `files with that basename [${entry.candidates.join(', ')}] — no single file identity exists`)
+          .join('; ')
+          + '. No plan can jointly satisfy §2.2 coverage and the §D2/§D1 surface while the SRS is frozen: '
+          + 'repair the SRS §2.2 declaration to name the exact file (or waive via the constraint register '
+          + 'upstream). This failure does not depend on the submitted plan.',
+        subjectRef,
+      }),
+      note: null,
+    };
+  }
+  // Coverage at CANONICAL identity: bare/module-relative §2.2 tokens count
+  // as covered exactly when the scope contains the resolved §D2/§D1 path;
+  // off-surface tokens keep their as-declared identity.
+  const canonical: SrsModuleManifest = {
+    status: manifest.status,
+    modules: manifest.modules.map(entry => ({
+      module: entry.module,
+      files: entry.files.map(file => canonicalTokenPath(identity, file)),
+    })),
+    sectionFiles: manifest.sectionFiles.map(file => canonicalTokenPath(identity, file)),
+  };
+  const coverage = evaluateSrsModuleManifestCoverage(canonical, implementationItems);
   if (coverage.outcome === 'covered') {
     return { failure: null, note: null };
   }

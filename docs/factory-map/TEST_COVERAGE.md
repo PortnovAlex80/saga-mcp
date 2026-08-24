@@ -63,7 +63,7 @@ metadata, not a strength grade.
 | TC-7 | `tests/modules/development/**` 14 files | 4 hosted (verification-ledger, terminal-exit-accounting, + TC-5 pair) — TEN orphans | orphan list incl. `development-verification-check-provider`, `readiness-test-surface`, `srs-module-manifest`, `srs-derived-change-scopes` (`03_DEVELOPMENT.md:754-760`) |
 | TC-8 | Delivery kernel + effect ledger + approval inbox (BM-12/BM-13) | CI-blocking | `deferred-delivery`, `delivery-approval-inbox`, `product-delivery-lifecycle-e2e`, `product-lifecycle-policies`, effect-ledger/exactly-once suites, `delivery-kernel-unification.test.mjs` (factory-proof) |
 | TC-9 | Task-shadow port (SM-14) on a REAL multi-task singleton workplace | **pending** (R3) — no test exists; every unit stubs the port | `RED-TEAM-AUDIT.md:80-86,139-140` |
-| TC-10 | §2.2 × §D2/§3 cross-section satisfiability (Elite-8 counterexample, BM-5 §4) | **pending** — no producer-diversity fixture emits bare-filename §2.2 against full-path §D2/§3 | `run-hex-lifecycle-diagnostic.mjs`-era lesson + `RED-TEAM-AUDIT.md:65-68`; Elite-4 lesson `RUN-TRACKER.md:314-318` |
+| TC-10 | §2.2 × §D2/§3 cross-section satisfiability (Elite-8 counterexample, BM-5 §4) | CI-blocking (exact-file, RED/GREEN pinned) since 2026-08-24 | `srs-file-identity-satisfiability.test.mjs` hosted in process-modules (`BRIDGE_MATRIX.md` §4.5); RED proven on the unfixed tree (correct plan rejected `srs-module-uncovered`) |
 | TC-11 | `worker-prompt-assembly` (Elite-8 G1.9 recovery_feedback bound) | CI-executed (exact-file, adopted 6e383a10) | `run-acceptance-matrix.mjs:98-103` |
 | TC-12 | Windows host arms (taskkill fallback, 5s exit-without-close, win32 docker readiness) | platform/fault-edge (CI ubuntu-only) | `RED-TEAM-AUDIT.md:70-76`; `ci.yml:11` |
 | TC-13 | Delivery effect contracts (`tests/modules/delivery/delivery-effect-contracts.test.mjs`) + `tests/matrix/f-authority-delivery.test.mjs` | test-file-exists (orphans) | no group hosts them (`04_DELIVERY.md:477-489`) |
@@ -141,4 +141,7 @@ commit 91af2982, merged into this line via ab397ff7):
   → CI-executed.
 - Elite-8-scale producer-diversity corpus (incl. §2.2 bare-filename vs §D2
   full-path joint-satisfiability negative test, TC-10) → BM-5 PARTIAL →
-  PROVEN or honestly FAILED-with-guard.
+  PROVEN or honestly FAILED-with-guard. UPDATE 2026-08-24: the TC-10 core
+  (identity half) landed hosted RED/GREEN (BM-5 §4.5); the wider
+  producer-diversity corpus (R6 shapes: monolithic docs, multi-finding
+  verdicts, trace_delete storms, 15–22 AC documents) remains open.

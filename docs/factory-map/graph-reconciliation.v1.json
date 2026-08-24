@@ -183,7 +183,7 @@
     { "id": "BM-2", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-3", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-4", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
-    { "id": "BM-5", "status": "PARTIAL", "note": "identity PROVEN; joint satisfiability FAILED at Elite-8 (srs-2.2 bare filenames vs d2/d3 full paths while SRS frozen)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-5", "status": "PARTIAL", "note": "identity PROVEN; joint satisfiability FAILED at Elite-8 (srs-2.2 bare filenames vs d2/d3 full paths while SRS frozen); REPAIRED 2026-08-24 (srs-file-identity.ts + gate v1.3.0 typed pre-worker conflict, hosted RED/GREEN, BRIDGE_MATRIX section 4.5) — PARTIAL retained until three clean runs", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-6", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-7", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-8", "status": "PARTIAL", "note": "semantics PROVEN; real-process substrate timing outside CI (quarantined FLAKY)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },

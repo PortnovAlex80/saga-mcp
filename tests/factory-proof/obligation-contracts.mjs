@@ -187,7 +187,7 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'dev.task-graph',
-    version: '1.2.0',
+    version: '1.3.0',
     sourceRefs: ['development-process-module', 'GRAPH-TEST-STRATEGY L3 fan-out'],
     subjectKind: 'development-task-graph',
     protectedProperty: 'The task graph has unique item keys, at least one item, and dependsOn edges reference existing keys (no foreign dependencies).',
@@ -196,7 +196,7 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
       { kind: 'cardinality', min: 1, member: 'items' },
       { kind: 'ref', field: 'dependsOn', target: 'itemKey' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'development.task-graph-contract.v1', version: '1.2.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'development.task-graph-contract.v1', version: '1.3.0' },
     faultClasses: ['contract-shape', 'authority-binding'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),

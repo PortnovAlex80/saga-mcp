@@ -207,11 +207,20 @@ boot baseline) are executed under this point.
       newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
       + integration test on a REAL multi-task singleton workplace (R3;
       every current unit stubs the port).
-- [ ] **§2.2 × §D2/§3 joint satisfiability (MM-4/BM-5):** normalize §2.2
-      tokens against the §D2/§D1 file surface at the decoder boundary OR add
-      a pre-Development satisfiability check over the frozen SRS; negative
-      test = Elite-8 counterexample (bare-filename §2.2 vs full-path §D2/§3)
-      must FAIL the unfixed gate and PASS the fixed one (RED/GREEN pinned).
+- [x] **§2.2 × §D2/§3 joint satisfiability (MM-4/BM-5):** LANDED 2026-08-24
+      (both halves of the "OR"): §2.2 tokens are normalized against the
+      §D2/§D1 file surface at one canonical boundary
+      (`srs-file-identity.ts`, gate v1.3.0) AND a pre-worker satisfiability
+      decision exists — ambiguous basenames fail typed
+      `srs-file-identity-conflict` (plan-independent, named witnesses) at the
+      plan gate before any implementation worker. Negative test = the Elite-8
+      counterexample (bare-filename §2.2 vs full-path §D2/§D2): RED proven on
+      the unfixed tree (the correct full-path plan rejected
+      `srs-module-uncovered`), GREEN pinned hosted
+      (`tests/modules/development/srs-file-identity-satisfiability.test.mjs`,
+      process-modules group). Companion: `DEFAULT_REQUIRED_CHANGE_SCOPES`
+      deleted — no invented policy fallback (BM-5 §4.5,
+      `docs/factory-map/BRIDGE_MATRIX.md`).
 - [ ] **Prompt-size gate (R4):** `SAGA_PROMPT_MAX_BYTES` default-on + a test
       on the fail-closed spawn gate (currently default-off, decision without
       a test).

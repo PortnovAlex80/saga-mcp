@@ -107,6 +107,15 @@ const GROUPS = {
       // suites. Exact files, same GAP-8 hosting pattern.
       'tests/modules/development/task-graph-register-conditional-coverage.test.mjs',
       'tests/modules/development/task-graph-gate-srs-manifest.test.mjs',
+      // BM-5/MM-4 repair proof (Elite-8 counterexample, 2026-08-24): §2.2 ×
+      // §D2/§D1 file-identity satisfiability (RED/GREEN pinned) + the policy
+      // no-invented-fallback oracle. Exact file on purpose: same GAP-8
+      // hosting pattern — the hosted surface cannot silently widen.
+      'tests/modules/development/srs-file-identity-satisfiability.test.mjs',
+      // Same hosting pattern for the derivation half the repair touched: the
+      // scopes suite (shared §D2/§D1 surface + EMPTY-when-underivable policy)
+      // was previously unhosted (TEST_COVERAGE TC-5 guard gap).
+      'tests/modules/development/srs-derived-change-scopes.test.mjs',
       'tests/infrastructure/local-runnability-substrate-retry.test.mjs',
       'tests/infrastructure/local-runnability-toctou-reprobe.test.mjs',
       'tests/infrastructure/environment-identity.test.mjs',

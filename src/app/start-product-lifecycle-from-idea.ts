@@ -25,7 +25,6 @@ import { lifecycleInputPolicyValidation } from '../infrastructure/process-module
 import type { DevelopmentPolicySnapshot } from '../modules/development/domain/development-schemas.js';
 import { hashDevelopmentPolicy } from '../modules/development/domain/development-settlement-policy.js';
 import {
-  DEFAULT_REQUIRED_CHANGE_SCOPES,
   deriveRequiredChangeScopesFromSrs,
 } from '../modules/development/domain/srs-derived-change-scopes.js';
 import {
@@ -57,10 +56,12 @@ export function buildDeferredDeliveryProfile(): DeliveryDeferredProfile {
  * and is therefore reproducible across processes, not invented.
  *
  * `requiredChangeScopes` is derived from the accepted SRS file surface when
- * its content is supplied (see `deriveRequiredChangeScopesFromSrs`). Without
- * derivable SRS content the historical defaults are kept — fail-safe, never
- * a rejection loop (workshop P07/todo: a hardcoded `package.json` scope
- * pushed the plan away from the SRS's single-`index.html` delivery shape).
+ * its content is supplied (see `deriveRequiredChangeScopesFromSrs`). When
+ * nothing is derivable the scopes stay EMPTY — no invented fallback (BM-5
+ * repair, 2026-08-24): the historical `['package.json','tests/']` default
+ * was invented authority that pushed plans away from the SRS delivery shape
+ * (workshop P07/todo) and froze scopes unrelated to the actual product. The
+ * case's own frozen SRS governs file-identity coverage at the plan gate.
  */
 export function buildReferenceDevelopmentPolicy(
   srsContent?: string | null,
@@ -69,16 +70,17 @@ export function buildReferenceDevelopmentPolicy(
   if (derivedScopes === null) {
     console.warn(
       '[start-from-idea] no SRS file declarations available — '
-      + `requiredChangeScopes fall back to defaults [${DEFAULT_REQUIRED_CHANGE_SCOPES.join(', ')}]`,
+        + 'requiredChangeScopes stay EMPTY (no invented fallback); the case SRS '
+        + 'governs file-identity coverage at the plan gate',
     );
   }
   // `hashDevelopmentPolicy` deletes `contentHash` before hashing, so the
   // placeholder value does not affect the result; it only satisfies the type.
   const snapshot: DevelopmentPolicySnapshot = {
     id: 'reference-development-policy',
-    version: '1.1.0',
+    version: '1.2.0',
     contentHash: '',
-    requiredChangeScopes: derivedScopes ?? DEFAULT_REQUIRED_CHANGE_SCOPES,
+    requiredChangeScopes: derivedScopes ?? [],
   };
   return { ...snapshot, contentHash: hashDevelopmentPolicy(snapshot) };
 }
@@ -177,7 +179,8 @@ interface AcceptedSrsArtifactRow {
  * lifecycle-start time without new ports or schema changes.
  *
  * Fail-safe by construction: any missing row, unreadable file or malformed
- * metadata returns null and the caller keeps the default scopes.
+ * metadata returns null and the caller keeps the scopes EMPTY (no invented
+ * fallback).
  */
 function readAcceptedSrsContent(
   db: Database.Database,

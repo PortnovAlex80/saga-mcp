@@ -1,5 +1,5 @@
 /**
- * SRS-derived `requiredChangeScopes` (workshop P07/todo fix).
+ * SRS-derived `requiredChangeScopes` (workshop P07/todo fix + BM-5 no-fallback).
  *
  * The development policy used to hardcode ['package.json','tests/'] for every
  * project. Project 7 (todo) accepted an SRS mandating a single index.html
@@ -11,8 +11,9 @@
  *      → ['index.html', 'tests/']  (NO package.json);
  *   2. Node-style SRS (src/ + package.json declared on the file surface)
  *      → ['package.json', 'src/', 'tests/'];
- *   3. missing/blank/no-declaration SRS → null marker, the policy falls back
- *      to the historical defaults and never throws;
+ *   3. missing/blank/no-declaration SRS → null marker and the policy keeps
+ *      the scopes EMPTY — NO invented fallback (BM-5 repair 2026-08-24: the
+ *      historical DEFAULT_REQUIRED_CHANGE_SCOPES was invented authority);
  *   4. the assembler reads the accepted SRS through the artifacts table +
  *      repository file and builds a validated lifecycle input from it.
  */
@@ -25,7 +26,6 @@ import path from 'node:path';
 import test from 'node:test';
 
 const {
-  DEFAULT_REQUIRED_CHANGE_SCOPES,
   deriveRequiredChangeScopesFromSrs,
 } = await import(
   '../../../dist/modules/development/domain/srs-derived-change-scopes.js'
@@ -238,7 +238,7 @@ test('negated package.json mention in §2.5 does not become required', () => {
   assert.deepEqual(scopes, ['index.html', 'tests/']);
 });
 
-test('missing, blank or declaration-free SRS returns the null fallback marker without throwing', () => {
+test('missing, blank or declaration-free SRS returns the null marker without throwing', () => {
   assert.equal(deriveRequiredChangeScopesFromSrs(null), null);
   assert.equal(deriveRequiredChangeScopesFromSrs(undefined), null);
   assert.equal(deriveRequiredChangeScopesFromSrs(''), null);
@@ -249,15 +249,11 @@ test('missing, blank or declaration-free SRS returns the null fallback marker wi
   );
 });
 
-test('DEFAULT_REQUIRED_CHANGE_SCOPES keeps the historical hardcoded values', () => {
-  assert.deepEqual(DEFAULT_REQUIRED_CHANGE_SCOPES, ['package.json', 'tests/']);
-});
-
 test('buildReferenceDevelopmentPolicy derives scopes and a reproducible, verifiable hash', () => {
   const todoPolicy = buildReferenceDevelopmentPolicy(TODO_STYLE_SRS);
   assert.deepEqual(todoPolicy.requiredChangeScopes, ['index.html', 'tests/']);
   assert.equal(todoPolicy.id, 'reference-development-policy');
-  assert.equal(todoPolicy.version, '1.1.0');
+  assert.equal(todoPolicy.version, '1.2.0');
   // Strict hash verification with the canonical module hashing.
   assert.equal(hashDevelopmentPolicy(todoPolicy), todoPolicy.contentHash);
 
@@ -270,15 +266,12 @@ test('buildReferenceDevelopmentPolicy derives scopes and a reproducible, verifia
   assert.notEqual(nodePolicy.contentHash, todoPolicy.contentHash);
 });
 
-test('buildReferenceDevelopmentPolicy without SRS content falls back to the defaults', () => {
-  const fallback = buildReferenceDevelopmentPolicy();
-  assert.deepEqual(
-    fallback.requiredChangeScopes,
-    DEFAULT_REQUIRED_CHANGE_SCOPES,
-  );
-  assert.equal(hashDevelopmentPolicy(fallback), fallback.contentHash);
+test('buildReferenceDevelopmentPolicy invents NO scopes when no SRS content is available (BM-5 no-fallback)', () => {
+  const empty = buildReferenceDevelopmentPolicy();
+  assert.deepEqual(empty.requiredChangeScopes, []);
+  assert.equal(hashDevelopmentPolicy(empty), empty.contentHash);
   const blank = buildReferenceDevelopmentPolicy('  ');
-  assert.deepEqual(blank, fallback);
+  assert.deepEqual(blank, empty);
 });
 
 // ── assembler integration: the accepted-SRS access path ────────────────────
@@ -373,7 +366,7 @@ test('assembler derives policy scopes from an accepted file_backed SRS artifact'
   }
 });
 
-test('assembler keeps the default scopes when no SRS artifact exists (fresh project)', () => {
+test('assembler keeps the scopes EMPTY when no SRS artifact exists (fresh project, no invented fallback)', () => {
   const repoDir = createRealGitRepo();
   const fixture = createFixture(repoDir);
   try {
@@ -383,10 +376,7 @@ test('assembler keeps the default scopes when no SRS artifact exists (fresh proj
       idea: 'A fresh project with no formalization yet.',
       db: fixture.db,
     });
-    assert.deepEqual(
-      input.development.policy.requiredChangeScopes,
-      DEFAULT_REQUIRED_CHANGE_SCOPES,
-    );
+    assert.deepEqual(input.development.policy.requiredChangeScopes, []);
     assert.doesNotThrow(() =>
       assertProductDeliveryLifecycleInput(input, lifecycleInputPolicyValidation));
   } finally {
@@ -413,10 +403,7 @@ test('assembler derives scopes from a db_native SRS artifact and ignores non-acc
       idea: 'Only a draft SRS exists.',
       db: fixture.db,
     });
-    assert.deepEqual(
-      inputDraftOnly.development.policy.requiredChangeScopes,
-      DEFAULT_REQUIRED_CHANGE_SCOPES,
-    );
+    assert.deepEqual(inputDraftOnly.development.policy.requiredChangeScopes, []);
 
     fixture.db.prepare(
       `INSERT INTO artifacts
@@ -458,10 +445,7 @@ test('assembler fails safe when the accepted SRS file is missing on disk', () =>
       idea: 'The accepted SRS file was deleted from the checkout.',
       db: fixture.db,
     });
-    assert.deepEqual(
-      input.development.policy.requiredChangeScopes,
-      DEFAULT_REQUIRED_CHANGE_SCOPES,
-    );
+    assert.deepEqual(input.development.policy.requiredChangeScopes, []);
   } finally {
     cleanupFixture(fixture);
     rmSync(repoDir, { recursive: true, force: true });
