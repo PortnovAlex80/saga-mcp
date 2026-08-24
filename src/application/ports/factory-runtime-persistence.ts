@@ -65,6 +65,7 @@ export interface ExecutionReconcileProjection {
 
 export interface ConcurrencyAdmissionSnapshot {
   operatorConcurrency: number;
+  modelConcurrencyLimit: number;
   effectiveConcurrency: number;
   activeExecutions: number;
   /**

@@ -144,19 +144,14 @@ function parseConcurrency(value, fallback = DEFAULT_FACTORY_CONCURRENCY) {
 }
 
 function resumeConcurrency(db, epicId) {
-  // STAGE-23 one-entry law (operator directive 2026-08-24): the panel's
-  // concurrency field is the SINGLE ceiling and the ONLY writer is
-  // POST /api/engine/concurrency. Resume is a pure reader; env/catalog no
-  // longer re-stamp anything. Fallback: absent field => 1.
   const row = db.prepare(
-    `SELECT concurrency FROM lifecycle_execution_controls WHERE epic_id=?`,
+    `SELECT concurrency, model_concurrency_limit
+       FROM lifecycle_execution_controls WHERE epic_id=?`,
   ).get(epicId);
   if (!row) {
     die(`resume: missing lifecycle_execution_controls for epic ${epicId}`);
   }
-  return Number.isInteger(row.concurrency) && row.concurrency >= 1 && row.concurrency <= 10
-    ? row.concurrency
-    : 1;
+  return effectiveFactoryConcurrency(row.concurrency, row.model_concurrency_limit);
 }
 
 function parseContinueArguments(rawArgs) {
@@ -802,8 +797,8 @@ if (command === 'rerun') {
       const profile = factoryModelProfile(input.modelName);
       if (!profile) die(`rerun: unknown Factory model '${input.modelName}'`);
       db.prepare(
-        `UPDATE lifecycle_execution_controls SET model_provider=?, model_name=?, model_effort=?, updated_at=datetime('now') WHERE epic_id=?`,
-      ).run(profile.provider, profile.id, profile.effort,
+        `UPDATE lifecycle_execution_controls SET model_provider=?, model_name=?, model_effort=?, model_concurrency_limit=?, updated_at=datetime('now') WHERE epic_id=?`,
+      ).run(profile.provider, profile.id, profile.effort, profile.limit,
         db.prepare('SELECT epic_id FROM factory_lifecycle_runs WHERE id=?').get(abandoned.lifecycleRunId).epic_id);
     }
 
@@ -999,9 +994,8 @@ if (command === 'start') {
   if (!idea) die('start: idea-text argument is required');
   const modelProfile = factoryModelProfile(modelName);
   if (!modelProfile) die(`start: unknown Factory model '${modelName}'`);
-  // One-entry law: env only seeds the INITIAL value at creation; afterwards
-  // the panel field is the single writer (model catalog limit = suggestion).
-  const launchConcurrency = parseConcurrency(process.env.SAGA_FACTORY_CONCURRENCY);
+  const requestedConcurrency = parseConcurrency(process.env.SAGA_FACTORY_CONCURRENCY);
+  const launchConcurrency = effectiveFactoryConcurrency(requestedConcurrency, modelProfile.limit);
 
   // If a sandbox dir is specified, provision the full project structure.
   // Otherwise, assume the DB already has project/epic/repo rows and only
@@ -1032,13 +1026,14 @@ if (command === 'start') {
     db.prepare(`INSERT INTO trusted_providers (id,project_id,name,version,category,trust_basis,determinism,scope,status) VALUES (1,1,'saga-real-model-worker','1.0.0','deterministic_evidence','real factory execution','partial','factory-smoke','active')`).run();
     db.prepare(
       `INSERT INTO lifecycle_execution_controls
-         (epic_id,concurrency,model_provider,model_name,model_effort)
-       VALUES (1,?,?,?,?)`,
+         (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+       VALUES (1,?,?,?,?,?)`,
     ).run(
-      launchConcurrency,
+      requestedConcurrency,
       modelProfile.provider,
       modelProfile.id,
       modelProfile.effort,
+      modelProfile.limit,
     );
     db.close();
 

@@ -1,5 +1,9 @@
 import Database from 'better-sqlite3';
-import { SCHEMA_SQL, ensureWorkerExecutionsDisplayName } from './schema.js';
+import {
+  SCHEMA_SQL,
+  ensureLifecycleExecutionControlsModelLimit,
+  ensureWorkerExecutionsDisplayName,
+} from './schema.js';
 import { ensureFactoryModuleInstallationSchema } from './process-modules/installation/persistence/installation-repository.js';
 import { ensureFactoryScenarioInstallationSchema } from './process-modules/installation/persistence/sqlite-scenario-installation-repository.js';
 import { ensureFactoryProtocolRunSchema } from './process-modules/persistence/sqlite-protocol-run-repository.js';
@@ -156,6 +160,7 @@ export function getDb(): Database.Database {
   // through this idempotent PRAGMA-guarded ADD COLUMN (zero data loss, no
   // SCHEMA_VERSION bump — see schema.ts::ensureWorkerExecutionsDisplayName).
   ensureWorkerExecutionsDisplayName(db);
+  ensureLifecycleExecutionControlsModelLimit(db);
 
   // Mandatory node submission validation: register policy declarations +
   // validators for every LM-node. worker_done reads these to enforce the

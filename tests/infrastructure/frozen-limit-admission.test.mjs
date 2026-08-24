@@ -34,16 +34,17 @@ seed.prepare("INSERT INTO epics (id,project_id,name) VALUES (7,1,'e7'),(8,1,'e8'
 seed.close();
 const repository = new SqliteEpisodeRuntimeRepository();
 
-function setControls(epicId, { concurrency = 5, model = 'glm-4.7', provider = 'zai' } = {}) {
+function setControls(epicId, { concurrency = 5, model = 'glm-4.7', provider = 'zai', limit = 2 } = {}) {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort)
-     VALUES (?,?,?,?,?)
+       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+     VALUES (?,?,?,?,?,?)
      ON CONFLICT(epic_id) DO UPDATE SET
        concurrency=excluded.concurrency,
        model_provider=excluded.model_provider,
-       model_name=excluded.model_name`,
-  ).run(epicId, concurrency, provider, model, 'high');
+       model_name=excluded.model_name,
+       model_concurrency_limit=excluded.model_concurrency_limit`,
+  ).run(epicId, concurrency, provider, model, 'high', limit);
 }
 
 let execSeq = 0;
@@ -63,7 +64,7 @@ function insertActiveExecution(epicId, frozenModel) {
   ).run(`e-${epicId}-${execSeq}`, 'r', epicId, execSeq, `w${execSeq}`, 'host', metadata);
 }
 
-test('the single field binds: 8 frozen workers block the 9th spawn under ceiling 8', () => {
+test('catalog quota remains the effective ceiling when operator permits more', () => {
   // Epic 7: 8 workers frozen on glm-4.7; the field says 8 — no 9th slot.
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
@@ -73,19 +74,20 @@ test('the single field binds: 8 frozen workers block the 9th spawn under ceiling
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
-  setControls(7, { concurrency: 8, model: 'glm-4.7' });
+  setControls(7, { concurrency: 8, model: 'glm-4.7', limit: 2 });
 
   const admission = repository.readConcurrencyAdmission(7);
   assert.equal(admission.activeExecutions, 8);
   assert.equal(admission.requestedModel, 'glm-4.7');
   assert.deepEqual(admission.activeByModel, { 'glm-4.7': 8 });
-  assert.equal(admission.requestedModelLimit, 8,
+  assert.equal(admission.effectiveConcurrency, 2);
+  assert.equal(admission.requestedModelLimit, 2,
     'one-entry law: the reported per-model bound IS the field');
   assert.equal(admission.modelSlotsAvailable, false,
     '8 frozen executions leave no slot under the single ceiling 8');
 });
 
-test('per-model anti-stacking admits exactly up to the single field, regardless of catalog', () => {
+test('per-model anti-stacking admits exactly up to the exact route quota', () => {
   // Epic 8: mixed in-flight models; the field (5) is the only bound.
   insertActiveExecution(8, 'glm-5.2');
   insertActiveExecution(8, 'glm-4.7');
@@ -93,7 +95,7 @@ test('per-model anti-stacking admits exactly up to the single field, regardless 
 
   const first = repository.readConcurrencyAdmission(8);
   assert.deepEqual(first.activeByModel, { 'glm-5.2': 1, 'glm-4.7': 1 });
-  assert.equal(first.requestedModelLimit, 5);
+  assert.equal(first.requestedModelLimit, 2);
   assert.equal(first.modelSlotsAvailable, true);
 
   insertActiveExecution(8, 'glm-4.7');
@@ -106,21 +108,12 @@ test('per-model anti-stacking admits exactly up to the single field, regardless 
     '5 glm-4.7 executions exhaust the single ceiling 5 (no catalog arithmetic)');
 });
 
-test('an unknown requested model is bounded by the same single field', () => {
+test('an unknown zai model fails closed instead of inventing a quota', () => {
   // Epic 9: a model that is NOT in the catalog — same bound, no special case.
   insertActiveExecution(9, 'glm-9.9');
   setControls(9, { concurrency: 3, model: 'glm-9.9' });
 
-  const first = repository.readConcurrencyAdmission(9);
-  assert.equal(first.requestedModelLimit, 3,
-    'unknown or not — the bound is the field');
-  assert.equal(first.modelSlotsAvailable, true);
-
-  insertActiveExecution(9, 'glm-9.9');
-  insertActiveExecution(9, 'glm-9.9');
-  const second = repository.readConcurrencyAdmission(9);
-  assert.equal(second.modelSlotsAvailable, false,
-    '3 actives exhaust the field ceiling 3');
+  assert.throws(() => repository.readConcurrencyAdmission(9), /MODEL_CONCURRENCY_POLICY_INVALID/);
 });
 
 test('legacy executions without an execution context count under the unfrozen bucket and against the field', () => {

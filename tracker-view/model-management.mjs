@@ -460,14 +460,15 @@ export function createModelManagementApi({
         try {
           withDbWrite(db => db.prepare(
             `INSERT INTO lifecycle_execution_controls
-               (epic_id, model_name, model_provider, model_effort, concurrency)
-             VALUES (?, ?, ?, ?, 1)
+               (epic_id, model_name, model_concurrency_limit, model_provider, model_effort, concurrency)
+             VALUES (?, ?, ?, ?, ?, 1)
              ON CONFLICT(epic_id) DO UPDATE SET
                model_name=excluded.model_name,
+               model_concurrency_limit=excluded.model_concurrency_limit,
                model_provider=excluded.model_provider,
                model_effort=excluded.model_effort,
                updated_at=datetime('now')`
-          ).run(epicId, modelId, provider, model.effort ?? null));
+          ).run(epicId, modelId, model.limit, provider, model.effort ?? null));
         } catch (e) {
           return respondJson(res, 500, { ok:false, error:'control write failed: ' + e.message });
         }

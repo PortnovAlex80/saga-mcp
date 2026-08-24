@@ -93,11 +93,11 @@ function provision(db) {
     const epicId = Number(e.lastInsertRowid);
     // control-строка ДО первого claim: lmstudio/qwen/limit 1 (KI-3 исключён архитектурно)
     db.prepare(`INSERT INTO lifecycle_execution_controls
-                  (epic_id,engine_state,concurrency,model_provider,model_name,model_effort)
-                VALUES (?, 'stopped', 1, 'lmstudio', ?, NULL)
+                  (epic_id,engine_state,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+                VALUES (?, 'stopped', 1, 'lmstudio', ?, NULL, 1)
                 ON CONFLICT(epic_id) DO UPDATE SET
                   concurrency=1, model_provider='lmstudio', model_name=?, model_effort=NULL,
-                  updated_at=datetime('now')`).run(epicId, MODEL, MODEL);
+                  model_concurrency_limit=1, updated_at=datetime('now')`).run(epicId, MODEL, MODEL);
     const orderRef = `order-testbed-${slug}-${Date.now()}`;
     db.prepare(`INSERT INTO factory_orders (order_ref,project_id,epic_id,lifecycle_run_id,source_kind,state)
                 VALUES (?,?,?,NULL,'existing_project','starting')`).run(orderRef, projectId, epicId);

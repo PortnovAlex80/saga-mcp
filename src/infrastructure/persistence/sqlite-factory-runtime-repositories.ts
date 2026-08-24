@@ -13,7 +13,7 @@ import type { WorkerModelRoute } from '../../application/ports/worker-executor.j
 import os from 'node:os';
 import { getDb } from '../../db.js';
 import { withBusyRetry } from '../../runtime/busy-retry.js';
-import { computeModelAdmission } from '../../runtime/factory-model-profiles.js';
+import { computeModelAdmission, factoryModelProfile } from '../../runtime/factory-model-profiles.js';
 import { logActivity } from '../../helpers/activity-logger.js';
 import { reevaluateDownstream } from '../../tools/tasks.js';
 import { reconcileWorkerExecutions, type ProcessProbe } from '../../worker-executions.js';
@@ -56,6 +56,8 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
   readConcurrencyAdmission(epicId: number) {
     const row = getDb().prepare(
       `SELECT c.concurrency AS c,
+              c.model_concurrency_limit AS lim,
+              c.model_provider AS requested_provider,
               c.model_name AS requested_model,
               (SELECT COUNT(*)
                  FROM worker_executions live
@@ -65,6 +67,8 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         WHERE c.epic_id=?`,
     ).get(epicId) as {
       c: number | null;
+      lim: number | null;
+      requested_provider: string | null;
       requested_model: string | null;
       active: number;
     } | undefined;
@@ -73,10 +77,33 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         `CONCURRENCY_POLICY_MISSING: epic ${epicId} has no lifecycle_execution_controls row`,
       );
     }
-    if (row.c === null || row.c === undefined) row.c = 1;
     if (!Number.isInteger(row.c) || row.c! < 1 || row.c! > 10) {
       throw new Error(
         `CONCURRENCY_POLICY_INVALID: epic ${epicId} operator concurrency is '${row.c}'`,
+      );
+    }
+    if (!Number.isInteger(row.lim) || row.lim! < 1 || row.lim! > 10) {
+      throw new Error(
+        `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} model limit is '${row.lim}'`,
+      );
+    }
+    if (typeof row.requested_provider !== 'string' || row.requested_provider.length === 0
+      || typeof row.requested_model !== 'string' || row.requested_model.length === 0) {
+      throw new Error(
+        `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} requires exact provider/model identity`,
+      );
+    }
+    const canonical = factoryModelProfile(row.requested_model);
+    if (canonical
+      && (canonical.provider !== row.requested_provider || canonical.limit !== row.lim)) {
+      throw new Error(
+        `MODEL_CONCURRENCY_POLICY_MISMATCH: epic ${epicId} ${row.requested_provider}/${row.requested_model} `
+        + `pins limit ${row.lim}; catalog requires ${canonical.provider}/${canonical.id} limit ${canonical.limit}`,
+      );
+    }
+    if (row.requested_provider === 'zai' && !canonical) {
+      throw new Error(
+        `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} has no exact catalog quota for zai/${row.requested_model}`,
       );
     }
     if (!Number.isInteger(row.active) || row.active < 0) {
@@ -90,9 +117,7 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
     // still bind admission or a model switch stacks spawns past both limits.
     // json_extract on the NOT NULL '{}' default is safe; a missing
     // execution_context yields NULL → '(unfrozen)' bucket.
-    const requestedModel = typeof row.requested_model === 'string' && row.requested_model.length > 0
-      ? row.requested_model
-      : null;
+    const requestedModel = row.requested_model;
     const frozenModels = getDb().prepare(
       `SELECT json_extract(metadata, '$.execution_context.model_route.model') AS m
          FROM worker_executions
@@ -101,14 +126,15 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
     const modelDecision = computeModelAdmission({
       requestedModel,
       activeFrozenModels: frozenModels.map(entry => entry.m),
-      effectiveControlsCeiling: row.c!,
+      effectiveControlsCeiling: Math.min(row.c!, row.lim!),
+      exactRequestedModelLimit: row.lim!,
     });
-    // STAGE-23 one-entry law (operator directive 2026-08-24): the panel's
-    // concurrency field is the SINGLE ceiling; model_concurrency_limit was a
-    // mistake and is removed entirely. Fallback: absent field => 1.
+    // The panel owns the operator ceiling; the selected route owns an
+    // independent exact provider/model quota. Admission uses both.
     return {
       operatorConcurrency: row.c!,
-      effectiveConcurrency: row.c!,
+      modelConcurrencyLimit: row.lim!,
+      effectiveConcurrency: Math.min(row.c!, row.lim!),
       activeExecutions: row.active,
       requestedModel,
       activeByModel: modelDecision.activeByModel,

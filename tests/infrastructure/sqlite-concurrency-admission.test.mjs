@@ -22,11 +22,11 @@ seed.prepare("INSERT INTO epics (id,project_id,name) VALUES (7,1,'e7'),(8,1,'e8'
 seed.close();
 const repository = new SqliteEpisodeRuntimeRepository();
 
-test('concurrency admission is the panel field (one-entry law) and counts durable active executions', () => {
+test('concurrency admission is min(operator, exact model quota) and counts durable active executions', () => {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort)
-     VALUES (7,5,'zai','glm-4.7','high')`,
+       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+     VALUES (7,5,'zai','glm-4.7','high',2)`,
   ).run();
   getDb().prepare(
     `INSERT INTO worker_executions
@@ -39,13 +39,14 @@ test('concurrency admission is the panel field (one-entry law) and counts durabl
 
   assert.deepEqual(repository.readConcurrencyAdmission(7), {
     operatorConcurrency: 5,
-    effectiveConcurrency: 5,
+    modelConcurrencyLimit: 2,
+    effectiveConcurrency: 2,
     activeExecutions: 2,
     // One-entry law (2026-08-24): the panel field is the single ceiling; the
     // anti-stack bound for every model is that same ceiling.
     requestedModel: 'glm-4.7',
     activeByModel: { '(unfrozen)': 2 },
-    requestedModelLimit: 5,
+    requestedModelLimit: 2,
     modelSlotsAvailable: true,
   });
 });
@@ -57,16 +58,13 @@ test('concurrency admission fails closed for a missing policy row', () => {
   );
 });
 
-test('concurrency admission falls back to 1 when the field is absent (one-entry law)', () => {
+test('concurrency admission fails closed when operator or model policy is missing', () => {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort)
-     VALUES (8,NULL,'zai','glm-4.7','high')`,
+       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+     VALUES (8,NULL,'zai','glm-4.7','high',NULL)`,
   ).run();
-  const admission = repository.readConcurrencyAdmission(8);
-  assert.equal(admission.operatorConcurrency, 1);
-  assert.equal(admission.effectiveConcurrency, 1,
-    'fallback is ONE worker — the fail-safe default of the single entry');
+  assert.throws(() => repository.readConcurrencyAdmission(8), /CONCURRENCY_POLICY_INVALID/);
 });
 
 test.after(() => {

@@ -121,12 +121,15 @@ export function factoryModelProfile(modelId: string): FactoryModelProfile | null
  */
 export function effectiveFactoryConcurrency(
   requested: number,
-  _modelLimit?: number,
+  modelLimit: number,
 ): number {
   if (!Number.isInteger(requested) || requested < 1 || requested > 10) {
     throw new Error(`requested concurrency must be an integer 1..10, got '${requested}'`);
   }
-  return requested;
+  if (!Number.isInteger(modelLimit) || modelLimit < 1 || modelLimit > 10) {
+    throw new Error(`model concurrency limit must be an integer 1..10, got '${modelLimit}'`);
+  }
+  return Math.min(requested, modelLimit);
 }
 
 /**
@@ -177,6 +180,8 @@ export function computeModelAdmission(input: {
    * per-model catalog limits no longer gate anything).
    */
   effectiveControlsCeiling: number;
+  /** Exact provider-resolved quota pinned with the live route. */
+  exactRequestedModelLimit?: number;
 }): ModelAdmissionDecision {
   const activeByModel: Record<string, number> = {};
   for (const frozen of input.activeFrozenModels) {
@@ -186,13 +191,21 @@ export function computeModelAdmission(input: {
   if (input.requestedModel === null) {
     return { activeByModel, requestedModelLimit: null, modelSlotsAvailable: true };
   }
-  // One-entry law: the anti-stacking bound for EVERY model (known or not) is
-  // the single controls ceiling.
+  const catalogLimit = factoryModelProfile(input.requestedModel)?.limit ?? null;
+  const requestedModelLimit = input.exactRequestedModelLimit ?? catalogLimit;
+  if (!Number.isInteger(requestedModelLimit) || requestedModelLimit! < 1 || requestedModelLimit! > 10) {
+    throw new Error(`MODEL_CONCURRENCY_POLICY_INVALID: no exact quota for model '${input.requestedModel}'`);
+  }
+  if (catalogLimit !== null && requestedModelLimit !== catalogLimit) {
+    throw new Error(
+      `MODEL_CONCURRENCY_POLICY_MISMATCH: model '${input.requestedModel}' pins ${requestedModelLimit}; catalog requires ${catalogLimit}`,
+    );
+  }
   const active = activeByModel[input.requestedModel] ?? 0;
   return {
     activeByModel,
-    requestedModelLimit: input.effectiveControlsCeiling,
-    modelSlotsAvailable: active < input.effectiveControlsCeiling,
+    requestedModelLimit: requestedModelLimit!,
+    modelSlotsAvailable: active < requestedModelLimit!,
   };
 }
 

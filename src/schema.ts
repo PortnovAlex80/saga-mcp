@@ -38,6 +38,15 @@ export function ensureWorkerExecutionsDisplayName(db: Database.Database): void {
   }
 }
 
+/** Restore the durable model/provider quota pin for v15 databases created
+ * while 18662636 omitted it from the clean schema. */
+export function ensureLifecycleExecutionControlsModelLimit(db: Database.Database): void {
+  const columns = db.prepare('PRAGMA table_info(lifecycle_execution_controls)').all() as Array<{ name: string }>;
+  if (!columns.some(column => column.name === 'model_concurrency_limit')) {
+    db.exec('ALTER TABLE lifecycle_execution_controls ADD COLUMN model_concurrency_limit INTEGER');
+  }
+}
+
 
 export const SCHEMA_SQL = `
 -- Core hierarchy: projects > epics > tasks > subtasks
@@ -1178,6 +1187,7 @@ CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
   model_provider       TEXT,
   model_name           TEXT,
   model_effort         TEXT,
+  model_concurrency_limit INTEGER,
   -- Antifreeze layer C (schema v14): the human-readable WHY for a
   -- non-'running' engine_state. Written by the panel engine supervisor when
   -- the restart budget is exhausted (engine_state='failed_watchdog'), cleared
