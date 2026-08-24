@@ -54,6 +54,22 @@ export const PROOF_CLAIMS = Object.freeze({
     claims: ['kernel self-mutation battery S1-S3 (registry/manifest/operator tamper → red)'],
     notClaimed: [],
   },
+  // ADR-096 gate item 2 (W3, 2026-08-25): the measured, non-zero, deterministic
+  // mutation-kill floor. Mutation identity/kill closure is K3-owned (the plan
+  // correction: K4 owns fault schedules); this floor is landed with the K4
+  // fault-edge hosting because the ADR-096 kill gate couples both.
+  'tests/factory-proof/mutation-kill-floor.test.mjs': {
+    modes: ['Contract', 'Durable'],
+    claims: [
+      'the pinned 21-mutant register of ADR-053/ADR-095 architectural-ban classes (execution-scoped lookup, latest-wins selection, scope-fence bypass, authority digest skip) — deterministic, algebra-typed, per-class composition pinned',
+      'a MEASURED kill matrix through the shared mutation algebra against real dist/ rejection boundaries (exact ProductRef reader, role-task projection, repository-scope fence predicates, accepted-authority head identity recorder) over in-memory SQLite: 21/21 killed, zero survivors, kill ratio 1',
+      'positive controls: every boundary accepts the canonical valid input — the kills are non-vacuous',
+    ],
+    notClaimed: [
+      'no live cell/gate admission — the boundaries are driven directly, not through a running production cell',
+      'no fault scheduling — the K4 FaultSchedule mode stays refused (CC-41); this floor kills architectural-ban mutants, it does not schedule crashes',
+    ],
+  },
   'tests/factory-proof/k0-baseline.test.mjs': {
     modes: ['Contract'],
     claims: [
