@@ -6,7 +6,51 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
-## Status: RUNNING (operator directive, 2026-08-24 13:05 local — third start)
+## Status: RUNNING — child lifecycle 4 (Elite-10 incident recovered, 2026-08-24 ~20:45 local)
+
+**The Elite-10 deadlock (15:40–17:30 UTC):** `impl-shared-core` (task 67)
+lawfully terminal-FAILED — the worker narrowed its claimed file surface to
+`tests/constants.test.js`+`tests/utils.test.js`; the gate accepted the work but
+the post-acceptance `git-integration` effect failed 7× with
+`PRODUCTION_CELL_INTEGRATION_CONFLICT` (epochs 1–3, ROLLOVER-DENIED at the
+end), exhausting the budget at 15:40:21. All 7 sibling impl cards transitively
+depend on shared-core; the kernel admits a dependent only when its dependency
+is terminal+ACCEPTED → `{"idle":7} not claimable` forever. The engine's own
+§23 stall classifier was blind (born-broken `ORDER BY id` on an id-less table,
+132 swallowed errors), so the wait looked unexplained.
+
+**Three fixes, each with regression (all green: process-modules 1467/1467,
+conveyor-app 395/395, factory-contract 112/112, guard suite 9/3skip/0):**
+- `e37ee77e` — progress reader: `ORDER BY attempt_no DESC, created_at DESC`
+  (third ORDER BY-id-on-idless-table; precedents 4e86a54c, 4a883534).
+- `5345723a` — node outcome aggregation: a pending item whose dependency
+  closure holds a terminal-FAILED workplace counts as failed-by-propagation
+  (was: pending masked failed → the node never settled → the stage could not
+  produce a terminal parent → recovery itself was unreachable).
+- `2bb9baf2` — redevelop parent guard accepts the development-blocked
+  settlement (completed + `development-blocked` + last stage
+  solution-development/blocked). Without it every legal CLI was stranded:
+  redevelop refused blocked, abandon no-ops on completed, and continue's
+  baseline adoption refuses the pre-C13 decision digests of every merged
+  candidate in this capsule world (the CC-GAP7A warrant-oracle problem).
+
+**Recovery executed:** soft-stop (engine 49752 braked; 0 executions) → resume
+on the fixed dist → lifecycle 3 settled honestly
+(`completed/development-blocked`, certificate:3) → `redevelop --check` OK →
+redevelop (auto-backup `pre-redevelopment-2026-08-24T17-42-29.110Z.sqlite`)
+→ **child lifecycle 4, engine pid 29752, launch 4d425b6e**. Plan desk
+replay-skipped (certified); fresh graph; **task 83 (impl-shared-core) in
+flight within 60s**, board 59 done / 1 in_progress / 14 todo.
+
+**Watch (not fixed, queued):** redevelop children carry NO cross-attempt
+defect evidence (the `continuationRecovery.externalBaseline.defectEvidence`
+channel exists only on the continue path) — task 83 sees the full scope and
+priorDeaths=23 but not the 16 gate rejections. If the worker narrows the
+surface again the gates will catch it (budget: 7 attempts → terminal) and the
+unblocker becomes the warrant-oracle work. Closure queue: defectEvidence for
+redevelop, terminal-workplace classification, pre-C13 digest repair.
+
+## (histor) Status: RUNNING (operator directive, 2026-08-24 13:05 local — third start)
 
 Relaunched per protocol: unpark released the 2 stop holds, engine pid 30676
 adopted launch `cdc27a79`, controls 8/8, watchdog live (12h). First dispatch
