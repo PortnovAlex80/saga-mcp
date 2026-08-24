@@ -203,6 +203,18 @@ decision + journal + registry + this refinement; no implementation
 claimed); its phases 2-6 and the open half of phase 1 (inventory/census/
 boot baseline) are executed under this point.
 
+**Development-first amendment (2026-08-24):** the detailed executable plan is
+`docs/plans/DEVELOPMENT-CAPSULE-QUALIFICATION-PLAN.md`. Workshops 1 and 2 become
+a content-addressed verified seed for repeated fresh Development runs, not an
+excuse to ignore upstream defects. A Development witness that proves absent or
+contradictory upstream material routes back to Formalization, causes capsule
+reissue, and is replayed from a fresh copy. Immediate blocking gaps are the
+planner/worker/reviewer joint-satisfiability contract, structured review
+jurisdiction, whole-product browser construction ownership, an independently
+defined scenario universe, execution of the real scenario driver in CI, and
+three consecutive Development-only terminal successes. These do not replace
+Point 7 or the later three clean whole-conveyor qualifications.
+
 - [ ] **Task-shadow binding (P0, SM-14/MM-3):** fix `readTaskForWorkplace`
       newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
       + integration test on a REAL multi-task singleton workplace (R3;
