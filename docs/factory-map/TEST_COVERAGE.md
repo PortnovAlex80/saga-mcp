@@ -1,4 +1,4 @@
-# TEST_COVERAGE — reconciled evidence labels and the coverage universe (as of `010f600c`)
+# TEST_COVERAGE — reconciled evidence labels and the coverage universe (as of `6a983c47`)
 
 - **Sources of truth (machine):** `tools/run-acceptance-matrix.mjs` (9 groups,
   6 quarantine rows, `--list-json` export is the ONLY supported machine
@@ -21,7 +21,7 @@
 | `CI-executed` | the group is invoked by a ci.yml step (matrix-hosted AND a ci step exists) | step name + `ci.yml:line` |
 | `CI-blocking` | a red result fails CI with no `|| true`, no continue-on-error, no retry (CI-02 exit rule; additionally pinned by a per-file removal guard where noted) | step + guard citation |
 | `pending` | a proof is owed and does not exist yet (declared obligation without a file) | owning plan/tracker row |
-| `quarantine` | file is deliberately EXCLUDED from blocking CI with a documented FLAKY / PRE-EXISTING-RED reason (at most `test-file-exists`/`demonstrated`; never CI-executed) | `run-acceptance-matrix.mjs:176-195` row |
+  | `quarantine` | file is deliberately EXCLUDED from blocking CI with a documented FLAKY / PRE-EXISTING-RED reason (at most `test-file-exists`/`demonstrated`; never CI-executed) | `run-acceptance-matrix.mjs:246-265` row |
 | `platform/fault-edge` | claim proven only on a platform arm CI does not execute (win32), or only as an injected fault-edge in a workshop inventory row | arm/row citation |
 
 Label lattice: `CI-blocking ⊂ CI-executed ⊂ matrix-hosted`; `quarantine` and
@@ -31,17 +31,24 @@ metadata, not a strength grade.
 ## 2. Registry facts (reconciler-verified, not narrated)
 
 - 9 groups: `architecture`, `factory-model`, `readiness-fencing`,
-  `factory-contract`, `process-modules` (concurrency=1; TWELVE exact-file
-  adoptions at `tools/run-acceptance-matrix.mjs:89-139`: the CC-GAP-8 pair
+  `factory-contract`, `process-modules` (concurrency=1; THIRTEEN exact-file
+  adoptions at `tools/run-acceptance-matrix.mjs:89-153`: the CC-GAP-8 pair
   [verification-ledger, terminal-exit-accounting], the Elite-8
   worker-prompt-assembly file, the six desk-coverage adoptions from
   5d020f9f [task-graph-register-conditional-coverage,
   task-graph-gate-srs-manifest, local-runnability-substrate-retry,
   local-runnability-toctou-reprobe, environment-identity,
   local-runnability-seam-compose], the ADR-095 Phase-2
-  migration-conformance file, and the TWO BM-5 file-identity files
+  migration-conformance file, the TWO BM-5 file-identity files
   [srs-file-identity-satisfiability, srs-derived-change-scopes — the latter
-  closed its TC-7 orphan row on 2026-08-24]),
+  closed its TC-7 orphan row on 2026-08-24], and the ADR-095 Phase-3.1
+  conveyor v4.3 focused-invariants file added by the canonical line
+  [TRUTH UPDATE, canonical BM-5 integration 2026-08-24: the BM-5 branch
+  counted TWELVE at `:89-139` because its base predated the canonical
+  Phase-3.1 hosting; re-derived from the `--list-json` export at `6a983c47`
+  — process-modules 138 files, factory-contract 22, factory-proof 23,
+  architecture 78, discovery-live-v2 8, readiness-fencing 12,
+  factory-model 1, matrix-coverage 1, cc-proof-registry 1]),
   `discovery-live-v2` (8 exact files, ADR-095 Phase-2A/2B),
   `matrix-coverage` (self-check),
   `cc-proof-registry` (bidirectional manifest↔matrix↔CI closure, ADR-092),
@@ -50,7 +57,7 @@ metadata, not a strength grade.
 - 6 quarantine rows: golden-path (FLAKY), parallel-git-desk (FLAKY),
   factory-temporal/* (FLAKY), development-task-graph-diagnostics
   (PRE-EXISTING-RED), submission-validator-diagnostics (PRE-EXISTING-RED),
-  local-runnability-check-provider (FLAKY) (`:176-195`).
+  local-runnability-check-provider (FLAKY) (`:246-265`).
 - CI additionally runs non-matrix blocking gates: dispatcher-race scripts,
   cgad-spec-lint unit suite, completion-evidence validation
   (`ci.yml:80-106`).
@@ -60,11 +67,11 @@ metadata, not a strength grade.
 | id | Subject | Strongest label | Evidence |
 |---|---|---|---|
 | TC-1 | Discovery cells + settlement + handoff (BM-2/BM-3) | CI-blocking (pack validation, handoff); corpus matrix-hosted | `tests/factory-proof/discovery-scenario-pack.test.mjs`, `discovery-resilience-pack.test.mjs` (group factory-proof, `ci.yml:123-124`); `tests/process-modules/discovery-output-handoff.test.mjs` (`ci.yml:77-78`); corpus `tests/factory-evidence/discovery/*.json` |
-| TC-2 | `tests/discovery/**` (20 files incl. d1–d7) + `tests/modules/discovery/**` | test-file-exists (orphans) | no group globs them (`run-acceptance-matrix.mjs:64-163`); incl. two ADR-090 proof files (`RED-TEAM-AUDIT.md:103-106`) |
+| TC-2 | `tests/discovery/**` (20 files incl. d1–d7) + `tests/modules/discovery/**` | test-file-exists (orphans) | no group globs them (`run-acceptance-matrix.mjs:64-233`); incl. two ADR-090 proof files (`RED-TEAM-AUDIT.md:103-106`) |
 | TC-3 | Formalization spine + constraint relay + warrant (BM-4/BM-5 identity half) | CI-blocking | `formalization-constraint-coverage`, `-package-manifest`, `-solution-contract-hashes`, `-warrant-ref`, `e-constraint-loss`, `srs-d2-parser` (groups process-modules/factory-contract) |
 | TC-4 | Formalization module-local suites (`tests/modules/formalization/**`) | test-file-exists (orphans) | heading-resolution, artifact-ref-bridge (`02_FORMALIZATION.md:320-322`) |
 | TC-5 | Development planner gates: register-conditional coverage + §2.2 manifest (BM-5 satisfiability half) | CI-executed (exact-file); per-file removal guard for the TC-5 pair still ABSENT (G2g covers only terminal-exit-accounting; G2m covers the BM-5 pair) | `task-graph-register-conditional-coverage.test.mjs`, `task-graph-gate-srs-manifest.test.mjs` (`run-acceptance-matrix.mjs:108-109`); guard gap: deleting either TC-5 file does not redden the matrix (`RED-TEAM-AUDIT.md:106-115`) |
-| TC-6 | Development implementation/verification/readiness substrate | CI-executed (glob + 4 exact substrate files) | `run-acceptance-matrix.mjs:83-116`; readiness real-process file quarantined FLAKY (`:192-194`) → substrate TIMING = platform/fault-edge |
+| TC-6 | Development implementation/verification/readiness substrate | CI-executed (glob + 4 exact substrate files) | `run-acceptance-matrix.mjs:83-122`; readiness real-process file quarantined FLAKY (`:262-264`) → substrate TIMING = platform/fault-edge |
 | TC-7 | `tests/modules/development/**` 15 files | 6 hosted (verification-ledger, terminal-exit-accounting, TC-5 pair, BM-5 pair) — NINE orphans | orphan list: text-set-manifest, srs-module-manifest, settlement-placeholder-verdict, readiness-test-surface, implementation-workset-item-key, implementation-scope-workitemkey, implementation-scope-ancestry, factory-managed-repository-paths, development-verification-check-provider (`03_DEVELOPMENT.md:754-760`); TRUTH UPDATE 2026-08-24: srs-derived-change-scopes + srs-file-identity-satisfiability left this orphan set when BM-5 §4.5 hosted them (guard G2m) |
 | TC-8 | Delivery kernel + effect ledger + approval inbox (BM-12/BM-13) | CI-blocking | `deferred-delivery`, `delivery-approval-inbox`, `product-delivery-lifecycle-e2e`, `product-lifecycle-policies`, effect-ledger/exactly-once suites, `delivery-kernel-unification.test.mjs` (factory-proof) |
 | TC-9 | Task-shadow port (SM-14) on a REAL multi-task singleton workplace | **pending** (R3) — no test exists; every unit stubs the port | `RED-TEAM-AUDIT.md:80-86,139-140` |
