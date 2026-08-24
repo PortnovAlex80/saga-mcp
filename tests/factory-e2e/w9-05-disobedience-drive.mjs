@@ -7,7 +7,10 @@
 // this script per scenario.
 //
 // Scenario selection: W9_SCENARIO env var = 'silent-worker' |
-// 'exit-without-done' | 'fake-done-file'.
+// 'exit-without-done' | 'fake-done-file' — or W9_PERTURBATION_SEED=<n>
+// selecting an in-lane tape from the frozen table (perturbation-tapes.mjs);
+// a conflicting explicit W9_SCENARIO is a typed error, and the evidence
+// always records the resolved tape name.
 //
 // What every scenario proves: the factory's liveness and completion
 // guarantees are MECHANICAL. A worker that never signals liveness, or that
@@ -20,7 +23,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
-const SCENARIO = process.env.W9_SCENARIO || '';
+const { resolveDriveTapeSelection } = await import('./perturbation-tapes.mjs');
+const tapeSelection = resolveDriveTapeSelection({ env: process.env, driveFile: 'w9-05-disobedience-drive.mjs' });
+const SCENARIO = tapeSelection.scenario || '';
 const label = process.env.W9_DRIVE_LABEL || SCENARIO;
 
 const harness = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href);
@@ -125,6 +130,9 @@ try {
   const evidence = {
     label,
     scenario: SCENARIO,
+    perturbationSeed: tapeSelection.seed,
+    perturbationTape: tapeSelection.tapeName,
+    perturbationTapeApplied: tapeSelection.applied,
     cycles: result.cycles,
     terminalReason: result.terminalReason,
     reachedTerminal: result.reachedTerminal,

@@ -1,0 +1,136 @@
+{
+  "kind": "saga-mcp.perturbation-tapes",
+  "version": 1,
+  "frozenAt": "2026-08-25",
+  "purpose": "ADR-096 qualification gate item 3: three fresh whole-factory runs on ONE immutable build with DIFFERENT deterministic perturbation seeds. This table maps seed -> one named tape. A tape is pure SELECTION of an already-declared deterministic scenario variant (run-manifest.ts); no new fault logic lives here and NO random fault injection exists anywhere in the contract (the W9 harness forbids it).",
+  "seedEnv": "W9_PERTURBATION_SEED",
+  "selectionRule": "seed n -> tapes[n mod tapes.length]; absent or unparseable seed -> the default tape (index 0). A seed whose tape belongs to another lane leaves the entrypoint on its current behavior; the resolved tape name is ALWAYS recorded in the drive evidence and validated against run-manifest tapeName.",
+  "tapes": [
+    {
+      "index": 0,
+      "name": "golden-full-lifecycle",
+      "default": true,
+      "drive": "w9-02-single-drive.mjs",
+      "scenario": null,
+      "manifestId": "w9-02-happy-full-lifecycle",
+      "varies": "Golden path — scripted happy handlers on every cell, zero crash points. This is the unseeded default drive (current behavior)."
+    },
+    {
+      "index": 1,
+      "name": "cross-execution-durability",
+      "default": false,
+      "drive": "w9-03-adversarial-drive.mjs",
+      "scenario": "cross-execution-durability",
+      "manifestId": "w9-03-cross-execution-durability",
+      "varies": "Named crash point 'author-lost-after-first-contribution' (invocation 1, exit-without-done): the first author execution is lost mid-production; crash repair reassigns the SAME workplace and both contributions must land in one accepted revision."
+    },
+    {
+      "index": 2,
+      "name": "reviewer-reject-repair",
+      "default": false,
+      "drive": "w9-03-adversarial-drive.mjs",
+      "scenario": "reviewer-reject-repair",
+      "manifestId": "w9-03-reviewer-reject-repair",
+      "varies": "The final gate returns repair_required on the first reviewer assessment; a second immutable author CandidateSet plus a second assessment is accepted — exact subject_candidate_set_ref authority across the repair cycle."
+    },
+    {
+      "index": 3,
+      "name": "carry-forward-authority",
+      "default": false,
+      "drive": "w9-03-adversarial-drive.mjs",
+      "scenario": "carry-forward-authority",
+      "manifestId": "w9-03-carry-forward-authority",
+      "varies": "The multi-task recency trap: the integration task is selected from the accepted-authority head (readAuthorTaskId), never from submission.task_id or ORDER BY id DESC."
+    },
+    {
+      "index": 4,
+      "name": "frm-inconsistent",
+      "default": false,
+      "drive": "w9-04-outcome-edge-drive.mjs",
+      "scenario": "frm-inconsistent",
+      "manifestId": "w9-04-frm-inconsistent",
+      "varies": "The product-contract author traces the PRD to a non-brief root; settlement's canonical traceability check terminates Formalization inconsistent."
+    },
+    {
+      "index": 5,
+      "name": "dev-blocked",
+      "default": false,
+      "drive": "w9-04-outcome-edge-drive.mjs",
+      "scenario": "dev-blocked",
+      "manifestId": "w9-04-dev-blocked",
+      "varies": "An out-of-band change lands on the integration branch after candidate freeze; settlement observes the drifted head and terminates Development blocked (candidate-drifted-after-freeze)."
+    },
+    {
+      "index": 6,
+      "name": "disc-deleted-word",
+      "default": false,
+      "drive": "w9-04-outcome-edge-drive.mjs",
+      "scenario": "disc-deleted-word",
+      "manifestId": "w9-04-disc-deleted-word-rejected",
+      "varies": "A discovery proposal recommends the DELETED outcome word 'defer'; the closed proposal enum rejects the submission as invalid input — the factory never rewrites a deleted word."
+    },
+    {
+      "index": 7,
+      "name": "disc-clarify",
+      "default": false,
+      "drive": "w9-04-outcome-edge-drive.mjs",
+      "scenario": "disc-clarify",
+      "manifestId": "w9-04-disc-clarify",
+      "varies": "Discovery settles 'clarify'; the certificate records the code; the permissive gate still forwards to Formalization and the lifecycle completes."
+    },
+    {
+      "index": 8,
+      "name": "disc-reject",
+      "default": false,
+      "drive": "w9-04-outcome-edge-drive.mjs",
+      "scenario": "disc-reject",
+      "manifestId": "w9-04-disc-reject",
+      "varies": "Discovery settles 'reject' with coherent readiness-advisor agreement; the certificate records the code; routing forwards to Formalization and the lifecycle completes."
+    },
+    {
+      "index": 9,
+      "name": "silent-worker",
+      "default": false,
+      "drive": "w9-05-disobedience-drive.mjs",
+      "scenario": "silent-worker",
+      "manifestId": "w9-05-silent-worker",
+      "varies": "A worker goes silent (expired lease, stale heartbeat, no liveness, no completion receipt); the production reaper must classify it lost, release the card and leave accepted-authority heads untouched."
+    },
+    {
+      "index": 10,
+      "name": "exit-without-done",
+      "default": false,
+      "drive": "w9-05-disobedience-drive.mjs",
+      "scenario": "exit-without-done",
+      "manifestId": "w9-05-exit-without-done",
+      "varies": "Named crash point 'author-exits-after-work-without-done' (invocation 1): real durable work, prints a summary, exits 0 without worker_done — the finalizer classifies it lost and crash repair converges."
+    },
+    {
+      "index": 11,
+      "name": "fake-done-file",
+      "default": false,
+      "drive": "w9-05-disobedience-drive.mjs",
+      "scenario": "fake-done-file",
+      "manifestId": "w9-05-fake-done-file",
+      "varies": "Named crash point 'author-fakes-worker-done-file' (invocation 1): worker-done-call.json is forged on disk with a plausible payload and no MCP tool call; the file must be ignored exactly as prompt rule 6a states."
+    },
+    {
+      "index": 12,
+      "name": "scope-widening-grant",
+      "default": false,
+      "drive": "w9-06-scope-widening-drive.mjs",
+      "scenario": "grant",
+      "manifestId": "w9-06-scope-widening-grant",
+      "varies": "The first implementation card honestly requires atlas/registry-map.json outside its frozen changeScopes; two path-outside-authority rejections route to a scope-widening request; the carve authority grants it and the SAME workplace completes on the re-frozen wider scope."
+    },
+    {
+      "index": 13,
+      "name": "scope-declared",
+      "default": false,
+      "drive": "w9-06-scope-widening-drive.mjs",
+      "scenario": "declared",
+      "manifestId": "w9-06-scope-declared",
+      "varies": "The same honest work via the typed conclusion: after the first scope rejection the worker ends its attempt with outcome 'scope-insufficient' naming atlas/; the same grant path serves it and the lifecycle completes runnable-local."
+    }
+  ]
+}
