@@ -127,6 +127,14 @@ const GROUPS = {
       // (mandatoryPhase4Repins) and pinned by coverage guard G2j. Exact file
       // on purpose: no directory glob, the surface cannot silently widen.
       'tests/execution/migration-conformance.test.mjs',
+      // TASK-SHADOW F2 hosting (same orphan class, found while adding the
+      // engine-start-adoption exact-binding regressions): the suite pre-dates
+      // the fix but was matched by NO group glob, so CI never executed it.
+      // It now carries the three F2 blocking regressions (no-receipt repair
+      // + spawn-failed residue repair bind the CURRENT role's EXACT task
+      // projection, never the newest row). Exact file on purpose: no
+      // directory glob, the hosted surface cannot silently widen.
+      'tests/infrastructure/engine-start-adoption.test.mjs',
     ],
     concurrency: 1,
     note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts + ADR-095 migration-conformance (green on legacy baseline, Phase-4 repin owed)',

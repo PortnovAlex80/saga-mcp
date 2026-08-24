@@ -30,6 +30,14 @@
 //   S3 NEGATIVE missing binding — a workplace with no (or reviewer-only) task
 //      rows resolves null for the author role: absence is exact, never a
 //      recency fallback onto the neighbor row.
+//   S4 F1 (Red-Team HIGH) — a LEGAL second review round (author +
+//      reviewer#1(done) + reviewer#2(active)) drove the role-only uniqueness
+//      claim to THROW on the real production path. The reviewer key is now
+//      the exact CURRENT subject_candidate_set_ref (accepted-author authority
+//      head): two review generations via author repair, then reviewer-side
+//      deaths + reviewer-targeted repair_wait — no throw, the CURRENT
+//      generation's deaths count, the superseded generation is ignored, and a
+//      duplicate CURRENT subject row still throws.
 //
 // REAL components (nothing under test is stubbed):
 //   SCHEMA_SQL, SqliteWorkplace/CandidateSet/Gate/FinalAcceptance/
@@ -39,8 +47,10 @@
 //   createSqliteProductionCellProjectionPersistence (ensureExecutionPlan,
 //   bindProjectedTaskProcessContext, readTaskProjectRepositoryId,
 //   readProjectedRoleTask — the K7 exact-key read the production composition
-//   root provides since the fix), activateProductionCellRoleTask,
-//   countTerminalExecutionsForTask, countGateRejectedCandidateSets.
+//   root provides, generation-exact for the reviewer since F1),
+//   activateProductionCellRoleTask, countTerminalExecutionsForTask,
+//   countGateRejectedCandidateSets, and (F4) the PRODUCTION recovery-epoch
+//   helpers from sqlite-recovery-epoch-ledger.ts.
 // Stubbed (declared plumbing, not the seam under test): the worker
 // productReader (no managed-production ledger), projectWorkplace projection
 // fanout.
@@ -67,7 +77,10 @@ import { SqliteTransitionObligationLedger } from '../../dist/process-modules/per
 import { activateProductionCellRoleTask } from '../../dist/lifecycle/work-assignment-core.js';
 import { countTerminalExecutionsForTask } from '../../dist/app/product-lifecycle-runtime.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
-import { recoveryEpochBackoffMs } from '../../dist/process-modules/domain/workplace/production-cell-definition.js';
+import {
+  readRecoveryEpochBaseline as readRecoveryEpochBaselineSql,
+  recordRecoveryEpoch as recordRecoveryEpochSql,
+} from '../../dist/infrastructure/workplace/sqlite-recovery-epoch-ledger.js';
 import { encodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import {
   countGateRejectedCandidateSets,
@@ -78,6 +91,11 @@ import { sha256Hex } from '../../dist/shared/canonical-json.js';
 const sha = sha256Hex;
 const PROVIDER = 'test.production-contract';
 const PROVIDER_DIGEST = sha('provider');
+// S4 — a second final-gate check whose deterministic failure targets the
+// REVIEWER (reviewer-output validity): lets one final gate route round-1
+// rejections to the author and round-2 rejections to the reviewer.
+const REVIEW_PROVIDER = 'test.reviewer-output';
+const REVIEW_PROVIDER_DIGEST = sha('review-provider');
 
 function overlapDiagnostic(left, right) {
   return encodeCheckDiagnostic({
@@ -86,8 +104,15 @@ function overlapDiagnostic(left, right) {
   });
 }
 
-function checkPlan(id, phase) {
-  const entries = [{
+function verdictDiagnostic() {
+  return encodeCheckDiagnostic({
+    code: 'review-verdict-invalid',
+    message: 'reviewer verdict payload failed its frozen contract decoder',
+  });
+}
+
+function checkPlan(id, phase, entries) {
+  const planEntries = entries ?? [{
     check: { providerId: PROVIDER, version: '1.0.0', providerDigest: PROVIDER_DIGEST },
     parameters: {},
     environmentRef: null,
@@ -95,7 +120,7 @@ function checkPlan(id, phase) {
   const base = {
     checkPlanId: id,
     version: '1.0.0',
-    entries,
+    entries: planEntries,
     decisionPolicyRef: `test.${phase}.decision`,
     decisionPolicyDigest: sha(`${phase}.decision`),
     unknownErrorPolicy: 'fail-closed',
@@ -103,7 +128,7 @@ function checkPlan(id, phase) {
   return { ...base, checkPlanDigest: sha(base) };
 }
 
-function cell({ review = true } = {}) {
+function cell({ review = true, reviewerTargetedFinalGate = false } = {}) {
   return {
     id: 'singleton-cell',
     inputSelectors: ['source'],
@@ -123,7 +148,29 @@ function cell({ review = true } = {}) {
         version: '1.0.0',
         contractDigest: sha('test-review-verdict-payload'),
       },
-      finalGate: { gateId: 'final-gate', gatePhase: 'final', checkPlan: checkPlan('final-plan', 'final') },
+      finalGate: {
+        gateId: 'final-gate',
+        gatePhase: 'final',
+        checkPlan: reviewerTargetedFinalGate
+          ? checkPlan('final-plan', 'final', [
+            // Round router: entry 1 failures repair the AUTHOR (defect in the
+            // product), entry 2 failures repair the REVIEWER (defective
+            // verdict) — one plan, two lawful repair targets.
+            {
+              check: { providerId: PROVIDER, version: '1.0.0', providerDigest: PROVIDER_DIGEST },
+              parameters: {},
+              environmentRef: null,
+              repairTargetRoleOnFailure: 'author',
+            },
+            {
+              check: { providerId: REVIEW_PROVIDER, version: '1.0.0', providerDigest: REVIEW_PROVIDER_DIGEST },
+              parameters: {},
+              environmentRef: null,
+              repairTargetRoleOnFailure: 'reviewer',
+            },
+          ])
+          : checkPlan('final-plan', 'final'),
+      },
     } : undefined,
     recovery: { maxAttempts: 2, onExhausted: 'requeue' },
     transitions: { accepted: 'next', humanRequired: 'blocked', failed: 'failed' },
@@ -197,6 +244,7 @@ function harness() {
 
   const projectionPersistence = createSqliteProductionCellProjectionPersistence(db);
   let checkOutcome = { outcome: 'passed', evidenceRefs: [] };
+  let reviewCheckOutcome = { outcome: 'passed', evidenceRefs: [] };
   const persistence = {
     // REAL projection persistence: the same factory the composition root
     // spreads into the executor (ensureExecutionPlan, bindProjectedTask
@@ -239,47 +287,24 @@ function harness() {
     countGateRejectedCandidateSets(db, serializeWorkplaceRef(ref), role);
   persistence.countTerminalExecutionsForTask = taskId =>
     countTerminalExecutionsForTask(db, taskId);
-  // REAL epoch table wiring (same SQL as the runtime closures).
-  persistence.readRecoveryEpochBaseline = (ref, role) => {
-    const row = db.prepare(
-      `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
-              baseline_effect_repairs, created_at, last_diagnosis
-         FROM factory_workplace_recovery_epochs
-        WHERE workplace_ref=? AND role=?
-        ORDER BY epoch DESC LIMIT 1`,
-    ).get(serializeWorkplaceRef(ref), role);
-    if (!row) return null;
-    return {
-      epoch: row.epoch,
-      baselineRejectedSets: row.baseline_rejected_sets,
-      baselineTerminalExecutions: row.baseline_terminal_executions,
-      baselineEffectRepairs: row.baseline_effect_repairs,
-      lastDiagnosis: row.last_diagnosis ?? null,
-      rolledBackoffUntilMs:
-        Date.parse(`${row.created_at.replace(' ', 'T')}Z`) + recoveryEpochBackoffMs(row.epoch),
-    };
-  };
-  persistence.recordRecoveryEpoch = input => {
-    db.prepare(
-      `INSERT OR IGNORE INTO factory_workplace_recovery_epochs
-         (workplace_ref, role, epoch,
-          baseline_rejected_sets, baseline_terminal_executions,
-          baseline_effect_repairs, exhausted_attempts,
-          max_attempts, total_attempts_cap, last_diagnosis)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      serializeWorkplaceRef(input.workplaceRef),
-      input.role,
-      input.epoch,
-      input.baselineRejectedSets,
-      input.baselineTerminalExecutions,
-      input.baselineEffectRepairs,
-      input.exhaustedAttempts,
-      input.maxAttempts,
-      input.totalAttemptsCap,
-      input.lastDiagnosis,
-    );
-  };
+  // REAL epoch table wiring — TASK-SHADOW F4: through the PRODUCTION helpers
+  // (infrastructure/workplace/sqlite-recovery-epoch-ledger.ts), the same
+  // code the composition root closures call; no duplicated inline SQL.
+  persistence.readRecoveryEpochBaseline = (ref, role) =>
+    readRecoveryEpochBaselineSql(db, serializeWorkplaceRef(ref), role);
+  persistence.recordRecoveryEpoch = input =>
+    recordRecoveryEpochSql(db, {
+      workplaceRef: serializeWorkplaceRef(input.workplaceRef),
+      role: input.role,
+      epoch: input.epoch,
+      baselineRejectedSets: input.baselineRejectedSets,
+      baselineTerminalExecutions: input.baselineTerminalExecutions,
+      baselineEffectRepairs: input.baselineEffectRepairs,
+      exhaustedAttempts: input.exhaustedAttempts,
+      maxAttempts: input.maxAttempts,
+      totalAttemptsCap: input.totalAttemptsCap,
+      lastDiagnosis: input.lastDiagnosis,
+    });
 
   const executor = new ProductionCellNodeExecutor({
     db,
@@ -313,13 +338,19 @@ function harness() {
           providerId: PROVIDER, version: '1.0.0', providerDigest: PROVIDER_DIGEST,
           run: () => checkOutcome,
         }
-        : null),
+        : providerId === REVIEW_PROVIDER
+          ? {
+            providerId: REVIEW_PROVIDER, version: '1.0.0', providerDigest: REVIEW_PROVIDER_DIGEST,
+            run: () => reviewCheckOutcome,
+          }
+          : null),
     },
     resolveInstallationDigest: () => sha('installation'),
     now: () => new Date(),
   });
-  const setCheckOutcome = (outcome, evidenceRefs = []) => {
-    checkOutcome = { outcome, evidenceRefs };
+  const setCheckOutcome = (outcome, evidenceRefs = [], providerId = PROVIDER) => {
+    if (providerId === REVIEW_PROVIDER) reviewCheckOutcome = { outcome, evidenceRefs };
+    else checkOutcome = { outcome, evidenceRefs };
   };
   const roleTaskRows = () => db.prepare(
     "SELECT id, workplace_ref, json_extract(metadata, '$.role') AS role, status FROM tasks "
@@ -393,6 +424,19 @@ function seedTerminalExecutions(h, taskId, count, prefix) {
       'task-shadow-integration-test',
     );
   }
+}
+
+/** Terminalize a presenter execution after its gate settled — the production
+ *  supervisor's fact (an OS exit is recorded on the execution row). Keeps the
+ *  one-ACTIVE-execution-per-task partial unique index satisfiable across
+ *  multi-round hires; 'exited' is NOT a crash state, so it never pollutes
+ *  countTerminalExecutionsForTask (lost/terminated/spawn_failed only). */
+function completeExecution(h, executionRef) {
+  h.db.prepare(
+    `UPDATE worker_executions
+        SET state='exited', finished_at=datetime('now')
+      WHERE execution_id=? AND state='running'`,
+  ).run(executionRef);
 }
 
 function engineLogCapture() {
@@ -600,6 +644,203 @@ test('S3 NEGATIVE: no author-role row resolves null — never the reviewer/neigh
     });
     assert.equal(h.persistence.readProjectedRoleTask(emptyRef, 'author'), null);
     assert.equal(h.persistence.readProjectedRoleTask(emptyRef, 'reviewer'), null);
+    void ctx;
+  } finally {
+    h.db.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// S4 — TASK-SHADOW F1 (Red-Team HIGH): a LEGAL second review round.
+//
+// Reviewer generations are minted per accepted author set, so the production
+// path legitimately reaches: author + reviewer#1(done) + reviewer#2(active).
+// The retired role-only uniqueness claim threw
+// PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE from
+// readProjectedRoleTask(workplace,'reviewer') INSIDE the budget pass — a
+// legal state killed the line. The exact generation key is the CURRENT
+// subject_candidate_set_ref (the accepted-author authority head).
+//
+// Drive: two review generations via author repair, then reviewer-side
+// deaths + reviewer-targeted repair_wait. No throw; the CURRENT reviewer
+// generation's deaths count; the superseded generation is ignored; a
+// duplicate CURRENT subject row still throws.
+// ---------------------------------------------------------------------------
+test('S4: two legal reviewer generations — budget resolves the exact current generation, no throw, superseded ignored', async () => {
+  const h = harness();
+  const definition = cell({ review: true, reviewerTargetedFinalGate: true });
+  const ctx = context(definition);
+  const ref = workplaceRef();
+  const serialized = serializeWorkplaceRef(ref);
+  const log = engineLogCapture();
+  try {
+    // ---- Round 1: author A1 accepted → reviewer generation #1 (subject A1).
+    await h.executor.execute(ctx); // hire the author (real projection)
+    finishRole(h, ref, 'execution:author-r1', {
+      schemaId: 'factory.test-product.v1', ref: 'product:author-r1', digest: sha('author-r1'),
+    });
+    h.setCheckOutcome('passed');
+    await h.executor.execute(ctx); // author gate accepts → reviewer#1 desk
+    completeExecution(h, 'execution:author-r1');
+    let rows = h.roleTaskRows();
+    assert.equal(rows.length, 2, 'author + reviewer#1 after the first review round');
+    const reviewer1TaskId = rows[1].id;
+
+    // Round 1 verdict: final gate entry 1 (author-targeted) FAILS → the
+    // author must repair; entry 2 (reviewer-output) passes.
+    finishRole(h, ref, 'execution:reviewer-r1', {
+      schemaId: 'factory.test-review-verdict.v1', ref: 'product:review-r1', digest: sha('review-r1'),
+    });
+    h.setCheckOutcome('failed', [overlapDiagnostic('auth', 'billing')]);
+    h.setCheckOutcome('passed', [], REVIEW_PROVIDER);
+    await h.executor.execute(ctx);
+    completeExecution(h, 'execution:reviewer-r1');
+    let state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'repair_wait');
+    assert.equal(state.nextRole, 'author');
+
+    // Author budget: 1 rejection < 2 → requeue + rehire (same execute pass).
+    await h.executor.execute(ctx);
+    state = h.coordinator.readState(ref);
+    assert.equal(state.nextRole, 'author');
+
+    // ---- Round 2: author repair A2 accepted → head moves → reviewer
+    // generation #2 (subject A2). THE LEGAL F1 STATE: 3 task rows.
+    finishRole(h, ref, 'execution:author-r2', {
+      schemaId: 'factory.test-product.v1', ref: 'product:author-r2', digest: sha('author-r2'),
+    });
+    h.setCheckOutcome('passed');
+    await h.executor.execute(ctx); // author gate accepts → reviewer#2 minted
+    completeExecution(h, 'execution:author-r2');
+    rows = h.roleTaskRows();
+    assert.equal(rows.length, 3,
+      'author + reviewer#1(done) + reviewer#2(active) — the legal second review round');
+    const reviewerRows = rows.filter(row => row.role === 'reviewer');
+    assert.equal(reviewerRows.length, 2, 'role ALONE is genuinely ambiguous now (F1)');
+    state = h.coordinator.readState(ref);
+    assert.equal(state.nextRole, 'reviewer');
+
+    // The exact-generation read resolves the CURRENT reviewer task through
+    // the accepted-author authority head — no throw, no newest inference.
+    const reviewer2TaskId = h.persistence.readProjectedRoleTask(ref, 'reviewer').taskId;
+    assert.notEqual(reviewer2TaskId, reviewer1TaskId,
+      'the head-bound CURRENT generation is resolved');
+    // Explicit superseded subject → the OLD generation (probing history is
+    // legal; it is just not what the budget binds to).
+    const reviewer1Subject = h.db.prepare(
+      "SELECT json_extract(metadata, '$.subject_candidate_set_ref') AS subject FROM tasks WHERE id=?",
+    ).get(reviewer1TaskId).subject;
+    assert.ok(reviewer1Subject, 'the superseded generation carries its subject binding');
+    assert.equal(
+      h.persistence.readProjectedRoleTask(ref, 'reviewer', reviewer1Subject)?.taskId,
+      reviewer1TaskId,
+      'an explicit superseded subject resolves the superseded generation',
+    );
+    // Absent subject → exact null, never a newest-row fallback.
+    assert.equal(h.persistence.readProjectedRoleTask(ref, 'reviewer', 'candidate-set:never-sealed'), null);
+
+    // ---- Reviewer-side crash accounting on the CURRENT generation only.
+    seedTerminalExecutions(h, reviewer2TaskId, 2, 'reviewer-current');
+    seedTerminalExecutions(h, reviewer1TaskId, 1, 'reviewer-superseded');
+
+    // Round 2 verdict: final gate entry 2 (reviewer-targeted) FAILS →
+    // reviewer-side repair_wait.
+    finishRole(h, ref, 'execution:reviewer-r2', {
+      schemaId: 'factory.test-review-verdict.v1', ref: 'product:review-r2', digest: sha('review-r2'),
+    });
+    h.setCheckOutcome('passed');
+    h.setCheckOutcome('failed', [verdictDiagnostic()], REVIEW_PROVIDER);
+    await h.executor.execute(ctx);
+    state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'repair_wait');
+    assert.equal(state.nextRole, 'reviewer',
+      'the reviewer itself is the repair target (invalid verdict)');
+
+    // ---- THE BUDGET PASS: no throw (the F1 counterfactual threw here), the
+    // CURRENT generation's 2 deaths engage the budget, the superseded
+    // generation's 1 death is IGNORED.
+    await h.executor.execute(ctx);
+    const epochRow = h.db.prepare(
+      'SELECT epoch, baseline_rejected_sets, baseline_terminal_executions, exhausted_attempts '
+        + 'FROM factory_workplace_recovery_epochs WHERE workplace_ref=? AND role=? '
+        + 'ORDER BY epoch DESC LIMIT 1',
+    ).get(serialized, 'reviewer');
+    assert.ok(epochRow, 'the reviewer-role rollover row EXISTS (budget engaged)');
+    assert.equal(epochRow.epoch, 1);
+    assert.equal(epochRow.baseline_terminal_executions, 2,
+      'EXACTLY the CURRENT generation\'s 2 deaths — the superseded death (1) is ignored');
+    assert.equal(epochRow.baseline_rejected_sets, 1);
+    assert.equal(epochRow.exhausted_attempts, 2);
+    assert.match(log.read(), /ROLLOVER cell=singleton-cell/, 'the ADR-075 rollover log fired');
+    state = h.coordinator.readState(ref);
+    assert.equal(state.loopState, 'repair_wait',
+      'the rollover backoff window holds the reviewer line in repair_wait');
+  } finally {
+    log.restore();
+    h.db.close();
+  }
+});
+
+// S4 NEGATIVE — a duplicate of the EXACT CURRENT generation (broken
+// idempotence fence) still throws; superseded generations never masked it.
+test('S4 NEGATIVE: duplicate CURRENT subject reviewer row fails closed — superseded generations do not dilute the fence', async () => {
+  const h = harness();
+  const definition = cell({ review: true, reviewerTargetedFinalGate: true });
+  const ctx = context(definition);
+  const ref = workplaceRef();
+  const serialized = serializeWorkplaceRef(ref);
+  try {
+    // Compress the drive: reach the two-generation state as in S4.
+    await h.executor.execute(ctx);
+    finishRole(h, ref, 'execution:author-n1', {
+      schemaId: 'factory.test-product.v1', ref: 'product:author-n1', digest: sha('author-n1'),
+    });
+    h.setCheckOutcome('passed');
+    await h.executor.execute(ctx);
+    completeExecution(h, 'execution:author-n1');
+    finishRole(h, ref, 'execution:reviewer-n1', {
+      schemaId: 'factory.test-review-verdict.v1', ref: 'product:review-n1', digest: sha('review-n1'),
+    });
+    h.setCheckOutcome('failed', [overlapDiagnostic('auth', 'billing')]);
+    h.setCheckOutcome('passed', [], REVIEW_PROVIDER);
+    await h.executor.execute(ctx);
+    completeExecution(h, 'execution:reviewer-n1');
+    await h.executor.execute(ctx);
+    finishRole(h, ref, 'execution:author-n2', {
+      schemaId: 'factory.test-product.v1', ref: 'product:author-n2', digest: sha('author-n2'),
+    });
+    h.setCheckOutcome('passed');
+    await h.executor.execute(ctx);
+    completeExecution(h, 'execution:author-n2');
+    const rows = h.roleTaskRows();
+    assert.equal(rows.length, 3, 'two reviewer generations exist (legal)');
+
+    // Read-level: the exact CURRENT generation is still unique → no throw.
+    const current = h.persistence.readProjectedRoleTask(ref, 'reviewer');
+    assert.ok(current, 'the exact current generation resolves');
+
+    // Break the fence ONLY for the CURRENT subject: a second row with the
+    // same (workplace, reviewer, subject) key.
+    const currentSubject = h.db.prepare(
+      'SELECT json_extract(metadata, \'$.subject_candidate_set_ref\') AS subject FROM tasks WHERE id=?',
+    ).get(current.taskId).subject;
+    h.db.prepare(
+      `INSERT INTO tasks
+         (epic_id,title,description,status,priority,task_kind,workflow_stage,
+          execution_mode,tags,metadata,workplace_ref)
+       VALUES (1,'broken fence duplicate','duplicate','todo','high','test.review',
+               'test','tracker_only','[]',?,?)`,
+    ).run(
+      JSON.stringify({ role: 'reviewer', subject_candidate_set_ref: currentSubject }),
+      serialized,
+    );
+
+    // The exact-generation read throws; the two SUPERSEDED rows are not the
+    // trigger (they were legal in S4).
+    assert.throws(
+      () => h.persistence.readProjectedRoleTask(ref, 'reviewer'),
+      /PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE/,
+    );
     void ctx;
   } finally {
     h.db.close();

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAtSha": "e1c141ec68b7",
+  "capturedAtSha": "ee4090207ff8",
   "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.",
   "categories": {
     "escalate-vocabulary": {
@@ -28,6 +28,7 @@
         "src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts",
         "src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts",
         "src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts",
+        "src/infrastructure/workplace/sqlite-recovery-epoch-ledger.ts",
         "src/infrastructure/workplace/sqlite-scope-widening-ledger.ts",
         "src/modules/development/infrastructure/sqlite-development-verification-adoption.ts",
         "src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts",

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { ConveyorRuntime } from '../application/conveyor-runtime.js';
 import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/workplace-ref.js';
+import { createSqliteProductionCellProjectionPersistence } from '../infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 
 /**
  * TB-9 engine-start adoption.
@@ -30,6 +31,17 @@ import { deserializeWorkplaceRef } from '../process-modules/domain/workplace/wor
  * Operator SOFT-STOP (schema v13): a VOIDED execution (voided_at IS NOT NULL)
  * is terminal-with-audit and is NEVER resurrected or repaired here — its hire
  * was rewound by the operator; a replacement worker owns the next attempt.
+ *
+ * TASK-SHADOW F2 (audit) — the repair branches bind the conveyor command to
+ * the workplace's CURRENT-role task through the PRODUCTION exact-key reader
+ * (`createSqliteProductionCellProjectionPersistence().readProjectedRoleTask`)
+ * scoped by `factory_workplaces.next_role`: the AUTHOR binding is the stable
+ * role task; the REVIEWER binding is the exact CURRENT generation (the
+ * accepted-author authority head's subject, derived inside the reader). The
+ * retired `SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC
+ * LIMIT 1` reads were newest-wins: in a multi-task singleton workplace they
+ * bound the repair to the reviewer's row while the author was the repair
+ * target — the same shadow class the budget fix removed (SM-14/MM-3).
  */
 
 export const ENGINE_START_ADOPTION_POLICY_REF = 'factory.engine-start-adoption.v1';
@@ -88,6 +100,26 @@ export function adoptTerminalExecutionsAtEngineStart(
   const repaired: { executionId: string; workplaceRef: string; loopState: string }[] = [];
   let skippedNoReceipt = 0;
 
+  // TASK-SHADOW F2 — the production exact-key role-task reader, scoped by the
+  // workplace's CURRENT next_role. Never newest-wins; a broken idempotence
+  // fence (duplicate of the exact generation) throws inside the callers' try
+  // blocks and the pair is honestly skipped, never silently retargeted.
+  const roleTaskReader = createSqliteProductionCellProjectionPersistence(db)
+    .readProjectedRoleTask;
+  if (!roleTaskReader) {
+    // Fail closed: without the exact-key reader this pass must not fall back
+    // to any recency-shaped task selection.
+    throw new Error(
+      'PRODUCTION_CELL_ROLE_TASK_READER_UNAVAILABLE: engine-start adoption '
+      + 'requires the exact-key role-task projection read',
+    );
+  }
+  const readExactCurrentRoleTask = (
+    workplaceRef: string,
+    role: 'author' | 'reviewer',
+  ): { taskId: number } | null =>
+    roleTaskReader(deserializeWorkplaceRef(workplaceRef), role) ?? null;
+
   const adopt = db.transaction((row: { execution_id: string; workplace_ref: string }) => {
     // Without a durable worker_done receipt the completion is NOT proven, so
     // the reservation must not be silently cleared. The conveyor already owns
@@ -116,14 +148,15 @@ export function adoptTerminalExecutionsAtEngineStart(
       const workplace = db.prepare(
         `SELECT next_role FROM factory_workplaces WHERE workplace_ref=?`,
       ).get(row.workplace_ref) as { next_role: 'author' | 'reviewer' } | undefined;
-      const task = db.prepare(
-        `SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1`,
-      ).get(row.workplace_ref) as { id: number } | undefined;
-      if (!workplace || !task) return false;
+      if (!workplace) return false;
       try {
+        // TASK-SHADOW F2 — exact CURRENT-role binding (generation-exact for
+        // the reviewer via the authority head, inside the production reader).
+        const task = readExactCurrentRoleTask(row.workplace_ref, workplace.next_role);
+        if (!task) return false;
         new ConveyorRuntime(db).rejectIncompleteCompletion({
           workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
-          taskId: task.id,
+          taskId: task.taskId,
           role: workplace.next_role,
         });
         return true;
@@ -189,16 +222,27 @@ export function adoptTerminalExecutionsAtEngineStart(
     loopState: string;
   }[] = [];
   for (const row of spawnFailedRows) {
-    const task = db.prepare(
-      `SELECT id FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1`,
-    ).get(row.workplace_ref) as { id: number } | undefined;
-    if (!task) continue;
     const runtime = new ConveyorRuntime(db);
+    let taskId: number | null = null;
     try {
+      // TASK-SHADOW F2 — spawn-failed residue repair binds to the CURRENT
+      // role's EXACT task projection (the production reader, scoped by
+      // next_role; generation-exact for the reviewer). Absent binding → skip;
+      // a duplicate-of-exact-generation fence throw → logged skip below
+      // (fail-closed, never a newest-row retarget).
+      const nextRole = db.prepare(
+        'SELECT next_role FROM factory_workplaces WHERE workplace_ref=?',
+      ).get(row.workplace_ref) as
+        | { next_role: 'author' | 'reviewer' }
+        | undefined;
+      if (!nextRole) continue;
+      const task = readExactCurrentRoleTask(row.workplace_ref, nextRole.next_role);
+      if (!task) continue;
+      taskId = task.taskId;
       if (row.loop_state === 'leased') {
         runtime.pauseForHuman({
           workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
-          taskId: task.id,
+          taskId,
           // Fix-1 — the residue repair parks with its cause: the reservation
           // holder provably never started (no pid, no started_at).
           reason: {
@@ -213,7 +257,7 @@ export function adoptTerminalExecutionsAtEngineStart(
         runtime.releaseExecution({
           workplaceRef: deserializeWorkplaceRef(row.workplace_ref),
           reservationRef: row.execution_id,
-          taskId: task.id,
+          taskId,
           outcome: 'crashed',
         });
       }

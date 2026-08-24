@@ -220,6 +220,65 @@ test('ADR-053 B-6 ratchet: ORDER BY decided_at DESC count must not exceed baseli
 });
 
 // ===========================================================================
+// Ratchet 4 — TASK-SHADOW removal pins (SM-14/MM-3 + F1/F2/F3 follow-up).
+// The task-shadow fix DELETED the `readTaskForWorkplace` port (newest task
+// row of a workplace) and the two `ORDER BY id DESC LIMIT 1` task reads in
+// src/app/engine-start-adoption.ts. Both selected the workplace's NEWEST
+// task row: in a multi-task singleton workplace (author + reviewer
+// generations) that bound crash-attempt accounting, scope widening and
+// engine-start repair to the WRONG (neighbor/superseded) card. The role task
+// must resolve through the exact-key read (`readProjectedRoleTask`: stable
+// author key; reviewer key = exact CURRENT subject_candidate_set_ref from the
+// accepted-author authority head). These pins fail on ANY reintroduction
+// anywhere under src/ — including src/app, which the Phase-0 ratchets above
+// did not cover.
+// ===========================================================================
+test('TASK-SHADOW ratchet: the readTaskForWorkplace port stays deleted in src/', () => {
+  const files = collectFiles();
+  const sites = [];
+  let total = 0;
+  for (const { rel, abs } of files) {
+    const src = stripComments(readFileSync(abs, 'utf8'));
+    const n = countOccurrences(src, 'readTaskForWorkplace');
+    if (n > 0) {
+      total += n;
+      sites.push(`${rel} (${n})`);
+    }
+  }
+  assert.equal(
+    total,
+    0,
+    `TASK-SHADOW REGRESSION: 'readTaskForWorkplace' reappeared under src/ `
+      + `(${sites.join(', ')}). That port selected the workplace's NEWEST task row; `
+      + `resolve the role task through the exact-key readProjectedRoleTask `
+      + `(stable author key; reviewer key = exact CURRENT `
+      + `subject_candidate_set_ref from the accepted-authority head) instead.`,
+  );
+});
+
+test('TASK-SHADOW ratchet: no newest-wins workplace task selection in src/', () => {
+  const files = collectFiles();
+  const sites = [];
+  // `FROM tasks WHERE workplace_ref=... ORDER BY id DESC ... LIMIT 1` — the
+  // retired newest-row selector (case-insensitive, multi-line SQL strings).
+  const winner = /from\s+tasks\s+where\s+workplace_ref[\s\S]{0,160}?order\s+by\s+id\s+desc[\s\S]{0,80}?limit\s+1/giu;
+  for (const { rel, abs } of files) {
+    const src = stripComments(readFileSync(abs, 'utf8'));
+    const matches = src.match(winner) ?? [];
+    for (const match of matches) sites.push(`${rel}: ${match.replace(/\s+/gu, ' ').trim()}`);
+  }
+  assert.equal(
+    sites.length,
+    0,
+    `TASK-SHADOW REGRESSION: a newest-wins workplace task read reappeared `
+      + `under src/ (src/app included — F3). Resolve the CURRENT role's task `
+      + `through the exact-key readProjectedRoleTask; chronology must never `
+      + `select the task a budget/repair/widening binds to:\n  - `
+      + sites.join('\n  - '),
+  );
+});
+
+// ===========================================================================
 // Inventory snapshot — documents the known post-seal-authority defect sites
 // from the Phase 0 inventory. This test does not gate on the full list (some
 // patterns are hard to distinguish statically from provenance/pre-seal uses);

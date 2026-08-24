@@ -232,9 +232,62 @@ boot baseline) are executed under this point.
       desks resolve exact null, never a newest-row fallback. The two
       port-stubbing units (`finding-trajectory-budget`,
       `scope-widening-routing`) now wire the REAL K7 read + REAL
-      `countTerminalExecutionsForTask`. Verified: build exit 0; acceptance
-      matrix process-modules `tests 1464 / pass 1464 / fail 0 / skipped 0`;
-      architecture `455 / 455 / 0 / 0`; full matrix "all groups green".
+      `countTerminalExecutionsForTask`.
+      **RE-OPENED 2026-08-24 (independent Red Team follow-up, F1 HIGH):**
+      the closure above shipped a WRONG uniqueness claim — role alone is NOT
+      a unique task key. Reviewer generations are minted per accepted author
+      set (generationKey
+      `${workplaceRef}:reviewer:${sha256(subjectRef)}`), so the LEGAL second
+      review round (author + reviewer#1(done) + reviewer#2(active)) made
+      `readProjectedRoleTask(workplace,'reviewer')` THROW
+      `PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE` on the real
+      production path — a legal state killed the budget pass. Audit F2: two
+      more `ORDER BY id DESC LIMIT 1` task reads lived in
+      `src/app/engine-start-adoption.ts` (no-receipt repair + spawn-failed
+      residue repair) — the same newest-wins class outside the Phase-0
+      ratchet's scope (F3); F4: the epoch SQL was duplicated inline
+      (composition root + harness). Correction (authority-exact, no recency):
+      the AUTHOR binding stays the stable role task; the REVIEWER binding is
+      the exact CURRENT generation — key (workplace, reviewer,
+      `subject_candidate_set_ref`), supplied explicitly or derived INSIDE the
+      reader from the accepted-author authority head (the same subject that
+      minted the generation); fail-closed ONLY on duplicates of that exact
+      generation; exact null on absence. `rawAttemptCounters` and
+      `resolveScopeWidening` resolve through `resolveExactRoleTask` (both
+      roles, no newest inference). F2: both engine-start-adoption reads now
+      go through the PRODUCTION reader scoped by `factory_workplaces.next_role`
+      (+ regression file, 3 new tests). F3: two new TASK-SHADOW ratchets in
+      `adr-053-material-authority-ratchet.test.mjs` (readTaskForWorkplace
+      stays deleted; no newest-wins workplace task selection anywhere under
+      src/, src/app included — RED-verified by temporary reintroduction). F4:
+      production epoch helpers extracted
+      (`infrastructure/workplace/sqlite-recovery-epoch-ledger.ts`); the
+      composition root closures and the harness call the same code. S4
+      regression added (two review generations via author repair →
+      reviewer-side deaths + reviewer-targeted repair_wait): no throw,
+      current-generation deaths count (`baseline_terminal_executions=2`),
+      superseded generation's death ignored, duplicate CURRENT subject row
+      still throws; RED-verified by temporarily reverting the reader to the
+      role-only predicate (both S4 tests fail with the F1 signature).
+      K7/architecture claims corrected (LEGACY-INVENTORY,
+      authority-recency-classification + the epoch-ledger frontier
+      classification + legacy-allowlist re-snapshot, adr-closure-registry,
+      design doc, composition-root comment). The follow-up also repairs the
+      failed commit's evidence debt: `conformance-report.json` is restored to
+      the K0-E frozen base bytes (ee409020 had committed a regeneration that
+      broke the frozen-evidence pin), and the previously CI-ORPHANED
+      `tests/infrastructure/engine-start-adoption.test.mjs` suite is hosted
+      blocking in the process-modules matrix group (exact file, G2g pattern).
+      **CLOSED AGAIN 2026-08-24 (same branch, follow-up commit):** verified —
+      build exit 0; focused real tests: task-shadow-binding-integration 5/5
+      (S1, S2, S3, S4, S4-NEGATIVE), engine-start-adoption 9/9 (3 new F2
+      regressions), production-cell-node-executor 30/30,
+      finding-trajectory-budget + scope-widening-routing 8/8,
+      resume-crash-window 12/12; acceptance matrix: process-modules
+      `tests 1475 / pass 1475 / fail 0 / skipped 0`, architecture
+      `457 / 457 / 0 / 0`, matrix-coverage `22 / 22`, factory-proof green at
+      the follow-up HEAD (K0-E pins restored), full matrix all groups green.
+      No push (local only).
 - [ ] **§2.2 × §D2/§3 joint satisfiability (MM-4/BM-5):** normalize §2.2
       tokens against the §D2/§D1 file surface at the decoder boundary OR add
       a pre-Development satisfiability check over the frozen SRS; negative

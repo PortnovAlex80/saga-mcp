@@ -18,10 +18,16 @@
 //       findByPackageDigest (ADR-077 package fingerprint), never recency.
 //     - sqlite-production-cell-projection-persistence.ts —
 //       readProjectedRoleTask hardened from `ORDER BY id DESC LIMIT 1` to
-//       fail-closed uniqueness (PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_
-//       UNIQUE): the role-task projection is unique by generationKey, and the
-//       reader feeds the accepted-authority head (C5-02) — a silent
-//       latest-wins tiebreak could bind the head to the wrong task.
+//       fail-closed exact-key reads (PRODUCTION_CELL_ROLE_TASK_PROJECTION_
+//       NOT_UNIQUE on duplicates of the EXACT key): the author key is the
+//       stable (workplace, 'author') task; the reviewer key is the exact
+//       CURRENT generation (workplace, 'reviewer',
+//       subject_candidate_set_ref from the accepted-author authority head).
+//       Role ALONE is not unique for the reviewer — generations are minted
+//       per accepted author set, so superseded rows legally coexist
+//       (task-shadow F1); the reader feeds the accepted-authority head
+//       (C5-02) and the recovery budget, where a silent latest-wins
+//       tiebreak could bind the wrong task in a repair cycle.
 //
 //   RECLASSIFIED — legal run-history traversal with exact verification
 //   (NOT material selection; the material subject is resolved through the
@@ -99,6 +105,10 @@ const CLASSIFICATION = Object.freeze({
   'src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts': {
     release: 'FINDING-TRAJECTORY-BUDGET',
     verdict: 'kept: append-only audit frontier — the latest row id of an append-only chain scoped by exact (workplace_ref, repair_target_role) defines the comparison scope (gate_ref + check_plan_digest); the material (finding keys) then flows through the FULL exact-scope tail read, never through the latest row alone; id is the append ordinal (no wall-clock chronology)',
+  },
+  'src/infrastructure/workplace/sqlite-recovery-epoch-ledger.ts': {
+    release: 'TASK-SHADOW-F4',
+    verdict: 'kept: append-only epoch-chain frontier — readRecoveryEpochBaseline picks the MAX epoch row of ONE EXACT (workplace_ref, role) pair (epoch is a per-scope ordinal minted monotonically by the rollover writer under UNIQUE(workplace_ref, role, epoch), never wall-clock chronology); the picked row itself carries the full baseline material (counter baselines + last_diagnosis + created_at backoff anchor) that the budget subtracts, so chronology selects the frontier of an already-exactly-named chain, not a material subject. F4 extracted this SQL from the duplicated composition-root closure + test harness into ONE production owner',
   },
   'src/infrastructure/workplace/sqlite-scope-widening-ledger.ts': {
     release: 'STAGE-13',

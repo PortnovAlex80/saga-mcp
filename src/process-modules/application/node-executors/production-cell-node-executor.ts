@@ -250,20 +250,31 @@ export interface ProductionCellProjectionPersistence {
     readonly authorizationRef: string;
   }): void;
   /**
-   * TASK-SHADOW FIX (SM-14/MM-3, RED-TEAM R3, ADR-053) — the crash-attempt
-   * accounting (`rawAttemptCounters`) and the scope-widening request binding
-   * (`resolveScopeWidening`) resolve the workplace's role task through THIS
-   * exact-key read (metadata `$.role` binding), never by task-row recency.
-   * The retired `readTaskForWorkplace` port selected `ORDER BY id DESC LIMIT
-   * 1`, so in a singleton workplace with author+reviewer task rows the newest
-   * (reviewer) row shadowed the author's task: the recovery budget read the
-   * shadow's clean executions and never engaged across real worker deaths
-   * (Elite-8: 15 deaths, rollover table empty). K7 fail-closed semantics
-   * apply: ambiguity throws, a missing binding is null (no executions of a
-   * never-projected role can exist), recency is never consulted.
+   * TASK-SHADOW FIX (SM-14/MM-3, RED-TEAM R3 + F1 follow-up, ADR-053) — the
+   * crash-attempt accounting (`rawAttemptCounters`) and the scope-widening
+   * request binding (`resolveScopeWidening`) resolve the workplace's role
+   * task through THIS exact-key read, never by task-row recency. The retired
+   * `readTaskForWorkplace` port selected `ORDER BY id DESC LIMIT 1`, so in a
+   * singleton workplace with author+reviewer task rows the newest (reviewer)
+   * row shadowed the author's task: the recovery budget read the shadow's
+   * clean executions and never engaged across real worker deaths (Elite-8:
+   * 15 deaths, rollover table empty).
+   *
+   * Exact keys (F1): the AUTHOR binding is the stable role task
+   * (generationKey `${workplaceRef}:author`); the REVIEWER binding is the
+   * exact CURRENT generation — `subjectCandidateSetRef` when supplied, else
+   * the accepted-author authority head inside the reader (the same subject
+   * that minted the generation). Role alone is NOT unique for the reviewer:
+   * a legal second review round leaves superseded reviewer generations on
+   * the desk. Fail-closed semantics apply per EXACT generation: duplicates
+   * of that generation throw, superseded generations are ignored (never
+   * inferred newest), a missing binding is exact null.
    */
-  readProjectedRoleTask?(workplaceRef: WorkplaceRef, role: 'author' | 'reviewer'):
-    { taskId: number } | null;
+  readProjectedRoleTask?(
+    workplaceRef: WorkplaceRef,
+    role: 'author' | 'reviewer',
+    subjectCandidateSetRef?: string,
+  ): { taskId: number } | null;
   /**
    * Count terminal (lost/terminated/failed) worker executions for a task.
    * Used by crash recovery to prevent infinite crash loops when sealed
@@ -2322,6 +2333,26 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
   }
 
   /**
+   * TASK-SHADOW F1 — resolve the EXACT role task for budget/widening
+   * bindings. The AUTHOR binding is the desk's stable author task; the
+   * REVIEWER binding is the exact CURRENT generation, keyed by the
+   * accepted-author authority head's CandidateSet (the same subject that
+   * minted the generation — the reader derives it when no explicit subject is
+   * supplied). Never infers the newest task row; superseded reviewer
+   * generations are ignored; a broken idempotence fence (duplicate of the
+   * exact generation) throws.
+   */
+  private resolveExactRoleTask(
+    ref: WorkplaceRef,
+    role: 'author' | 'reviewer',
+  ): { taskId: number } | null {
+    const subject = role === 'reviewer'
+      ? this.acceptedAuthorCandidate(ref)?.candidateSetRef
+      : undefined;
+    return this.opts.persistence.readProjectedRoleTask?.(ref, role, subject) ?? null;
+  }
+
+  /**
    * The three raw all-time attempt counters behind the recovery budget, before
    * any epoch-baseline subtraction. ADR-075 rollovers snapshot exactly these
    * values as the new epoch's baselines.
@@ -2336,11 +2367,15 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         .filter(set => set.role === role).length
       : rejected;
     const effectRepairs = this.opts.persistence.countFailedAcceptanceEffectRepairs?.(ref) ?? 0;
-    // TASK-SHADOW FIX (SM-14/MM-3) — the crash counter binds to the ROLE's
-    // exact task projection (K7), not the workplace's newest task row: in a
+    // TASK-SHADOW FIX (SM-14/MM-3 + F1) — the crash counter binds to the
+    // ROLE's exact task projection, not the workplace's newest task row: in a
     // singleton workplace the newest row is typically the reviewer's, whose
     // clean executions must never hide the author's deaths from the budget.
-    const taskRow = this.opts.persistence.readProjectedRoleTask?.(ref, role);
+    // For the REVIEWER the exact generation is resolved through the
+    // accepted-author authority head (inside the K7 reader): superseded
+    // reviewer generations are legal history and are ignored — never
+    // inferred newest, never treated as ambiguity.
+    const taskRow = this.resolveExactRoleTask(ref, role);
     const terminalExecutions = taskRow
       ? this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0
       : 0;
@@ -2448,13 +2483,12 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const serialized = serializeWorkplaceRef(workplace.ref);
     const ledger = this.scopeWideningLedger();
     void cell;
-    // TASK-SHADOW FIX (SM-14/MM-3) — a widening request binds to the CURRENT
-    // ROLE's exact task projection (K7 fail-closed read). The retired
-    // recency port could bind the request to a neighbor role's task row.
-    const taskBinding = this.opts.persistence.readProjectedRoleTask?.(
-      workplace.ref,
-      state.nextRole,
-    );
+    // TASK-SHADOW FIX (SM-14/MM-3 + F1) — a widening request binds to the
+    // CURRENT ROLE's exact task projection. The retired recency port could
+    // bind the request to a neighbor role's task row; the reviewer key is the
+    // exact CURRENT generation (authority-head subject inside the reader),
+    // so a superseded reviewer generation can never receive the request.
+    const taskBinding = this.resolveExactRoleTask(workplace.ref, state.nextRole);
     const taskId = taskBinding?.taskId;
     if (typeof taskId !== 'number') return null;
     let request = ledger.readPendingRequest(serialized);
