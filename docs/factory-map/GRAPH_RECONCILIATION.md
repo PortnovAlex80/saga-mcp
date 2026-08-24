@@ -284,7 +284,7 @@ standing proof that the S question is real (BM-5).
    port as a node; recorded in STATE_MATRIX (SM-14) and TEST_COVERAGE (TC-9).
 4. **Elite-8 joint-satisfiability counterexample** — exact Formalization→
    Development handoff (hashes preserved) with accepted SRS §2.2 bare
-   filenames unsatisfiable against §D2/§3 full paths (BM-5; details and code
+   filenames unsatisfiable against §D2/§D1 full paths (BM-5; details and code
    chain in BRIDGE_MATRIX §4).
 5. **Coverage-universe gap** — 234/503 test files outside any CI path (219
    orphans + 15 quarantined); quarantine staleness (checked autonomous runs

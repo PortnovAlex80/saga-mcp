@@ -3,8 +3,8 @@
   "packageTitle": "Immutable baseline and gate ledger",
   "plan": "docs/plans/CONFORMANCE-CLOSURE-PLAN.md",
   "generatedBy": "integration owner (CC-00)",
-  "baseSha": "6ddcb107",
-  "baseSelection": "origin/saga4 == local saga4 at CC-00 start (2026-08-22); one commit above the historical draft base 53cf7c81 (operator temporal-test commit 6ddcb107)",
+  "baseSha": "e64b1a34",
+  "baseSelection": "RE-CAPTURED 2026-08-24 (BM-5 correction follow-up): the original CC-00 base 6ddcb107 (origin/saga4 == local saga4 at CC-00 start, one commit above the historical draft base 53cf7c81) is superseded for PIN PURPOSES ONLY — e64b1a34 legitimately regenerated the conformance-report snapshot (universe 176 -> 178, ADR-095 phase-2 terminal-accounting tokens) without repinning, leaving K0-E red on a clean checkout of that commit. Pins re-captured at the new evidence-freeze SHA e64b1a34 per the supersession discipline (supersededValues below); the harvest-manifest blob is unchanged since 6ddcb107 and keeps its original pin",
   "worktree": "D:/Development/saga-mcp-CC-00 (branch cc/CC-00-immutable-baseline)",
 
   "liveEngines": {
@@ -42,7 +42,7 @@
       "command": "npm run conformance:v1",
       "exit": 0,
       "mode": "committed-snapshot",
-      "committedReportSha256": "ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e",
+      "committedReportSha256": "e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07",
       "semanticDiffFromCommitted": "none (rewrites generatedAt only)"
     },
     "coverageFactory": {
@@ -119,14 +119,14 @@
   },
 
   "committedEvidenceDigests": {
-    "digestDomain": "raw bytes of the committed git blob for the path at the recorded baseSha (git cat-file blob <baseSha>:<path>); the same blob bytes are identical at the CC-00B integration head aef699b4 (git blob oids recorded below)",
+    "digestDomain": "raw bytes of the committed git blob for the path at the recorded baseSha (git cat-file blob <baseSha>:<path>); the harvest-manifest blob is identical at the CC-00B integration head aef699b4 and at the current baseSha e64b1a34; the conformance-report blob was legitimately regenerated at e64b1a34 (supersededValues) and is pinned there",
     "digestMethod": "SHA-256 over the raw blob byte sequence only; no EOL normalization and no working-tree/checkout bytes. Windows checkouts materialize CRLF (autocrlf) and PowerShell pipelines re-encode LF to CRLF, so checkout-derived hashes are a different digest domain by design and are never the authority",
     "verifiedBy": "tests/factory-proof/k0-baseline.test.mjs (K0-E): reads the exact committed blob through git cat-file (never checkout bytes) and fails on any pin mismatch, missing pin, or non-64-hex pin",
     "files": {
       "tests/factory-evidence/conformance-report.json": {
-        "sha256": "ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e",
-        "gitBlobOid": "79a64f22dbc6f8dff61bdf9ad5bbf5d351ed692d",
-        "blobBytes": 28675
+        "sha256": "e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07",
+        "gitBlobOid": "5c83feecc201d056caa51b953a132b59caef6ad7",
+        "blobBytes": 28917
       },
       "tests/factory-evidence/harvest-manifest.json": {
         "sha256": "55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a",
@@ -135,6 +135,11 @@
       }
     },
     "supersededValues": [
+      {
+        "field": "committedEvidenceDigests.files['tests/factory-evidence/conformance-report.json'] + baselineRuns.conformanceV1.committedReportSha256 + CC-00-BASELINE.md (conformance-report pin) + baseSha",
+        "was": "gitBlobOid 79a64f22dbc6f8dff61bdf9ad5bbf5d351ed692d / sha256 ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e at baseSha 6ddcb107",
+        "identifiedAs": "e64b1a34 (BM-5 v1.3.0, 2026-08-24) legitimately regenerated the committed snapshot (universe 176 -> 178: ADR-095 phase-2 terminal-accounting tokens) and committed blob 5c83feec WITHOUT repinning this ledger, so K0-E failed on a clean checkout of that commit (HEAD blob 5c83feec != pinned 79a64f22) — the 'factory-proof 112/112' verification claim in that commit message was not reproducible against its own committed HEAD; superseded 2026-08-24 by the BM-5 Red-Team correction follow-up (truthful conformance attribution): pins and baseSha re-captured at the evidence-freeze SHA e64b1a34"
+      },
       {
         "field": "baselineRuns.conformanceV1.committedReportSha256 and CC-00-BASELINE.md (conformance-report pin)",
         "was": "666e0567b550b20c4f79ce653a93b3ff79c8e919bbb096834939df0730deb97f",

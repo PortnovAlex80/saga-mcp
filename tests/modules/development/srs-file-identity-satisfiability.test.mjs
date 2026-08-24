@@ -28,6 +28,20 @@
 //        any implementation worker is spawned;
 //     3. the policy snapshot carries EMPTY requiredChangeScopes when nothing
 //        is derivable — no invented fallback.
+//
+//   Red-Team correction follow-up (2026-08-24), sections 7-10:
+//     7. basename-unique MASKING — a multi-segment §2.2 token whose basename
+//        coincides with a surface file in a DIFFERENT directory is never
+//        re-identified (segment-aligned suffix resolution; §7 also pins the
+//        typo'd-prefix boundary `s/engine.js` ≠ `js/engine.js`);
+//     8. directory-shaped §D1/§D2 tokens (`js/`) never become file
+//        identities and never invent scope authority (non-broadening);
+//     9. the empty-scope boundary: manifest present + EMPTY-scope plan is a
+//        typed red, never a silent pass;
+//     10. registerless grandfather boundary: an ambiguous token fails closed
+//         EVEN registerless (documented compatibility reversal) with a
+//         truthful, waiver-free, upstream-actionable message; under a
+//         register the waiver's impossibility is stated explicitly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import Database from 'better-sqlite3';
@@ -412,7 +426,7 @@ test('buildReferenceDevelopmentPolicy still derives real scopes from an SRS file
 // 6. The canonical manifest unit surface (identity vocabulary itself).
 // ---------------------------------------------------------------------------
 
-test('buildSrsFileIdentityManifest resolves exact, basename-unique, ambiguous and off-surface tokens', async () => {
+test('buildSrsFileIdentityManifest resolves exact, module-relative, ambiguous and off-surface tokens', async () => {
   const { buildSrsFileIdentityManifest } = await import(
     '../../../dist/modules/development/domain/srs-file-identity.js'
   );
@@ -420,9 +434,11 @@ test('buildSrsFileIdentityManifest resolves exact, basename-unique, ambiguous an
   assert.deepEqual(elite8.fileSurface,
     ['e2e/smoke.test.js', 'frontend/index.html', 'package.json']);
   const byToken = new Map(elite8.resolutions.map(r => [r.token, r]));
-  assert.equal(byToken.get('smoke.test.js')?.resolution, 'basename-unique');
+  // A bare filename is the degenerate (repo-root-relative) module-relative
+  // token — single segment, segment-aligned suffix = basename match.
+  assert.equal(byToken.get('smoke.test.js')?.resolution, 'module-relative');
   assert.equal(byToken.get('smoke.test.js')?.identityPath, 'e2e/smoke.test.js');
-  assert.equal(byToken.get('index.html')?.resolution, 'basename-unique');
+  assert.equal(byToken.get('index.html')?.resolution, 'module-relative');
   assert.equal(byToken.get('index.html')?.identityPath, 'frontend/index.html');
   assert.equal(elite8.ambiguous.length, 0);
 
@@ -436,7 +452,7 @@ test('buildSrsFileIdentityManifest resolves exact, basename-unique, ambiguous an
 
   const offSurface = buildSrsFileIdentityManifest(MODULE_RELATIVE_SRS);
   const relative = offSurface.resolutions.find(r => r.token === 'data/categories.js');
-  assert.equal(relative?.resolution, 'basename-unique');
+  assert.equal(relative?.resolution, 'module-relative');
   assert.equal(relative?.identityPath, 'js/data/categories.js');
 
   const ordinary = buildSrsFileIdentityManifest(ORDINARY_SRS);
@@ -444,4 +460,283 @@ test('buildSrsFileIdentityManifest resolves exact, basename-unique, ambiguous an
     ordinary.resolutions.find(r => r.token === 'js/engine.js')?.resolution,
     'exact',
   );
+});
+
+// ---------------------------------------------------------------------------
+// 7. Red-Team masking correction: a multi-segment token whose basename
+//    coincides with a surface file but whose DIRECTORY structure does not
+//    extend it is NOT re-identified (not-on-surface, as-declared semantics).
+// ---------------------------------------------------------------------------
+
+const MASKING_SRS = `# REQ: SRS
+
+### 2.2 Module Manifest
+
+| Module | Responsibility | Owned Surfaces |
+|---|---|---|
+| \`web\` | Browser product | \`admin/index.html\` |
+
+## §D1 Canonical File/Module Surface
+
+| File | Module | Responsibility |
+|---|---|---|
+| \`frontend/index.html\` | web | The only index.html on the surface |
+
+## §D2 AC Map
+
+\`\`\`yaml
+- ac: AC-1
+  title: Product served
+  module: web
+  files: [frontend/index.html]
+  criticality: blocker
+\`\`\`
+`;
+
+test('masking correction: a basename coincidence across DIFFERENT directories never re-identifies the token', () => {
+  // Plan scopes ONLY frontend/ — the §2.2 admin/index.html declaration must
+  // surface as a typed coverage gap (as-declared semantics), NOT be silently
+  // satisfied through the frontend/index.html basename match.
+  const frontendOnly = runProvider({
+    items: [implementationItem('impl', { changeScopes: ['frontend/'] })],
+    srsContent: MASKING_SRS,
+  });
+  const diagnostics = diagnosticsOf(frontendOnly);
+  const uncovered = diagnostics.find(d => d.code === 'srs-module-uncovered');
+  assert.ok(uncovered, 'the masked declaration must stay a typed red');
+  assert.match(uncovered.message, /admin\/index\.html/);
+  assert.equal(
+    diagnostics.some(d => d.code === 'srs-file-identity-conflict'),
+    false,
+    'a basename coincidence across different directories is not an identity conflict',
+  );
+
+  // The lawful satisfying plan scopes the DECLARED path (as-declared
+  // semantics for off-surface tokens).
+  const asDeclared = runProvider({
+    items: [implementationItem('impl', { changeScopes: ['frontend/', 'admin/'] })],
+    srsContent: MASKING_SRS,
+  });
+  assert.equal(asDeclared, 'passed');
+});
+
+test('masking correction (unit): suffix segments must align on path-segment boundaries', async () => {
+  const { buildSrsFileIdentityManifest } = await import(
+    '../../../dist/modules/development/domain/srs-file-identity.js'
+  );
+  const manifest = buildSrsFileIdentityManifest(`# SRS
+
+### 2.2 Module Manifest
+
+| Module | Responsibility | Owned Surfaces |
+|---|---|---|
+| \`eng\` | Engine | \`s/engine.js\` |
+
+## §D1 Canonical File/Module Surface
+
+| File | Module | Responsibility |
+|---|---|---|
+| \`js/engine.js\` | eng | Engine |
+
+## §D2 AC Map
+
+\`\`\`yaml
+- ac: AC-1
+  title: Works
+  module: eng
+  files: [js/engine.js]
+  criticality: blocker
+\`\`\`
+`);
+  const typoed = manifest.resolutions.find(r => r.token === 's/engine.js');
+  // 's/engine.js' is NOT a segment-aligned suffix of 'js/engine.js' — the
+  // token stays off-surface instead of matching on the shared tail string.
+  assert.equal(typoed?.resolution, 'not-on-surface');
+});
+
+// ---------------------------------------------------------------------------
+// 8. Directory-shaped surface tokens (js/): scope vocabulary, never file
+//    identity (documented non-broadening).
+// ---------------------------------------------------------------------------
+
+const DIRECTORY_TOKEN_SRS = `# REQ: SRS
+
+### 2.2 Module Manifest
+
+| Module | Responsibility | Owned Surfaces |
+|---|---|---|
+| \`app\` | Bootstrap | \`app.js\` |
+
+## §D1 Canonical File/Module Surface
+
+| File | Module | Responsibility |
+|---|---|---|
+| \`js/\` | app | Module surface directory |
+| \`js/app.js\` | app | Bootstrap |
+
+## §D2 AC Map
+
+\`\`\`yaml
+- ac: AC-1
+  title: Boots
+  module: app
+  files: [js/app.js]
+  criticality: blocker
+\`\`\`
+`;
+
+test('directory-shaped §D1/§D2 tokens never become file identities (non-broadening)', async () => {
+  const { buildSrsFileIdentityManifest } = await import(
+    '../../../dist/modules/development/domain/srs-file-identity.js'
+  );
+  const { deriveRequiredChangeScopesFromSrs } = await import(
+    '../../../dist/modules/development/domain/srs-derived-change-scopes.js'
+  );
+  const manifest = buildSrsFileIdentityManifest(DIRECTORY_TOKEN_SRS);
+  assert.equal(
+    manifest.fileSurface.includes('js/'),
+    false,
+    'a trailing-slash token is scope vocabulary, not a file identity',
+  );
+  assert.deepEqual(manifest.fileSurface, ['js/app.js']);
+  // The bare token still resolves through the REAL file on the surface, and
+  // the directory token creates no ambiguity and masks nothing.
+  const app = manifest.resolutions.find(r => r.token === 'app.js');
+  assert.equal(app?.resolution, 'module-relative');
+  assert.equal(app?.identityPath, 'js/app.js');
+  assert.equal(manifest.ambiguous.length, 0);
+
+  // An SRS whose ONLY declaration is a directory token derives NOTHING —
+  // no scope authority is invented from scope vocabulary.
+  const dirOnly = `# REQ: SRS
+
+## §D1 Canonical File/Module Surface
+
+| File | Module | Responsibility |
+|---|---|---|
+| \`js/\` | app | Module surface directory |
+`;
+  assert.equal(deriveRequiredChangeScopesFromSrs(dirOnly), null);
+});
+
+// ---------------------------------------------------------------------------
+// 9. Empty-scope boundary: a manifest-present SRS with an EMPTY-scope plan
+//    is a typed red, never a silent pass and never a crash.
+// ---------------------------------------------------------------------------
+
+test('empty-scope boundary: no implementation item scopes anything → typed red, not a silent pass', () => {
+  const result = runProvider({
+    items: [implementationItem('impl', { changeScopes: [] })],
+    srsContent: ORDINARY_SRS,
+  });
+  assert.equal(typeof result, 'object');
+  assert.equal(result.outcome, 'failed');
+  const diagnostics = result.evidenceRefs.map(decodeCheckDiagnostic);
+  assert.equal(
+    diagnostics.some(d => d.code === 'srs-module-uncovered'),
+    true,
+    'the §2.2 obligation stays visible when nothing is scoped',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 10. Registerless grandfather boundary (Red-Team correction 2): an
+//     ambiguous §2.2 token fails closed EVEN registerless, and the message
+//     advertises no impossible waiver.
+// ---------------------------------------------------------------------------
+
+test('registerless ambiguity: fail-closed, no waiver advertising, actionable upstream repair', async () => {
+  // The default developmentCase() carries no constraint register — the sole
+  // ADR-088 grandfather condition.
+  const result = runProvider({
+    items: [implementationItem('impl', { changeScopes: ['frontend/'] })],
+    srsContent: AMBIGUOUS_SRS,
+  });
+  const diagnostics = diagnosticsOf(result);
+  const conflict = diagnostics.find(d => d.code === 'srs-file-identity-conflict');
+  assert.ok(conflict, 'registerless corpus still fails the identity conflict closed');
+  // Truthful message discipline: no constraint register exists in this
+  // corpus, so none may be advertised as a waiver exit.
+  assert.doesNotMatch(conflict.message, /waive/i);
+  assert.match(conflict.message, /no constraint register/i);
+  // The actionable repair names the upstream SRS declaration.
+  assert.match(conflict.message, /Repair the SRS §2\.2 declaration upstream/);
+  assert.match(conflict.message, /does not depend on the submitted plan/);
+
+  // The compatibility reversal is deliberate and BOUNDED: the same
+  // registerless corpus keeps the typed legacy SKIP for a manifest-less SRS
+  // (the grandfather survives exactly there and only there).
+  const skip = runProvider({
+    items: [implementationItem('impl', { changeScopes: ['frontend/'] })],
+    srsContent: '# SRS\n\nNo module manifest at all.\n',
+  });
+  assert.equal(typeof skip, 'object');
+  assert.equal(skip.outcome, 'passed');
+  const note = decodeCheckDiagnostic(skip.evidenceRefs[0]);
+  assert.equal(note.code, 'srs-module-manifest-skip');
+});
+
+test('register-bearing ambiguity: same fail-closed conflict, waiver correctly scoped', async () => {
+  const { buildOrderConstraintRegister, orderConstraintRegisterRef } = await import(
+    '../../../dist/shared/constraint-register.js'
+  );
+  const { buildSolutionContractConstraintCoverage } = await import(
+    '../../../dist/modules/formalization/domain/formalization-schemas.js'
+  );
+  const register = buildOrderConstraintRegister([
+    { class: 'material', text: 'a browser product', evidence_ref: 'order.source_body' },
+  ]);
+  assert.ok(register);
+  const coverage = buildSolutionContractConstraintCoverage({
+    constraintRegisterRef: orderConstraintRegisterRef(register),
+    constraintRegisterDigest: register.registerDigest,
+    constraintRegister: register,
+  }, {});
+  const registerCase = developmentCase();
+  registerCase.solutionContractPayload = { constraintRegisterCoverage: coverage };
+
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE factory_managed_node_submissions (
+      id INTEGER PRIMARY KEY, process_run_id INTEGER, execution_id TEXT,
+      schema_version TEXT, payload_snapshot TEXT, content_hash TEXT
+    );
+    CREATE TABLE factory_process_runs (
+      id INTEGER PRIMARY KEY, input_schema TEXT, input_snapshot TEXT
+    );
+  `);
+  db.prepare('INSERT INTO factory_process_runs VALUES (1,?,?)')
+    .run(DEVELOPMENT_CASE_SCHEMA, JSON.stringify(registerCase));
+  db.prepare('INSERT INTO factory_managed_node_submissions VALUES (1,1,?,?,?,?)')
+    .run('execution:1', DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+      JSON.stringify(proposal([implementationItem('impl', { changeScopes: ['frontend/'] })])),
+      'a'.repeat(64));
+  const { createDevelopmentTaskGraphCheckProvider } = await import(
+    '../../../dist/modules/development/application/development-check-providers.js'
+  );
+  const provider = createDevelopmentTaskGraphCheckProvider({
+    db,
+    candidateSets: { read: () => ({
+      role: 'author',
+      members: [{
+        productRef: {
+          schemaId: DEVELOPMENT_TASK_GRAPH_PROPOSAL_SCHEMA,
+          ref: 'managed-node-submission:1',
+          digest: 'a'.repeat(64),
+        },
+      }],
+    }) },
+    readSrsContent: () => ({ status: 'read', content: AMBIGUOUS_SRS }),
+  });
+  const result = provider.run({
+    subjectCandidateSetRef: 'candidate-set/1', parameters: { processRunId: 1 },
+  });
+  db.close();
+  const diagnostics = diagnosticsOf(result);
+  const conflict = diagnostics.find(d => d.code === 'srs-file-identity-conflict');
+  assert.ok(conflict, 'register-bearing corpus fails the same identity conflict');
+  // Under a register the waiver EXPLANATION is lawful (it exists but cannot
+  // decide identity) — still no waiver EXIT is advertised.
+  assert.match(conflict.message, /cannot waive a file-identity ambiguity/);
+  assert.match(conflict.message, /Repair the SRS §2\.2 declaration upstream/);
 });

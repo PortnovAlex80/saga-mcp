@@ -207,20 +207,42 @@ boot baseline) are executed under this point.
       newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
       + integration test on a REAL multi-task singleton workplace (R3;
       every current unit stubs the port).
-- [x] **§2.2 × §D2/§3 joint satisfiability (MM-4/BM-5):** LANDED 2026-08-24
+- [x] **§2.2 × §D2/§D1 joint satisfiability (MM-4/BM-5):** LANDED 2026-08-24
       (both halves of the "OR"): §2.2 tokens are normalized against the
       §D2/§D1 file surface at one canonical boundary
       (`srs-file-identity.ts`, gate v1.3.0) AND a pre-worker satisfiability
       decision exists — ambiguous basenames fail typed
       `srs-file-identity-conflict` (plan-independent, named witnesses) at the
       plan gate before any implementation worker. Negative test = the Elite-8
-      counterexample (bare-filename §2.2 vs full-path §D2/§D2): RED proven on
+      counterexample (bare-filename §2.2 vs full-path §D2/§D1): RED proven on
       the unfixed tree (the correct full-path plan rejected
       `srs-module-uncovered`), GREEN pinned hosted
       (`tests/modules/development/srs-file-identity-satisfiability.test.mjs`,
       process-modules group). Companion: `DEFAULT_REQUIRED_CHANGE_SCOPES`
       deleted — no invented policy fallback (BM-5 §4.5,
       `docs/factory-map/BRIDGE_MATRIX.md`).
+      CORRECTION FOLLOW-UP (same day, independent Red-Team review — core
+      algorithm ACCEPTED, five corrections REQUIRED, all landed as gate
+      v1.4.0, BM-5 §4.6): (1) the three plan-independent frozen-SRS failure
+      codes (`srs-file-identity-conflict`, `srs-artifact-drifted`,
+      `srs-module-manifest-missing`) route CODE-SCOPED upstream ownership
+      (`CheckPlanEntry.upstreamOwnedFailureCodes`) → verdict `failed`, no
+      planner repair budget burned, the existing continuation seam carries
+      the typed cause upstream (proof:
+      `tests/factory-contract/srs-identity-upstream-routing.test.mjs`,
+      RED-verified by reducer + plan-wiring mutations); (2) registerless
+      grandfather reversal documented — identity conflicts fail closed in
+      BOTH register states, message no longer advertises the impossible
+      register waiver; (3) segment-aligned token resolution closes the
+      basename-masking hole; (4) directory-shaped tokens (`js/`) documented
+      as scope vocabulary, never file identity; (5) coverage guard G2m pins
+      both BM-5 suites, evidence truth-updated
+      (TEST_COVERAGE §2/TC-5/TC-7/TC-10, §D2/§D1 typos, obligation contract
+      dev.task-graph repinned 1.4.0). Canonical-integration note (2026-08-24):
+      the BM-5 guard was authored as G2k on the pre-Phase-2C/3 stage22 base;
+      canonical saga4 had already taken G2k (ADR-095 eight-ratchet suite) and
+      G2l (conveyor v4.3 focused-invariants), so it is integrated as G2m —
+      same runSet-membership semantics.
 - [ ] **Prompt-size gate (R4):** `SAGA_PROMPT_MAX_BYTES` default-on + a test
       on the fail-closed spawn gate (currently default-off, decision without
       a test).

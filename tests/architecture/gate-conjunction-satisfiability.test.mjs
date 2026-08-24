@@ -43,7 +43,7 @@ import { SqliteWorkplaceRepository } from '../../dist/infrastructure/workplace/s
 // ---------------------------------------------------------------------------
 const SATISFIABILITY_CLASSIFICATION = Object.freeze({
   'development.task-graph-contract.v1':
-    'decidable:graph-structure + path-identity (lineage/coverage/DAG set & graph operations; §2.2×§D2/§D1 file identity resolved against the canonical surface with ambiguity decided pre-worker and named witnesses — BM-5 repair v1.3.0)',
+    'decidable:graph-structure + path-identity (lineage/coverage/DAG set & graph operations; §2.2×§D2/§D1 file identity resolved against the canonical surface by segment-aligned suffix with ambiguity decided pre-worker and named witnesses — BM-5 v1.3.0; v1.4.0 correction: the three plan-independent frozen-SRS failure codes route code-scoped upstream ownership so no planner repair budget is charged on an unsatisfiable frozen input)',
   'development.implementation-scope.v1':
     'decidable:containment-with-lawful-widening (path-within-frozen-scope is decidable; the stage-13 scope-widening transition is the lawful exit that makes the conjunction with criterion demands satisfiable; contention decides grants)',
   'factory.review-verdict.v1':

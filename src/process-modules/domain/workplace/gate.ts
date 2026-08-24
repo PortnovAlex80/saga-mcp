@@ -122,6 +122,25 @@ export interface CheckPlanEntry {
    */
   readonly failureOwnership?: 'workplace' | 'upstream';
   /**
+   * CODE-SCOPED upstream ownership (the precise sibling of the blanket
+   * `failureOwnership: 'upstream'` above). Use when ONE provider can fail a
+   * mixture of workplace-local defects and producer defects on frozen
+   * upstream material, and ONLY the typed diagnostic codes name which is
+   * which: a deterministic `failed` receipt whose evidence diagnostics
+   * decode (factory-check-diagnostic/v1) to one of these codes escalates to
+   * the SAME producer-defect verdict `failed` — no local repair budget is
+   * charged — while every other failure code of the SAME entry keeps the
+   * workplace-local repair routing (`repairTargetRoleOnFailure ?? 'author'`).
+   *
+   * Why codes and not a blanket flag: a blanket `failureOwnership:
+   * 'upstream'` on a mixed provider misroutes GENUINE local (e.g. plan)
+   * errors to the producing workshop. The codes are namespaced provider
+   * codes declared by the installed plan — the reducer stays generic and
+   * never learns module vocabulary. A receipt with NO decodable diagnostic
+   * never matches (fail-safe: an untyped failure keeps local repair).
+   */
+  readonly upstreamOwnedFailureCodes?: readonly string[];
+  /**
    * Install-time conformance: the product schema id this check's SUBJECT
    * must have. Paired with `subjectScope`:
    *   - 'cell-product' — the validator HARD-CHECKS this value against the

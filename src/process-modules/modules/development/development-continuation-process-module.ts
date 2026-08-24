@@ -8,6 +8,7 @@ import { DEVELOPMENT_KERNEL_HANDLER_IDS } from '../../../modules/development/dom
 import { developmentProcessModule } from './development-process-module.js';
 import { buildCheckPlan } from '../../application/standard-check-providers.js';
 import {
+  PLAN_INDEPENDENT_FROZEN_SRS_FAILURE_CODES,
   DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,
   DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_VERSION,
@@ -44,6 +45,12 @@ const REPLAN_PLANNER_CHECK_PLAN = buildCheckPlan(
       providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
       version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
       providerDigest: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
+      // Same code-scoped upstream ownership as the primary planner plan: a
+      // plan-independent frozen-SRS defect is equally unrepairable by the
+      // re-planner (the parent SRS is still the frozen input), so exactly
+      // these typed codes escalate to 'failed' instead of burning the
+      // continuation planner's attempts.
+      upstreamOwnedFailureCodes: PLAN_INDEPENDENT_FROZEN_SRS_FAILURE_CODES,
     },
     {
       providerId: DEVELOPMENT_REPLAN_GRAPH_CHECK_PROVIDER_ID,

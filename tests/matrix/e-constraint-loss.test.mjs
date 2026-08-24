@@ -385,8 +385,8 @@ test('space E — E1: the restatement boundaries are enumerated from the process
   assert.ok(/discovery-proposal-worker/.test(discovery), 'discovery proposal profile drifted');
   assert.equal(lineOf(formalization, "id: 'define-product-contract'"), 164);
   assert.equal(lineOf(formalization, "id: 'define-acceptance-contract'"), 194);
-  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 248);
-  assert.equal(lineOf(development, "id: 'implement-work-items'"), 284);
+  assert.equal(lineOf(development, "id: 'plan-task-graph'"), 265);
+  assert.equal(lineOf(development, "id: 'implement-work-items'"), 301);
   assert.ok(lineOf(cardExecutor, 'cell_input_item: workplace.item') > 0, 'card projection site drifted');
   assert.equal(BOUNDARIES.length, 5, 'the E1 boundary list is fixed at five');
   for (const row of BOUNDARIES) {

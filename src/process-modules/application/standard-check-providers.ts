@@ -92,6 +92,13 @@ export function buildCheckPlan(
     repairTargetRoleOnIndeterminate?: 'author' | 'reviewer';
     indeterminateDisposition?: 'repair' | 'human-required';
     failureOwnership?: 'workplace' | 'upstream';
+    /**
+     * CODE-SCOPED upstream ownership — typed failure codes that escalate a
+     * deterministic failure of this (otherwise workplace-local) entry to the
+     * producer-defect verdict 'failed'. See CheckPlanEntry in
+     * domain/workplace/gate.ts for the full contract.
+     */
+    upstreamOwnedFailureCodes?: readonly string[];
     expectedSubjectSchemaRef?: string;
     subjectScope?: 'cell-product' | 'upstream';
   }[] = [],
@@ -127,6 +134,9 @@ export function buildCheckPlan(
         : {}),
       ...(check.failureOwnership
         ? { failureOwnership: check.failureOwnership }
+        : {}),
+      ...(check.upstreamOwnedFailureCodes
+        ? { upstreamOwnedFailureCodes: [...check.upstreamOwnedFailureCodes] }
         : {}),
       ...(check.expectedSubjectSchemaRef
         ? { expectedSubjectSchemaRef: check.expectedSubjectSchemaRef }

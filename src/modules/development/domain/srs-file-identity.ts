@@ -1,5 +1,6 @@
 /**
- * Canonical SRS file-identity manifest (BM-5 / MM-4 repair, 2026-08-24).
+ * Canonical SRS file-identity manifest (BM-5 / MM-4 repair, 2026-08-24;
+ * Red-Team correction follow-up same day).
  *
  * The Elite-8 counterexample (docs/factory-map/BRIDGE_MATRIX.md §4) proved
  * that per-consumer path parsing is not an identity: the same physical file
@@ -12,16 +13,42 @@
  *     Canonical File/Module Surface backticked paths (the authority: scopes
  *     are derived from it and §D2 is the machine-checked AC contract);
  *   - `buildSrsFileIdentityManifest` — §2.2 Module Manifest tokens resolved
- *     against that surface:
- *       exact            token is verbatim on the surface;
- *       basename-unique  exactly one surface file shares the token basename
- *                        (module-relative "Owned Surfaces", workshop P08);
- *       ambiguous        ≥2 surface files share the basename — NO single file
- *                        identity exists; the conjunction of §2.2 coverage
- *                        with the §D2/§D1 surface is UNSATISFIABLE and the
- *                        decision carries the candidate paths as witnesses;
- *       not-on-surface   the token declares an additional file; coverage
- *                        evaluates the token as declared (legacy semantics).
+ *     against that surface by SEGMENT-ALIGNED SUFFIX match:
+ *       exact             token is verbatim on the surface;
+ *       module-relative   exactly one surface path ends with the token's
+ *                         full segment sequence — the surface path extends
+ *                         the token's directory structure (a bare filename
+ *                         is the degenerate repo-root-relative case; a
+ *                         multi-segment token such as `data/categories.js`
+ *                         matches only a surface path ending in
+ *                         `…/data/categories.js` — workshop P08 "Owned
+ *                         Surfaces"). Suffix segments must align on
+ *                         path-segment boundaries, so a typo'd prefix
+ *                         (`s/engine.js`) never matches `js/engine.js`;
+ *       ambiguous         ≥2 surface files are segment-aligned matches —
+ *                         NO single file identity exists; the conjunction
+ *                         of §2.2 coverage with the §D2/§D1 surface is
+ *                         UNSATISFIABLE and the decision carries the
+ *                         candidate paths as witnesses;
+ *       not-on-surface    the token declares an additional file; coverage
+ *                         evaluates the token as declared (legacy
+ *                         semantics). A multi-segment token whose basename
+ *                         coincides with a surface file but whose directory
+ *                         structure does NOT extend it (§2.2
+ *                         `admin/index.html` vs surface
+ *                         `frontend/index.html`) lands here too — the
+ *                         Red-Team masking correction: a bare-basename match
+ *                         must never silently re-identify a token that
+ *                         declares a different directory.
+ *
+ * DIRECTORY-SHAPED TOKENS (`js/`): the §D2/§D1 FILE surface is a
+ * file-identity surface only. A trailing-slash token is SCOPE vocabulary,
+ * not a file identity — `parseRepositoryFilePath` rejects it, so it is
+ * deterministically EXCLUDED from the surface, mirroring the §2.2 parser's
+ * FILE_LIKE filter (files carry extensions; `srs-module-manifest.ts` never
+ * emits a directory token as a manifest file). This is a deliberate
+ * non-broadening: a `js/` declaration can never satisfy, conflict with, or
+ * mask a §2.2 file identity, and it never widens into file authority.
  *
  * Everything is PURE: the manifest is a deterministic function of the frozen
  * SRS content hash, so "frozen upstream" needs no new persisted state — the
@@ -247,6 +274,12 @@ export function collectSrsSurfacePaths(
   const surface: string[] = [];
   for (const token of declared) {
     const normalized = normalizeDeclaredPath(token);
+    // `null` covers BOTH malformed paths and DIRECTORY-shaped tokens
+    // (`js/`, trailing slash): parseRepositoryFilePath rejects them, so a
+    // scope-vocabulary token never becomes a file identity (documented
+    // non-broadening — see the module header). It is dropped from the
+    // surface entirely: it cannot satisfy, conflict with, or mask any §2.2
+    // file identity downstream.
     if (normalized === null || seen.has(normalized)) continue;
     seen.add(normalized);
     surface.push(normalized);
@@ -261,7 +294,7 @@ export function extractSrsFileSurface(content: string): readonly string[] {
 
 export type SrsFileTokenResolutionKind =
   | 'exact'
-  | 'basename-unique'
+  | 'module-relative'
   | 'ambiguous'
   | 'not-on-surface';
 
@@ -269,10 +302,27 @@ export interface SrsFileTokenResolution {
   /** The verbatim §2.2 manifest token (normalized separators only). */
   readonly token: string;
   readonly resolution: SrsFileTokenResolutionKind;
-  /** The canonical identity for exact/basename-unique; null otherwise. */
+  /** The canonical identity for exact/module-relative; null otherwise. */
   readonly identityPath: string | null;
-  /** Witness surface paths for an ambiguous basename. */
+  /** Witness surface paths for an ambiguous resolution. */
   readonly candidates: readonly string[];
+}
+
+/**
+ * Segment-aligned suffix match: does `path` end with the token's FULL
+ * segment sequence? A bare filename (one segment) matches any surface file
+ * with that basename; a multi-segment module-relative token
+ * (`data/categories.js`) matches only a surface path whose directory
+ * structure it extends (`js/data/categories.js`). Alignment is per path
+ * segment, so `s/engine.js` never matches `js/engine.js`.
+ */
+function isSegmentAlignedSuffix(path: string, tokenSegments: readonly string[]): boolean {
+  const pathSegments = path.split('/');
+  if (pathSegments.length < tokenSegments.length) return false;
+  const offset = pathSegments.length - tokenSegments.length;
+  return tokenSegments.every(
+    (segment, index) => pathSegments[offset + index] === segment,
+  );
 }
 
 export interface SrsFileIdentityManifest {
@@ -293,11 +343,6 @@ export function buildSrsFileIdentityManifest(
 ): SrsFileIdentityManifest {
   const fileSurface = extractSrsFileSurface(content);
   const surfaceSet = new Set(fileSurface);
-  const byBasename = new Map<string, string[]>();
-  for (const path of fileSurface) {
-    const basename = path.slice(path.lastIndexOf('/') + 1);
-    byBasename.set(basename, [...(byBasename.get(basename) ?? []), path]);
-  }
 
   const manifest = parseSrsModuleManifest(content);
   const tokens = [
@@ -317,12 +362,19 @@ export function buildSrsFileIdentityManifest(
       });
       continue;
     }
-    const basename = token.slice(token.lastIndexOf('/') + 1);
-    const candidates = (byBasename.get(basename) ?? []).slice().sort();
+    // Segment-aligned suffix resolution (module-relative "Owned Surfaces",
+    // workshop P08). The directory structure the token DECLARES must be one
+    // the surface path actually extends — a bare-basename coincidence must
+    // not re-identify a token that names a different directory (Red-Team
+    // masking correction).
+    const tokenSegments = token.split('/');
+    const candidates = fileSurface
+      .filter(path => isSegmentAlignedSuffix(path, tokenSegments))
+      .slice().sort();
     if (candidates.length === 1) {
       resolutions.push({
         token,
-        resolution: 'basename-unique',
+        resolution: 'module-relative',
         identityPath: candidates[0]!,
         candidates,
       });

@@ -16,6 +16,7 @@ import type {
 import { computeCheckPlanDigest } from '../domain/workplace/gate.js';
 import type { WorkplaceRef } from '../domain/workplace/workplace-ref.js';
 import { serializeWorkplaceRef } from '../domain/workplace/workplace-ref.js';
+import { decodeCheckDiagnostic } from '../domain/workplace/check-diagnostic.js';
 
 /**
  * BLINDSIGHT C1 — the read-only rejection-history view delivered to every
@@ -342,6 +343,18 @@ function reduceReceipts(
       if (entry.failureOwnership === 'upstream') {
         return { verdict: 'failed', repairTargetRole: null };
       }
+      // CODE-SCOPED upstream ownership: the same escalation, selected by the
+      // TYPED diagnostic codes of this one receipt rather than by the whole
+      // entry. A mixed provider (workplace-local plan errors AND
+      // plan-independent frozen-upstream defects) declares the upstream-owned
+      // code set on the plan entry; only a receipt that actually carries one
+      // of those codes escalates. Every other failure code — and any receipt
+      // without a decodable diagnostic — keeps workplace-local repair
+      // routing, so genuine local errors are never misrouted to the
+      // producing workshop.
+      if (hasUpstreamOwnedFailureCode(receipt, entry)) {
+        return { verdict: 'failed', repairTargetRole: null };
+      }
       requestedTarget = entry.repairTargetRoleOnFailure ?? 'author';
     } else if (
       (receipt.outcome === 'unknown' || receipt.outcome === 'error')
@@ -373,6 +386,18 @@ function reduceReceipts(
   return { verdict: 'accepted', repairTargetRole: null };
 }
 
+function hasUpstreamOwnedFailureCode(
+  receipt: CheckReceipt,
+  entry: { readonly upstreamOwnedFailureCodes?: readonly string[] },
+): boolean {
+  const codes = entry.upstreamOwnedFailureCodes;
+  if (codes === undefined || codes.length === 0) return false;
+  return receipt.evidenceRefs.some(ref => {
+    const diagnostic = decodeCheckDiagnostic(ref);
+    return diagnostic !== null && codes.includes(diagnostic.code);
+  });
+}
+
 function hashReceipt(
   ref: string,
   checkRunRef: string,
@@ -399,5 +424,5 @@ function hashReceipt(
     outcome,
     evidenceRefs,
   });
-}
+ }
 

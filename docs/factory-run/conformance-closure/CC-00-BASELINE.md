@@ -38,10 +38,20 @@ All commands run in the isolated worktree unless noted.
 
 Committed evidence digests at base SHA:
 
-- `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `6ddcb107`)
-  `ab5f35727e5c944aad9b629de62a30739c16852b623822a5676d85747f45671e`
-- `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob at `6ddcb107`, pre-regeneration)
+- `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `e64b1a34`)
+  `e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07`
+- `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob, unchanged since `6ddcb107`)
   `55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a`
+
+> **Pin re-capture (2026-08-24, BM-5 correction follow-up):** the
+> conformance-report pin was superseded when `e64b1a34` legitimately
+> regenerated the snapshot (universe 176 → 178, ADR-095 phase-2
+> terminal-accounting tokens) WITHOUT repinning this ledger — K0-E was red
+> on a clean checkout of that commit (HEAD blob `5c83feec` vs pin
+> `79a64f22`). The pin and the ledger base SHA are re-captured at
+> `e64b1a34` per the ledger's own supersession discipline; see
+> `supersededValues` in CC-00-baseline-ledger.json. The harvest-manifest
+> blob is unchanged and keeps its original pin.
 
 ### Digest domain and method (K0 baseline-identity repair, 2026-08-23)
 

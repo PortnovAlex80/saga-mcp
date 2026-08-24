@@ -183,7 +183,7 @@
     { "id": "BM-2", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-3", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-4", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
-    { "id": "BM-5", "status": "PARTIAL", "note": "identity PROVEN; joint satisfiability FAILED at Elite-8 (srs-2.2 bare filenames vs d2/d3 full paths while SRS frozen); REPAIRED 2026-08-24 (srs-file-identity.ts + gate v1.3.0 typed pre-worker conflict, hosted RED/GREEN, BRIDGE_MATRIX section 4.5) — PARTIAL retained until three clean runs", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
+    { "id": "BM-5", "status": "PARTIAL", "note": "identity PROVEN; joint satisfiability FAILED at Elite-8 (srs-2.2 bare filenames vs d2/d1 full paths while SRS frozen); REPAIRED 2026-08-24 (srs-file-identity.ts + gate v1.3.0 typed pre-worker conflict, hosted RED/GREEN, BRIDGE_MATRIX section 4.5); Red-Team correction follow-up same day: gate v1.4.0 segment-aligned resolution + code-scoped upstream routing of the three plan-independent frozen-SRS codes (no planner repair budget) + registerless reversal documented (BRIDGE_MATRIX section 4.6) — PARTIAL retained until three clean runs", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-6", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-7", "status": "PROVEN", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
     { "id": "BM-8", "status": "PARTIAL", "note": "semantics PROVEN; real-process substrate timing outside CI (quarantined FLAKY)", "doc": "docs/factory-map/BRIDGE_MATRIX.md" },
@@ -259,7 +259,7 @@
     { "id": "MM-1", "name": "root asymmetry", "detail": "B roots only at released; installed default is product-build/runnable-local; root set corrected to five", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:991", "src/app/composition-root.ts:299-307"] },
     { "id": "MM-2", "name": "homeless release providers", "detail": "trusted providers for source-release/package-publish/deployment do not exist in-repo", "sourceRefs": ["tracker-view/product-delivery-composition.mjs:64"] },
     { "id": "MM-3", "name": "task-shadow binding seam (P0)", "detail": "newest-task selection corrupts recovery-budget counting and scope-widening bindings; Elite-8: budget never engaged through 15 deaths", "sourceRefs": ["src/app/product-lifecycle-runtime.ts:587-593", "docs/factory-run/stage21-elite7/RED-TEAM-AUDIT.md:80-86"] },
-    { "id": "MM-4", "name": "Elite-8 joint-satisfiability counterexample (BM-5)", "detail": "exact handoff preserved hashes but accepted SRS §2.2 bare filenames were unsatisfiable against §D2/§3 full paths while the SRS was frozen", "sourceRefs": [
+    { "id": "MM-4", "name": "Elite-8 joint-satisfiability counterexample (BM-5)", "detail": "exact handoff preserved hashes but accepted SRS §2.2 bare filenames were unsatisfiable against §D2/§D1 full paths while the SRS was frozen", "sourceRefs": [
       "src/modules/development/domain/srs-module-manifest.ts:68",
       "src/modules/development/domain/srs-module-manifest.ts:176-185",
       "src/modules/development/domain/srs-module-manifest.ts:214-248",

@@ -73,7 +73,47 @@ export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID =
 // fails TYPED `srs-file-identity-conflict` with the candidates as witnesses,
 // plan-independently, before any implementation worker is spawned — the
 // conjunction is unsatisfiable in the frozen SRS itself, not in the plan.
-export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.3.0';
+// v1.4.0 — Red-Team correction follow-up (2026-08-24): (a) token resolution
+// is SEGMENT-ALIGNED (a multi-segment §2.2 token resolves only against a
+// surface path whose directory structure it actually extends — a bare
+// basename no longer masks a declared-directory mismatch); (b) the
+// `srs-file-identity-conflict` message is register-conditional and no longer
+// advertises the impossible constraint-register waiver (the registerless
+// grandfather deliberately does NOT extend to identity conflicts — the
+// documented compatibility reversal); (c) the three plan-independent
+// frozen-SRS failure codes are exported for code-scoped upstream routing
+// (upstreamOwnedFailureCodes on the planner plans).
+export const DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION = '1.4.0';
+
+/**
+ * The typed failure codes this provider emits that are decided from the
+ * FROZEN SRS (+ register) alone and are therefore plan-INDEPENDENT: no
+ * resubmitted task graph can repair them, because the SRS is frozen
+ * upstream (post-baseline immutability) and the planner has no authority to
+ * edit it. The planner check plans declare these as
+ * `upstreamOwnedFailureCodes` so the gate reducer escalates exactly these
+ * receipts to the producer-defect verdict `failed` — the existing
+ * failureOwnership:'upstream' semantics — instead of charging planner
+ * repair attempts. The conveyor's failure routing (terminal Development
+ * outcome + readParentDefectEvidence) carries the defect to the upstream
+ * repair boundary (Formalization change request). Genuine plan errors
+ * (`srs-module-uncovered`, `task-graph-invalid`, decode/binding codes) stay
+ * workplace-local and keep routing planner repair.
+ */
+export const PLAN_INDEPENDENT_FROZEN_SRS_FAILURE_CODES = [
+  /** The SRS artifact file no longer matches its registered content hash. */
+  'srs-artifact-drifted',
+  /**
+   * Under a non-empty constraint register: unavailable SRS, absent §2.2 or
+   * file-less manifest. Decided from the SRS + register alone; adding §2.2
+   * to a frozen SRS is not a planner-repairable act (the Elite-7 trap the
+   * red team flagged: a refusal code ordering the PLANNER to edit a frozen
+   * document).
+   */
+  'srs-module-manifest-missing',
+  /** Ambiguous §2.2 file identity — the Elite-8 conjunction, undecidable. */
+  'srs-file-identity-conflict',
+] as const;
 
 /**
  * RE-PLAN CYCLE (REPLAN-CYCLE-TZ §2) — the cycle-2 gate check. Runs ONLY in
@@ -1109,6 +1149,19 @@ function assessSrsModuleManifestCoverage(
   // The failure is plan-independent (decided from the frozen SRS alone) and
   // names the candidate surface paths as witnesses — the Elite-8 trap class
   // converted from "burn budget on every plan" into one typed pre-worker red.
+  //
+  // REGISTER BOUNDARY (Red-Team correction, documented compatibility
+  // reversal): the ADR-088 registerless grandfather — the typed skip for a
+  // missing/file-less §2.2 manifest — deliberately does NOT extend to
+  // identity conflicts. An ambiguous token fails closed in BOTH register
+  // states, because the conjunction is undecidable from the frozen SRS
+  // alone and NO waiver seam exists for file identity: constraint-register
+  // waivers subtract CONSTRAINTS from coverage enforcement, they cannot make
+  // an ambiguous file identity decidable. The message therefore never
+  // advertises a waiver; the sole lawful exit is repairing the SRS §2.2
+  // declaration upstream (the SRS is frozen — a Formalization repair / new
+  // change request), which the code-scoped upstream routing delivers
+  // without charging planner attempts.
   const identity = buildSrsFileIdentityManifest(srs.content);
   if (identity.ambiguous.length > 0) {
     return {
@@ -1118,9 +1171,16 @@ function assessSrsModuleManifestCoverage(
           `SRS §2.2 declares '${entry.token}' while the §D2/§D1 file surface carries multiple `
           + `files with that basename [${entry.candidates.join(', ')}] — no single file identity exists`)
           .join('; ')
-          + '. No plan can jointly satisfy §2.2 coverage and the §D2/§D1 surface while the SRS is frozen: '
-          + 'repair the SRS §2.2 declaration to name the exact file (or waive via the constraint register '
-          + 'upstream). This failure does not depend on the submitted plan.',
+        + '. No plan can jointly satisfy §2.2 coverage and the §D2/§D1 surface while the SRS is frozen'
+        + ', and this failure does not depend on the submitted plan. Repair the SRS §2.2 declaration'
+        + ' upstream to name the exact file path'
+        + (registerActive
+          ? ' (the constraint register cannot waive a file-identity ambiguity — waivers subtract'
+            + ' constraints, they do not decide identity)'
+          : ' (this corpus has no constraint register: the registerless grandfather tolerates a'
+            + ' missing §2.2 manifest, but an AMBIGUOUS declaration still fails closed — repair or'
+            + ' remove the ambiguous token in the SRS)')
+        + '.',
         subjectRef,
       }),
       note: null,

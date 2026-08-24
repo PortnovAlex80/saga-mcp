@@ -24,6 +24,7 @@ import {
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
 } from '../../../modules/development/domain/development-schemas.js';
 import {
+  PLAN_INDEPENDENT_FROZEN_SRS_FAILURE_CODES,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
   DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
@@ -101,6 +102,22 @@ const PLANNER_CHECK_PLAN = buildCheckPlan(
     providerId: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_VERSION,
     providerDigest: DEVELOPMENT_TASK_GRAPH_CHECK_PROVIDER_DIGEST,
+    // CODE-SCOPED upstream ownership (Red-Team correction 2026-08-24): the
+    // three plan-independent frozen-SRS failure codes — srs-artifact-drifted,
+    // srs-module-manifest-missing, srs-file-identity-conflict — are decided
+    // from the frozen SRS (+ register) ALONE. No planner resubmission can
+    // repair them (the SRS is frozen upstream; the planner cannot edit it),
+    // so exactly these receipts escalate to the producer-defect verdict
+    // 'failed' (failureOwnership:'upstream' semantics): the cell routes
+    // complete-failed → terminal Development outcome, and the continuation
+    // defect-evidence seam (readParentDefectEvidence) carries the typed
+    // cause to the upstream repair boundary instead of burning planner
+    // attempts (maxAttempts + recovery epochs) on an unrepairable defect —
+    // the Elite-8 death. Deliberately NOT the blanket entry-level
+    // failureOwnership:'upstream': genuine plan errors emitted by the SAME
+    // provider (srs-module-uncovered, task-graph-invalid, decode/binding
+    // codes) must keep routing planner repair.
+    upstreamOwnedFailureCodes: PLAN_INDEPENDENT_FROZEN_SRS_FAILURE_CODES,
   }],
 );
 const IMPLEMENTATION_AUTHOR_PLAN = buildCheckPlan(
@@ -656,3 +673,4 @@ export const developmentProcessModule: ProcessModuleDefinition = {
     },
   ],
 };
+

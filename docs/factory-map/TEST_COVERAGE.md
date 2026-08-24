@@ -31,14 +31,19 @@ metadata, not a strength grade.
 ## 2. Registry facts (reconciler-verified, not narrated)
 
 - 8 groups: `architecture`, `factory-model`, `readiness-fencing`,
-  `factory-contract`, `process-modules` (concurrency=1; NINE exact-file
-  adoptions at `tools/run-acceptance-matrix.mjs:89-113`: the CC-GAP-8 pair
+  `factory-contract`, `process-modules` (concurrency=1; TWELVE exact-file
+  adoptions at `tools/run-acceptance-matrix.mjs:89-139`: the CC-GAP-8 pair
   [verification-ledger, terminal-exit-accounting], the Elite-8
-  worker-prompt-assembly file, and the six desk-coverage adoptions from
+  worker-prompt-assembly file, the six desk-coverage adoptions from
   5d020f9f [task-graph-register-conditional-coverage,
   task-graph-gate-srs-manifest, local-runnability-substrate-retry,
   local-runnability-toctou-reprobe, environment-identity,
-  local-runnability-seam-compose]), `matrix-coverage` (self-check),
+  local-runnability-seam-compose], the ADR-095 Phase-2
+  migration-conformance file, and the TWO BM-5 file-identity files
+  [srs-file-identity-satisfiability, srs-derived-change-scopes — the latter
+  closed its TC-7 orphan row on 2026-08-24]),
+  `discovery-live-v2` (8 exact files, ADR-095 Phase-2A/2B),
+  `matrix-coverage` (self-check),
   `cc-proof-registry` (bidirectional manifest↔matrix↔CI closure, ADR-092),
   `factory-proof` (27 exact files: W0 kernel, W1 verticals, CC-10A measuring
   surface).
@@ -58,12 +63,12 @@ metadata, not a strength grade.
 | TC-2 | `tests/discovery/**` (20 files incl. d1–d7) + `tests/modules/discovery/**` | test-file-exists (orphans) | no group globs them (`run-acceptance-matrix.mjs:64-163`); incl. two ADR-090 proof files (`RED-TEAM-AUDIT.md:103-106`) |
 | TC-3 | Formalization spine + constraint relay + warrant (BM-4/BM-5 identity half) | CI-blocking | `formalization-constraint-coverage`, `-package-manifest`, `-solution-contract-hashes`, `-warrant-ref`, `e-constraint-loss`, `srs-d2-parser` (groups process-modules/factory-contract) |
 | TC-4 | Formalization module-local suites (`tests/modules/formalization/**`) | test-file-exists (orphans) | heading-resolution, artifact-ref-bridge (`02_FORMALIZATION.md:320-322`) |
-| TC-5 | Development planner gates: register-conditional coverage + §2.2 manifest (BM-5 satisfiability half) | CI-executed (exact-file), per-file removal guard ABSENT | `task-graph-register-conditional-coverage.test.mjs`, `task-graph-gate-srs-manifest.test.mjs` (`run-acceptance-matrix.mjs:108-109`); guard gap: only terminal-exit-accounting is pinned (G2g) (`RED-TEAM-AUDIT.md:106-115`) |
+| TC-5 | Development planner gates: register-conditional coverage + §2.2 manifest (BM-5 satisfiability half) | CI-executed (exact-file); per-file removal guard for the TC-5 pair still ABSENT (G2g covers only terminal-exit-accounting; G2m covers the BM-5 pair) | `task-graph-register-conditional-coverage.test.mjs`, `task-graph-gate-srs-manifest.test.mjs` (`run-acceptance-matrix.mjs:108-109`); guard gap: deleting either TC-5 file does not redden the matrix (`RED-TEAM-AUDIT.md:106-115`) |
 | TC-6 | Development implementation/verification/readiness substrate | CI-executed (glob + 4 exact substrate files) | `run-acceptance-matrix.mjs:83-116`; readiness real-process file quarantined FLAKY (`:192-194`) → substrate TIMING = platform/fault-edge |
-| TC-7 | `tests/modules/development/**` 14 files | 4 hosted (verification-ledger, terminal-exit-accounting, + TC-5 pair) — TEN orphans | orphan list incl. `development-verification-check-provider`, `readiness-test-surface`, `srs-module-manifest`, `srs-derived-change-scopes` (`03_DEVELOPMENT.md:754-760`) |
+| TC-7 | `tests/modules/development/**` 15 files | 6 hosted (verification-ledger, terminal-exit-accounting, TC-5 pair, BM-5 pair) — NINE orphans | orphan list: text-set-manifest, srs-module-manifest, settlement-placeholder-verdict, readiness-test-surface, implementation-workset-item-key, implementation-scope-workitemkey, implementation-scope-ancestry, factory-managed-repository-paths, development-verification-check-provider (`03_DEVELOPMENT.md:754-760`); TRUTH UPDATE 2026-08-24: srs-derived-change-scopes + srs-file-identity-satisfiability left this orphan set when BM-5 §4.5 hosted them (guard G2m) |
 | TC-8 | Delivery kernel + effect ledger + approval inbox (BM-12/BM-13) | CI-blocking | `deferred-delivery`, `delivery-approval-inbox`, `product-delivery-lifecycle-e2e`, `product-lifecycle-policies`, effect-ledger/exactly-once suites, `delivery-kernel-unification.test.mjs` (factory-proof) |
 | TC-9 | Task-shadow port (SM-14) on a REAL multi-task singleton workplace | **pending** (R3) — no test exists; every unit stubs the port | `RED-TEAM-AUDIT.md:80-86,139-140` |
-| TC-10 | §2.2 × §D2/§3 cross-section satisfiability (Elite-8 counterexample, BM-5 §4) | CI-blocking (exact-file, RED/GREEN pinned) since 2026-08-24 | `srs-file-identity-satisfiability.test.mjs` hosted in process-modules (`BRIDGE_MATRIX.md` §4.5); RED proven on the unfixed tree (correct plan rejected `srs-module-uncovered`) |
+| TC-10 | §2.2 × §D2/§D1 cross-section satisfiability (Elite-8 counterexample, BM-5 §4) | CI-blocking (exact-file, RED/GREEN pinned, G2m removal guard) since 2026-08-24 | `srs-file-identity-satisfiability.test.mjs` hosted in process-modules (`BRIDGE_MATRIX.md` §4.5); RED proven on the unfixed tree (correct plan rejected `srs-module-uncovered`); Red-Team correction follow-up same day: masking/directory/registerless/boundary regressions + code-scoped upstream routing proof (`srs-identity-upstream-routing.test.mjs`, factory-contract group) |
 | TC-11 | `worker-prompt-assembly` (Elite-8 G1.9 recovery_feedback bound) | CI-executed (exact-file, adopted 6e383a10) | `run-acceptance-matrix.mjs:98-103` |
 | TC-12 | Windows host arms (taskkill fallback, 5s exit-without-close, win32 docker readiness) | platform/fault-edge (CI ubuntu-only) | `RED-TEAM-AUDIT.md:70-76`; `ci.yml:11` |
 | TC-13 | Delivery effect contracts (`tests/modules/delivery/delivery-effect-contracts.test.mjs`) + `tests/matrix/f-authority-delivery.test.mjs` | test-file-exists (orphans) | no group hosts them (`04_DELIVERY.md:477-489`) |

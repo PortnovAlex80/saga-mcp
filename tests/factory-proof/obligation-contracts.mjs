@@ -187,7 +187,14 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   }),
   Object.freeze({
     obligationId: 'dev.task-graph',
-    version: '1.3.0',
+    // v1.3.0 — BM-5/MM-4: §2.2 tokens identity-resolved against the §D2/§D1
+    // surface; ambiguous basenames fail typed srs-file-identity-conflict
+    // pre-worker. v1.4.0 — Red-Team correction follow-up: segment-aligned
+    // token resolution (basename masking closed), register-conditional
+    // truthful conflict message, and code-scoped upstream routing — the
+    // three plan-independent frozen-SRS codes escalate to 'failed' instead
+    // of charging planner repair attempts.
+    version: '1.4.0',
     sourceRefs: ['development-process-module', 'GRAPH-TEST-STRATEGY L3 fan-out'],
     subjectKind: 'development-task-graph',
     protectedProperty: 'The task graph has unique item keys, at least one item, and dependsOn edges reference existing keys (no foreign dependencies).',
@@ -196,7 +203,7 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
       { kind: 'cardinality', min: 1, member: 'items' },
       { kind: 'ref', field: 'dependsOn', target: 'itemKey' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'development.task-graph-contract.v1', version: '1.3.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'development.task-graph-contract.v1', version: '1.4.0' },
     faultClasses: ['contract-shape', 'authority-binding'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),

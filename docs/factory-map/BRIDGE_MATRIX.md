@@ -23,7 +23,7 @@
 | BM-2 | `produce-proposal` (exact 1 `factory.discovery-proposal.v1`) | readiness provider binding by content hash (`src/modules/discovery/application/discovery-check-providers.ts:119-158`); settlement `requireAcceptedSingletonCellItem` (`src/modules/discovery/application/discovery-production-cell-installation.ts:154-168`) | `assess-readiness` + `settle` | selection by exact ProductRef alias `managed-node-submission:<id>` + schema + content digest (`:462-495`); cardinality exactly 1+1; readiness payload carries `proposal_content_hash` | holds; uncovered: forged-content-at-allowed-ref not scenario-pinned (`01_DISCOVERY.md:80`) | PROVEN (corpus matrix-hosted) |
 | BM-3 | Discovery `complete-go/clarify/reject` + certificate | lifecycle output mapping (`product-delivery-lifecycle.ts:303-313,351-356`) + `createDiscoveryOutputResolver` / `createDiscoveryLifecycleOutputPayloadResolver` (`discovery-production-cell-installation.ts:364-412`, wired `product-lifecycle-runtime.ts:910-914`) | `FormalizationCase` (`factory.formalization-case.v1`) | consumer re-verifies certificate by exact ref AND hash before trusting the register (`formalization-production-cell-installation.ts:659-690`); `failed` produces no keys and a resolver step-aside exists (`:376-383`) | holds; `failed` route excluded by mapping absence, no adversarial forcing test (`02_FORMALIZATION.md:199`) | PROVEN (matrix-hosted `discovery-output-handoff`) |
 | BM-4 | Formalization cells (5 reviewed) → accepted artifacts | `freeze-acceptance-baseline` (lifecycle-scoped accepted AC set, ADR-078 K6; drift→`complete-inconsistent`, `formalization-production-cell-installation.ts:119-209`) → architecture cell → settlement (§D2 decomposition, `:529-540`) | Solution Contract `factory.solution-contract-certificate.v1` + persisted record (`:336-376`) | baseline freezes AC ids/hashes/atomic criteria + `baselineHash`; semanticDigest over stable codes+hashes only (`:741-759`); settlement reads lifecycle-scoped accepted material with exact hashes (`:717-733`) | holds for frozen inputs; residual: epic-accumulation seam untested adversarially (`02_FORMALIZATION.md:181`) | PROVEN (matrix-hosted hashes/warrant suites) |
-| BM-5 | Formalization `complete-formalized` (Solution Contract whole payload incl. SRS + §2.2 + §D2) | output mapping `solutionContract.*` + `solutionContractPayload` (`product-delivery-lifecycle.ts:366-369,383-412`) + `createFormalizationLifecycleOutputPayloadResolver` exact-match verification (`formalization-production-cell-installation.ts:583-605`, wired `:915-920`) | `DevelopmentCase` (`factory.development-case.v1`) → planner gate `development.task-graph-contract.v1` | hash chain intact end-to-end (matrix-proven: `development-constraint-relay`, `formalization-solution-contract-hashes`); criterion relay kernel-derived, unforgeable from planner output (`development-schemas.ts:381-396`) | **REPAIRED 2026-08-24 (Elite-8 counterexample, see §4.5)**: gate v1.3.0 resolves §2.2 tokens against the canonical §D2/§D1 surface (`srs-file-identity.ts`) before coverage; ambiguous basenames fail typed `srs-file-identity-conflict` pre-worker; RED/GREEN hosted (`srs-file-identity-satisfiability.test.mjs`) — status stays PARTIAL until the three clean runs | PARTIAL (hash identity PROVEN; path identity repaired; pending clean-run proof) |
+| BM-5 | Formalization `complete-formalized` (Solution Contract whole payload incl. SRS + §2.2 + §D2) | output mapping `solutionContract.*` + `solutionContractPayload` (`product-delivery-lifecycle.ts:366-369,383-412`) + `createFormalizationLifecycleOutputPayloadResolver` exact-match verification (`formalization-production-cell-installation.ts:583-605`, wired `:915-920`) | `DevelopmentCase` (`factory.development-case.v1`) → planner gate `development.task-graph-contract.v1` | hash chain intact end-to-end (matrix-proven: `development-constraint-relay`, `formalization-solution-contract-hashes`); criterion relay kernel-derived, unforgeable from planner output (`development-schemas.ts:381-396`) | **REPAIRED 2026-08-24 (Elite-8 counterexample, see §4.5 + §4.6)**: gate v1.4.0 resolves §2.2 tokens against the canonical §D2/§D1 surface (`srs-file-identity.ts`, segment-aligned) before coverage; ambiguous tokens fail typed `srs-file-identity-conflict` pre-worker with code-scoped UPSTREAM routing (no planner repair budget burned); RED/GREEN hosted (`srs-file-identity-satisfiability.test.mjs` + `srs-identity-upstream-routing.test.mjs`) — status stays PARTIAL until the three clean runs | PARTIAL (hash identity PROVEN; path identity repaired; pending clean-run proof) |
 | BM-6 | planner proposal (typed worker product) | `resolve-task-graph` kernel canonicalization + `materializeValidatedTaskGraph` (write-once, byte-equality replay: `sqlite-development-settlement-state.ts:115-160`; authorization: `development-installation.ts:355-395`) | canonical `factory.development-task-graph.v1` (fan-out selectors) | advisory proposal CANNOT persist before authorization (`development-kernel-ports.ts:138-151`); kernel stamps provenance + constraint relay; verification ledger opens in the SAME transaction (CC-GAP-8, `:142-152`) | holds; planner-decode trims forgeable fields (structural) — no runtime adversarial test (`03_DEVELOPMENT.md:166-169`) | PROVEN (glob-hosted authorization suite) |
 | BM-7 | implementation cells (fan-out N) | `postAcceptanceEffect: 'git-integration'` (`development-process-module.ts:337-339`): fenced merge/receipt, observe-before-retry, typed conflict (`src/infrastructure/workplace/git-integration-effect.ts:11-27,57-182`) → `freeze-integrated-candidate` kernel (exactly 1 receipt per accepted product: `sqlite-development-settlement-state.ts:246-273`) | `integrated-source-candidate` (content-addressed `sourceHash`, frozen) | effective desk-base receipts immutable by trigger (`src/schema.ts:1486-1523`); lineage check vs `expectedBaseCommit` (`:274-286`); cell identity = TASK for capsule purposes (1a6fc2a5 fix; `03_DEVELOPMENT.md` git-integration details) | holds; concurrent freeze from two hosts untested (single-host caveat) | PROVEN (glob-hosted scope/monotonicity suites) |
 | BM-8 | `certify-product-readiness` manifest | local-runnability provider v1.14.0 (subject = FROZEN candidate, not the probe; `failureOwnership: 'upstream'`; K19 identity; `development-process-module.ts:158-225`) + `bind-runnable-candidate` receipt validation (LR-06 durable store `factory_check_receipts`, `sqlite-development-settlement-state.ts:566-591`) | `integrated-release-candidate` | receipt keyed by accepted presentation ref+digest; deterministic `local-readiness:<digest>` fence; identity failures are product `failed`, never substrate unknown (ADR-083 §6 split) | holds; substrate TIMING on the real seam is quarantined-FLAKY (predicted next death #2, `RED-TEAM-AUDIT.md:126-131`) | PARTIAL (semantics proven; real-process timing outside CI) |
@@ -82,7 +82,7 @@ satisfiability:
      `e2e/smoke.test.js` but NOT bare `smoke.test.js`
      (`src/shared/repository-scope.ts` `repositoryScopeContainsPath`).
 3. **The conjunction was unsatisfiable.** Elite-8's accepted SRS declared §2.2
-   with bare filenames while §D2/§3 declared the same files as full paths.
+   with bare filenames while §D2/§D1 declared the same files as full paths.
    Any plan scoping the REAL (full-path) files leaves the bare §2.2 tokens
    uncovered → `srs-module-uncovered`; the SRS was already frozen upstream
    (post-baseline AC/SRS immutability, `formalization.baseline-before-how`,
@@ -114,8 +114,10 @@ Point 5's first half landed as the smallest authority-conserving cutover:
   `src/modules/development/domain/srs-file-identity.ts`. It owns the §D2/§D1
   file-surface extraction (moved out of `srs-derived-change-scopes.ts`; no
   consumer re-parses those sections) and resolves every §2.2 token against
-  that surface: `exact` / `basename-unique` (module-relative Owned Surfaces,
-  workshop P08) / `ambiguous` / `not-on-surface`. The manifest is a pure
+  that surface: `exact` / `module-relative` (segment-aligned suffix —
+  "Owned Surfaces", workshop P08; renamed from the v1.3.0
+  `basename-unique` when resolution became segment-aligned, §4.6) /
+  `ambiguous` / `not-on-surface`. The manifest is a pure
   function of the frozen SRS content hash — "frozen upstream" without a
   schema move (the SRS IS the frozen artifact; this module is its one
   canonical interpretation).
@@ -137,6 +139,56 @@ Point 5's first half landed as the smallest authority-conserving cutover:
   updated in the same commit (gate-conjunction-satisfiability.test.mjs).
 - Status stays PARTIAL until the three clean runs re-prove the conveyor end
   to end on a real model.
+
+## 4.6 The Red-Team correction follow-up (2026-08-24, gate v1.4.0)
+
+An independent conformance review ACCEPTED the core identity algorithm and
+required five corrections; all landed in the same follow-up:
+
+1. **Code-scoped upstream routing — no planner budget on plan-independent
+   frozen-SRS defects.** `srs-file-identity-conflict`,
+   `srs-artifact-drifted` and `srs-module-manifest-missing` are decided from
+   the frozen SRS (+ register) ALONE; the v1.3.0 red still reduced to
+   `repair_required` targeting the planner, which could only burn attempts.
+   `CheckPlanEntry.upstreamOwnedFailureCodes` (new, beside the blanket
+   `failureOwnership`) lets the planner plans declare exactly these typed
+   codes; the gate reducer escalates ONLY receipts carrying them to the
+   producer-defect verdict `failed` (existing upstream-ownership semantics),
+   while genuine plan errors from the same provider keep planner repair.
+   Proof: `tests/factory-contract/srs-identity-upstream-routing.test.mjs`
+   (plan wiring incl. the re-plan continuation plan, reducer discrimination,
+   the real provider through the installed plan, and the
+   `readParentDefectEvidence` continuation seam decoding the typed cause for
+   the upstream repair boundary).
+2. **Registerless grandfather resolved deliberately.** The ADR-088
+   registerless grandfather (typed skip for a missing/file-less §2.2) does
+   NOT extend to identity conflicts: an ambiguous token fails closed in
+   BOTH register states (documented compatibility reversal), and the
+   conflict message no longer advertises the impossible constraint-register
+   waiver — register waivers subtract constraints, they cannot decide file
+   identity. The sole lawful exit is repairing the SRS §2.2 declaration
+   upstream; the message says so and is register-conditional.
+3. **Segment-aligned token resolution (masking closed).** A multi-segment
+   §2.2 token resolves only against a surface path whose directory
+   structure it extends (single-segment = the Elite-8 bare-filename case);
+   `admin/index.html` vs surface `frontend/index.html` is NOT re-identified
+   by basename coincidence (typed coverage gap, as-declared semantics), and
+   `s/engine.js` never suffix-matches `js/engine.js`.
+4. **Directory-shaped surface tokens (`js/`) are scope vocabulary, never
+   file identity** — deterministically excluded from the §D2/§D1 file
+   surface (mirroring the §2.2 FILE_LIKE filter) with a regression; no
+   scope authority is invented from them (non-broadening).
+ 5. **Per-file removal guards**: coverage guard G2m pins BOTH BM-5 suites
+    (`srs-file-identity-satisfiability` + `srs-derived-change-scopes`) in a
+    blocking run-set — deletion or de-hosting now reddens the matrix.
+    (Guard-ID note, canonical integration 2026-08-24: authored as G2k on the
+    stage22/bm5-file-identity branch whose base predated ADR-095 Phase-2C/3;
+    canonical saga4 had already assigned G2k to the ADR-095 eight-ratchet
+    suite and G2l to the conveyor v4.3 focused-invariants oracle, so the
+    BM-5 guard took the next genuinely free ID G2m. Semantics unchanged.)
+   Truth-updated evidence: TEST_COVERAGE §2/TC-5/TC-7/TC-10, the §D2/§D1
+   section-reference typos fixed across the factory-map set, obligation
+   contract `dev.task-graph` repinned 1.3.0 → 1.4.0.
 
 ## 5. Bridge ↔ graph cross-references
 

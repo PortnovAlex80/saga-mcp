@@ -255,6 +255,41 @@ test('G2l: the conveyor v4.3 focused-invariants suite is hosted blocking (ADR-09
   );
 });
 
+test('G2m: BOTH BM-5 file-identity suites are hosted blocking (per-file de-hosting/removal guard)', () => {
+  // GUARD ID NOTE (canonical BM-5 integration, 2026-08-24): this guard was
+  // authored as `G2k` on the stage22/bm5-file-identity branch, whose base
+  // predated ADR-095 Phase-2C/3. Canonical saga4 had already assigned G2k
+  // (ADR-095 eight-ratchet suite) and G2l (conveyor v4.3 focused-invariants,
+  // Phase-3.1); BOTH canonical guards are kept, and this BM-5 guard is
+  // renamed to the next genuinely free ID G2m. Semantics unchanged: runSet
+  // membership only, quarantine does not count.
+  // The BM-5/MM-4 repair (Elite-8 counterexample, 2026-08-24) landed TWO
+  // suites as exact-file adoptions in the process-modules group:
+  //   - srs-file-identity-satisfiability.test.mjs — the §2.2 × §D2/§D1
+  //     cross-section satisfiability proof (Elite-8 counterexample pass,
+  //     genuine-gap rejection, ambiguous conflict + plan-independence, P08
+  //     module-relative resolution, masking/directory/registerless
+  //     corrections, no-fallback policy);
+  //   - srs-derived-change-scopes.test.mjs — the derivation half (shared
+  //     §D2/§D1 surface + EMPTY-when-underivable policy), previously an
+  //     unhosted orphan (the TC-5/TC-7 guard gap the red team flagged).
+  // Deleting either file OR dropping it from the run-set must fail HERE,
+  // not silently orphan the proof again (the recurring orphan-hosting
+  // death class, RED-TEAM-AUDIT §"per-file removal guards"). Asserted
+  // against runSet only: reclassifying a BM-5 proof as FLAKY or
+  // PRE-EXISTING-RED is not an honest way to drop it.
+  const required = [
+    'tests/modules/development/srs-file-identity-satisfiability.test.mjs',
+    'tests/modules/development/srs-derived-change-scopes.test.mjs',
+  ];
+  for (const f of required) {
+    assert.ok(
+      runSet.has(f),
+      `${f} must stay in a blocking run-set (BM-5 file-identity proof hosting)`,
+    );
+  }
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [
