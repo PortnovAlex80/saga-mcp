@@ -1334,6 +1334,24 @@
         "docs/factory-map/01_DISCOVERY.md — DEAD/DECLARATIVE-ONLY STRATA 1-7 + CONTRADICTIONS 1-2: the proven-dead evidence the removal executes",
         "docs/factory-run/stage22-elite9/PRE-ELITE9-TRACKER.md — Point 5 refined with the ADR-095 phases (docs-only at acceptance)"
       ]
+    },
+    {
+      "adr": "096",
+      "file": "096-consolidate-before-bounded-qualification-or-stop.md",
+      "decisionStatus": "accepted",
+      "closureState": "in-progress",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "One canonical integration line contains saga4, independently reviewed Elite repairs, and exact task-shadow authority; qualification is permitted only from one immutable build against the predeclared bounded gate, and discovery of a genuinely new invariant class triggers termination or reduction to a deterministic workflow engine.",
+      "successor": null,
+      "notes": "Accepted 2026-08-24 after independent feasibility, impossibility, and change-forensics audits. The decision rejects both an unsupported impossibility claim and continued live incident patching. Consolidation is in progress on integration/canonical-2026-08-24; factory qualification runs are deliberately deferred by operator direction until code and branch state are coherent.",
+      "evidence": [
+        "docs/architecture/decisions/096-consolidate-before-bounded-qualification-or-stop.md — decision, MCDA, pre-mortem, hostile challenge, bounded qualification and kill gate",
+        "integration/canonical-2026-08-24 — canonical consolidation history beginning at merge a170dd95 and task-shadow merge cd02e9fc",
+        "docs/factory-run/stage23-devtest/TRACKER.md — REG-28 truth correction and explicit separation of historical run evidence from canonical qualification"
+      ]
     }
   ]
 }
