@@ -6,7 +6,10 @@
 // isolated process and prints a JSON evidence bundle on stdout. The companion
 // test (w9-06-scope-widening.test.mjs) invokes this script per scenario.
 //
-// Scenario selection: W9_SCENARIO env var — see SCENARIO_MAP below.
+// Scenario selection: W9_SCENARIO env var — see SCENARIO_MAP below — or
+// W9_PERTURBATION_SEED=<n> selecting an in-lane tape from the frozen table
+// (perturbation-tapes.mjs); a conflicting explicit W9_SCENARIO is a typed
+// error, and the evidence always records the resolved tape name.
 //
 // What every scenario proves (stage-13 brief):
 //   - insufficiency declared (trajectory-detected or worker-declared);
@@ -23,7 +26,9 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
-const SCENARIO = process.env.W9_SCENARIO || '';
+const { resolveDriveTapeSelection } = await import('./perturbation-tapes.mjs');
+const tapeSelection = resolveDriveTapeSelection({ env: process.env, driveFile: 'w9-06-scope-widening-drive.mjs' });
+const SCENARIO = tapeSelection.scenario || '';
 const label = process.env.W9_DRIVE_LABEL || SCENARIO;
 
 const harness = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href);
@@ -131,6 +136,9 @@ try {
   const evidence = {
     label,
     scenario: SCENARIO,
+    perturbationSeed: tapeSelection.seed,
+    perturbationTape: tapeSelection.tapeName,
+    perturbationTapeApplied: tapeSelection.applied,
     lifecycleStatus: lifecycleRun?.status ?? null,
     lifecycleTerminalStatus: lifecycleRun?.terminal_status ?? null,
     scopeReceiptCount: scopeReceipts.length,

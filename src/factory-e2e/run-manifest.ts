@@ -103,6 +103,17 @@ export interface AuthorityInvariant {
 export interface RunScenario {
   readonly scenarioId: string;
   readonly lane: E2ELane;
+  /**
+   * The DETERMINISTIC PERTURBATION TAPE this scenario is selectable as
+   * (ADR-096 gate item 3: whole-factory qualification runs differ by seed;
+   * a seed selects a named tape, never a random fault). The canonical tape
+   * registry is the frozen table next to the w9 drive entrypoints
+   * (tests/factory-e2e/perturbation-tapes.v1.json); this field records the
+   * manifest-side half of that contract so a run can be attributed to its
+   * tape. OPTIONAL and additive: manifests without tapeName still parse
+   * (backwards-compatible); when present it must be unique across scenarios.
+   */
+  readonly tapeName?: string;
   readonly description: string;
   /** Must be true — every W9 run starts from a clean per-run DB/workspace. */
   readonly freshState: boolean;
@@ -266,6 +277,9 @@ function parseScenario(raw: unknown): RunScenario {
   return Object.freeze({
     scenarioId: requireString(raw.scenarioId, 'scenario.scenarioId'),
     lane: raw.lane === 'W9-02' || raw.lane === 'W9-03' || raw.lane === 'W9-04' || raw.lane === 'W9-05' || raw.lane === 'W9-06' ? raw.lane : (() => { throw new ManifestError(`scenario.lane must be one of W9-02..W9-06, got '${String(raw.lane)}'`); })(),
+    ...(raw.tapeName !== undefined
+      ? { tapeName: requireString(raw.tapeName, 'scenario.tapeName') }
+      : {}),
     description: requireString(raw.description, 'scenario.description'),
     freshState,
     concurrencyCap: requireConcurrencyCap(raw.concurrencyCap, 'scenario.concurrencyCap'),
@@ -317,6 +331,16 @@ export function parseRunManifest(raw: unknown): RunManifest {
     seenIds.add(id);
   }
   const scenarios = Object.freeze((raw.scenarios as unknown[]).map(parseScenario));
+  const seenTapeNames = new Set<string>();
+  for (const scenario of scenarios) {
+    if (scenario.tapeName === undefined) continue;
+    if (seenTapeNames.has(scenario.tapeName)) {
+      throw new ManifestError(
+        `tapeName '${scenario.tapeName}' is duplicated — one tape selects exactly one scenario`,
+      );
+    }
+    seenTapeNames.add(scenario.tapeName);
+  }
   const lanes = new Set(scenarios.map(s => s.lane));
   if (!lanes.has('W9-02')) {
     throw new ManifestError('manifest must declare at least one W9-02 (happy path) scenario');
@@ -419,6 +443,7 @@ export function defaultW9RunManifest(baseline: {
       {
         scenarioId: 'w9-02-happy-full-lifecycle',
         lane: 'W9-02',
+        tapeName: 'golden-full-lifecycle',
         description:
           'Fresh DB + fresh repository. Scripted happy-path inference drives one cohort '
           + 'through Discovery, Formalization, Development and Delivery-release. Concurrency '
@@ -439,6 +464,7 @@ export function defaultW9RunManifest(baseline: {
       {
         scenarioId: 'w9-03-cross-execution-durability',
         lane: 'W9-03',
+        tapeName: 'cross-execution-durability',
         description:
           'Fresh state. The first author execution is lost (exit-without-done) immediately '
           + 'after its first managed contribution is sealed. Crash repair reassigns the SAME '
@@ -471,6 +497,7 @@ export function defaultW9RunManifest(baseline: {
       {
         scenarioId: 'w9-03-reviewer-reject-repair',
         lane: 'W9-03',
+        tapeName: 'reviewer-reject-repair',
         description:
           'Fresh state. A reviewer CandidateSet is produced against the first author '
           + 'CandidateSet; the final gate returns repair_required (reject). The author '
@@ -492,6 +519,7 @@ export function defaultW9RunManifest(baseline: {
       {
         scenarioId: 'w9-03-carry-forward-authority',
         lane: 'W9-03',
+        tapeName: 'carry-forward-authority',
         description:
           'Fresh state. Accepted author material is carried forward into a downstream '
           + 'integration node. The integration task is selected from the accepted-authority '
@@ -537,12 +565,14 @@ function w9WorkerDisobedienceScenarios(
   const invariants = W9_AUTHORITY_INVARIANTS;
   const scenario = (
     scenarioId: string,
+    tapeName: string,
     description: string,
     scenarioKey: string,
     deterministicCrashPoints: DeterministicCrashPoint[],
   ) => ({
     scenarioId,
     lane: 'W9-05' as const,
+    tapeName,
     description,
     freshState: true,
     concurrencyCap,
@@ -561,6 +591,7 @@ function w9WorkerDisobedienceScenarios(
   return [
     scenario(
       'w9-05-silent-worker',
+      'silent-worker',
       'A worker goes silent: its execution row is left running with an '
       + 'expired lease, stale heartbeat and no liveness (pid gone), and no '
       + 'accepted completion receipt. The production reaper '
@@ -572,6 +603,7 @@ function w9WorkerDisobedienceScenarios(
     ),
     scenario(
       'w9-05-exit-without-done',
+      'exit-without-done',
       'A worker performs REAL durable work (an artifact through the '
       + 'production artifact_create surface), prints a summary, and exits 0 '
       + 'without ever calling worker_done. The finalizer must classify the '
@@ -593,6 +625,7 @@ function w9WorkerDisobedienceScenarios(
     ),
     scenario(
       'w9-05-fake-done-file',
+      'fake-done-file',
       'A worker writes worker-done-call.json to disk with a plausible '
       + 'payload and exits 0, without invoking the actual MCP tool. Writing '
       + 'a file is not a tool call: no receipt may exist, the execution '
@@ -633,11 +666,13 @@ function w9OutcomeEdgeScenarios(
   const invariants = W9_AUTHORITY_INVARIANTS;
   const scenario = (
     scenarioId: string,
+    tapeName: string,
     description: string,
     scenarioKey: string,
   ) => ({
     scenarioId,
     lane: 'W9-04' as const,
+    tapeName,
     description,
     freshState: true,
     concurrencyCap,
@@ -656,6 +691,7 @@ function w9OutcomeEdgeScenarios(
   return [
         scenario(
       'w9-04-frm-inconsistent',
+      'frm-inconsistent',
       'The product-contract author traces the PRD to a non-brief root '
       + '(a decision artifact). The phase gates only require SOME non-product '
       + 'root, so the lineage choice is gate-permitted — settlement\'s '
@@ -671,6 +707,7 @@ function w9OutcomeEdgeScenarios(
     // classified PENDING in lifecycle-outcome-edge-coverage.test.mjs.
     scenario(
       'w9-04-dev-blocked',
+      'dev-blocked',
       'The frozen integrated candidate drifts: between candidate freeze and '
       + 'settlement an out-of-band change lands on the integration branch. '
       + 'Every cell still accepts against the exact frozen candidate, but '
@@ -682,6 +719,7 @@ function w9OutcomeEdgeScenarios(
     ),
     scenario(
       'w9-04-disc-deleted-word-rejected',
+      'disc-deleted-word',
       'A discovery proposal recommends the DELETED outcome word defer. The '
       + 'proposal contract enum is closed to the producible vocabulary, so '
       + 'the submission is rejected as invalid input and the cell cannot '
@@ -691,6 +729,7 @@ function w9OutcomeEdgeScenarios(
     ...(['clarify', 'reject'] as const).map(
       code => scenario(
         `w9-04-disc-${code}`,
+        `disc-${code}`,
         `Discovery settles '${code}': the worker recommends it and (for the `
         + 'reject verdict) the readiness advisor coherently agrees, exactly as '
         + 'the settlement policy matrix defines. Discovery is a permissive '
@@ -725,11 +764,13 @@ function w9ScopeWideningScenarios(
   const invariants = W9_AUTHORITY_INVARIANTS;
   const scenario = (
     scenarioId: string,
+    tapeName: string,
     description: string,
     scenarioKey: string,
   ) => ({
     scenarioId,
     lane: 'W9-06' as const,
+    tapeName,
     description,
     freshState: true,
     concurrencyCap,
@@ -748,6 +789,7 @@ function w9ScopeWideningScenarios(
   return [
     scenario(
       'w9-06-scope-widening-grant',
+      'scope-widening-grant',
       'The first implementation card honestly requires atlas/registry-map.json, '
       + 'which its frozen changeScopes do not contain. Two consecutive '
       + 'path-outside-authority rejections make the insuffibility structural; '
@@ -759,6 +801,7 @@ function w9ScopeWideningScenarios(
     ),
     scenario(
       'w9-06-scope-declared',
+      'scope-declared',
       'The same honest work, but the worker uses the typed conclusion: after '
       + 'the first scope rejection it ends its attempt with worker_done '
       + "outcome 'scope-insufficient' naming atlas/. The kernel decides the "

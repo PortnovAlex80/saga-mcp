@@ -7,6 +7,14 @@
 // (w9-02-happy-path.test.mjs) invokes this script twice (as separate child
 // processes) to prove determinism without cross-drive module-level state
 // contamination (product-tool caches, composition-root singletons).
+//
+// Perturbation seeds (ADR-096 gate item 3): W9_PERTURBATION_SEED=<n> selects
+// a tape from the frozen table (perturbation-tapes.mjs). The evidence always
+// records the resolved tape name. v1 declares exactly ONE runnable w9-02
+// tape (the golden path); an out-of-lane seed leaves this drive on the golden
+// path (current behavior) with the tape name still recorded — and if a
+// future table grows an in-lane w9-02 variant, this drive fails LOUDLY until
+// the variant's handlers are wired here (no silent golden fallback).
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -22,9 +30,21 @@ const { createScriptedObserver } = await import('./scripted-inference.mjs');
 const { buildHarnessComposition } = await import('./harness-composition.mjs');
 const { W9_HAPPY_HANDLERS } = await import('./w9-happy-handlers.mjs');
 const { defaultW9RunManifest, parseRunManifest } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/run-manifest.js')).href);
+const { resolveDriveTapeSelection } = await import('./perturbation-tapes.mjs');
 
 const SCENARIO_CAP = HARNESS_CONCURRENCY_CEILING;
 const STARTING_SHA = '8c2d679';
+
+// Deterministic perturbation-seed tape resolution (ADR-096 gate item 3).
+const DRIVE_FILE = 'w9-02-single-drive.mjs';
+const tapeSelection = resolveDriveTapeSelection({ env: process.env, driveFile: DRIVE_FILE });
+if (tapeSelection.applied) {
+  throw new Error(
+    `W9_TAPE_NOT_RUNNABLE_HERE: seed ${tapeSelection.seed} selects in-lane tape `
+    + `'${tapeSelection.tapeName}' for ${DRIVE_FILE}, but this drive implements only the `
+    + 'golden tape — wire the variant handlers here before the table may select it',
+  );
+}
 
 // Verify the manifest declares this scenario.
 const manifest = parseRunManifest(defaultW9RunManifest({ startingSha: STARTING_SHA }));
@@ -88,6 +108,9 @@ try {
   // present in the manifest.
   const evidence = {
     label,
+    perturbationSeed: tapeSelection.seed,
+    perturbationTape: tapeSelection.tapeName,
+    perturbationTapeApplied: tapeSelection.applied,
     reachedRunnableLocal: devRun?.local_outcome === 'verified' && lrReceipt?.outcome === 'passed',
     devOutcome: devRun?.local_outcome ?? null,
     devStatus: devRun?.status ?? null,

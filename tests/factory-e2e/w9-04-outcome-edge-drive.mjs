@@ -6,7 +6,10 @@
 // bundle on stdout. The companion test (w9-04-outcome-edges.test.mjs) invokes
 // this script per scenario.
 //
-// Scenario selection: W9_SCENARIO env var — see SCENARIO_MAP below.
+// Scenario selection: W9_SCENARIO env var — see SCENARIO_MAP below — or
+// W9_PERTURBATION_SEED=<n> selecting an in-lane tape from the frozen table
+// (perturbation-tapes.mjs); a conflicting explicit W9_SCENARIO is a typed
+// error, and the evidence always records the resolved tape name.
 //
 // What every scenario proves (CONVEYOR §23 L3 item 7):
 //   - the lifecycle reached the declared terminal/stage for that outcome edge
@@ -21,7 +24,9 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const REPO_ROOT = process.cwd();
-const SCENARIO = process.env.W9_SCENARIO || '';
+const { resolveDriveTapeSelection } = await import('./perturbation-tapes.mjs');
+const tapeSelection = resolveDriveTapeSelection({ env: process.env, driveFile: 'w9-04-outcome-edge-drive.mjs' });
+const SCENARIO = tapeSelection.scenario || '';
 const label = process.env.W9_DRIVE_LABEL || SCENARIO;
 
 const harness = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist/factory-e2e/fresh-harness.js')).href);
@@ -192,6 +197,9 @@ try {
   const evidence = {
     label,
     scenario: SCENARIO,
+    perturbationSeed: tapeSelection.seed,
+    perturbationTape: tapeSelection.tapeName,
+    perturbationTapeApplied: tapeSelection.applied,
     edgeKey: config.edgeKey,
     stageOutcomeRecorded: Boolean(stageRun),
     stageRunOutcome: stageRun?.local_outcome ?? null,
