@@ -134,3 +134,35 @@ test('guard rejects a non-terminal parent (paused)', () => {
     'a paused run is not a terminal failure and must not be redeveloped');
   db.close();
 });
+
+test('guard accepts the development-blocked settlement (completed + development-blocked, stage blocked)', () => {
+  const db = makeDb();
+  seedParent(db,
+    { status: 'completed', terminalStatus: 'development-blocked', currentStageId: null },
+    [...PRELUDE, ['solution-development', 'blocked']]);
+  assert.equal(call(db), 'DEVELOPMENT_REDEVELOPMENT_REPOSITORY_NOT_EXACT',
+    'Elite-10 seam repair: the settlement policy routes a terminally failed '
+    + 'implementation item to development-blocked; refusing it stranded every '
+    + 'recovery CLI (live: impl-shared-core failed under 7 integration conflicts)');
+  db.close();
+});
+
+test('guard rejects a healthy completed run (terminal_status=complete)', () => {
+  const db = makeDb();
+  seedParent(db,
+    { status: 'completed', terminalStatus: 'complete', currentStageId: null },
+    [...PRELUDE, ['solution-development', 'verified']]);
+  assert.match(call(db), /DEVELOPMENT_REDEVELOPMENT_PARENT_NOT_EXACT/,
+    'a verified development is a success, not a redevelopment candidate');
+  db.close();
+});
+
+test('guard rejects a blocked boundary that is not solution-development', () => {
+  const db = makeDb();
+  seedParent(db,
+    { status: 'completed', terminalStatus: 'development-blocked', currentStageId: null },
+    [['initial-discovery', 'go'], ['solution-formalization', 'blocked']]);
+  assert.match(call(db), /DEVELOPMENT_REDEVELOPMENT_PARENT_NOT_EXACT/,
+    'a blocked formalization has no development capsule to consume');
+  db.close();
+});

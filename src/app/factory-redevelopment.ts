@@ -144,16 +144,30 @@ export function prepareDevelopmentRedevelopment(
   // projection CLEARS current_stage_id — this guard read the pre-split shape
   // and could never match ANY post-GAP-2 failed run. The verdict lives in
   // terminal_status; the failing stage falls back to the last stage run.
+  //
+  // ELITE-10 seam repair (2026-08-24): the development settlement policy
+  // routes a terminally failed implementation item to the BLOCKED outcome
+  // ('development-blocked', stage local_outcome 'blocked' — implementation-
+  // blocked, e.g. a dependency root terminal-failed under effect exhaustion).
+  // That boundary is a terminal failure-class verdict at solution-development
+  // with a consumable capsule; refusing it stranded every legal recovery CLI
+  // (live: impl-shared-core failed under 7 integration conflicts, redevelop
+  // refused the blocked parent, continue's baseline adoption refused the
+  // pre-C13 digests of all merged candidates).
   const parentTerminatedFailed = parent !== undefined
     && parent.status === 'completed'
-    && parent.terminal_status === 'failed';
+    && (parent.terminal_status === 'failed'
+      || parent.terminal_status === 'development-blocked');
   const lastStage = db.prepare(
     `SELECT stage_id, local_outcome FROM factory_stage_runs
       WHERE lifecycle_run_id=? ORDER BY id DESC LIMIT 1`,
   ).get(command.parentLifecycleRunId) as { stage_id: string; local_outcome: string } | undefined;
   const failedAtSolutionDevelopment
     = parent?.current_stage_id === 'solution-development'
-      || (lastStage?.stage_id === 'solution-development' && lastStage?.local_outcome === 'failed');
+      || (lastStage?.stage_id === 'solution-development'
+        && (lastStage?.local_outcome === 'failed'
+          || (lastStage?.local_outcome === 'blocked'
+            && parent?.terminal_status === 'development-blocked')));
   if (
     !parent
     || parent.epic_id === null
