@@ -6,7 +6,14 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
-## Status: STOPPED AGAIN (operator directive, 2026-08-24 ~12:25 local)
+## Status: RUNNING (operator directive, 2026-08-24 13:05 local — third start)
+
+Relaunched per protocol: unpark released the 2 stop holds, engine pid 30676
+adopted launch `cdc27a79`, controls 8/8, watchdog live (12h). First dispatch
+within 1s: the two queued review cards (tasks 46, 47 — phase=reviewing). Desk
+state going in: 9 done / 2 review / 3 todo.
+
+## (historical) STOPPED AGAIN (operator directive, 2026-08-24 ~12:25 local)
 
 Second full stop, same clean protocol: engine 29992 braked, 2 executions fenced
 (both with workplace rewind), 0 workers running, controls `stopped`, checkpoint
