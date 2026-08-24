@@ -49,10 +49,11 @@
 //        real tree takes; the GREEN direction is the real-tree tests. The
 //        Phase-6 deliberate cycle re-executes these classes against the
 //        removed tree and records them.
-//   P3 phase-3 executed/pending truth (Phase 3.2, 2026-08-24)
+//   P3 phase-3 executed/pending truth (Phases 3.1+3.2, 2026-08-24)
 //        P3a/P3b HERE — the inventory's deadPhase3 status split is pinned to
-//        the on-disk code both ways: the settlement-debug block executed,
-//        everything else pending, and a lying status throws.
+//        the on-disk code both ways: products.ts (3.1) and settlement-debug
+//        (3.2) executed, the Phase-3.3 slice pending, and a lying status
+//        throws.
 //
 // Phase-2C boundary honesty (no overclaim): ratchets 3/4/5 post-removal
 // arms and ratchet 2's post-cutover arm CANNOT be green on today's
@@ -423,17 +424,21 @@ test('R7a: the boot-regression owner still carries the F5 drift oracle (MODULE_I
 });
 
 // ===========================================================================
-// P3 — Phase-3.2 executed/pending truth (settlement-debug block)
+// P3 — Phase-3 executed/pending truth in the CANONICAL merged lineage
+// (products.ts block = Phase 3.1; settlement-debug block = Phase 3.2)
 // ===========================================================================
 
-test('P3a: the phase-3 executed set is EXACTLY the settlement-debug block; the inventory validates against disk', () => {
-  // Real-tree truth: only deadPhase3[1] (settlement-debug) is executed on
-  // this branch; the projection block, runtimePersistence construction, and
-  // the ModuleSharedDeps field are still PENDING (their markers are on disk).
+test('P3a: the phase-3 executed set is EXACTLY products.ts (3.1) + settlement-debug (3.2); the inventory validates against disk', () => {
+  // Canonical merged-tree truth: deadPhase3[0] (products.ts projection block,
+  // Phase 3.1) and deadPhase3[1] (settlement-debug legacy query, Phase 3.2)
+  // are EXECUTED; the runtimePersistence construction and the
+  // ModuleSharedDeps field are still PENDING (their markers are on disk —
+  // the Phase-3.3 slice).
   const byPath = Object.fromEntries(ADR_095_INVENTORY.deadPhase3.map((e) => [e.path, e]));
+  assert.equal(byPath['src/tools/products.ts'].status, 'executed',
+    'Phase 3.1 executes exactly the products.ts projection block');
   assert.equal(byPath['src/tools/settlement-debug.ts'].status, 'executed',
     'Phase 3.2 executes exactly the settlement-debug legacy query block');
-  assert.equal(byPath['src/tools/products.ts'].status, 'pending');
   assert.equal(byPath['src/app/product-lifecycle-runtime.ts'].status, 'pending');
   assert.equal(byPath['src/modules/module-registration.ts'].status, 'pending');
   // And the full validator (including the BOTH-direction contentMarker
@@ -442,29 +447,57 @@ test('P3a: the phase-3 executed set is EXACTLY the settlement-debug block; the i
 });
 
 test('P3b: MUTATION — a LYING phase-3 status is rejected by the inventory validator in both directions', () => {
-  // (a) Lying 'executed': flip the still-present products.ts block to
-  //     executed — its markers ARE on disk, so the validator must refuse.
-  const lyingExecuted = structuredClone(ADR_095_INVENTORY);
-  const pe = lyingExecuted.deadPhase3.find((e) => e.path === 'src/tools/products.ts');
-  pe.status = 'executed';
-  pe.executedAt = '2026-08-24';
+  // (a) Lying 'executed': flip the still-PENDING runtimePersistence
+  //     construction and the ModuleSharedDeps field to executed — their
+  //     markers ARE on disk, so the validator must refuse (both remaining
+  //     pending entries are covered).
+  const lyingExecutedRuntime = structuredClone(ADR_095_INVENTORY);
+  const re = lyingExecutedRuntime.deadPhase3.find(
+    (e) => e.path === 'src/app/product-lifecycle-runtime.ts');
+  re.status = 'executed';
+  re.executedAt = '2026-08-24';
   assert.throws(
-    () => validateAdr095Inventory(REPO_ROOT, lyingExecuted),
-    /projectDiscoveryProposal.*untruthful executed state/,
-    'claiming execution while the projection block is still on disk must throw',
+    () => validateAdr095Inventory(REPO_ROOT, lyingExecutedRuntime),
+    /discoveryRuntimePersistence.*untruthful executed state/,
+    'claiming execution while the runtimePersistence construction is still on disk must throw',
   );
 
-  // (b) Lying 'pending': flip the EXECUTED settlement-debug block back to
-  //     pending — its marker is ABSENT from disk, so the validator must
-  //     refuse (prevents quietly un-executing a landed removal).
-  const lyingPending = structuredClone(ADR_095_INVENTORY);
-  const se = lyingPending.deadPhase3.find((e) => e.path === 'src/tools/settlement-debug.ts');
+  const lyingExecutedSharedDeps = structuredClone(ADR_095_INVENTORY);
+  const me = lyingExecutedSharedDeps.deadPhase3.find(
+    (e) => e.path === 'src/modules/module-registration.ts');
+  me.status = 'executed';
+  me.executedAt = '2026-08-24';
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, lyingExecutedSharedDeps),
+    /runtimePersistence.*untruthful executed state/,
+    'claiming execution while the ModuleSharedDeps field is still on disk must throw',
+  );
+
+  // (b) Lying 'pending': flip an EXECUTED block back to pending — its
+  //     markers are ABSENT from disk, so the validator must refuse
+  //     (prevents quietly un-executing a landed removal; both executed
+  //     entries are covered).
+  const lyingPendingSettlement = structuredClone(ADR_095_INVENTORY);
+  const se = lyingPendingSettlement.deadPhase3.find(
+    (e) => e.path === 'src/tools/settlement-debug.ts');
   se.status = 'pending';
   delete se.executedAt;
   assert.throws(
-    () => validateAdr095Inventory(REPO_ROOT, lyingPending),
+    () => validateAdr095Inventory(REPO_ROOT, lyingPendingSettlement),
     /factory_discovery_settlements.*untruthful pending state/,
     'claiming the settlement-debug block is still present must throw',
+  );
+
+  const lyingPendingProducts = structuredClone(ADR_095_INVENTORY);
+  const pe = lyingPendingProducts.deadPhase3.find(
+    (e) => e.path === 'src/tools/products.ts');
+  pe.status = 'pending';
+  delete pe.executedAt;
+  delete pe.executedIn;
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, lyingPendingProducts),
+    /projectDiscoveryProposal.*untruthful pending state/,
+    'claiming the products.ts projection block is still present must throw',
   );
 });
 

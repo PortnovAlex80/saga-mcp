@@ -506,12 +506,13 @@ test('BR6d: a DOUBLE classification fails the scan (a path cannot be both kept a
 });
 
 // ---------------------------------------------------------------------------
-// BR7 — Phase-3.1 code-block state is MACHINE TRUTHFUL. The validator
+// BR7 — Phase-3 code-block state is MACHINE TRUTHFUL. The validator
 // (validateAdr095Inventory) enforces every deadPhase3 entry's status against
 // the on-disk host file content in BOTH directions; these tests pin the
-// expected Phase-3.1 state (products.ts projection block EXECUTED; the other
-// three phase-3 code-blocks still PENDING) and prove non-vacuously that a
-// lying status is rejected.
+// expected canonical merged state (products.ts projection block EXECUTED at
+// Phase 3.1; settlement-debug legacy query EXECUTED at Phase 3.2; the other
+// two phase-3 code-blocks still PENDING — the Phase-3.3 slice) and prove
+// non-vacuously that a lying status is rejected.
 // ---------------------------------------------------------------------------
 
 test('BR7a: Phase 3.1 is executed — products.ts carries none of the removed projection surface', () => {
@@ -529,17 +530,26 @@ test('BR7a: Phase 3.1 is executed — products.ts carries none of the removed pr
   }
 });
 
-test('BR7b: the other three phase-3 code-blocks are still PENDING (Phase 3 ≠ Phase 3.1)', () => {
+test('BR7b: the executed set is EXACTLY products.ts (3.1) + settlement-debug (3.2); the other two phase-3 code-blocks are still PENDING (Phase 3 ≠ 3.1+3.2)', () => {
+  const executed = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'executed');
+  assert.deepEqual(
+    executed.map((e) => e.path).sort(),
+    [
+      'src/tools/products.ts',
+      'src/tools/settlement-debug.ts',
+    ],
+    'the canonical merged lineage has executed exactly the two phase-3 slices landed so far',
+  );
   const pending = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'pending');
   assert.deepEqual(
     pending.map((e) => e.path).sort(),
     [
       'src/app/product-lifecycle-runtime.ts',
       'src/modules/module-registration.ts',
-      'src/tools/settlement-debug.ts',
     ],
-    'phase 3 is NOT complete: settlement-debug legacy query, runtimePersistence construction, ' +
-      'and the ModuleSharedDeps field are still pending (their same-commit obligations stand)',
+    'phase 3 is NOT complete: the runtimePersistence construction and the ' +
+      'ModuleSharedDeps field are still pending (the Phase-3.3 slice; their ' +
+      'same-commit obligations stand)',
   );
 });
 
@@ -559,18 +569,32 @@ test('BR7c: a lying phase-3 status fails validation (the executed/pending state 
     /marker 'projectDiscoveryProposal' is absent/,
     'claiming the products.ts block is still pending while it is removed must fail validation',
   );
+  // The settlement-debug mirror of the same direction (Phase 3.2 landed):
+  // claiming the removed legacy query is still pending must fail too.
+  const mutatedSettlement = {
+    ...ADR_095_INVENTORY,
+    deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
+      e.path === 'src/tools/settlement-debug.ts'
+        ? { ...e, status: 'pending' }
+        : e),
+  };
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, mutatedSettlement),
+    /marker 'factory_discovery_settlements' is absent/,
+    'claiming the settlement-debug block is still pending while it is removed must fail validation',
+  );
   // And the mirror direction: claiming a still-present block is executed.
   const mutated2 = {
     ...ADR_095_INVENTORY,
     deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
-      e.path === 'src/tools/settlement-debug.ts'
+      e.path === 'src/app/product-lifecycle-runtime.ts'
         ? { ...e, status: 'executed', executedAt: '2026-08-24' }
         : e),
   };
   assert.throws(
     () => validateAdr095Inventory(REPO_ROOT, mutated2),
-    /marker 'factory_discovery_settlements' is still present/,
-    'claiming the settlement-debug block is executed while it is still present must fail validation',
+    /marker 'discoveryRuntimePersistence' is still present/,
+    'claiming the runtimePersistence construction is executed while it is still present must fail validation',
   );
 });
 
