@@ -20,6 +20,9 @@
 // declared (never silently dropped from the universe).
 
 import Database from 'better-sqlite3';
+import nodeCrypto from 'node:crypto';
+import * as nodeFs from 'node:fs';
+import path from 'node:path';
 import { W9_HAPPY_HANDLERS } from '../factory-e2e/w9-happy-handlers.mjs';
 import {
   buildScenarioCoverageMatrix,
@@ -285,6 +288,66 @@ function zeroBundlesOracle() {
   };
 }
 
+// Happy spine: the render kernel REALLY rendered. The persisted bundle row
+// (factory_documentation_bundles) carries per-document receipts — each PDF
+// must exist on disk in the bundle's own outputRoot, be non-empty, start
+// with the %PDF magic and hash to EXACTLY the receipt's pdfByteHash/size.
+function renderedPdfsOracle() {
+  return {
+    id: 'documentation.documented.rendered-pdfs-on-disk',
+    evaluate({ bootstrap }) {
+      const db = new Database(bootstrap.dbPath, { readonly: true });
+      try {
+        const rows = db.prepare(
+          'SELECT payload_snapshot FROM factory_documentation_bundles',
+        ).all();
+        if (rows.length !== 1) {
+          return { passed: false, evidenceRefs: [], details: { bundles: rows.length } };
+        }
+        const bundle = JSON.parse(rows[0].payload_snapshot);
+        const failures = [];
+        const evidenceRefs = [];
+        const { createHash } = nodeCrypto;
+        for (const doc of bundle.documents ?? []) {
+          const posixFile = path.posix.join(
+            String(bundle.outputRoot ?? '').replaceAll('\\', '/'),
+            String(doc.pdfFileName ?? ''),
+          );
+          const native = path.join(...posixFile.split('/'));
+          let bytes = null;
+          try {
+            bytes = nodeFs.readFileSync(native);
+          } catch {
+            failures.push(`${doc.kind}: file unreadable ${native}`);
+            continue;
+          }
+          const magicOk = bytes.subarray(0, 5).toString('latin1') === '%PDF-';
+          const sizeOk = bytes.byteLength === doc.pdfByteSize;
+          const hashOk = createHash('sha256').update(bytes).digest('hex') === doc.pdfByteHash;
+          const rendererOk = doc.renderer?.id === 'factory.documentation.render.pdfkit';
+          if (!magicOk || !sizeOk || !hashOk || !rendererOk || bytes.byteLength === 0) {
+            failures.push(`${doc.kind}: {magic:${magicOk}, size:${sizeOk}, hash:${hashOk}, renderer:${rendererOk}, bytes:${bytes.byteLength}}`);
+          }
+          evidenceRefs.push(`pdf:${doc.kind}:${doc.pdfByteHash.slice(0, 16)}`);
+        }
+        const kindsOk = (bundle.documents ?? []).length === DEFAULT_DOCUMENTATION_KINDS.length;
+        if (!kindsOk) failures.push(`expected ${DEFAULT_DOCUMENTATION_KINDS.length} documents, got ${(bundle.documents ?? []).length}`);
+        return {
+          passed: failures.length === 0,
+          evidenceRefs,
+          details: {
+            outputRoot: bundle.outputRoot,
+            documents: (bundle.documents ?? []).map(d => ({ kind: d.kind, pdfByteSize: d.pdfByteSize })),
+            failures,
+          },
+        };
+      } finally {
+        db.close();
+      }
+    },
+  };
+}
+
 function noStrandedExecutionOracle() {
   return {
     id: 'factory.no-stranded-worker-executions',
@@ -355,16 +418,17 @@ export const DOCUMENTATION_SCENARIOS = Object.freeze([
 
 /**
  * The subset harvestable in the CURRENT environment. `happy-documented`
- * requires the pdfkit render engine (an operator dependency decision that is
- * still pending); the conformance engine harvests only what can honestly
- * PASS. When the engine is admitted, move the scenario here and re-run the
- * harvest + the CC-00 K0 re-baselining ceremony (the committed evidence
- * snapshot is ledger-frozen — see tests/factory-proof/k0-baseline.test.mjs).
+ * needs the pdfkit render engine (admitted 2026-08-24, 9a8c532f) AND a
+ * Cyrillic TTF (dejavu-fonts-ttf, or SAGA_DOCS_FONT — the drive proposes a
+ * system font when the package is absent). `missing-engine-blocked` stays
+ * harvestable wherever the capability is absent; committed-evidence folding
+ * remains the operator harvest + CC-00 K0 re-baselining ceremony (the
+ * snapshot is ledger-frozen — tests/factory-proof/k0-baseline.test.mjs).
  */
 export const DOCUMENTATION_HARVESTABLE_SCENARIOS = Object.freeze(
-  DOCUMENTATION_SCENARIOS.filter(
-    scenario => scenario.id === 'documentation/missing-engine-blocked',
-  ),
+  DOCUMENTATION_SCENARIOS.filter(scenario =>
+    scenario.id === 'documentation/missing-engine-blocked'
+    || scenario.id === 'documentation/happy-documented'),
 );
 
 // EXHAUSTIVE by construction: the union of every declared scenario's
@@ -444,6 +508,7 @@ export function buildDocumentationRuntimeCase(id) {
           ),
           certificateOracle('documented', null),
           exactHandoffOracle(),
+          renderedPdfsOracle(),
           noStrandedExecutionOracle(),
         ],
       };

@@ -127,12 +127,12 @@ complete workset; issue certificate; emit local outcome).
 
 - `DocumentationRenderProvider` (`domain/documentation-kernel-ports.ts`):
   `probe()` + `render()`; default `pdfKitDocumentationRenderProvider` (lazy
-  pdfkit import, DejaVu Cyrillic fonts via `dejavu-fonts-ttf` or
-  `SAGA_DOCS_FONT`). **Engine status (2026-08-24): NOT installed in the
-  shared node_modules — every render settles honestly typed `blocked`
-  (`PDF_RENDERER_FONT_UNAVAILABLE`) until the operator admits
-  `pdfkit` + `dejavu-fonts-ttf`.** The orchestrator owns that dependency
-  decision (shared junction tree).
+  pdfkit import, Cyrillic fonts via `dejavu-fonts-ttf` or the documented
+  `SAGA_DOCS_FONT` override). **Engine status: pdfkit@0.17.1 admitted
+  (2026-08-24, commit 9a8c532f); `dejavu-fonts-ttf` remains uninstalled —
+  point `SAGA_DOCS_FONT` at a Cyrillic-capable TTF (the conformance drive
+  proposes the system font when the package is absent). `probe()` gates on
+  engine AND fonts and names exactly which half is missing.**
 - `DocumentationRepositoryObservationPort`: git plumbing reads pinned to the
   exact integrated commit (`createGitDocumentationRepositoryObservation`).
 - `DocumentationProductReader`: exact sealed-product reads by
@@ -173,11 +173,14 @@ under the env selection, or carried by the continuation baseline).
 ## 16. Conformance universe and commands
 
 Pack: `tests/factory-proof/documentation-scenario-pack.mjs` (status SPINE):
-- `documentation/missing-engine-blocked` — drivable TODAY (engine absent):
-  the full conveyor spine — fan-out authoring, author+final gates, honest
-  typed blocked, settlement certificate, terminal routing, exact handoff.
-- `documentation/happy-documented` — requires the pdfkit engine (declared,
-  pending the dependency decision).
+- `documentation/happy-documented` — driven GREEN with the real engine:
+  the full conveyor spine — fan-out authoring, author+final gates, REAL PDF
+  render (byte-verified against the persisted receipts), settlement
+  certificate `documented`, terminal `runnable-local`, exact handoff.
+- `documentation/missing-engine-blocked` — the capability-ABSENT witness,
+  drivable in any environment (the drive pins the font override absent):
+  honest typed `blocked`, zero bundles, certificate `blocked`, terminal
+  `documentation-blocked`.
 
 ```
 node tests/factory-proof/documentation-scenario-drive.mjs            # auto-selects honestly by engine probe
@@ -203,12 +206,15 @@ definition snapshot (a parent without the stage cannot grow one). CLI:
 
 ## 18. Known platform-owned fault edges
 
-- Render engine absence is an OPERATOR dependency decision, not a workshop
-  defect: honest `blocked`, continuable. The provider's `probe()` checks
-  fonts synchronously; an engine-present/fonts-absent combination would
-  surface as blocked, an engine-absent/fonts-present one as `failed` at
-  render — known asymmetry, residual (see the probe note in the render
-  provider).
+- Render engine/font absence is an OPERATOR dependency decision, not a
+  workshop defect: honest `blocked`, continuable. `probe()` gates on engine
+  AND fonts (the 2026-08-24 happy-spine fix closed the old asymmetry where
+  engine-absent/fonts-present downgraded the honest `blocked` to `failed`);
+  its reasons name exactly which half of the capability is missing.
+- PDF byte output is only as deterministic as the engine allows (fixed
+  CreationDate; embedded font subset IDs may vary) — the AUTHORITATIVE
+  identity is the input document digest and the receipt's byte hash, never
+  raw byte equality across runs.
 - The bundle table (`factory_documentation_bundles`) is module-owned
   append-only persistence (immutability triggers), per the workshop-owned
   table convention.

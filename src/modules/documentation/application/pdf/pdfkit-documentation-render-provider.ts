@@ -26,7 +26,9 @@ import type {
 } from '../../domain/documentation-schemas.js';
 
 const RENDER_PROVIDER_ID = 'factory.documentation.render.pdfkit';
-const RENDER_PROVIDER_VERSION = '1.0.0';
+// 1.0.1 (2026-08-24): probe() now gates on engine AND fonts (the happy-spine
+// fix — see probe()). Receipts stamped by earlier versions carry 1.0.0.
+const RENDER_PROVIDER_VERSION = '1.0.1';
 
 // Minimal structural type for the lazily imported pdfkit module. Declaring it
 // here (plus src/types/pdfkit.d.ts) keeps tsc green even before `npm install`
@@ -61,6 +63,19 @@ type PdfKitConstructor = new (options: {
 }) => PdfKitDocument;
 
 const requireCjs = createRequire(import.meta.url);
+
+/** Synchronous engine resolution — the probe gate must see the SAME module
+ *  identity the lazy render import will load, never a guess. */
+function resolvePdfKitEngine(): PdfKitConstructor | null {
+  try {
+    const resolved = requireCjs.resolve('pdfkit');
+    const mod = requireCjs(resolved) as { default?: unknown } & Record<string, unknown>;
+    const ctor = (mod.default ?? mod) as PdfKitConstructor;
+    return typeof ctor === 'function' ? ctor : null;
+  } catch {
+    return null;
+  }
+}
 
 function resolveFontPaths(): { regular: string; bold: string } | null {
   const envFont = process.env.SAGA_DOCS_FONT;
@@ -133,6 +148,21 @@ export const pdfKitDocumentationRenderProvider: DocumentationRenderProvider = {
   id: RENDER_PROVIDER_ID,
   version: RENDER_PROVIDER_VERSION,
   probe() {
+    // The capability gate reflects the WHOLE render capability: engine AND
+    // fonts (2026-08-24 happy-spine fix, closing the WORKSHOP.md §18
+    // residual). Before this, probe() checked fonts only — an
+    // engine-absent/fonts-present environment probed `available` and the
+    // later dynamic import threw, downgrading an honest `blocked` to
+    // `failed`. probe and render must agree on availability by
+    // construction: both resolve the same engine through require, and
+    // probe's reasons name exactly which half is missing.
+    const engine = resolvePdfKitEngine();
+    if (!engine) {
+      return {
+        available: false,
+        reason: 'PDF_RENDERER_ENGINE_UNAVAILABLE: run npm install (pdfkit is an optional render dependency)',
+      };
+    }
     const fonts = resolveFontPaths();
     if (!fonts) {
       return {

@@ -70,9 +70,10 @@ const WORKSHOPS = [
     drive: 'delivery-scenario-drive.mjs',
     env: 'DELIVERY_SCENARIO',
   },
-  // 2026-08-24 documentation admission (ADR-096 gate item 4): harvestable
-  // subset only — happy-documented needs the pending pdfkit engine decision.
-  // The committed evidence snapshot stays K0-ledger-frozen until the next
+  // 2026-08-24 documentation admission (ADR-096 gate item 4): both spines
+  // are harvestable (pdfkit admitted in 9a8c532f; the drive resolves a
+  // Cyrillic font or falls back to the blocked spine honestly). The
+  // committed evidence snapshot stays K0-ledger-frozen until the next
   // operator harvest re-baselines it.
   {
     id: 'documentation',
