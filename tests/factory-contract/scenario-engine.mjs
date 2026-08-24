@@ -193,6 +193,31 @@ export async function runScenarioWorker(opts) {
     if (!Number.isSafeInteger(invocation.attempt) || invocation.attempt < 1) {
       throw new Error(`SCENARIO_ATTEMPT_INVALID: ${JSON.stringify(invocation)}`);
     }
+    // Zero-token accounting guard: the invocation ledger is the 1:1 proof
+    // that every worker execution is a scripted scenario (snapshot-reach
+    // development (e)). A ledger entry whose worker_executions row does not
+    // exist would silently break that proof with an unexplained set diff
+    // (observed once, 2026-08-24 run14: 39 ledger entries vs 37 rows after a
+    // slow dispatch-retry run). Reserve ONLY against a live execution row:
+    // a child booted for an execution the factory no longer knows about
+    // fails loudly with the typed error instead of writing a phantom entry.
+    if (process.env.DB_PATH) {
+      const { default: GuardDb } = await import('better-sqlite3');
+      const guardDb = new GuardDb(process.env.DB_PATH, { readonly: true });
+      try {
+        const row = guardDb.prepare(
+          'SELECT state FROM worker_executions WHERE execution_id = ?',
+        ).get(executionId);
+        if (!row) {
+          throw new Error(
+            `SCENARIO_EXECUTION_ROW_MISSING: refusing to reserve invocation for ${executionId} `
+            + '(no worker_executions row — the dispatch claim did not durably exist)',
+          );
+        }
+      } finally {
+        guardDb.close();
+      }
+    }
     invocationLog.push(invocation);
     const attempt = invocation.attempt;
 

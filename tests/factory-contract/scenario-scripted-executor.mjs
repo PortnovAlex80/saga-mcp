@@ -333,8 +333,38 @@ export function createScriptedWorkerExecutorFactory(opts = {}) {
         if (!markExecutionRunning || !finalizeManagedWorkerProcess || !openDb) {
           throw new Error('SCRIPTED_EXECUTOR_LIFECYCLE_MISSING: production lifecycle primitive unavailable');
         }
+        // Production-fidelity liveness identity: record the REAL child pid and
+        // OS birth token, exactly like the production executor does. The
+        // supervision policy (stuck-policy.ts) releases a RUNNING row as lost
+        // IMMEDIATELY when the PID probe reads dead — and a null-pid row
+        // always reads dead — so an empty-queue sweep pass (orchestrate-cli
+        // runs reconcileOnce whenever the queue drains) releases the LIVE
+        // scripted execution mid-protocol; the dispatch loop then observes
+        // durableTerminal, disposes the executor and kills the running child
+        // (observed 2026-08-24: transient MANAGED_NODE_SUBMISSION_FENCE_LOST
+        // on first-dispatch-of-cell moments, nondeterministically consuming
+        // captured planner repair rounds). The token is read BEFORE
+        // markExecutionRunning flips the row to 'running': while the row is
+        // still 'reserved' the notAlive arm cannot fire (RESERVED_BOOT
+        // timeout owns reserved rows), so the CIM query latency is safe. The
+        // Windows CIM registration of a just-spawned process can transiently
+        // lag, hence the bounded retries; if all fail we record no pid (the
+        // old behavior) rather than an unfenceable pid-without-token.
+        const childPid = activeChild.pid ?? null;
+        let childBirthToken = null;
+        if (childPid !== null && typeof execMod.readProcessBirthToken === 'function') {
+          for (let tokenAttempt = 0; tokenAttempt < 3 && childBirthToken === null; tokenAttempt += 1) {
+            try {
+              childBirthToken = execMod.readProcessBirthToken(childPid) ?? null;
+            } catch { childBirthToken = null; }
+            if (childBirthToken === null && tokenAttempt < 2) {
+              Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+            }
+          }
+        }
         markExecutionRunning(
-          context.dbPath, assignment.workerExecutionId, null, null,
+          context.dbPath, assignment.workerExecutionId,
+          childBirthToken !== null ? childPid : null, childBirthToken,
           `scenario-${runId}`, new Date().toISOString(),
         );
 

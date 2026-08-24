@@ -23,16 +23,19 @@ import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contrac
 import { DISCOVERY_PROCESS_MODULE_REF } from '../lifecycles/product-delivery-module-contracts.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
-// ADR-095 Phase-6 repair (2026-08-24): the Phase-4 atomic module bump
-// (3.0.2 -> 4.0.0) left this wiring keyed at the legacy identity, so every
-// worker_done on a live Discovery node failed with
-// SUBMISSION_VALIDATION_POLICY_MISSING (product-discovery@4.0.0/...). The
-// live key is now DERIVED from the canonical contracts constant so the next
-// bump cannot leave this file stale again. The legacy 3.0.2 key stays: a
-// nonterminal run pinned to the retired six-handler installation rehydrates
-// that exact package (ADR-034 / ADR-095 retained-old-installations), and its
-// worker_done boundary resolves policies under the pinned module identity —
-// the same multi-version enumeration DEVELOPMENT_MODULE_REFS uses.
+// ADR-095 Phase-6 repair (2026-08-24; independently found by the snapshot
+// corpus port with the counterexample "every fresh Factory start failed its
+// first discovery worker_done with SUBMISSION_VALIDATION_POLICY_MISSING:
+// product-discovery@4.0.0/produce-proposal"): the Phase-4 atomic module bump
+// (3.0.2 -> 4.0.0) left this wiring keyed at the legacy identity. The live
+// key is now DERIVED from the canonical contracts constant so the next bump
+// cannot leave this file stale again (verified to keep the dependency
+// direction clean — dependency-direction 4/4 with zero new allowlist
+// entries). The legacy 3.0.2 key stays: a nonterminal run pinned to the
+// retired six-handler installation rehydrates that exact package (ADR-034 /
+// ADR-095 retained-old-installations), and its worker_done boundary resolves
+// policies under the pinned module identity — the same multi-version
+// enumeration DEVELOPMENT_MODULE_REFS uses.
 const DISCOVERY_MODULE_REFS = [
   'product-discovery@3.0.2',
   `${DISCOVERY_PROCESS_MODULE_REF.name}@${DISCOVERY_PROCESS_MODULE_REF.version}`,

@@ -217,8 +217,19 @@ test('policy registry: define-acceptance-contract is required, others unsupporte
   assert.equal(reconciliationPolicy.mode, 'required');
   assert.equal(reconciliationPolicy.requireManagedProduction, false);
 
-  const discoveryPolicy = registry.resolve('product-discovery@3.0.2', 'produce-proposal');
-  assert.ok(discoveryPolicy);
-  assert.equal(discoveryPolicy.mode, 'none');
+  // The discovery policy must resolve under the CANONICAL module version
+  // (4.0.0 since ADR-095 Phase 4 / eaa98e34) AND the legacy 3.0.2 pin.
+  // eaa98e34 bumped the lifecycle contract but missed the wiring, so every
+  // fresh Factory start failed its first discovery worker_done with
+  // SUBMISSION_VALIDATION_POLICY_MISSING: product-discovery@4.0.0/produce-proposal
+  // (counterexample recorded with the snapshot corpus port, 2026-08-24).
+  // Both arms are pinned so the next version bump cannot silently orphan
+  // the new ref again.
+  const discoveryPolicyCanonical = registry.resolve('product-discovery@4.0.0', 'produce-proposal');
+  assert.ok(discoveryPolicyCanonical, 'canonical product-discovery@4.0.0 policy must resolve');
+  assert.equal(discoveryPolicyCanonical.mode, 'none');
+  const discoveryPolicyLegacy = registry.resolve('product-discovery@3.0.2', 'produce-proposal');
+  assert.ok(discoveryPolicyLegacy, 'legacy product-discovery@3.0.2 policy must resolve (pinned-run compatibility)');
+  assert.equal(discoveryPolicyLegacy.mode, 'none');
   db.close();
 });

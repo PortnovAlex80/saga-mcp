@@ -1,0 +1,41 @@
+{
+  "buildProducts": [],
+  "readiness": {
+    "commands": {
+      "installCommand": "npm install",
+      "testCommand": "npm test"
+    },
+    "kind": "static"
+  },
+  "reasonCodes": [],
+  "repository": {
+    "baseCommit": "807faf164525cc086507247512a04550864adccf",
+    "integrationBranch": "dev",
+    "name": ".factory-sandboxes/stage11-repo",
+    "projectRepositoryId": 1
+  },
+  "schemaVersion": "factory.development-implementation-result.v1",
+  "snapshot": {
+    "changedFiles": [
+      "package.json",
+      "src/physics/index.ts",
+      "src/physics/physics-engine.ts",
+      "src/physics/spacecraft.ts",
+      "src/physics/vector.ts",
+      "tests/physics.test.d.ts",
+      "tests/physics.test.d.ts.map",
+      "tests/physics.test.js",
+      "tests/physics.test.js.map",
+      "tests/physics.test.ts"
+    ],
+    "commitSha": "daa6796fb9ec1e8dbdedf69976c4ca6b413f6831",
+    "treeSha": "940ff6f2912a6cb1f5727b0eb9a4a52acadea0b0"
+  },
+  "source": {
+    "branch": "saga/task/19/execution/7c2bf58f584547b26759",
+    "commitSha": "daa6796fb9ec1e8dbdedf69976c4ca6b413f6831",
+    "workItemKey": "impl-physics-core"
+  },
+  "terminalStatus": "complete",
+  "workItemKey": "impl-physics-core"
+}
