@@ -643,6 +643,124 @@ export interface DevelopmentReadinessManifest {
   targets: readonly [{ key: 'primary'; readiness: ReadinessProfile }];
   /** @see VerificationWarrantRef — optional until warrant phases land. */
   warrantRef?: VerificationWarrantRef;
+  /**
+   * CC-GAP-7 — the package/workshop-declared verification-warrant ORACLE
+   * ADAPTERS. Present only with a present `warrantRef`: each entry declares
+   * one adapter that claims to prove named register constraints by running a
+   * deterministic evidence command in the prepared environment. The
+   * readiness provider consumes this READ-ONLY (no product-type switch, no
+   * re-reading of order prose): warrant execution diffs the register's
+   * non-waived execution-class entries against the declared adapter
+   * coverage; an uncovered claim yields the typed oracle-insufficient
+   * outcome — never a pass and never a product-failed verdict. Deliverable
+   * specifics (browser/canvas/…) arrive ONLY through this declared data,
+   * never through engine branches.
+   */
+  warrantOracles?: readonly WarrantOracleAdapterDeclaration[];
+}
+
+/**
+ * CC-GAP-7 — one package/workshop-declared verification-warrant oracle
+ * adapter (the LEGO principle — Conveyor Mental Model §3; no-workshop-branch
+ * rule — master plan §4). The adapter is DATA on the readiness manifest, not
+ * engine vocabulary: the provider never switches on product type, workshop
+ * name, `moduleRef`, or role profession. It executes exactly the declared
+ * evidence command and binds the adapter identity/version into the receipt.
+ */
+export interface WarrantOracleAdapterDeclaration {
+  /** Stable adapter identity, unique within the manifest (e.g. 'browser-smoke'). */
+  readonly adapterId: string;
+  /** Semver adapter identity — binds the receipt (a swapped adapter is a different receipt). */
+  readonly adapterVersion: string;
+  /** Register constraint ids (ord-c-NNN) this adapter claims to prove. */
+  readonly coversConstraintIds: readonly string[];
+  /**
+   * The deterministic command whose successful execution in the prepared
+   * environment is the adapter's evidence for its covered claims. Same
+   * command authority as the profile's testCommand (never inferred).
+   */
+  readonly evidenceCommand: string;
+}
+
+const WARRANT_ORACLE_ADAPTER_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+const WARRANT_ORACLE_CONSTRAINT_ID_RE = /^ord-c-\d{3,}$/u;
+
+/**
+ * CC-GAP-7 — fail-closed structural validation of the declared oracle
+ * adapter set (the submission-boundary shape check; the readiness provider
+ * re-validates independently before execution — defense in depth). Returns
+ * the typed error strings; empty means structurally valid.
+ *
+ * Lawful-declaration rules:
+ *  - `warrantOracles` requires a PRESENT `warrantRef` (an adapter set with
+ *    no warrant to execute is a typed submission defect, never silently
+ *    ignored);
+ *  - adapter ids are unique, non-empty, closed-charset;
+ *  - `coversConstraintIds` names existing register id shapes (ord-c-NNN),
+ *    unique per adapter, non-empty — an adapter proving nothing is not an
+ *    adapter;
+ *  - `evidenceCommand` is a non-empty string (same command authority
+ *    discipline as readiness.commands).
+ */
+export function validateWarrantOracleDeclarations(
+  warrantPresent: boolean,
+  raw: unknown,
+): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!warrantPresent) {
+    return ['warrantOracles requires a present warrantRef — an oracle adapter set without a warrant to execute is a typed submission defect'];
+  }
+  if (!Array.isArray(raw)) {
+    return ['warrantOracles must be an array of oracle adapter declarations'];
+  }
+  const errors: string[] = [];
+  const seenAdapterIds = new Set<string>();
+  for (const [index, entry] of raw.entries()) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      errors.push(`warrantOracles[${index}] must be an object`);
+      continue;
+    }
+    const declaration = entry as Record<string, unknown>;
+    const adapterId = declaration['adapterId'];
+    if (typeof adapterId !== 'string' || !WARRANT_ORACLE_ADAPTER_ID_RE.test(adapterId)) {
+      errors.push(`warrantOracles[${index}].adapterId must be a non-empty lowercase identifier ([a-z0-9][a-z0-9._-]{0,63})`);
+    } else if (seenAdapterIds.has(adapterId)) {
+      errors.push(`warrantOracles[${index}].adapterId '${adapterId}' is declared twice — adapter identity is unique within the manifest`);
+    } else {
+      seenAdapterIds.add(adapterId);
+    }
+    const adapterVersion = declaration['adapterVersion'];
+    if (typeof adapterVersion !== 'string' || !/^\d+\.\d+\.\d+$/u.test(adapterVersion)) {
+      errors.push(`warrantOracles[${index}].adapterVersion must be semver (X.Y.Z)`);
+    }
+    const covers = declaration['coversConstraintIds'];
+    if (!Array.isArray(covers) || covers.length === 0) {
+      errors.push(`warrantOracles[${index}].coversConstraintIds must be a non-empty array of register constraint ids`);
+    } else {
+      const seenIds = new Set<string>();
+      for (const id of covers) {
+        if (typeof id !== 'string' || !WARRANT_ORACLE_CONSTRAINT_ID_RE.test(id)) {
+          errors.push(`warrantOracles[${index}].coversConstraintIds entries must be register constraint ids (ord-c-NNN)`);
+          break;
+        }
+        if (seenIds.has(id)) {
+          errors.push(`warrantOracles[${index}].coversConstraintIds declares '${id}' twice`);
+          break;
+        }
+        seenIds.add(id);
+      }
+    }
+    const evidenceCommand = declaration['evidenceCommand'];
+    if (typeof evidenceCommand !== 'string' || evidenceCommand.trim().length === 0) {
+      errors.push(`warrantOracles[${index}].evidenceCommand must be a non-empty string (the adapter's deterministic evidence command)`);
+    }
+    for (const field of Object.keys(declaration)) {
+      if (!['adapterId', 'adapterVersion', 'coversConstraintIds', 'evidenceCommand'].includes(field)) {
+        errors.push(`warrantOracles[${index}] carries unknown field '${field}' — the adapter declaration vocabulary is closed`);
+      }
+    }
+  }
+  return errors;
 }
 
 /**

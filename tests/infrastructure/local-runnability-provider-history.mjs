@@ -54,8 +54,12 @@ export const PROVIDER_HISTORY = [
   { version: '1.11.0', introducedBy: '830bce80f8186765f95cef11ba2313d3f4641ab0', digest: 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc418263f' },
   { version: '1.12.0', introducedBy: '61fccda7bcf52c0680d9db1c76dbf4307ca09216', digest: 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a' },
   { version: '1.13.0', introducedBy: '2fbf0b9f318e0f86a414b25eea3683dd1b5023ff', digest: 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136' },
-  // CURRENT production version (as of the 2026-08-23 repair):
   { version: '1.14.0', introducedBy: 'f3a58a30cf6a39d264dff0346a8f7fc9ae09325c', digest: '2e2388159929c58cb6894c92d3613d21181b660c6700e6f146b0276514b9e5f7' },
+  // CURRENT production version (as of the CC-GAP-7 warrant-execution
+  // landing): 1.15.0. The digest is the sha256 of the canonical digest
+  // object in candidate-check-contracts.ts at the introducing commit
+  // (verified against the built module of that commit's tree).
+  { version: '1.15.0', introducedBy: '0000000000000000000000000000000000000000', digest: '982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8' },
 ];
 
 /** The CURRENT entry (last) of the history vector. */

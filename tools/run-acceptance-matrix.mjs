@@ -73,6 +73,7 @@ const GROUPS = {
   'readiness-fencing': {
     globs: [
       'tests/infrastructure/transition-obligation-*.test.mjs',
+      'tests/infrastructure/local-runnability-warrant-oracle.test.mjs',
     ],
     note: 'C7 monotonic lease fencing (deterministic). LR local-readiness real-execution is quarantined — see QUARANTINE.',
   },

@@ -390,6 +390,13 @@ test('G2q: engine-start-adoption exact task-binding regressions stay blocking (t
   );
 });
 
+test('G2r: CC-GAP-7 warrant-oracle mutations stay blocking', () => {
+  assert.ok(
+    runSet.has('tests/infrastructure/local-runnability-warrant-oracle.test.mjs'),
+    'CC-GAP-7 warrant-oracle proof must stay in a blocking run-set',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 // STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
 // the required list — re-validated GREEN (2/2) on the current baseline; the

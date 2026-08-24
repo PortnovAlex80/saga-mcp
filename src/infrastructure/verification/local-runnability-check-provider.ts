@@ -71,6 +71,21 @@ import {
   deriveExecutionEnvironment,
 } from './environment-derivation.js';
 import {
+  parseWarrantOracleDeclarations,
+  planWarrantOracleExecution,
+  resolveWarrantOracleAuthority,
+  warrantOracleInsufficientMessage,
+  warrantOracleInsufficientObservation,
+  warrantReceiptObservation,
+  WARRANT_ORACLE_EVIDENCE_TIMEOUT_MS,
+  WARRANT_ORACLE_INSUFFICIENT_DIAGNOSTIC,
+} from './warrant-oracle-adapters.js';
+import type {
+  ExecutableWarrantOraclePlan,
+  OracleInsufficientWarrantPlan,
+} from './warrant-oracle-adapters.js';
+import type { VerificationWarrantRef } from '../../modules/development/domain/development-schemas.js';
+import {
   CliComposeRunner,
   composeModeFromEnvironment,
   DEFAULT_COMPOSE_UP_TIMEOUT_MS,
@@ -103,6 +118,16 @@ interface CandidateSubject {
    * outcome, not the 'error' sentinel reserved for subject-resolution failures.
    */
   readiness: unknown;
+  /**
+   * CC-GAP-7 — the VerificationWarrantRef carried by the readiness manifest
+   * (raw; structurally re-validated before execution). Undefined when the
+   * manifest carries no warrant: the explicit no-warrant LEGACY path —
+   * exactly today's behavior, the sole grandfathered shape. A present
+   * warrant NEVER silently falls back to the generic loopback oracle.
+   */
+  manifestWarrant?: unknown;
+  /** The package-declared oracle adapter set (raw; re-validated before use). */
+  manifestWarrantOracles?: unknown;
 }
 
 /**
@@ -478,6 +503,7 @@ const TRUSTED_PROVIDER_BASELINES: Readonly<Record<string, string>> = Object.free
   '1.11.0': 'f361906c519bbcfdce6e56228790e350726752058d7fe3c9199c0e4bc418263f',
   '1.12.0': 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a',
   '1.13.0': 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136',
+  '1.14.0': '2e2388159929c58cb6894c92d3613d21181b660c6700e6f146b0276514b9e5f7',
 });
 
 export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
@@ -543,6 +569,22 @@ export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {
     // the trust migration requires the EXACT version→built-in-digest pair
     // (TRUSTED_PROVIDER_BASELINES) — a forged trust_basis on a known legacy
     // version is drift, never laundered.
+    // 1.15 (CC-GAP-7 / CONFORMANCE-CLOSURE-PLAN warrant execution): a
+    // manifest-carried VerificationWarrantRef is executed through
+    // package-declared oracle adapters — the warrant authority is
+    // cross-bound DB-only (discovery certificate → frozen register →
+    // DevelopmentCase expected identities → inherited coverage relay), and
+    // every non-waived EXECUTION-class register entry must be covered by a
+    // DECLARED adapter whose deterministic evidence command runs in the
+    // prepared environment inside the ADR-089/091 substrate attempt. The
+    // generic served phases (start + loopback HTTP probe + stop) are
+    // transport-only evidence and NEVER adapter coverage: an uncovered or
+    // unsupported claim yields the typed `warrant-oracle-insufficient`
+    // unknown — never a pass, never a product-failed verdict; an ABSENT
+    // warrant keeps the explicit legacy path byte-identical. The passed
+    // receipt binds warrant + executed adapter identities/versions + the
+    // consumed derived environmentDigest (ADR-083 §6: consume and
+    // receipt-bind, never authorize).
     // All additive; the versioned CheckPlan still pins exact code. The digest
     // bump means all prior receipts are re-checked exactly once (by design).
     const baselineDigest = TRUSTED_PROVIDER_BASELINES[existing.version ?? ''];
@@ -619,6 +661,8 @@ function resolveSubject(
     input, subjectSet,
   );
   let manifestReadiness: unknown = undefined;
+  let manifestWarrant: unknown = undefined;
+  let manifestWarrantOracles: unknown = undefined;
   const manifestMember = set?.members.find(candidate =>
     candidate.productRef.schemaId === DEVELOPMENT_READINESS_MANIFEST_SCHEMA);
   if (set && manifestMember?.productRef.ref.startsWith('managed-node-submission:')) {
@@ -636,6 +680,8 @@ function resolveSubject(
     const manifest = JSON.parse(row.payload_snapshot) as {
       sourceCandidate?: { schema?: unknown; ref?: unknown; hash?: unknown };
       targets?: Array<{ key?: unknown; readiness?: unknown }>;
+      warrantRef?: unknown;
+      warrantOracles?: unknown;
     };
     if (manifest.sourceCandidate?.schema !== INTEGRATED_SOURCE_CANDIDATE_SCHEMA
         || typeof manifest.sourceCandidate.ref !== 'string'
@@ -651,6 +697,8 @@ function resolveSubject(
       digest: manifest.sourceCandidate.hash,
     };
     manifestReadiness = manifest.targets[0].readiness;
+    manifestWarrant = manifest.warrantRef;
+    manifestWarrantOracles = manifest.warrantOracles;
   }
   // LR-01 fallback — the integrated candidate is a kernel-produced (freeze)
   // process product sealed into a freeze-authority CandidateSet, NOT the
@@ -738,6 +786,8 @@ function resolveSubject(
     candidateHash,
     processRunId: set.workplaceRef.processRunId,
     readiness: manifestReadiness ?? candidate.readiness,
+    manifestWarrant,
+    manifestWarrantOracles,
   };
 }
 
@@ -1041,6 +1091,63 @@ function runLocalReadiness(
       + (environmentObservation.derivedInstallCommand !== undefined
         ? '; install augmented to: ' + String(environmentObservation.derivedInstallCommand)
         : '');
+    // CC-GAP-7 — VERIFICATION-WARRANT ORACLE EXECUTION (provider 1.15.0).
+    // A manifest-carried VerificationWarrantRef is executed through the
+    // package-declared oracle adapters ONLY:
+    //
+    //   - the warrant authority is cross-bound DB-only (certificate →
+    //     register → case; identity violations are typed product failures —
+    //     the m7 consumer discipline, never oracle-insufficient);
+    //   - every non-waived EXECUTION-class register entry must be covered by
+    //     a DECLARED adapter; the generic served phases (start + loopback
+    //     HTTP probe + stop) are transport-only evidence and NEVER adapter
+    //     coverage, so a claim proved only by loopback health yields the
+    //     typed `warrant-oracle-insufficient` UNKNOWN — never a pass, never
+    //     a product-failed verdict (a present warrant cannot silently fall
+    //     back to the generic loopback oracle);
+    //   - an ABSENT warrant is the explicit no-warrant LEGACY path — exactly
+    //     today's behavior, the sole grandfathered shape;
+    //   - an executable plan runs each adapter's deterministic evidence
+    //     command in the SAME prepared environment (inside the ADR-089/091
+    //     substrate attempt, so a mid-check daemon death keeps its observed
+    //     re-probe classification), and the passed receipt binds the warrant
+    //     identity + executed adapter identities/versions + the CONSUMED
+    //     derived environmentDigest (ADR-083 §6: consume and receipt-bind,
+    //     never authorize — the adapter never authorizes environment
+    //     identity).
+    const warrantPhase = planManifestWarrantPhase(db, subject);
+    if (warrantPhase.kind === 'failed') {
+      return evidence('failed', subject, {
+        reason: warrantPhase.reason,
+        ...(coverage ? { testCoverage: coverage.observation } : {}),
+        ...environmentObservation,
+      }, warrantPhase.code, buildSeamIssue(db, {
+        seamKind: 'readiness-profile-invalid',
+        phase: 'warrant-execution',
+        substrate: 'host',
+        command: undefined,
+        fileHints: [],
+        summary: warrantPhase.reason.slice(0, 2000),
+      }, subject, subjectCandidateSetRef), coverage?.message, finalEnvironmentMessage);
+    }
+    if (warrantPhase.kind === 'oracle-insufficient') {
+      return warrantOracleInsufficientEvidence(
+        warrantPhase.warrant,
+        warrantPhase.plan,
+        environment.environmentDigest,
+        subject,
+        coverage,
+        coverage?.message,
+        finalEnvironmentMessage,
+      );
+    }
+    const warrantObservation = warrantPhase.kind === 'executable'
+      ? warrantReceiptObservation({
+        warrant: warrantPhase.warrant,
+        plan: warrantPhase.plan,
+        environmentDigest: environment.environmentDigest,
+      })
+      : undefined;
     // The COMMAND AUTHORITY is the frozen profile; the executor decides WHERE
     // (host or docker). When the profile declares environment.image, the docker
     // executor is selected (unless SAGA_LOCAL_RUNNABILITY_EXEC=host forces the
@@ -1156,6 +1263,26 @@ function runLocalReadiness(
               ? { detectedBuildSystem: desc.detectedBuildSystem }
               : {}),
           };
+          if (warrantPhase.kind === 'executable') {
+            // CC-GAP-7 — execute each declared adapter's evidence command in
+            // the SAME prepared environment, as a CLASSIFIED substrate step:
+            // a mid-check daemon death keeps its ADR-091 observed re-probe
+            // classification (never a product verdict), while a failing
+            // evidence command against an observed-healthy substrate is a
+            // genuine product failure (the adapter exercised the product's
+            // own declared oracle and the product was wanting). No
+            // product-type switch: the engine runs exactly the declared
+            // command for exactly the declared coverage.
+            for (const adapter of warrantPhase.plan.adapters) {
+              seam.seamKind = 'test-command';
+              seam.phase = `warrant-oracle:${adapter.adapterId}`;
+              seam.command = adapter.evidenceCommand;
+              classified(() => attemptExecutor.runCommand(
+                adapter.evidenceCommand, WARRANT_ORACLE_EVIDENCE_TIMEOUT_MS,
+              ));
+              step(`warrant-oracle:${adapter.adapterId}`);
+            }
+          }
           if (profile.kind === 'served') {
             // LR-04 — the SERVED profile states how the product serves. The
             // provider starts the stated serve command, probes loopback, and
@@ -1188,6 +1315,7 @@ function runLocalReadiness(
               readinessKind: 'served',
               ...substrateEvidence,
               ...environmentIdentityEvidence,
+              ...(warrantObservation ?? {}),
               ...serveEvidence,
               ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
               ...(coverage ? { testCoverage: coverage.observation } : {}),
@@ -1203,6 +1331,7 @@ function runLocalReadiness(
             readinessKind: 'static',
             ...substrateEvidence,
             ...environmentIdentityEvidence,
+            ...(warrantObservation ?? {}),
             ...(composeObservation.evidence ? { compose: composeObservation.evidence } : {}),
             ...(coverage ? { testCoverage: coverage.observation } : {}),
             note: 'runnability proven by the profile-stated install/test commands',
@@ -1225,6 +1354,10 @@ function runLocalReadiness(
           // K19 — the derived identity binds the unknown receipt too: the
           // environment the check WOULD have certified under stays named.
           ...environmentIdentityEvidence,
+          // CC-GAP-7 — an executable warrant's identity binds the substrate
+          // unknown too: the obligation stays outstanding (never poisoned,
+          // never discharged), and the re-run names the same warrant.
+          ...(warrantObservation ?? {}),
           ...(coverage ? { testCoverage: coverage.observation } : {}),
         },
         coverage?.message,
@@ -2129,6 +2262,159 @@ function truncateMiddle(value: string, max: number): string {
   if (value.length <= max) return value;
   const half = Math.floor((max - 3) / 2);
   return `${value.slice(0, half)}...${value.slice(value.length - half)}`;
+}
+
+// ---------------------------------------------------------------------------
+// CC-GAP-7 — verification-warrant oracle execution (provider 1.15.0).
+// ---------------------------------------------------------------------------
+
+/** The resolved manifest warrant phase consumed by runLocalReadiness. */
+type ManifestWarrantPhase =
+  | { readonly kind: 'none' }
+  | {
+    readonly kind: 'executable';
+    readonly warrant: VerificationWarrantRef;
+    readonly plan: ExecutableWarrantOraclePlan;
+  }
+  | {
+    readonly kind: 'oracle-insufficient';
+    readonly warrant: VerificationWarrantRef;
+    readonly plan: OracleInsufficientWarrantPlan;
+  }
+  | { readonly kind: 'failed'; readonly code: string; readonly reason: string };
+
+/**
+ * CC-GAP-7 — plan the warrant phase for one subject. ABSENT warrant = the
+ * explicit no-warrant LEGACY path ('none': exactly the pre-1.15 behavior —
+ * the sole grandfathered shape). A PRESENT warrant is structurally
+ * re-validated (the submission contract validated the same shape; this is
+ * the independent provider-side fence), its authority cross-bound DB-only,
+ * and its oracle plan resolved. Identity violations and malformed
+ * declarations are typed product failures; an uncoverable claim is the
+ * typed oracle-insufficient unknown — never a pass, never product-failed.
+ */
+function planManifestWarrantPhase(
+  db: SqlDatabasePort,
+  subject: CandidateSubject,
+): ManifestWarrantPhase {
+  const rawWarrant = subject.manifestWarrant;
+  const rawOracles = subject.manifestWarrantOracles;
+  if ((rawOracles !== undefined && rawOracles !== null) && rawWarrant === undefined) {
+    return {
+      kind: 'failed',
+      code: 'WARRANT_ORACLE_ORPHANED_DECLARATIONS',
+      reason: 'WARRANT_ORACLE_ORPHANED_DECLARATIONS: the manifest declares warrantOracles but carries no warrantRef — an oracle adapter set without a warrant to execute is a typed defect, never silently ignored',
+    };
+  }
+  if (rawWarrant === undefined || rawWarrant === null) return { kind: 'none' };
+  if (!rawWarrant || typeof rawWarrant !== 'object' || Array.isArray(rawWarrant)) {
+    return {
+      kind: 'failed',
+      code: 'WARRANT_ORACLE_WARRANT_MALFORMED',
+      reason: 'WARRANT_ORACLE_WARRANT_MALFORMED: the manifest warrantRef is not an object',
+    };
+  }
+  const warrantView = rawWarrant as Record<string, unknown>;
+  if (typeof warrantView['constraintRegisterDigest'] !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrantView['constraintRegisterDigest'])
+      || typeof warrantView['constraintRegisterRef'] !== 'string'
+      || warrantView['constraintRegisterRef']
+        !== `constraint-register:${warrantView['constraintRegisterDigest']}`
+      || typeof warrantView['dispositionsDigest'] !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrantView['dispositionsDigest'])
+      || !warrantView['dispositions']
+      || typeof warrantView['dispositions'] !== 'object'
+      || Array.isArray(warrantView['dispositions'])
+      || typeof warrantView['discoveryCertificateHash'] !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrantView['discoveryCertificateHash'])
+      || typeof warrantView['formalizationCaseDigest'] !== 'string'
+      || !/^[a-f0-9]{64}$/u.test(warrantView['formalizationCaseDigest'])) {
+    return {
+      kind: 'failed',
+      code: 'WARRANT_ORACLE_WARRANT_MALFORMED',
+      reason: 'WARRANT_ORACLE_WARRANT_MALFORMED: the manifest warrantRef does not carry the complete typed shape (constraint-register:<64-hex> ref pairing, 64-hex digests, dispositions object, BOTH cross-bind identities)',
+    };
+  }
+  const warrant: VerificationWarrantRef = {
+    constraintRegisterRef: warrantView['constraintRegisterRef'] as string,
+    constraintRegisterDigest: warrantView['constraintRegisterDigest'] as string,
+    dispositionsDigest: warrantView['dispositionsDigest'] as string,
+    dispositions: warrantView['dispositions'] as Readonly<Record<string, unknown>>,
+    discoveryCertificateHash: warrantView['discoveryCertificateHash'] as string,
+    formalizationCaseDigest: warrantView['formalizationCaseDigest'] as string,
+  };
+  const declarations = parseWarrantOracleDeclarations(rawOracles);
+  if (declarations.status === 'invalid') {
+    return { kind: 'failed', code: 'WARRANT_ORACLE_DECLARATIONS_INVALID', reason: declarations.reason };
+  }
+  const authority = resolveWarrantOracleAuthority({
+    db,
+    processRunId: subject.processRunId,
+    warrant,
+  });
+  if (authority.status === 'invalid') {
+    return { kind: 'failed', code: authority.code, reason: authority.reason };
+  }
+  const plan = planWarrantOracleExecution({
+    register: authority.register,
+    declarations: declarations.declarations,
+    waivedIds: authority.waivedIds,
+  });
+  return plan.status === 'executable'
+    ? { kind: 'executable', warrant, plan }
+    : { kind: 'oracle-insufficient', warrant, plan };
+}
+
+/**
+ * CC-GAP-7 — the typed UNKNOWN receipt for an oracle-insufficient warrant:
+ * the declared oracle set cannot prove the claim. Never 'passed', never
+ * 'failed' — the claim is an outstanding obligation (ADR-089 §1 class
+ * separation; discharge belongs to the CC-GAP-8 criterion-key ledger).
+ * Carries the decodable `warrant-oracle-insufficient` diagnostic and the
+ * content-addressed observation (warrant identity, uncovered/unsupported
+ * ids, declared adapter identities, the derived environmentDigest the
+ * check would have certified under). Deliberately emits NO SeamRepairIssue
+ * — an uncovered claim is not a product defect.
+ */
+function warrantOracleInsufficientEvidence(
+  warrant: VerificationWarrantRef,
+  plan: OracleInsufficientWarrantPlan,
+  environmentDigest: string,
+  subject: CandidateSubject,
+  coverage: { observation: Record<string, unknown>; message: string } | null,
+  coverageMessage?: string,
+  environmentMessage?: string,
+): CheckProviderResult {
+  const digest = sha256Hex({
+    providerDigest: LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST,
+    candidateHash: subject.candidateHash,
+    commitSha: subject.commitSha,
+    treeHash: subject.treeHash,
+    observation: {
+      ...warrantOracleInsufficientObservation({ warrant, plan, environmentDigest }),
+      ...(coverage ? { testCoverage: coverage.observation } : {}),
+    },
+  });
+  const evidenceRefs = [
+    `local-readiness:${digest}`,
+    encodeCheckDiagnostic({
+      code: WARRANT_ORACLE_INSUFFICIENT_DIAGNOSTIC,
+      message: warrantOracleInsufficientMessage(plan),
+    }),
+  ];
+  if (coverageMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'readiness-test-coverage',
+      message: coverageMessage,
+    }));
+  }
+  if (environmentMessage !== undefined) {
+    evidenceRefs.push(encodeCheckDiagnostic({
+      code: 'environment-derivation',
+      message: environmentMessage,
+    }));
+  }
+  return { outcome: 'unknown', evidenceRefs };
 }
 
 /**

@@ -1256,7 +1256,7 @@ Checklist:
   CC-00C re-audit and the CC-10B/CC-80 blocking-group wiring remain
   open, and until that re-audit is green this residual stays recorded as
   owed BEFORE any production factory run and BEFORE CC-GAP-7.)
-- [ ] CC-GAP-7 (after CC-GAP-9 outcome/routing): land warrant execution over
+- [x] CC-GAP-7 execution slice (after CC-GAP-9 outcome/routing): land warrant execution over
   the existing `VerificationWarrantRef` seam in the readiness provider
   through package-level, workshop-declared oracle adapters — no new oracle,
   no re-reading of order prose, no universal engine or test-engine frontend
@@ -1270,11 +1270,16 @@ Checklist:
   sequenced before
   this receipt-binding, with the honest fallback recorded in the internal
   serialization above while they stay open (the bounded image/dependency
-  identity slice itself is landed and accepted). (OPEN — no warrant-execution
-  landing. Chosen direction only, 2026-08-23: A-prime — package-owned
-  warrant catalogs with kernel-owned minimum floors;
-  ADR-093 is upcoming and NOT yet present in the repository; no
-  implementation is claimed.)
+  identity slice itself is landed and accepted). The execution slice is
+  integrated in the canonical line from `d762ce52` + provenance pin
+  `18b7e444`: provider `1.15.0`, manifest contract `1.2.0`, DB-only warrant
+  cross-binding, typed `warrant-oracle-insufficient`, adapter execution inside
+  the bounded substrate attempt, and receipt binding of warrant + adapter +
+  environment digest. Blocking mutations are hosted by
+  `local-runnability-warrant-oracle.test.mjs`. This is NOT GAP-7 exit:
+  candidate-produced adapter declarations are not yet pinned to an installed
+  workshop/package digest, so CC-U2 non-circular oracle-command authority
+  remains open.)
 - [x] CC-GAP-8 — implement append-only criterion-key verification
   accounting: proposed but unmaterialized verification obligations become
   first-class ledger entries keyed by criterion, with owner and unblock

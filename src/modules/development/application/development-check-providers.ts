@@ -19,6 +19,7 @@ import {
   DEVELOPMENT_VERIFICATION_EVIDENCE_PRODUCT_SCHEMA,
   INTEGRATED_SOURCE_CANDIDATE_SCHEMA,
   resolveDevelopmentConstraintRegisterCoverage,
+  validateWarrantOracleDeclarations,
   type DevelopmentCase,
 } from '../domain/development-schemas.js';
 import {
@@ -467,12 +468,16 @@ function sameStringSet(left: readonly unknown[], right: readonly string[]): bool
 
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_ID =
   'development.readiness-manifest-payload.v1';
-export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.1.0';
+// 1.2.0 (CC-GAP-7): additive — the optional package-declared warrant oracle
+// adapter set (warrantOracles) joins the manifest contract. Requires a
+// present warrantRef; closed declaration vocabulary; the readiness provider
+// consumes the set read-only (uncovered claims → typed oracle-insufficient).
+export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_VERSION = '1.2.0';
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DEFINITION = {
   type: 'object',
   decoder: 'validateDevelopmentReadinessManifest',
   schemaVersion: DEVELOPMENT_READINESS_MANIFEST_SCHEMA,
-  invariant: 'one-primary-target-bound-to-exact-integrated-source-product-and-dynamic-port-contract',
+  invariant: 'one-primary-target-bound-to-exact-integrated-source-product-and-dynamic-port-contract-with-typed-warrant-oracle-adapter-declarations-requiring-a-present-warrant',
 } as const;
 export const DEVELOPMENT_READINESS_MANIFEST_PAYLOAD_CONTRACT_DIGEST =
   productPayloadContractDigest({
@@ -558,6 +563,11 @@ function validateDevelopmentReadinessManifest(payload: unknown): string[] {
       );
     }
   }
+  // CC-GAP-7 — the package-declared verification-warrant oracle adapters.
+  // Structural mirror validated here at the submission boundary (the
+  // readiness provider re-validates independently before execution — defense
+  // in depth). warrantOracles requires a PRESENT warrantRef.
+  errors.push(...validateWarrantOracleDeclarations(warrant !== undefined, payload.warrantOracles));
   return errors;
 }
 

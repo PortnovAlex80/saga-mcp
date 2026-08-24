@@ -306,6 +306,20 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     requiredCorpus: corpus('factory.authorized-observer'),
     allowedTerminalKinds: ['repair_required', 'failed'],
   }),
+  // v1.15.0 (2026-08-23, CC-GAP-7 / CONFORMANCE-CLOSURE-PLAN warrant
+  // execution): the runnability provider's identity bumped 1.14.0 → 1.15.0 —
+  // a manifest-carried VerificationWarrantRef executes through
+  // package-declared oracle adapters; the warrant authority is cross-bound
+  // DB-only (certificate → frozen register → case expected identities →
+  // inherited coverage relay); every non-waived execution-class register
+  // entry must be covered by a declared adapter; transport-only loopback
+  // evidence is never adapter coverage (uncovered/unsupported claims → the
+  // typed warrant-oracle-insufficient unknown — never pass, never
+  // product-failed); an absent warrant keeps the explicit legacy path; the
+  // passed receipt binds warrant + adapter identities + the consumed
+  // environmentDigest. The obligation pin moves in the SAME change — a
+  // deliberate provider migration must update the norm and the manifest
+  // together or the compiler fires PROTECTION_VERSION_DIVERGENCE.
   // v1.14.0 (2026-08-23, K19 repair after REJECT): the runnability
   // provider's identity bumped 1.13.0 → 1.14.0 — the base image identity is
   // observed ATOMICALLY (ONE docker image inspect snapshot pairs RepoDigests
@@ -345,15 +359,16 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   // receipts never replayed, never poison a later pass.)
   Object.freeze({
     obligationId: 'factory.local-runnability',
-    version: '1.14.0',
-    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-083 environment identity', 'ADR-089 substrate retry', 'ADR-091 mid-check re-probe'],
+    version: '1.15.0',
+    sourceRefs: ['LR-01..07', 'ADR-070 readiness certification', 'ADR-083 environment identity', 'ADR-089 substrate retry', 'ADR-091 mid-check re-probe', 'CC-GAP-7 warrant execution'],
     subjectKind: 'local-runnability-receipt',
-    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict; a mid-check executor/compose failure is classified only by a mechanical daemon re-probe — observed unavailable/not-linux rides the bounded retry and typed unknown, observed available+linux keeps the original product failure, and stderr text is never a classification input; the environment identity is authoritative — the declared image resolves to its OCI registry manifest digest (never a floating tag, never the local image id; bad identity evidence fails closed typed), observed ATOMICALLY from one docker image inspect snapshot whose RepoDigests and local Id are paired facts of the same response and whose immutable Id alone is tagged (a tag switch between two resolutions of the mutable tag can never split the receipt identity from the executed image), a docker-substrate description without a well-formed sha256 baseImageDigest fails typed at the provider boundary as a product failure (never passed, never unknown, never retried), the dependency lock identity binds the derived environment digest, both bind the deterministic receipt digest (identity failures are product failed, never the substrate unknown), and the trusted-provider migration accepts a legacy row only on the exact version→built-in-digest pair — a forged trust basis on a known version is drift, never laundered.',
+    protectedProperty: 'The local-runnability receipt binds the exact sealed candidate and a passed start probe; a missing environment precondition is a typed unknown (warrant-blocked-environment) after the bounded in-check retry, never a failed product verdict; a mid-check executor/compose failure is classified only by a mechanical daemon re-probe — observed unavailable/not-linux rides the bounded retry and typed unknown, observed available+linux keeps the original product failure, and stderr text is never a classification input; the environment identity is authoritative — the declared image resolves to its OCI registry manifest digest (never a floating tag, never the local image id; bad identity evidence fails closed typed), observed ATOMICALLY from one docker image inspect snapshot whose RepoDigests and local Id are paired facts of the same response and whose immutable Id alone is tagged (a tag switch between two resolutions of the mutable tag can never split the receipt identity from the executed image), a docker-substrate description without a well-formed sha256 baseImageDigest fails typed at the provider boundary as a product failure (never passed, never unknown, never retried), the dependency lock identity binds the derived environment digest, both bind the deterministic receipt digest (identity failures are product failed, never the substrate unknown), and the trusted-provider migration accepts a legacy row only on the exact version→built-in-digest pair — a forged trust basis on a known version is drift, never laundered. A present VerificationWarrantRef executes only through package-declared oracle adapters: the warrant authority is cross-bound to the discovery certificate (by exact hash, its verified frozen register), the DevelopmentCase\'s authoritative expected cross-bind identities, and the inherited constraint-register coverage relay (identity violations are typed product failures); every non-waived execution-class register entry must be covered by a declared adapter whose deterministic evidence command runs in the same prepared environment inside the substrate attempt; the generic served phases (start + loopback HTTP probe + stop) are transport-only evidence and never adapter coverage — a missing adapter, an unsupported claim, or transport-only evidence that cannot prove a claim yields the typed warrant-oracle-insufficient unknown (never a pass, never a product-failed verdict), and the passed receipt binds the warrant identity, the executed adapter identities/versions, and the consumed derived environmentDigest (ADR-083 §6: consume and receipt-bind, never authorize).',
     constraints: [
       { kind: 'digestOf', field: 'subjectCandidateSetRef', of: 'sealed integrated candidate' },
       { kind: 'equality', field: 'probeOutcome', value: 'passed' },
+      { kind: 'grammar', field: 'warrantOutcome', pattern: '^(passed|warrant-oracle-insufficient|warrant-blocked-environment)$' },
     ],
-    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.14.0' },
+    expectedProtection: { kind: 'check-provider', logicalId: 'factory.local-runnability.v1', version: '1.15.0' },
     faultClasses: ['derived-evidence', 'effect-external'],
     oracleClass: 'mechanical',
     mutationProfile: mp(),
@@ -655,7 +670,10 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
   ...[
     ['factory.candidate-verification-evidence-product.v2', '2.0.0', 'Verification evidence product pins the exact candidate hash and check receipts.', 'dev.payload.verification-evidence'],
     ['factory.development-implementation-result.v1', '1.3.0', 'Implementation results pin the claimed file surface and commit identity.', 'dev.payload.implementation-result'],
-    ['factory.development-readiness-manifest.v1', '1.1.0', 'The readiness manifest pins toolchain identity and declared surface.', 'dev.payload.readiness-manifest'],
+    // 1.2.0 (CC-GAP-7): additive — the manifest contract now also validates
+    // the package-declared warrant oracle adapter set (requires a present
+    // warrantRef; closed declaration vocabulary).
+    ['factory.development-readiness-manifest.v1', '1.2.0', 'The readiness manifest pins toolchain identity, declared surface, and the typed warrant oracle adapter declarations (present warrant required).', 'dev.payload.readiness-manifest'],
     ['factory.development-review-verdict.v1', '1.1.0', 'Development review verdicts pin the reviewed candidate ordinal.', 'dev.payload.review-verdict'],
     ['factory.development-task-graph-proposal.v1', '1.0.0', 'Task graph proposals pin item keys and dependency edges.', 'dev.payload.task-graph-proposal'],
     ['factory.review-verdict.v1', '1.1.0', 'Formalization review verdicts pin the subject candidate set.', 'frm.payload.review-verdict'],

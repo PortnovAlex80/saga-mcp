@@ -89,7 +89,28 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // EXACT version→built-in-digest pair (a forged trust_basis on a known
 // legacy version is LOCAL_RUNNABILITY_TRUST_POLICY_DRIFT, never laundered)
 // — the digest bump re-checks every prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.14.0';
+// 1.15.0 — CC-GAP-7 warrant execution: a manifest-carried
+// VerificationWarrantRef executes through package-declared oracle adapters.
+// The warrant authority is cross-bound DB-only (discovery certificate by
+// exact hash → verified frozen register → the DevelopmentCase's
+// authoritative expected cross-bind identities → the inherited
+// constraintRegisterCoverage relay); identity violations are typed product
+// failures. Every non-waived EXECUTION-class register entry must be
+// covered by a DECLARED adapter whose deterministic evidence command runs
+// in the SAME prepared environment inside the ADR-089/091 substrate
+// attempt (mid-check daemon deaths keep the observed re-probe
+// classification). The generic served phases (start + loopback HTTP probe
+// + stop) are transport-only evidence and NEVER adapter coverage: a
+// missing adapter, an unsupported claim, or transport-only evidence yields
+// the typed `warrant-oracle-insufficient` unknown — never a pass, never a
+// product-failed verdict. An ABSENT warrant keeps the explicit no-warrant
+// legacy path byte-identical (the sole grandfathered shape). The passed
+// receipt binds the warrant identity, the executed adapter
+// identities/versions, and the CONSUMED derived environmentDigest
+// (ADR-083 §6: consume and receipt-bind, never authorize — the adapter
+// never authorizes environment identity) — the digest bump re-checks every
+// prior receipt exactly once (by design).
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.15.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -120,4 +141,6 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'trusted-providers-migration-requires-the-exact-version-to-builtin-digest-pair-of-the-shipped-lineage-plus-exact-metadata-a-forged-trust-basis-on-a-known-legacy-version-is-local-runnability-trust-policy-drift-never-laundered-into-the-current-trust-v1',
   dependencyLockPolicy:
     'dependency-lock-identity-is-the-sha256-over-the-sealed-trees-exact-resolved-lock-material-and-binds-the-derived-environment-digest-and-every-receipt-lock-drift-is-a-different-environment-an-empty-lock-list-is-reported-honestly-never-fabricated-v1',
+  warrantOraclePolicy:
+    'a-present-verificationwarrantref-executes-only-through-package-declared-oracle-adapters-with-the-authority-cross-bound-db-only-discovery-certificate-by-exact-hash-verified-frozen-register-developmentcase-expected-cross-bind-identities-and-inherited-coverage-relay-identity-violations-are-typed-product-failures-every-non-waived-execution-class-register-entry-must-be-covered-by-a-declared-adapter-whose-deterministic-evidence-command-runs-in-the-same-prepared-environment-inside-the-adr-089-091-substrate-attempt-the-generic-served-phases-start-loopback-http-probe-stop-are-transport-only-evidence-and-never-adapter-coverage-a-missing-adapter-unsupported-claim-or-transport-only-evidence-yields-the-typed-warrant-oracle-insufficient-unknown-never-a-pass-never-a-product-failed-verdict-an-absent-warrant-keeps-the-explicit-no-warrant-legacy-path-the-passed-receipt-binds-warrant-and-executed-adapter-identities-versions-and-the-consumed-derived-environmentdigest-the-adapter-never-authorizes-environment-identity-adr-083-section-6-v1',
 });
