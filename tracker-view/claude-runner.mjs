@@ -125,6 +125,26 @@ function pickLaunchSpecSkillName(launchSpec, isReview) {
 // function of its inputs — no spawn, no DB, no filesystem mutation. The only
 // permitted modification to this module per the stage-6 brief is what a test
 // explicitly requires; exposing the builder is that requirement.
+/**
+ * STAGE-23 feedback-loop repair: gate-rejected attempts are CLEAN worker exits
+ * (no last_error), so the death-history channel structurally undercounts them.
+ * The episodic task memory (materialized at claim — see
+ * src/lifecycle/task-recovery-memory.ts) carries the true count in
+ * metadata.attempt_count; the prompt must tell a re-claimed worker how many
+ * times this card was already rejected by the gate.
+ */
+function taskGateRejectionCount(task) {
+  const metadata = task?.metadata;
+  if (!metadata) return 0;
+  let parsed = metadata;
+  if (typeof metadata === 'string') {
+    try { parsed = JSON.parse(metadata); } catch { return 0; }
+  }
+  if (!parsed || typeof parsed !== 'object') return 0;
+  const count = parsed.attempt_count;
+  return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
 export function buildPrompt({
   assignment,
   project,
@@ -333,6 +353,14 @@ export function buildPrompt({
           // REPEATED_TOOL_LOOP) otherwise looks identical to a healthy card.
           // The deaths are delivered HERE — at the point of decision — instead
           // of remaining "available through task_get by worker initiative".
+          ...(taskGateRejectionCount(assignment?.task) > 0
+            ? [
+                '',
+                `⚠️ THIS CARD HAS ${taskGateRejectionCount(assignment?.task)} PRIOR GATE-REJECTED ATTEMPT(S)`,
+                'Previous submissions on this exact card were rejected by the cell gate (the worker processes exited cleanly — this is NOT worker death).',
+                'The machine-written history in this task\'s metadata (previous_failures / attempt_history — read via task_get) lists every rejection reason in durable order. Do NOT repeat the rejected approaches; a repeated finding burns a repair-attempt budget you can see in that history.',
+              ]
+            : []),
           ...(processWorkspace?.priorAttempts && processWorkspace.priorAttempts.count > 0
             ? [
                 '',
@@ -357,8 +385,8 @@ export function buildPrompt({
             ? [
                 '',
                 '⚠️⚠️⚠️ REPAIR ATTEMPT — YOUR PREVIOUS SUBMISSION WAS REJECTED BY THE GATE. ⚠️⚠️⚠️',
-                `recovery_feedback=${processWorkspace.recoveryFeedback.path}`,
-                `READ ${processWorkspace.recoveryFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is machine-authored loop input.`,
+                `recovery_feedback=${processWorkspace.recoveryFeedbackAbsolutePath ?? processWorkspace.recoveryFeedback.path}`,
+                `READ ${processWorkspace.recoveryFeedbackAbsolutePath ?? processWorkspace.recoveryFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is machine-authored loop input.`,
                 'It carries issue.findings[]: the EXACT reasons the previous submission was rejected and the SPECIFIC remediation (which files to add/change, which assertions to satisfy, which AC is unmet).',
                 ...(processWorkspace.recoveryFeedback.reasons?.length
                   ? [
@@ -395,8 +423,8 @@ export function buildPrompt({
             ? [
                 '',
                 '⚠️⚠️⚠️ REVIEW REJECTION — THE REVIEWER SENT YOUR PREVIOUS WORK BACK. ⚠️⚠️⚠️',
-                `review_feedback=${processWorkspace.reviewFeedback.path}`,
-                `READ ${processWorkspace.reviewFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is the reviewer's verdict on your previous submission.`,
+                `review_feedback=${processWorkspace.reviewFeedbackAbsolutePath ?? processWorkspace.reviewFeedback.path}`,
+                `READ ${processWorkspace.reviewFeedbackAbsolutePath ?? processWorkspace.reviewFeedback.path} FIRST, BEFORE ANYTHING ELSE. It is the reviewer's verdict on your previous submission.`,
                 ...(processWorkspace.reviewFeedback.round > 0
                   ? [`This is review rejection round ${processWorkspace.reviewFeedback.round}; the reviewer has already rejected this work before.`]
                   : []),
@@ -424,7 +452,10 @@ export function buildPrompt({
                 '',
               ]
             : []),
-          `tracker_path=${processWorkspace.trackerPath}`,
+          // STAGE-23 addressing fix: the worker's cwd is its WORKTREE; product-
+          // relative paths resolve nowhere from there. Prefer the absolute
+          // variants wherever the desk provides them.
+          `tracker_path=${processWorkspace.trackerAbsolutePath ?? processWorkspace.trackerPath}`,
           `execution_workspace=${processWorkspace.executionDirectory}`,
           `workspace_files=${JSON.stringify(processWorkspace.workspaceFiles)}`,
           `materialized_call_files=${JSON.stringify(processWorkspace.callFiles)}`,
@@ -439,7 +470,7 @@ export function buildPrompt({
             : []),
           '',
           'Weak-model execution order:',
-          `a. Read ${processWorkspace.trackerPath} before any domain action.`,
+          `a. Read ${processWorkspace.trackerAbsolutePath ?? processWorkspace.trackerPath} before any domain action.`,
           'b. Read the assigned task with task_get and verify its machine bindings.',
           'c. Use the listed materialized files; do not invent a call shape from memory.',
           'd. Before every consequential MCP write, read the listed checklist and the call file back.',

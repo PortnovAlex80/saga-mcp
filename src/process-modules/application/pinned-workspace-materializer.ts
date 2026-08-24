@@ -115,6 +115,17 @@ export interface WorkplaceDesk {
 
   readonly workspaceFiles: readonly string[];
   readonly agentAssistanceAbsolutePath?: string;
+  /**
+   * STAGE-23 addressing fix (2026-08-24): the worker's cwd is its WORKTREE,
+   * while the desk paths above are product-repo-relative — live workers'
+   * first reads of recovery-feedback.json / review-feedback.json resolved
+   * nowhere and self-healed only by guessing the absolute product path.
+   * Absolute variants follow the agentAssistanceAbsolutePath precedent; the
+   * loud prompt blocks prefer them.
+   */
+  readonly recoveryFeedbackAbsolutePath?: string;
+  readonly reviewFeedbackAbsolutePath?: string;
+  readonly feedbackHistoryAbsolutePath?: string;
 
   readonly repositoryDesk?: RepositoryDesk;
   /**
@@ -689,6 +700,9 @@ export function materializePinnedWorkspace(
       ...(feedbackHistoryRelative ? [feedbackHistoryRelative] : []),
     ],
     ...(agentAssistanceAbsolutePath ? { agentAssistanceAbsolutePath } : {}),
+    ...(recoveryFeedbackPath ? { recoveryFeedbackAbsolutePath: recoveryFeedbackPath } : {}),
+    ...(reviewFeedbackPath ? { reviewFeedbackAbsolutePath: reviewFeedbackPath } : {}),
+    ...(feedbackHistoryPath ? { feedbackHistoryAbsolutePath: feedbackHistoryPath } : {}),
   };
   assertDeskInvariants(desk);
   return desk;
