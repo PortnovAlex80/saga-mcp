@@ -197,6 +197,8 @@ test('P3.3-1: the REAL product-lifecycle composition boots without recreating th
         'solution-development-managed',
         'solution-development-managed',
         'delivery-release',
+        // 2026-08-24 documentation admission (ADR-096 gate item 4).
+        'documentation-release',
       ],
     );
 

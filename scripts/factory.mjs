@@ -92,7 +92,7 @@ if (command !== 'start' && command !== 'resume' && command !== 'continue' && com
   die(`usage: node scripts/factory.mjs <start|resume|continue|redevelop|abandon|rerun|stop|unpark> <db-path> [options]\n`
     + `  start   <db-path> <idea-text> [--model <name>] [--sandbox <dir>]\n`
     + `  resume  <db-path> [--requeue-paused|--recover-failed-gate]\n`
-    + `  continue <db-path> --from-lifecycle <id> (--local-release | --verification-only | --adopt-task <id> --scope <path>...) [--check]\n`
+    + `  continue <db-path> --from-lifecycle <id> (--local-release | --documentation [--kinds a,b] [--out <dir>] | --verification-only | --adopt-task <id> --scope <path>...) [--check]\n`
     + `  redevelop <db-path> --from-lifecycle <id> [--check]   — stage-19: re-enter development with the STANDARD module from the frozen formalization capsule\n`
     + `  abandon <db-path> <project-id> [--reason <text>]   — drop a poisoned run (fail-closed)\n`
     + `  rerun   <db-path> <project-id> [--model <name>] [--reason <text>]   — abandon-if-poisoned + new_start\n`
@@ -164,6 +164,9 @@ function parseContinueArguments(rawArgs) {
     verificationOnly: false,
     observerConfirmed: false,
     localRelease: false,
+    documentation: false,
+    documentKinds: null,
+    documentOutputRoot: null,
   };
   for (let index = 2; index < rawArgs.length; index += 1) {
     const option = rawArgs[index];
@@ -183,12 +186,18 @@ function parseContinueArguments(rawArgs) {
       result.localRelease = true;
       continue;
     }
-    if (['--from-lifecycle', '--adopt-task', '--scope'].includes(option)) {
+    if (option === '--documentation') {
+      result.documentation = true;
+      continue;
+    }
+    if (['--from-lifecycle', '--adopt-task', '--scope', '--kinds', '--out'].includes(option)) {
       const value = rawArgs[index + 1];
       if (!value || value.startsWith('--')) die(`continue: ${option} requires a value`);
       if (option === '--from-lifecycle') result.parentLifecycleRunId = Number(value);
       else if (option === '--adopt-task') result.adoptedTaskId = Number(value);
-      else result.scopes.push(value);
+      else if (option === '--scope') result.scopes.push(value);
+      else if (option === '--kinds') result.documentKinds = value.split(',').map(k => k.trim()).filter(k => k.length > 0);
+      else result.documentOutputRoot = value;
       index += 1;
       continue;
     }
@@ -198,10 +207,14 @@ function parseContinueArguments(rawArgs) {
   if (!Number.isSafeInteger(result.parentLifecycleRunId) || result.parentLifecycleRunId < 1) {
     die('continue: --from-lifecycle must be a positive integer');
   }
-  if (!result.verificationOnly && !result.localRelease && (!Number.isSafeInteger(result.adoptedTaskId) || result.adoptedTaskId < 1)) {
+  if (result.documentation) {
+    if (result.verificationOnly || result.localRelease || result.adoptedTaskId || result.scopes.length > 0) {
+      die('continue: --documentation is mutually exclusive with other continuation options');
+    }
+  } else if (!result.verificationOnly && !result.localRelease && (!Number.isSafeInteger(result.adoptedTaskId) || result.adoptedTaskId < 1)) {
     die('continue: --adopt-task must be a positive integer');
   }
-  if (!result.verificationOnly && !result.localRelease && result.scopes.length === 0) die('continue: at least one --scope is required');
+  if (!result.verificationOnly && !result.localRelease && !result.documentation && result.scopes.length === 0) die('continue: at least one --scope is required');
   if (result.localRelease && (result.verificationOnly || result.adoptedTaskId || result.scopes.length > 0)) {
     die('continue: --local-release is mutually exclusive with Development continuation options');
   }
@@ -266,6 +279,16 @@ if (command === 'continue') {
           parentLifecycleRunId: input.parentLifecycleRunId,
           actorId: 'product-owner:user',
           reason: 'operator approved exact local source-tag release',
+        })
+      : input.documentation
+      ? (await import('../dist/app/factory-documentation-continuation.js'))
+        .prepareDocumentationContinuation(db, {
+          orderRef: parent.order_ref,
+          parentLifecycleRunId: input.parentLifecycleRunId,
+          documentKinds: input.documentKinds ?? undefined,
+          outputRoot: input.documentOutputRoot ?? undefined,
+          actorId: 'product-owner:user',
+          reason: 'operator retried documentation after a typed-blocked render',
         })
       : (await import('../dist/app/factory-continuation.js'))
         .prepareDevelopmentContinuation(db, {

@@ -232,7 +232,7 @@ function collectViolations() {
   // saga4: also scan src/modules/*/domain/ and src/modules/*/application/.
   // Infrastructure/ is excluded — SQLite adapters belong there.
   for (const subdir of ['domain', 'application']) {
-    for (const modName of ['discovery', 'formalization', 'development', 'delivery']) {
+    for (const modName of ['discovery', 'formalization', 'development', 'delivery', 'documentation']) {
       const layerDir = path.join(NEW_MODULES_ROOT, modName, subdir);
       files.push(...listTypeScriptFiles(layerDir));
     }

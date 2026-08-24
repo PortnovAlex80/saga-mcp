@@ -666,6 +666,26 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     allowedTerminalKinds: ['failed'],
   }),
 
+  // ---- Documentation check-provider (2026-08-24 admission, ADR-096 §4) ----
+  Object.freeze({
+    obligationId: 'docs.completeness',
+    version: '1.0.0',
+    sourceRefs: ['ADR-096 gate item 4', 'NEW-WORKSHOP-DESIGN-AUTHORING-GUIDE §8.4', 'CONVEYOR-MENTAL-MODEL §17'],
+    subjectKind: 'documentation-document-submission',
+    protectedProperty: 'A documentation document is accepted only when it is the exact single managed submission of the author CandidateSet, structurally valid, and carries every section its document kind requires.',
+    constraints: [
+      { kind: 'ref', field: 'member.productRef', to: 'managed-node-submission:<id> by id+schema+content_hash' },
+      { kind: 'projection', field: 'sections', requires: 'per-kind requiredSections' },
+      { kind: 'unique', by: 'section.id' },
+    ],
+    expectedProtection: { kind: 'check-provider', logicalId: 'factory.documentation-completeness.v1', version: '1.0.0' },
+    faultClasses: ['authority-binding', 'contract-shape'],
+    oracleClass: 'mechanical',
+    mutationProfile: mp(),
+    requiredCorpus: corpus('docs.completeness'),
+    allowedTerminalKinds: ['repair_required', 'failed'],
+  }),
+
   // ---- Payload contracts ----------------------------------------------------
   ...[
     ['factory.candidate-verification-evidence-product.v2', '2.0.0', 'Verification evidence product pins the exact candidate hash and check receipts.', 'dev.payload.verification-evidence'],
@@ -679,6 +699,8 @@ export const ACCEPTANCE_OBLIGATION_CONTRACTS = Object.freeze([
     ['factory.review-verdict.v1', '1.1.0', 'Formalization review verdicts pin the subject candidate set.', 'frm.payload.review-verdict'],
     ['factory.source-change-candidate.v1', '1.0.0', 'Source change candidates pin changed files to the execution worktree.', 'dev.payload.source-change-candidate'],
     ['factory.formalization-reconciliation-report.v1', '1.0.0', 'Reconciliation reports pin the typed WHAT-catchall payload (status/rationale/empty remaining_gaps/repairs).', 'frm.payload.reconciliation-report'],
+    ['factory.documentation-document.v1', '1.0.0', 'Documentation documents pin the kind registry, section structure and the exact generated-for candidate.', 'docs.payload.document'],
+    ['factory.documentation-review-verdict.v1', '1.0.0', 'Documentation review verdicts pin the exact subject candidate set.', 'docs.payload.review-verdict'],
   ].map(([schemaId, version, property, id]) => Object.freeze({
     obligationId: id,
     version,

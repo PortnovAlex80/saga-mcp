@@ -17,11 +17,11 @@ import { DEVELOPMENT_TOPOLOGY } from './development-scenario-pack.mjs';
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
-test('inventory covers all four workshops with non-empty declared topologies', () => {
+test('inventory covers all five workshops with non-empty declared topologies', () => {
   const inventory = buildWorkshopInventory();
   assert.deepEqual(
     Object.keys(inventory.workshops),
-    ['discovery', 'formalization', 'development', 'delivery'],
+    ['discovery', 'formalization', 'development', 'delivery', 'documentation'],
   );
   for (const [name, workshop] of Object.entries(inventory.workshops)) {
     assert.ok(workshop.scenarios.length >= 1, `${name} has scenarios`);

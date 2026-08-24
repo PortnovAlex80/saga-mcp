@@ -139,12 +139,49 @@
         "restart:delivery:idempotent-settlement"
       ],
       "platformFaultEdges": []
+    },
+    "documentation": {
+      "scenarios": [
+        "documentation/missing-engine-blocked",
+        "documentation/happy-documented"
+      ],
+      "nodes": [
+        "assemble-documentation-case",
+        "author-documents",
+        "render-documentation-bundle",
+        "settle-documentation",
+        "complete-documented",
+        "complete-blocked",
+        "complete-failed"
+      ],
+      "outcomes": [
+        "documented",
+        "blocked",
+        "failed"
+      ],
+      "executionProfiles": [
+        "documentation-writer",
+        "documentation-reviewer"
+      ],
+      "pendingUniverse": [
+        "gate:documentation-document-author:repair_required",
+        "negative-transition:author-documents-/->render-documentation-bundle",
+        "recovery:documentation-document:exact-feedback-repair",
+        "recovery:documentation-document:review-changes-requested-repair",
+        "counterfactual:documentation-document:absent-feedback-no-magical-repair",
+        "counterfactual:documentation-document:stale-feedback-no-magical-repair",
+        "fence:documentation-document:stale-execution-denied",
+        "idempotency:documentation-document:duplicate-submit",
+        "crash:documentation-document:bounded-recovery",
+        "crash:documentation-render:bundle-replay-idempotency"
+      ],
+      "platformFaultEdges": []
     }
   },
   "crossTreeDependencies": {
-    "count": 24,
-    "modulesToLegacy": 12,
-    "legacyToModules": 12,
+    "count": 27,
+    "modulesToLegacy": 13,
+    "legacyToModules": 14,
     "files": [
       "src/modules/delivery/application/delivery-installation.ts (modules->legacy)",
       "src/modules/delivery/index.ts (modules->legacy)",
@@ -156,6 +193,7 @@
       "src/modules/development/infrastructure/development-persistence.ts (modules->legacy)",
       "src/modules/discovery/application/discovery-production-cell-installation.ts (modules->legacy)",
       "src/modules/discovery/index.ts (modules->legacy)",
+      "src/modules/documentation/index.ts (modules->legacy)",
       "src/modules/formalization/index.ts (modules->legacy)",
       "src/modules/formalization/infrastructure/sqlite-formalization-package-adapters.ts (modules->legacy)",
       "src/process-modules/modules/delivery/delivery-process-module.ts (legacy->modules)",
@@ -167,10 +205,12 @@
       "src/process-modules/modules/development/package/manifest.ts (legacy->modules)",
       "src/process-modules/modules/development/package/verification-continuation-manifest.ts (legacy->modules)",
       "src/process-modules/modules/discovery/discovery-process-module.ts (legacy->modules)",
+      "src/process-modules/modules/documentation/documentation-process-module.ts (legacy->modules)",
+      "src/process-modules/modules/documentation/package/manifest.ts (legacy->modules)",
       "src/process-modules/modules/formalization/formalization-process-module.ts (legacy->modules)",
       "src/process-modules/modules/formalization/package/manifest.ts (legacy->modules)",
       "src/process-modules/modules/formalization/package/ports/formalization-package-ports.ts (legacy->modules)"
     ]
   },
-  "inventoryDigest": "9cba1d3a3747c95a9097053934d8749f4e70f027cd4bc09ab15f233f50d5c3dd"
+  "inventoryDigest": "2028f80c9b58d7a20c9176e8a9c41bf74ad9268a94ed40bdf0b904bda1df78c4"
 }

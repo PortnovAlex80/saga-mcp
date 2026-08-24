@@ -20,6 +20,7 @@ import { DEVELOPMENT_TOPOLOGY, DEVELOPMENT_PENDING_UNIVERSE, DEVELOPMENT_PLATFOR
 import { DELIVERY_TOPOLOGY, DELIVERY_PENDING_UNIVERSE, DELIVERY_SCENARIOS } from './delivery-scenario-pack.mjs';
 import { FORMALIZATION_TARGETS, FORMALIZATION_SCENARIOS, FORMALIZATION_PLATFORM_FAULT_EDGES } from './formalization-scenario-pack.mjs';
 import { DISCOVERY_SCENARIOS } from './discovery-scenario-pack.mjs';
+import { DOCUMENTATION_TOPOLOGY, DOCUMENTATION_PENDING_UNIVERSE, DOCUMENTATION_SCENARIOS } from './documentation-scenario-pack.mjs';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 const BASELINE_PATH = path.join(import.meta.dirname, 'workshop-inventory.baseline.json');
@@ -42,15 +43,20 @@ function crossTreeDependencyMap() {
   const srcRoot = path.join(REPO_ROOT, 'src');
   const files = listFiles(srcRoot);
   const pairs = [];
+  // The built-in workshop set (kept in one place so a new admission extends
+  // the cross-tree map honestly instead of being silently uncounted).
+  const moduleAlternation = '(?:discovery|formalization|development|delivery|documentation)';
+  const importsModulesFromRe = new RegExp(`from\\s+'(?:\\.\\./)*modules/${moduleAlternation}/`);
+  const importsModulesDynamicRe = new RegExp(`import\\('(?:\\.\\./)*modules/${moduleAlternation}/`);
+  const inModulesTreeRe = new RegExp(`^src/modules/${moduleAlternation}/`);
   for (const file of files) {
     const rel = path.relative(REPO_ROOT, file).replaceAll('\\', '/');
     const text = readFileSync(file, 'utf8');
     const importsLegacy = /from\s+'(\.\.\/)*process-modules\/modules\//.test(text)
       || /import\('(\.\.\/)*process-modules\/modules\//.test(text);
-    const importsModules = /from\s+'(\.\.\/)*modules\/(discovery|formalization|development|delivery)\//.test(text)
-      || /import\('(\.\.\/)*modules\/(discovery|formalization|development|delivery)\//.test(text);
+    const importsModules = importsModulesFromRe.test(text) || importsModulesDynamicRe.test(text);
     const inLegacyTree = rel.startsWith('src/process-modules/modules/');
-    const inModulesTree = /^src\/modules\/(discovery|formalization|development|delivery)\//.test(rel);
+    const inModulesTree = inModulesTreeRe.test(rel);
     if ((inModulesTree && importsLegacy) || (inLegacyTree && importsModules)) {
       pairs.push({ file: rel, direction: inModulesTree ? 'modules->legacy' : 'legacy->modules' });
     }
@@ -87,6 +93,14 @@ export function buildWorkshopInventory() {
       outcomes: DELIVERY_TOPOLOGY.outcomes,
       executionProfiles: DELIVERY_TOPOLOGY.executionProfiles,
       pendingUniverse: DELIVERY_PENDING_UNIVERSE,
+      platformFaultEdges: [],
+    },
+    documentation: {
+      scenarios: DOCUMENTATION_SCENARIOS.map(s => s.id),
+      nodes: DOCUMENTATION_TOPOLOGY.nodes,
+      outcomes: DOCUMENTATION_TOPOLOGY.outcomes,
+      executionProfiles: DOCUMENTATION_TOPOLOGY.executionProfiles,
+      pendingUniverse: DOCUMENTATION_PENDING_UNIVERSE,
       platformFaultEdges: [],
     },
   };

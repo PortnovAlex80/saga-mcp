@@ -1,0 +1,25 @@
+{
+  "tool": "product_submit",
+  "arguments": {
+    "schema": "factory.documentation-document.v1",
+    "content": {
+      "schemaVersion": "factory.documentation-document.v1",
+      "documentKind": "<brief.kind>",
+      "title": "<document title>",
+      "locale": "ru",
+      "sections": [
+        {
+          "id": "<required-section-id>",
+          "heading": "<heading>",
+          "blocks": [
+            { "type": "paragraph", "text": "<paragraph text>" }
+          ]
+        }
+      ],
+      "generatedFor": {
+        "candidateHash": "<brief.candidateHash>",
+        "productSubject": "<brief.productSubject>"
+      }
+    }
+  }
+}

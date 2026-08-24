@@ -110,11 +110,14 @@ function listAllTypeScriptFiles() {
 // ---------------------------------------------------------------------------
 
 const EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS = [
+  // 2026-08-24 documentation admission (ADR-096 gate item 4): +2 contracts.
   'factory.candidate-verification-evidence-product.v2',
   'factory.development-implementation-result.v1',
   'factory.development-readiness-manifest.v1',
   'factory.development-review-verdict.v1',
   'factory.development-task-graph-proposal.v1',
+  'factory.documentation-document.v1',
+  'factory.documentation-review-verdict.v1',
   'factory.formalization-reconciliation-report.v1',
   'factory.review-verdict.v1',
   'factory.source-change-candidate.v1',
@@ -131,6 +134,7 @@ const EXPECTED_EXECUTABLE_CAPABILITIES = [
   'check-provider/discovery.readiness-contract.v1',
   'check-provider/factory.accessible-counter-sandbox-check.v1',
   'check-provider/factory.authorized-verification-observer.v1',
+  'check-provider/factory.documentation-completeness.v1',
   'check-provider/factory.local-runnability.v1',
   'check-provider/factory.product-contract.v1',
   'check-provider/factory.review-verdict.v1',
@@ -150,26 +154,26 @@ const EXPECTED_EXECUTABLE_CAPABILITIES = [
 ];
 
 const COMPOSITION_ROOT = 'src/app/product-lifecycle-runtime.ts';
-const REGISTER_FAMILY = /(?:registerDiscovery|registerFormalization|registerDevelopment|registerDelivery)\s*\(/g;
+const REGISTER_FAMILY = /(?:registerDiscovery|registerFormalization|registerDevelopment|registerDelivery|registerDocumentation)\s*\(/g;
 
-test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 8 contracts', () => {
-  assert.equal(WORKSHOP_PAYLOAD_CONTRACTS.length, 8,
+test('surface 1 — WORKSHOP_PAYLOAD_CONTRACTS is exactly the frozen 10 contracts', () => {
+  assert.equal(WORKSHOP_PAYLOAD_CONTRACTS.length, 10,
     'payload-contract admission changed: update this frozen count in the SAME commit as the admission (ADR-082 §4)');
   const actual = WORKSHOP_PAYLOAD_CONTRACTS.map((c) => c.schemaId).sort();
   assert.deepEqual(actual, [...EXPECTED_PAYLOAD_CONTRACT_SCHEMA_IDS].sort(),
     'payload-contract set changed: adding/removing a contract is an admission act (ADR-082 §4.1)');
-  assert.equal(buildWorkshopCapabilityManifest().payloadContractCount, 8,
+  assert.equal(buildWorkshopCapabilityManifest().payloadContractCount, 10,
     'derived manifest count disagrees with the raw contract array');
 });
 
-test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 26 entries, fail-closed at the boundary', () => {
-  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 26,
+test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 27 entries, fail-closed at the boundary', () => {
+  assert.equal(WORKSHOP_EXECUTABLE_CAPABILITIES.length, 27,
     'executable-capability admission changed: update this frozen count in the SAME commit as the admission (ADR-082 §4)');
   const actual = WORKSHOP_EXECUTABLE_CAPABILITIES
     .map((c) => `${c.kind}/${c.logicalId}`).sort();
   assert.deepEqual(actual, [...EXPECTED_EXECUTABLE_CAPABILITIES].sort(),
     'executable-capability set changed: admitting a provider/effect/handler is an admission act (ADR-082 §4.1)');
-  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 26,
+  assert.equal(buildWorkshopCapabilityManifest().executableCapabilityCount, 27,
     'derived manifest count disagrees with the raw capability array');
 
   // The fail-closed boundary being pinned: an undeclared capability cannot be
@@ -182,9 +186,9 @@ test('surface 2 — WORKSHOP_EXECUTABLE_CAPABILITIES is exactly the frozen 26 en
     'the fail-closed throw WORKSHOP_CAPABILITY_UNDECLARED must remain in the manifest');
 });
 
-test('surface 3 — the composition root registers exactly the four workshops, and nothing else registers them', () => {
+test('surface 3 — the composition root registers exactly the five workshops, and nothing else registers them', () => {
   const root = readCodeLines(path.join(REPO_ROOT, COMPOSITION_ROOT)).join('\n');
-  for (const name of ['registerDiscovery', 'registerFormalization', 'registerDevelopment', 'registerDelivery']) {
+  for (const name of ['registerDiscovery', 'registerFormalization', 'registerDevelopment', 'registerDelivery', 'registerDocumentation']) {
     const calls = [...root.matchAll(new RegExp(`\\b${name}\\s*\\(`, 'g'))].length;
     assert.equal(calls, 1,
       `${name} must be called exactly once in the composition root — a second call is a new admission point (ADR-082 §4.2)`);
@@ -199,6 +203,7 @@ test('surface 3 — the composition root registers exactly the four workshops, a
     'src/modules/formalization/index.ts',
     'src/modules/development/index.ts',
     'src/modules/delivery/index.ts',
+    'src/modules/documentation/index.ts',
   ]);
   const offenders = [];
   for (const { abs, rel } of listAllTypeScriptFiles()) {
@@ -315,6 +320,12 @@ const DRIFT_REPORTED = [
   { file: 'src/app/factory-release-continuation.ts', anchor: "stage_id='delivery-release'", why: 'SQL boundary lookup scoped to the delivery stage — audit miss' },
   { file: 'src/process-modules/lifecycles/product-build-lifecycle.ts', anchor: "stage.id !== 'delivery-release'", why: 'lifecycle derivation filters a stage by id — audit miss (lifecycle-is-data §2.4 may reclassify as benign)' },
   { file: 'src/process-modules/lifecycles/product-build-lifecycle.ts', anchor: "stage.id !== 'solution-development'", why: 'lifecycle derivation rewrites the development stage routes — audit miss (same)' },
+  // 2026-08-24 documentation admission: the product-documentation lifecycle
+  // derives its stages by the SAME id-filter pattern product-build uses
+  // (replace delivery-release, rewrite the verified route). Registered here
+  // by precedent, not silently — lifecycle-is-data §2.4 owns the family.
+  { file: 'src/process-modules/lifecycles/product-documentation-lifecycle.ts', anchor: "stage.id === 'delivery-release'", why: 'documentation lifecycle derivation replaces the delivery stage by id — same pattern family as product-build (audit miss; lifecycle-is-data §2.4)' },
+  { file: 'src/process-modules/lifecycles/product-documentation-lifecycle.ts', anchor: "stage.id === 'solution-development'", why: 'documentation lifecycle derivation rewrites the development verified route — same pattern family as product-build (audit miss; same)' },
   // The settlement-debug entry ("module_ref_key === 'discovery'") LEFT this
   // register by architectural adjudication: ADR-095 Decision 1 (Phase 3.2,
   // 2026-08-24) removed the legacy Discovery query block, deleting exactly
@@ -327,7 +338,7 @@ const DRIFT_REPORTED = [
 
 // drift 16→15 at Phase 3.2 (ADR-095): the settlement-debug behavioural site
 // was deleted with the legacy Discovery query — see the note in DRIFT_REPORTED.
-const FROZEN_REGISTER_COUNTS = { benign: 4, blessed: 2, drift: 13 };
+const FROZEN_REGISTER_COUNTS = { benign: 4, blessed: 2, drift: 15 };
 
 test('the kernel branches on a workshop/stage name only inside the frozen registers', () => {
   const registers = [

@@ -1,0 +1,13 @@
+{
+  "tool": "product_submit",
+  "arguments": {
+    "schema": "factory.documentation-review-verdict.v1",
+    "content": {
+      "subject_candidate_set_ref": "<candidate-set/…>",
+      "verdict": "approved | changes_requested",
+      "findings": [
+        { "message": "<concrete finding citing section id>" }
+      ]
+    }
+  }
+}

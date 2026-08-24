@@ -54,6 +54,7 @@ import { developmentPackageManifest } from './process-modules/modules/developmen
 import { developmentContinuationPackageManifest } from './process-modules/modules/development/package/continuation-manifest.js';
 import { developmentVerificationContinuationPackageManifest } from './process-modules/modules/development/package/verification-continuation-manifest.js';
 import { deliveryPackageManifest } from './process-modules/modules/delivery/package/manifest.js';
+import { documentationPackageManifest } from './process-modules/modules/documentation/package/manifest.js';
 import { journalEvent } from './observability/run-journal.js';
 import { settleLaunchFromRunResult } from './app/launch-terminal-settlement.js';
 import {
@@ -922,6 +923,7 @@ async function loadCompositionOverrides(
       developmentContinuationPackageManifest,
       developmentVerificationContinuationPackageManifest,
       deliveryPackageManifest,
+      documentationPackageManifest,
     ],
     process.env.SAGA_PACKAGE_STORE_DIR,
   );

@@ -76,6 +76,13 @@ import {
   DISCOVERY_READINESS_CHECK_PROVIDER_ID,
   DISCOVERY_READINESS_CHECK_PROVIDER_VERSION,
 } from '../../modules/discovery/application/discovery-check-providers.js';
+import {
+  DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_DIGEST,
+  DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_ID,
+  DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_VERSION,
+  documentationDocumentPayloadContract,
+  documentationReviewVerdictPayloadContract,
+} from '../../modules/documentation/application/documentation-check-providers.js';
 import { FORMALIZATION_CHECK_REFS } from '../../modules/formalization/application/formalization-check-refs.js';
 import {
   formalizationReconciliationReportPayloadContract,
@@ -129,7 +136,11 @@ import {
 // precise binding.
 // ---------------------------------------------------------------------------
 const WORKSHOP_ID = 'saga-factory';
-const WORKSHOP_EPOCH = '2026-08-11-adr-053-phase-1';
+// Bumped 2026-08-24: the documentation (PDF docs) workshop admission adds two
+// payload contracts and one check provider to the capability set (ADR-096
+// gate item 4). The manifest digest is the precise binding; this epoch is the
+// human-readable coarse version of that intentional change.
+const WORKSHOP_EPOCH = '2026-08-24-documentation-release';
 
 // ---------------------------------------------------------------------------
 // THE single source of truth for payload contracts installed in EVERY process.
@@ -158,6 +169,11 @@ export const WORKSHOP_PAYLOAD_CONTRACTS: readonly ProductPayloadContract[] = [
   // conformance finding: malformed reports were accepted with only the
   // WHAT-graph validator behind them). ---
   formalizationReconciliationReportPayloadContract,
+  // --- documentation module: the structured document product and the review
+  // verdict cross the worker boundary as untrusted bytes — both are pinned
+  // here so the orchestrator and the worker MCP decode ONE contract. ---
+  documentationDocumentPayloadContract,
+  documentationReviewVerdictPayloadContract,
 ];
 
 // ---------------------------------------------------------------------------
@@ -230,6 +246,9 @@ export const WORKSHOP_EXECUTABLE_CAPABILITIES: readonly ExecutableCapabilityMani
   // monotonicity ratchet (M1-a narrowed-surface / D2 declaration-diff
   // escalation) in the readiness-certification plan.
   checkProvider(DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID, DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION, DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_DIGEST),
+  // Documentation author gate: structure + per-kind required sections,
+  // validated against the EXACT managed submission (digest-pinned).
+  checkProvider(DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_ID, DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_VERSION, DOCUMENTATION_COMPLETENESS_CHECK_PROVIDER_DIGEST),
   checkProvider(LOCAL_RUNNABILITY_CHECK_PROVIDER_ID, LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST),
   checkProvider(ACCESSIBLE_COUNTER_CHECK_PROVIDER_ID, ACCESSIBLE_COUNTER_CHECK_PROVIDER_VERSION, ACCESSIBLE_COUNTER_CHECK_PROVIDER_DIGEST),
   checkProvider(AUTHORIZED_OBSERVER_CHECK_PROVIDER_ID, AUTHORIZED_OBSERVER_CHECK_PROVIDER_VERSION, AUTHORIZED_OBSERVER_CHECK_PROVIDER_DIGEST),
@@ -271,6 +290,8 @@ const PAYLOAD_CONTRACT_OWNERS: Readonly<Record<string, string>> = Object.freeze(
   [developmentTaskGraphPayloadContract.schemaId]: 'development',
   [factoryReviewVerdictPayloadContract.schemaId]: 'formalization',
   [formalizationReconciliationReportPayloadContract.schemaId]: 'formalization',
+  [documentationDocumentPayloadContract.schemaId]: 'documentation',
+  [documentationReviewVerdictPayloadContract.schemaId]: 'documentation',
 });
 
 /**
