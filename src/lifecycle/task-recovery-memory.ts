@@ -86,7 +86,10 @@ export function parseRecoveryComment(
   };
 }
 
-export type AttemptHistoryKind = 'recovery_note' | 'submission_rejection';
+export type AttemptHistoryKind =
+  | 'recovery_note'
+  | 'submission_rejection'
+  | 'gate_rejection';
 
 export interface AttemptHistoryEntry {
   /** 1-based ordinal in durable order. */
@@ -144,7 +147,16 @@ interface TaskMetadataRow {
  * Sources:
  *   1. comments with the RECOVERY: prefix (verifier/dev reflections);
  *   2. factory_submission_validation_rejections rows (worker_done preflight
- *      gate rejections — already append-only with immutability triggers).
+ *      gate rejections — already append-only with immutability triggers);
+ *   3. factory_gate_decisions rows with verdict='repair_required' and
+ *      repair_target_role equal to the task's role, scoped to the task's
+ *      workplace, with the human-readable finding text from
+ *      factory_gate_finding_set_chain (STAGE-23 2026-08-24: the development
+ *      workshop's author/final gate rejections never entered sources 1-2 —
+ *      workers saw only the LATEST rejection sheet (recovery-feedback.json)
+ *      and no accumulated trajectory: no attempt ordinal, no previous
+ *      failures, so history-dependent gate rules like the claim-narrowing
+ *      monotonicity check were impossible to satisfy from memory).
  *
  * Order: durable row time, then source id — stable across re-materialization.
  */
@@ -183,6 +195,18 @@ export function buildTaskRecoveryMemory(
       worker_id: null,
       recovery_summary: summarizeRejection(row),
       source_ref: `submission-validation-rejection:${row.rejection_ref}`,
+    });
+  }
+
+  for (const row of readGateRejectionRows(db, taskId)) {
+    entries.push({
+      attempt: 0,
+      kind: 'gate_rejection',
+      at: row.decided_at,
+      execution_id: null,
+      worker_id: null,
+      recovery_summary: summarizeGateRejection(row),
+      source_ref: `gate-decision:${row.decision_key}`,
     });
   }
 
@@ -275,14 +299,119 @@ function readRejectionRows(db: Database, taskId: number): RejectionRow[] {
         ORDER BY rejected_at ASC, id ASC`,
     ).all(taskId) as RejectionRow[];
   } catch (error) {
-    // Older databases may predate the rejection table. Absent history is not
-    // an error — the bridge degrades to comments-only rather than breaking
-    // the claim path. Fail-closed on real errors, fail-soft on missing table.
+    // Older databases may predate the rejection table. Absent history is not an
+    // error — the bridge degrades to comments-only rather than breaking the
+    // claim path. Fail-closed on real errors, fail-soft on missing table.
     if (error instanceof Error && error.message.includes('no such table')) {
       return [];
     }
     throw error;
   }
+}
+
+interface GateRejectionRow {
+  decision_key: string;
+  gate_ref: string;
+  gate_phase: string;
+  decided_at: string;
+  finding_keys: string | null;
+}
+
+interface TaskIdentityRow {
+  workplace_ref: string | null;
+  metadata: string | null;
+}
+
+/**
+ * Upper bound for a single gate-rejection summary. Deliberately tighter than
+ * MAX_SUMMARY_LENGTH: the episodic block renders the last five entries inline,
+ * so gate summaries must keep the whole block well inside the G1.9 budget.
+ */
+const MAX_GATE_SUMMARY_LENGTH = 600;
+
+function readGateRejectionRows(
+  db: Database,
+  taskId: number,
+): GateRejectionRow[] {
+  let identity: TaskIdentityRow | undefined;
+  try {
+    identity = db.prepare(
+      'SELECT workplace_ref, metadata FROM tasks WHERE id=?',
+    ).get(taskId) as TaskIdentityRow | undefined;
+  } catch {
+    return [];
+  }
+  if (!identity?.workplace_ref) return [];
+  const role = readTaskRole(identity.metadata);
+  if (!role) return [];
+  try {
+    return db.prepare(
+      `SELECT d.decision_key, d.gate_ref, d.gate_phase, d.decided_at,
+              (SELECT c.finding_keys FROM factory_gate_finding_set_chain c
+                WHERE c.gate_decision_key = d.decision_key
+                ORDER BY c.id ASC LIMIT 1) AS finding_keys
+         FROM factory_gate_decisions d
+        WHERE d.workplace_ref=? AND d.verdict='repair_required'
+          AND d.repair_target_role=?
+        ORDER BY d.decided_at ASC, d.decision_key ASC`,
+    ).all(identity.workplace_ref, role) as GateRejectionRow[];
+  } catch (error) {
+    // Same fail-soft contract as readRejectionRows: absent gate tables on an
+    // older database degrade to the other sources, never break the claim.
+    if (error instanceof Error && error.message.includes('no such table')) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function readTaskRole(metadataRaw: string | null): string | null {
+  if (!metadataRaw) return null;
+  try {
+    const parsed = JSON.parse(metadataRaw) as unknown;
+    if (!isRecord(parsed)) return null;
+    return typeof parsed.role === 'string' && parsed.role.length > 0
+      ? parsed.role
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function summarizeGateRejection(row: GateRejectionRow): string {
+  const findings = parseFindingKeys(row.finding_keys);
+  const detail = findings.length > 0
+    ? findings.join(' | ')
+    : `gate ${row.gate_ref} (${row.gate_phase}) rejected the submission`;
+  const summary = `${row.gate_ref}/${row.gate_phase} REJECTED: ${detail}`;
+  return summary.length > MAX_GATE_SUMMARY_LENGTH
+    ? summary.slice(0, MAX_GATE_SUMMARY_LENGTH)
+    : summary;
+}
+
+/**
+ * Decode finding_keys into readable messages. The chain stores a JSON array of
+ * `<provider>:<code>::<message>` strings; the message after the last '::' is
+ * the human-readable diagnosis (the same text the engine prints in its
+ * recovery-budget lines). Fail-closed: any malformed shape yields no entries.
+ */
+function parseFindingKeys(raw: string | null): string[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const messages: string[] = [];
+  for (const item of parsed) {
+    if (typeof item !== 'string' || item.length === 0) continue;
+    const marker = item.lastIndexOf('::');
+    const message = marker >= 0 ? item.slice(marker + 2) : item;
+    if (message.length > 0) messages.push(message.trim());
+  }
+  return messages.slice(0, 3);
 }
 
 function summarizeRejection(row: RejectionRow): string {

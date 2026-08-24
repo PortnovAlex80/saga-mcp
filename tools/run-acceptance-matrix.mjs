@@ -272,6 +272,10 @@ const GROUPS = {
       'tests/lifecycle/ask-protocol.test.mjs',
       'tests/lifecycle/atomic-release.test.mjs',
       'tests/lifecycle/claim-dependency.test.mjs',
+      // STAGE-23 feedback-loop fix: the gate-rejection source of the episodic
+      // task memory (third durable source — repair_required gate decisions
+      // for the task's workplace+role with decoded finding text).
+      'tests/lifecycle/task-recovery-memory-gate-source.test.mjs',
       'tests/lifecycle/model-selector.test.mjs',
       'tests/lifecycle/pipeline-worker-activity-label.test.mjs',
       'tests/lifecycle/project-delete.test.mjs',
