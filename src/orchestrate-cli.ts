@@ -583,6 +583,24 @@ async function main() {
           continue;
         }
 
+        if (workplaceState.otherNonTerminalCount > 0) {
+          // ADR-047 Decision 5, as written (Elite-9 incident, 2026-08-24):
+          // the bounded empty-queue streak is lawful ONLY when NOTHING
+          // explains the pause. Non-terminal stage work IS an explanation —
+          // the 8-idle-cards firing showed "empty dispatch result" can mean
+          // "the queue holds cards filtered out by the admission/dependency
+          // gates", which is waiting material, not emptiness. The streak
+          // must not count cycles explained by non-terminal work.
+          emptyDispatchStreak = 0;
+          enginePhaseMark('wait-nonterminal-work');
+          engineLog(
+            `[orchestrate-cli] ${workplaceState.otherNonTerminalCount} non-terminal workplace(s) `
+            + `(${JSON.stringify(workplaceState.states)}) not claimable this cycle — waiting`,
+          );
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+
         // No active execution and no kernel-owned transition is pending. The
         // queue may simply be between node projections, so re-run the lifecycle
         // a bounded number of times. Persistent queued/dependency state then
