@@ -22,7 +22,20 @@ import { createFormalizationContractValidator } from '../../modules/formalizatio
 import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contract.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
-const DISCOVERY_MODULE_REF = 'product-discovery@3.0.2';
+// Discovery submission policies are registered for the CANONICAL module
+// version (product-delivery-module-contracts.ts DISCOVERY_PROCESS_MODULE_REF,
+// 4.0.0 since ADR-095 Phase 4 / eaa98e34) AND the pre-Phase-4 3.0.2 — the
+// same compatibility fan DEVELOPMENT_MODULE_REFS uses below. eaa98e34 bumped
+// the lifecycle module contract but missed this wiring site, so every fresh
+// Factory start failed its first discovery worker_done with
+// SUBMISSION_VALIDATION_POLICY_MISSING: product-discovery@4.0.0/produce-proposal
+// (counterexample: snapshot corpus port run 2026-08-24). A literal fan — not
+// an import of the contracts constant — keeps the application->lifecycles
+// dependency direction untouched (matches the DEVELOPMENT list style).
+const DISCOVERY_MODULE_REFS = [
+  'product-discovery@3.0.2',
+  'product-discovery@4.0.0',
+] as const;
 const DEVELOPMENT_MODULE_REFS = [
   'solution-development@1.1.0',
   'solution-development@1.2.0',
@@ -92,14 +105,16 @@ export function wireSubmissionValidation(
 
   // --- Discovery policies ---
   for (const nodeId of ['produce-proposal', 'assess-readiness']) {
-    policyRegistry.register(
-      DISCOVERY_MODULE_REF,
-      nodeId,
-      {
-        mode: 'none',
-        rationale: 'typed Production Cell product; validated by cell gate and Discovery settlement',
-      },
-    );
+    for (const moduleRef of DISCOVERY_MODULE_REFS) {
+      policyRegistry.register(
+        moduleRef,
+        nodeId,
+        {
+          mode: 'none',
+          rationale: 'typed Production Cell product; validated by cell gate and Discovery settlement',
+        },
+      );
+    }
   }
 
   // Development workers publish typed JSON products. Their schema/cardinality

@@ -4,6 +4,15 @@
 // (factory-snapshots/stage11-replay-fitness, captured 2026-08-19) against the
 // CURRENT factory through the real orchestrate-cli / MCP-gateway seam.
 //
+// HARNESS NATURE (scoped claim): this is a replay/corpus REGRESSION — it
+// proves the current factory still routes, gates and settles the captured
+// byte-exact material through the same transition trace. It is NOT a semantic
+// product oracle (nothing here asserts the PRD/SRS content is *good* — only
+// that it is the captured, gate-accepted bytes) and NOT a replacement for a
+// real worker spawn: the scripted executor substitutes the inference spawn
+// seam only (CONVEYOR §23 L3 rule 9); assignment, desks, MCP/tool authority,
+// submission, gates, effects and persistence stay production.
+//
 // Every text below is captured material served from the committed corpus
 // tests/fixtures/golden-corpus/stage11-docking (harvested by
 // tools/harvest-golden-corpus.mjs). Nothing is hand-written prose except the
@@ -14,7 +23,7 @@
 // can terminate (exit 0) after the tape crosses into solution-development.
 //
 // Covered cells (captured, byte-exact replay):
-//   product-discovery@3.0.2        produce-proposal, assess-readiness
+//   product-discovery@4.0.0        produce-proposal, assess-readiness
 //   solution-formalization@1.0.0   define-product-contract (9 artifacts, 8 traces)
 //                                  model-use-cases (2 artifacts, 6 traces)
 //                                  define-acceptance-contract (5 artifacts, 14 traces)
@@ -38,6 +47,18 @@
 // depend on (artifact ids, trace ids, candidate-set refs) against the
 // captured values and throw on mismatch — a replay drift is a loud failure,
 // never a silent divergence.
+//
+// Documented grammar relays (production postdates the capture; every relay
+// derives the new-grammar field STRICTLY from runtime authority and is
+// verified by a dedicated parsed-content oracle in the reach test):
+//   - brief artifact metadata: brief_payload + constraint dispositions;
+//   - AC/SRS coverage: covered_constraint_ids (artifact metadata + one §D2
+//     stanza field on the SRS document);
+//   - reviewer verdicts: subject_candidate_set_ref rebound to the CURRENT
+//     runtime author candidate (material stays byte-exact);
+//   - planner proposals: acceptanceCriterionIds -> acceptanceCriterionKeys
+//     (atomic `artifactId:code` identities of the same AC artifacts, read
+//     from the runtime frozen development case — ADR-088 CC-GAP-6).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -45,38 +66,98 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { actions } from './scenario-engine.mjs';
+import { sha256Hex } from '../../dist/shared/canonical-json.js';
+import { buildOrderConstraintRegisterV2 } from '../../dist/shared/constraint-register.js';
+import {
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+  RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+} from '../../dist/process-modules/lifecycles/product-build-lifecycle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CORPUS_ROOT = path.resolve(__dirname, '../fixtures/golden-corpus/stage11-docking');
 
 const FRM = 'solution-formalization@1.0.0';
-const DISC = 'product-discovery@3.0.2';
+const DISC = 'product-discovery@4.0.0';
 const DEV = 'solution-development@1.4.4';
 
-// --- corpus access (fail-closed; the corpus is the ONLY text source) ---
+// --- corpus access (fail-closed; the corpus is the ONLY text source) -------
+//
+// Every read is content-verified against the manifest BEFORE the bytes can
+// reach a handler: a missing file is a typed SNAPSHOT_CORPUS_FILE_MISSING, a
+// corrupted byte is a typed SNAPSHOT_CORPUS_DRIFT (digest pair in the
+// message). The negative suite (snapshot-corpus-negative.test.mjs) pins each
+// failure mode; a corrupted corpus therefore turns every corpus-hosted suite
+// red at load time instead of replaying decoy material.
 
-function corpusFile(relative) {
-  return JSON.parse(readFileSync(path.join(CORPUS_ROOT, relative), 'utf8'));
-}
-
-function corpusText(relative) {
+function readCorpusBytes(root, relative) {
+  let text;
+  try {
+    text = readFileSync(path.join(root, relative), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(`SNAPSHOT_CORPUS_FILE_MISSING: ${path.join(root, relative)}`);
+    }
+    throw error;
+  }
   // CRLF-safe load: a Windows checkout may materialize the committed LF bytes
   // as CRLF (core.autocrlf). The captured documents are LF; normalize back so
   // content hashes stay byte-stable regardless of checkout platform.
-  return readFileSync(path.join(CORPUS_ROOT, relative), 'utf8').replace(/\r\n/g, '\n');
+  return text.replace(/\r\n/g, '\n');
 }
 
-function productFile(node, schema, ordinal) {
-  return corpusFile(`products/${node}.${schema}.${ordinal}.json`);
+export function createCorpusAccess(root) {
+  const manifestText = readCorpusBytes(root, 'manifest.json');
+  let MANIFEST;
+  try {
+    MANIFEST = JSON.parse(manifestText);
+  } catch (error) {
+    throw new Error(`SNAPSHOT_CORPUS_JSON_INVALID: manifest.json (${error.message})`);
+  }
+  const corpusFile = relative => {
+    const text = readCorpusBytes(root, relative);
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      throw new Error(`SNAPSHOT_CORPUS_JSON_INVALID: ${relative} (${error.message})`);
+    }
+  };
+  // Product bytes are verified against the manifest's sourcePayloadHash —
+  // the ORIGINAL factory payload_hash (sha256 of the canonical payload), not
+  // the pretty-printed file bytes. sha256Hex(parsed) reproduces it, so the
+  // check survives review-friendly re-serialization.
+  const productFile = (node, schema, ordinal) => {
+    const entry = MANIFEST.products.find(product => product.nodeId === node
+      && product.schemaId === schema && product.ordinal === ordinal);
+    if (!entry) {
+      throw new Error(`SNAPSHOT_CORPUS_PRODUCT_MISSING: ${node}/${schema}#${ordinal}`);
+    }
+    const payload = corpusFile(entry.file);
+    const digest = sha256Hex(payload);
+    if (digest !== entry.sourcePayloadHash) {
+      throw new Error(
+        `SNAPSHOT_CORPUS_DRIFT: product ${entry.file} hashes ${digest}, corpus says ${entry.sourcePayloadHash}`,
+      );
+    }
+    return payload;
+  };
+  const documentFor = sourcePath => {
+    const entry = MANIFEST.documents.find(doc => doc.source === sourcePath);
+    if (!entry) throw new Error(`SNAPSHOT_CORPUS_DOCUMENT_MISSING: ${sourcePath}`);
+    const text = readCorpusBytes(root, entry.file);
+    const digest = createHash('sha256').update(text, 'utf8').digest('hex');
+    if (digest !== entry.contentHash) {
+      throw new Error(
+        `SNAPSHOT_CORPUS_DRIFT: document ${sourcePath} (${entry.file}) hashes ${digest}, corpus says ${entry.contentHash}`,
+      );
+    }
+    return text;
+  };
+  return { root, manifest: MANIFEST, corpusFile, productFile, documentFor };
 }
 
-const MANIFEST = corpusFile('manifest.json');
-
-function documentFor(sourcePath) {
-  const entry = MANIFEST.documents.find(doc => doc.source === sourcePath);
-  if (!entry) throw new Error(`SNAPSHOT_CORPUS_DOCUMENT_MISSING: ${sourcePath}`);
-  return corpusText(entry.file);
-}
+const corpusAccess = createCorpusAccess(CORPUS_ROOT);
+const { corpusFile, productFile, documentFor } = corpusAccess;
+const MANIFEST = corpusAccess.manifest;
 
 // Artifact specs joined from the corpus: manifest.artifacts carries
 // type/code/title/path; the node's bundle products carry each artifact's
@@ -216,6 +297,132 @@ function derivedBriefPayload(task) {
   };
 }
 
+// ADR-090 (CC-IC-2) constraint-disposition gate: the CURRENT factory also
+// requires brief metadata to dispose every constraint-register entry in the
+// strict v2 grammar, pinned to the register digest (this too post-dates the
+// capture — the same derived-metadata discipline as brief_payload above).
+// The register is recomputed from the CAPTURED proposal payload the runtime
+// formalization case embeds (the tape replays those bytes, and the readiness
+// handler above already proves the runtime digest equals the captured one).
+// Dispositions are derived strictly from captured material:
+//   - open-question entries (the captured proposal's unknowns) are
+//     `resolved` citing the captured readiness assessment's
+//     unknowns_manageability dimension — the real NN product that adjudicated
+//     them (fail-closed: the dimension must exist and be 'sufficient');
+//   - every other entry is `accepted` — the captured FR/SRS work carries it.
+// No invented prose; v2 `waived` is typed-unavailable and never used.
+function constraintRegisterOf(task) {
+  const formalizationCase = findObject(
+    metaOf(task).process_node_input ?? metaOf(task),
+    value => value.schemaVersion === 'factory.formalization-case.v1',
+  );
+  if (!formalizationCase) return null;
+  const payload = formalizationCase.discoveryProposalPayload ?? {};
+  return buildOrderConstraintRegisterV2({
+    drafts: payload.order_constraints,
+    unknowns: payload.unknowns,
+    injections: [{
+      table: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE,
+      tableRef: RUNNABLE_LOCAL_OBLIGATION_INJECTION_TABLE_REF,
+    }],
+  });
+}
+
+function derivedConstraintDispositions(task) {
+  const register = constraintRegisterOf(task);
+  if (!register) return null;
+  const manageability = READINESS.dimension_assessments?.unknowns_manageability;
+  if (!manageability || manageability.status !== 'sufficient') {
+    throw new Error(
+      'SNAPSHOT_DERIVED_DISPOSITION_INVALID: captured readiness assessment has no '
+      + 'sufficient unknowns_manageability dimension to cite as open-question resolution evidence',
+    );
+  }
+  const dispositions = {};
+  for (const entry of register.constraints) {
+    dispositions[entry.id] = entry.kind === 'open-question'
+      ? {
+        disposition: 'resolved',
+        evidenceRef: 'factory.discovery-readiness-assessment.v2:unknowns_manageability',
+      }
+      : { disposition: 'accepted' };
+  }
+  return {
+    constraint_dispositions: dispositions,
+    constraint_dispositions_register_digest: register.registerDigest,
+  };
+}
+
+// The ADR-088/090 acceptance coverage relay: the CURRENT factory requires the AC
+// work to carry covered_constraint_ids for every non-waived register entry
+// (on v2 that is ALL of them — resolved/deferred stay obligations). This too
+// postdates the capture; the derivation round-trips through authority — the
+// ids are read back from the ACCEPTED BRIEF's dispositions (the same
+// worker-visible source golden-path uses), never invented locally.
+// Fail-closed by construction: before the define-product-contract cell has
+// sealed and accepted the brief there is no disposition source, and this
+// throws SNAPSHOT_DERIVED_COVERAGE_INVALID — the tape cannot run the
+// acceptance/architecture cells ahead of their sealed predecessor, and it
+// never invents the predecessor material (no decoy adoption).
+export async function coveredConstraintIdsFromBrief(client, epicId) {
+  const briefs = await actions.findAcceptedArtifacts(client, epicId, 'brief');
+  for (const brief of briefs) {
+    let metadata = brief.metadata;
+    if (typeof metadata === 'string') {
+      try { metadata = JSON.parse(metadata); } catch { metadata = {}; }
+    }
+    const dispositions = metadata?.constraint_dispositions;
+    if (!dispositions || typeof dispositions !== 'object') continue;
+    return Object.entries(dispositions)
+      .filter(([, value]) => value && value.disposition !== 'waived')
+      .map(([id]) => id)
+      .sort();
+  }
+  throw new Error('SNAPSHOT_DERIVED_COVERAGE_INVALID: accepted brief carries no constraint dispositions');
+}
+
+// The SRS §D2 back-edge (also postdates the capture): the union of the §D2
+// stanzas' covered_constraint_ids must cover the register. Unlike the AC
+// relay (artifact metadata), this gate reads the SRS FILE BYTES, so the
+// replayed SRS document is the captured text PLUS exactly one derived stanza
+// field — the golden-path relay shape (full non-waived id list on the FIRST
+// stanza). Everything else in the document stays byte-exact; the derivation
+// is asserted (derived text minus the injected line === captured text).
+// Knock-on effects, all documented in the test:
+//   - artifact 17's contentHash is the DERIVED document hash (the factory
+//     hashes the file server-side; a caller digest is never trusted);
+//   - the architecture bundle therefore carries the derived hash for
+//     artifact 17 and is compared by parsed content modulo that one hash.
+export function deriveArchitectureSrsText(capturedText, coveredIds) {
+  if (!Array.isArray(coveredIds) || coveredIds.length === 0) {
+    throw new Error('SNAPSHOT_DERIVED_SRS_INVALID: no covered constraint ids to relay');
+  }
+  const firstStanza = capturedText.indexOf('\n- ac:');
+  if (firstStanza < 0) {
+    throw new Error('SNAPSHOT_DERIVED_SRS_INVALID: captured SRS has no §D2 stanza');
+  }
+  let stanzaEnd = capturedText.indexOf('\n- ac:', firstStanza + 1);
+  if (stanzaEnd < 0) stanzaEnd = capturedText.indexOf('```', firstStanza);
+  if (stanzaEnd < 0) {
+    throw new Error('SNAPSHOT_DERIVED_SRS_INVALID: cannot locate the end of the first §D2 stanza');
+  }
+  const injected = `\n  covered_constraint_ids: ${coveredIds.join(', ')}`;
+  return capturedText.slice(0, stanzaEnd) + injected + capturedText.slice(stanzaEnd);
+}
+
+export function stripDerivedSrsCoverageLine(text) {
+  // The exact inverse of the injection above — used by fail-closed checks to
+  // prove the derived document is the captured document plus ONLY that line.
+  const stripped = text.replace(
+    /\n  covered_constraint_ids: ord-c-\d{3,}(?:, ord-c-\d{3,})*\n/,
+    '\n',
+  );
+  if (stripped === text) {
+    throw new Error('SNAPSHOT_DERIVED_SRS_INVALID: derived line not found to strip');
+  }
+  return stripped;
+}
+
 const discoveryProposal = async ({ client, prompt }) => {
   await actions.submitProduct(client, 'factory.discovery-proposal.v1', PROPOSAL);
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
@@ -251,7 +458,7 @@ const discoveryReadiness = async ({ client, task, prompt }) => {
 // Formalization artifact cells (captured; files + artifact_create + trace_add)
 // ---------------------------------------------------------------------------
 
-async function replayArtifactCell({ client, task, prompt, repoPath }, node, firstArtifact, lastArtifact, firstTrace, lastTrace) {
+async function replayArtifactCell({ client, task, prompt, repoPath }, node, firstArtifact, lastArtifact, firstTrace, lastTrace, options = {}) {
   const projectId = task.project_id || 1;
   const epicId = task.epic_id || 1;
   const finalHashes = finalContentHashes(node);
@@ -261,18 +468,23 @@ async function replayArtifactCell({ client, task, prompt, repoPath }, node, firs
   }
 
   // Write the captured document bytes (idempotent for anchor-shared files),
-  // then create artifacts in captured id order. Each document's bytes must
-  // hash to the captured artifact contentHash — fail-closed corpus check.
+  // then create artifacts in captured id order. documentFor is the fail-closed
+  // read: it already verified the bytes hash to the captured contentHash.
+  // EXCEPTION (documented derivation, see deriveArchitectureSrsText): the
+  // SRS gets exactly one derived §D2 stanza field; the write check proves
+  // derived-minus-line === captured bytes instead.
   const written = new Set();
   for (const spec of specs) {
     const filePath = spec.path.split('#')[0];
     if (repoPath && !written.has(filePath)) {
       const source = `artifacts/requirements/${filePath.replace(/^docs\/requirements\//, '')}`;
-      const body = documentFor(source);
-      const digest = createHash('sha256').update(body, 'utf8').digest('hex');
-      const expected = MANIFEST.documents.find(doc => doc.source === source)?.contentHash;
-      if (expected && digest !== expected) {
-        throw new Error(`SNAPSHOT_CORPUS_DRIFT: document ${source} hashes ${digest}, corpus says ${expected}`);
+      const capturedBody = documentFor(source);
+      let body = capturedBody;
+      if (options.srsCoverage && spec.type === 'SRS') {
+        body = deriveArchitectureSrsText(capturedBody, options.srsCoverage);
+        if (stripDerivedSrsCoverageLine(body) !== capturedBody) {
+          throw new Error(`SNAPSHOT_DERIVED_SRS_DRIFT: derived SRS for ${source} is not captured-bytes-plus-one-line`);
+        }
       }
       actions.writeFile(repoPath, filePath, body);
       written.add(filePath);
@@ -289,7 +501,13 @@ async function replayArtifactCell({ client, task, prompt, repoPath }, node, firs
       status: 'draft',
       content_hash: spec.contentHash,
       project_repository_id: 1,
-      ...(spec.type === 'brief' ? { metadata: { brief_payload: derivedBriefPayload(task) } } : {}),
+      ...(spec.type === 'brief' ? {
+        metadata: {
+          brief_payload: derivedBriefPayload(task),
+          ...(derivedConstraintDispositions(task) ?? {}),
+        },
+      } : {}),
+      ...(options.acCoverage && spec.type === 'AC' ? { metadata: { covered_constraint_ids: options.acCoverage } } : {}),
     });
     const createdId = created.artifact?.id ?? created.id;
     if (Number(createdId) !== spec.id) {
@@ -327,12 +545,19 @@ const formalizationProductContract = ctx => replayArtifactCell(
 const formalizationUseCases = ctx => replayArtifactCell(
   ctx, 'model-use-cases', 10, 11, 9, 14,
 );
-const formalizationAcceptance = ctx => replayArtifactCell(
+const formalizationAcceptance = async ctx => replayArtifactCell(
   ctx, 'define-acceptance-contract', 12, 16, 15, 28,
+  // ADR-090 coverage relay (postdates the capture): the derived
+  // covered_constraint_ids read back from the accepted brief's dispositions.
+  { acCoverage: await coveredConstraintIdsFromBrief(ctx.client, ctx.task.epic_id || 1) },
 );
 // Architecture replays only the ACCEPTED (v2) round — see file header.
-const formalizationArchitecture = ctx => replayArtifactCell(
+// The SRS bytes carry the derived §D2 coverage relay (documented deviation:
+// the coverage gate postdates the capture), so the runtime bundle's
+// artifact-17 contentHash is the DERIVED hash. Everything else byte-exact.
+const formalizationArchitecture = async ctx => replayArtifactCell(
   ctx, 'define-architecture-contract', 17, 17, 29, 29,
+  { srsCoverage: await coveredConstraintIdsFromBrief(ctx.client, ctx.task.epic_id || 1) },
 );
 
 // ---------------------------------------------------------------------------
@@ -350,27 +575,161 @@ const reconciliationAuthor = async ({ client, prompt }) => {
 };
 
 // ---------------------------------------------------------------------------
-// Reviewers (captured verdicts, byte-exact via ref-consistency oracle)
+// Reviewers (captured verdicts; material verified byte-exact, subject ref
+// rebound to the CURRENT runtime candidate — documented deviation)
 // ---------------------------------------------------------------------------
+//
+// Why the rebinding: the captured verdict's subject_candidate_set_ref embeds
+// the material hash of the CAPTURED author revision. Current production
+// (ADR-053 cutover) seals the submission-validation-receipt into the same
+// Workplace production revision (the shift-left worker_done gate postdates
+// the capture), so the runtime revision/candidate ref is STRUCTURALLY
+// different from the captured one even when the replayed material is
+// byte-exact. Presenting the stale captured ref would be exactly the
+// stale-authority presentation ADR-053 forbids. The tape therefore:
+//   1. verifies the runtime author candidate's product members are
+//      byte-exact against the corpus (per-schema digest multiset equality —
+//      a MATERIAL oracle, stronger than comparing a derived ref string);
+//   2. submits the captured verdict with ONLY subject_candidate_set_ref
+//      rebound to the runtime candidate.
+// The test's product-hash assertion handles this field with the same
+// modulo-subject-ref parsed-content oracle (see snapshot-reach-development).
 
-function capturedReviewer(verdictNode, schema = 'factory.review-verdict.v1', ordinal = 1) {
+function verifyAuthorMaterialByteExact(node, candidate, options = {}) {
+  const expected = MANIFEST.products
+    .filter(product => product.nodeId === node)
+    .filter(product => product.schemaId !== 'factory.artifact-ref.v1'
+      && !product.schemaId.includes('review-verdict'))
+    // The architecture node carries TWO captured bundles (rejected v1 round +
+    // accepted v2 round); only the ACCEPTED round is replayed, so the v2
+    // bundle is the expected member.
+    .filter(product => !(options.bundleOrdinal
+      && product.schemaId === 'factory.formalization-architecture-bundle.v1'
+      && product.ordinal !== options.bundleOrdinal));
+  const groupBySchema = products => {
+    const grouped = new Map();
+    for (const product of products) {
+      const list = grouped.get(product.schemaId) || [];
+      list.push(product);
+      grouped.set(product.schemaId, list);
+    }
+    return grouped;
+  };
+  const expectedBySchema = groupBySchema(expected.map(p => ({ schemaId: p.schemaId, digest: p.sourcePayloadHash })));
+  const actualBySchema = groupBySchema((candidate.product_refs || []).map(p => ({ schemaId: p.schemaId, digest: p.digest })));
+  for (const [schema, expectedList] of expectedBySchema) {
+    const actualList = actualBySchema.get(schema) || [];
+    const expectedSorted = expectedList.map(e => e.digest).sort();
+    const actualSorted = actualList.map(a => a.digest).sort();
+    if (actualSorted.length !== expectedSorted.length
+      || actualSorted.some((digest, index) => digest !== expectedSorted[index])) {
+      if (options.srsBundleModuloDerivedHash
+        && schema === 'factory.formalization-architecture-bundle.v1'
+        && actualSorted.length === expectedSorted.length) {
+        // The architecture bundle carries the DERIVED SRS contentHash for
+        // artifact 17 (see deriveArchitectureSrsText). Digest equality is
+        // impossible by construction; the parsed-content oracle below
+        // verifies it precisely instead of comparing the derived digest.
+        continue;
+      }
+      throw new Error(
+        `SNAPSHOT_REPLAY_DRIFT: author material for ${node}/${schema} is not byte-exact `
+        + `— runtime digests [${actualSorted.join(',')}] != corpus [${expectedSorted.join(',')}]`,
+      );
+    }
+  }
+  // No foreign material: every runtime member schema must be a captured schema.
+  for (const schema of actualBySchema.keys()) {
+    if (!expectedBySchema.has(schema)) {
+      throw new Error(
+        `SNAPSHOT_REPLAY_DRIFT: author candidate for ${node} carries non-captured material ${schema}`,
+      );
+    }
+  }
+}
+
+// Parsed-content oracle for the architecture bundle: byte-equal to the
+// captured bundle modulo artifact 17's contentHash, which must be exactly
+// the hash of the derived SRS document (captured bytes + one §D2 stanza
+// field). Everything else — artifact ids, types, statuses, traces — must be
+// byte-exact.
+async function verifyArchitectureBundleParsed(client, node, candidate, task) {
+  const bundleRef = (candidate.product_refs || []).find(
+    p => p.schemaId === 'factory.formalization-architecture-bundle.v1',
+  );
+  if (!bundleRef) throw new Error('SNAPSHOT_REPLAY_DRIFT: architecture bundle missing from author candidate');
+  const read = await client.callJson('product_read', {
+    schema_id: bundleRef.schemaId, ref: bundleRef.ref, digest: bundleRef.digest,
+  });
+  const runtime = read.content || read;
+  const corpusEntry = MANIFEST.products.find(
+    product => product.nodeId === node
+      && product.schemaId === 'factory.formalization-architecture-bundle.v1'
+      && product.ordinal === 2,
+  );
+  const captured = corpusFile(corpusEntry.file);
+  // The covered ids round-trip through authority: read back from the ACCEPTED
+  // brief's dispositions (the reviewer task metadata carries no formalization
+  // case envelope — the same worker-visible source the author used).
+  const coveredIds = await coveredConstraintIdsFromBrief(client, task.epic_id || 1);
+  if (!Array.isArray(coveredIds) || coveredIds.length === 0) {
+    throw new Error('SNAPSHOT_DERIVED_SRS_INVALID: no covered constraint ids on the accepted brief');
+  }
+  const capturedSrs = documentFor('artifacts/requirements/REQ-001/12-SRS.md');
+  const derivedSrsHash = createHash('sha256')
+    .update(deriveArchitectureSrsText(capturedSrs, coveredIds), 'utf8').digest('hex');
+  const runtimeArtifacts = runtime.artifacts || [];
+  const capturedArtifacts = captured.artifacts || [];
+  if (runtimeArtifacts.length !== capturedArtifacts.length) {
+    throw new Error(
+      `SNAPSHOT_REPLAY_DRIFT: architecture bundle artifact count ${runtimeArtifacts.length} != captured ${capturedArtifacts.length}`,
+    );
+  }
+  for (let index = 0; index < capturedArtifacts.length; index += 1) {
+    const runtimeArtifact = runtimeArtifacts[index];
+    const capturedArtifact = capturedArtifacts[index];
+    const { contentHash: runtimeHash, ...runtimeRest } = runtimeArtifact;
+    const { contentHash: capturedHash, ...capturedRest } = capturedArtifact;
+    if (JSON.stringify(runtimeRest) !== JSON.stringify(capturedRest)) {
+      throw new Error(
+        `SNAPSHOT_REPLAY_DRIFT: architecture bundle artifact ${capturedArtifact.artifactId} differs beyond the contentHash`,
+      );
+    }
+    if (Number(capturedArtifact.artifactId) === 17) {
+      if (runtimeHash !== derivedSrsHash) {
+        throw new Error(
+          `SNAPSHOT_REPLAY_DRIFT: artifact 17 contentHash ${runtimeHash} != derived SRS hash ${derivedSrsHash}`,
+        );
+      }
+    } else if (runtimeHash !== capturedHash) {
+      throw new Error(
+        `SNAPSHOT_REPLAY_DRIFT: architecture bundle artifact ${capturedArtifact.artifactId} contentHash ${runtimeHash} != captured ${capturedHash}`,
+      );
+    }
+  }
+  const { artifacts: _ra, ...runtimeRestBundle } = runtime;
+  const { artifacts: _ca, ...capturedRestBundle } = captured;
+  if (JSON.stringify(runtimeRestBundle) !== JSON.stringify(capturedRestBundle)) {
+    throw new Error('SNAPSHOT_REPLAY_DRIFT: architecture bundle differs beyond artifact contentHashes');
+  }
+}
+
+function capturedReviewer(verdictNode, schema = 'factory.review-verdict.v1', ordinal = 1, options = {}) {
   return async ({ client, task, prompt }) => {
     const verdict = productFile(verdictNode, schema, ordinal);
     const workplaceRef = metaOf(task).workplace_ref;
     if (!workplaceRef) throw new Error('SNAPSHOT_WORKPLACE_REF_MISSING');
     const candidate = await actions.readAuthorCandidate(client, workplaceRef);
-    // The captured verdict's subject ref embeds the content hash of the
-    // author candidate. If the author replay is byte-exact, the runtime ref
-    // IS the captured ref — anything else is replay drift.
-    if (candidate.candidate_set_ref !== verdict.subject_candidate_set_ref) {
-      throw new Error(
-        `SNAPSHOT_REPLAY_DRIFT: runtime candidate ref ${candidate.candidate_set_ref} `
-        + `!= captured ${verdict.subject_candidate_set_ref}`,
-      );
+    verifyAuthorMaterialByteExact(verdictNode, candidate, options);
+    if (options.srsBundleModuloDerivedHash) {
+      await verifyArchitectureBundleParsed(client, verdictNode, candidate, task);
     }
-    await actions.submitProduct(client, schema, verdict);
+    await actions.submitProduct(client, schema, {
+      ...verdict,
+      subject_candidate_set_ref: candidate.candidate_set_ref,
+    });
     await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
-      `snapshot replay: captured review verdict (${verdict.verdict})`);
+      `snapshot replay: captured review verdict (${verdict.verdict}), subject rebound to the current candidate`);
   };
 }
 
@@ -384,13 +743,82 @@ const PLANNER_PROPOSALS = [
   productFile('plan-task-graph', 'factory.development-task-graph-proposal.v1', 3),
 ];
 
+// ADR-088 (CC-GAP-6) planner grammar relay (postdates the capture): the
+// CURRENT proposal contract requires per-item acceptanceCriterionKeys —
+// atomic `${artifactId}:${code}` criterion identities — while the capture
+// predates the relay and references whole AC artifacts by id
+// (acceptanceCriterionIds; artifacts 12-16 = AC-1..AC-5, one criterion per
+// accepted AC artifact). Same derived-metadata discipline as the SRS §D2
+// relay above: the substitution is derived STRICTLY from the RUNTIME frozen
+// development case carried by the planner task itself — each captured
+// artifact id maps to the exact criterion key of that artifact in the case.
+// Fail-closed: an id absent from the case, a null/missing criterion code, or
+// an item referencing nothing is a typed SNAPSHOT_DERIVED_PLANNER_KEYS_*
+// error — the tape never invents criterion coverage, and it cannot run the
+// planner before the acceptance cell sealed the AC artifacts (the case would
+// not exist). Everything else in the captured proposal stays byte-exact;
+// the reach test verifies this substitution with a dedicated parsed-content
+// oracle (see (c4) in snapshot-reach-development.test.mjs).
+export function plannerProposalForCurrentGrammar(capturedProposal, task) {
+  const developmentCase = findObject(
+    metaOf(task),
+    value => value.schemaVersion === 'factory.development-case.v1',
+  );
+  if (!developmentCase || !Array.isArray(developmentCase.acceptanceCriteria)) {
+    throw new Error(
+      'SNAPSHOT_DERIVED_PLANNER_KEYS_INVALID: planner task metadata carries no frozen development case',
+    );
+  }
+  const keyByArtifactId = new Map();
+  for (const criterion of developmentCase.acceptanceCriteria) {
+    if (!Number.isInteger(criterion?.artifactId)) continue;
+    if (typeof criterion?.code !== 'string' || criterion.code.length === 0) {
+      throw new Error(
+        `SNAPSHOT_DERIVED_PLANNER_KEYS_INVALID: criterion of artifact ${criterion.artifactId} has no code (a null-code criterion cannot be referenced by the current proposal grammar)`,
+      );
+    }
+    keyByArtifactId.set(criterion.artifactId, `${criterion.artifactId}:${criterion.code}`);
+  }
+  if (keyByArtifactId.size === 0) {
+    throw new Error(
+      'SNAPSHOT_DERIVED_PLANNER_KEYS_INVALID: frozen case carries no acceptance criteria',
+    );
+  }
+  const translateItem = item => {
+    const ids = item.acceptanceCriterionIds;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new Error(
+        `SNAPSHOT_DERIVED_PLANNER_KEYS_INVALID: captured item ${item.key} references no acceptance artifacts`,
+      );
+    }
+    const keys = [];
+    for (const id of ids) {
+      const key = keyByArtifactId.get(Number(id));
+      if (!key) {
+        throw new Error(
+          `SNAPSHOT_DERIVED_PLANNER_KEYS_INVALID: captured artifact id ${id} (item ${item.key}) is not an accepted criterion of the frozen case`,
+        );
+      }
+      keys.push(key);
+    }
+    const { acceptanceCriterionIds: _capturedIds, ...rest } = item;
+    return { ...rest, acceptanceCriterionKeys: [...new Set(keys)].sort() };
+  };
+  return {
+    ...capturedProposal,
+    implementationItems: capturedProposal.implementationItems.map(translateItem),
+    verificationItems: capturedProposal.verificationItems.map(translateItem),
+  };
+}
+
 const developmentPlan = async ({ client, task, prompt, attempt }) => {
   // Captured loop: proposal #1 gate-rejected, #2 gate-rejected, #3 accepted.
   // Attempt->ordinal mapping cycles so a durable lease-recovery attempt can
   // never strand the cell; the gate still only accepts proposal #3's bytes.
   const ordinal = ((attempt - 1) % PLANNER_PROPOSALS.length) + 1;
   await actions.submitProduct(
-    client, 'factory.development-task-graph-proposal.v1', PLANNER_PROPOSALS[ordinal - 1],
+    client, 'factory.development-task-graph-proposal.v1',
+    plannerProposalForCurrentGrammar(PLANNER_PROPOSALS[ordinal - 1], task),
   );
   await actions.done(client, Number(prompt.task_id), prompt.worker_id, prompt.execution_id,
     `snapshot replay: captured planner proposal #${ordinal} (attempt ${attempt})`);
@@ -494,15 +922,26 @@ const developmentVerify = async ({ client, task, prompt }) => {
       && typeof value.candidateHash === 'string',
   );
   if (!candidate) throw new Error('frozen candidate not found in verification input');
-  const acId = Number(item.acceptanceCriterionIds?.[0] || task.verification_target_artifact_id || 0);
-  if (!acId) throw new Error('verification acceptanceCriterionId missing');
+  // ADR-088 (CC-GAP-6) grammar relay (postdates the capture): the current
+  // verification work item and the v2 evidence product speak the ATOMIC
+  // criterion key (`artifactId:code`), not the captured whole-artifact id.
+  // The key is read from the runtime graph item the task was materialized
+  // from — fail-closed on shape; never a legacy-id fallback that could
+  // silently verify the wrong criterion.
+  const criterionKey = item.acceptanceCriterionKeys?.[0];
+  if (typeof criterionKey !== 'string' || !/^[1-9]\d*:.+$/.test(criterionKey)) {
+    throw new Error(
+      `verification item ${item.key} carries no atomic acceptance criterion key`,
+    );
+  }
+  const acId = Number(criterionKey.slice(0, criterionKey.indexOf(':')));
   const acResp = await client.callJson('artifact_get', { id: acId });
   const ac = acResp.artifact || acResp;
   const acceptedCriterionHash = ac.accepted_hash || ac.content_hash;
   if (!acceptedCriterionHash) throw new Error(`accepted hash missing for AC ${acId}`);
   const evidenceBody = {
     verificationItemKey: item.key,
-    acceptanceCriterionId: acId,
+    acceptanceCriterionKey: criterionKey,
     candidateHash: candidate.candidateHash,
     result: 'passed',
   };
@@ -510,7 +949,7 @@ const developmentVerify = async ({ client, task, prompt }) => {
   await actions.submitProduct(client, 'factory.candidate-verification-evidence-product.v2', {
     schemaVersion: 'factory.candidate-verification-evidence-product.v2',
     verificationItemKey: item.key,
-    acceptanceCriterionId: acId,
+    acceptanceCriterionKey: criterionKey,
     acceptedCriterionHash,
     candidateHash: candidate.candidateHash,
     outcome: 'passed',
@@ -564,6 +1003,7 @@ export const scenarios = {
   [`${FRM}/reconcile-what/reviewer/singleton`]: capturedReviewer('reconcile-what'),
   [`${FRM}/define-architecture-contract/reviewer/singleton`]: capturedReviewer(
     'define-architecture-contract', 'factory.review-verdict.v1', 2,
+    { srsBundleModuloDerivedHash: true, bundleOrdinal: 2 },
   ),
 
   // Development — planner captured (3-round repair loop), tail deterministic

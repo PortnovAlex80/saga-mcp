@@ -627,5 +627,148 @@
       "path": "docs/requirements/REQ-001/12-SRS.md",
       "status": "accepted"
     }
-  ]
+  ],
+  "provenance": {
+    "sourceRunSnapshot": "factory-snapshots/stage11-replay-fitness",
+    "capturedAt": "2026-08-19T13:35:26.209Z",
+    "sourceBuildCommit": "8f367b2aaf846fc18084dd6eda94372804aa0a83",
+    "distBuiltAt": "2026-08-19T12:54:59.230Z",
+    "databaseIntegrityCheck": "ok",
+    "provenanceSource": "factory-snapshots/stage11-replay-fitness/MANIFEST.json (repo commit, dist build time, integrity) + factory_process_runs/factory_gate_decisions of the frozen copy",
+    "capturedModuleVersions": {
+      "product-discovery": "3.0.2",
+      "solution-formalization": "1.0.0",
+      "solution-development": "1.4.4"
+    },
+    "capturedTerminalState": {
+      "product-discovery": "completed/go",
+      "solution-formalization": "completed/formalized",
+      "solution-development": "paused (mid-implementation)"
+    },
+    "replayModuleRefs": {
+      "product-discovery": "4.0.0",
+      "solution-formalization": "1.0.0",
+      "solution-development": "1.4.4"
+    },
+    "expectedTransitionTrace": [
+      [
+        "discovery-proposal",
+        "final",
+        "accepted"
+      ],
+      [
+        "discovery-readiness",
+        "final",
+        "accepted"
+      ],
+      [
+        "formalization-product-contract",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-product-contract",
+        "final",
+        "accepted"
+      ],
+      [
+        "formalization-use-cases",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-use-cases",
+        "final",
+        "accepted"
+      ],
+      [
+        "formalization-acceptance-contract",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-acceptance-contract",
+        "final",
+        "accepted"
+      ],
+      [
+        "formalization-reconciliation",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-reconciliation",
+        "final",
+        "accepted"
+      ],
+      [
+        "formalization-architecture-contract",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-architecture-contract",
+        "final",
+        "repair_required"
+      ],
+      [
+        "formalization-architecture-contract",
+        "author",
+        "accepted"
+      ],
+      [
+        "formalization-architecture-contract",
+        "final",
+        "accepted"
+      ],
+      [
+        "development-plan-task-graph",
+        "final",
+        "repair_required"
+      ],
+      [
+        "development-plan-task-graph",
+        "final",
+        "repair_required"
+      ],
+      [
+        "development-plan-task-graph",
+        "final",
+        "accepted"
+      ],
+      [
+        "development-implementation",
+        "author",
+        "repair_required"
+      ],
+      [
+        "development-implementation",
+        "author",
+        "accepted"
+      ],
+      [
+        "development-implementation",
+        "final",
+        "repair_required"
+      ],
+      [
+        "development-implementation",
+        "author",
+        "repair_required"
+      ],
+      [
+        "development-implementation",
+        "author",
+        "accepted"
+      ]
+    ],
+    "replayDeviations": [
+      "formalization-architecture-contract replays only the ACCEPTED round: the rejected v1 SRS body was never captured (journal has no tool.call events; disk holds only v2 bytes).",
+      "Development tail (implementation/review/verify/readiness) is deterministic golden-path-style scripted logic: the captured run was paused mid-implementation and impl results embed run-local git SHAs.",
+      "Replay runs under product-discovery@4.0.0 (captured 3.0.2): ADR-095 Phase-4 bumped the module contract after the capture; the corpus material is version-compatible (see snapshot-reach-development product-hash oracle). The 3.0.2-only factory.discovery-proposal-ref.v1 projection product has no runtime counterpart under 4.0.0 (legacy projection removed; settlement binds proposalRef through durable cell bindings) and is excluded from the strict hash oracle — the proposal material itself stays byte-pinned.",
+      "Captured reviewer verdicts are submitted with subject_candidate_set_ref rebound to the CURRENT runtime author candidate: the submission-validation-receipt member postdates the capture, so the runtime candidate ref is structurally different while the material stays byte-exact.",
+      "SRS document is the captured bytes plus exactly one derived §D2 covered_constraint_ids stanza field (ADR-088/090 coverage relay postdates the capture); brief metadata derives brief_payload + constraint dispositions strictly from captured values.",
+      "Captured planner proposals (plan-task-graph, all three repair-loop rounds) are replayed in the CURRENT grammar: per-item acceptanceCriterionIds (whole AC artifacts 12-16 = AC-1..AC-5) is substituted with acceptanceCriterionKeys — the atomic `artifactId:code` identities of the SAME artifacts, read from the runtime frozen development case (ADR-088 CC-GAP-6 relay postdates the capture). Fail-closed derivation (SNAPSHOT_DERIVED_PLANNER_KEYS_*); the reach test verifies each proposal parsed-content-equal to the capture modulo exactly that substitution, with every key bound to an accepted AC artifact identity and each item's referenced artifact set unchanged."
+    ]
+  }
 }

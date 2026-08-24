@@ -397,6 +397,35 @@ test('G2r: CC-GAP-7 warrant-oracle mutations stay blocking', () => {
   );
 });
 
+// G2s — snapshot corpus port hosting (2026-08-24, canonical consistency plan
+// Phase 2). The zero-token snapshot corpus regression
+// (snapshot-reach-development: byte/trace-exact replay of the captured
+// stage-11 run through the real orchestrate-cli/MCP seam) and its negative
+// half (snapshot-corpus-negative: corrupted material / missing package
+// bytes / invalid transition order / stale authority identity fail-closed)
+// are hosted by the factory-contract GROUP GLOB — no exact-file matrix
+// entry, so nothing else pins them per-file. Deleting either file, narrowing
+// the glob away from it, or dropping it from the run-set must fail HERE,
+// not silently orphan the corpus proof (the recurring orphan-hosting death
+// class, RED-TEAM-AUDIT §"per-file removal guards"). The tape helper
+// snapshot-stage11-scenarios.mjs is a non-test module (no *.test.mjs glob
+// match by design); removing it turns both hosted suites red at import, so
+// the pair guard covers it transitively. Asserted against runSet only:
+// quarantining a corpus proof as FLAKY/PRE-EXISTING-RED is not an honest
+// way to drop it.
+test('G2s: BOTH snapshot corpus suites are hosted blocking (per-file removal/de-hosting guard)', () => {
+  const required = [
+    'tests/factory-contract/snapshot-reach-development.test.mjs',
+    'tests/factory-contract/snapshot-corpus-negative.test.mjs',
+  ];
+  for (const f of required) {
+    assert.ok(
+      runSet.has(f),
+      `${f} must stay in a blocking run-set (snapshot corpus port proof hosting)`,
+    );
+  }
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 // STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
 // the required list — re-validated GREEN (2/2) on the current baseline; the
