@@ -148,6 +148,66 @@ const GROUPS = {
     ],
     note: 'ADR-095 Phase-2A live-v2 hosting — settlement lifecycle classification (m1-m6), order-constraint register round-trip, E constraint-loss boundary matrix, live check providers. Ratchet-6 executor surface; never weakened, never quarantined.',
   },
+  // STAGE-23 desk-coverage audit (2026-08-24, operator directive): walk every
+  // desk of every workshop and host its orphaned suites. 33 desk-zone files
+  // were committed by the closure program but matched by NO group glob (the
+  // CC-GAP-8 orphan class; R1 in the red-team audit) — CI never executed
+  // them. All verified deterministic-green in isolation on 2026-08-24.
+  // Exact files on purpose (no directory glob): the hosted desk surface
+  // cannot silently widen; the completeness ratchet G2k in
+  // tests/infrastructure/acceptance-matrix-coverage.test.mjs fails when a
+  // desk-zone file is neither hosted nor quarantined.
+  'desk-coverage': {
+    globs: [
+      // workshop 1 — Discovery desks (d1 authority/binding, d2 normalization,
+      // d3 readiness, d4 settlement, d5 certificate bundle)
+      'tests/discovery/d1-1-authority.test.mjs',
+      'tests/discovery/d1-1-binding.test.mjs',
+      'tests/discovery/d1-workspace-creation.test.mjs',
+      'tests/discovery/d2-normalization.test.mjs',
+      'tests/discovery/d2-normalization-lifecycle.test.mjs',
+      'tests/discovery/d2-normalization-lineage.test.mjs',
+      'tests/discovery/d3-architecture-boundary.test.mjs',
+      'tests/discovery/d3-readiness-correction.test.mjs',
+      'tests/discovery/d3-readiness-domain.test.mjs',
+      'tests/discovery/d3-readiness-handler.test.mjs',
+      'tests/discovery/d3-readiness-index-migration.test.mjs',
+      'tests/discovery/d4-architecture-boundary.test.mjs',
+      'tests/discovery/d4-settlement-atomicity.test.mjs',
+      'tests/discovery/d4-settlement-persistence.test.mjs',
+      'tests/discovery/d4-settlement-policy.test.mjs',
+      'tests/discovery/d4-settlement-recovery.test.mjs',
+      'tests/discovery/d5-certificate-bundle.test.mjs',
+      'tests/discovery/tool-actionable-errors.test.mjs',
+      'tests/modules/discovery/proposal-ref-bridge.test.mjs',
+      // workshop 2 — Formalization desks
+      'tests/modules/formalization/acceptance-heading-resolution.test.mjs',
+      'tests/modules/formalization/artifact-ref-bridge.test.mjs',
+      // workshop 3 — Development desks (implementation scope consumption,
+      // readiness surface, settlement verdicts, SRS scopes/manifests)
+      'tests/modules/development/development-verification-check-provider.test.mjs',
+      'tests/modules/development/factory-managed-repository-paths.test.mjs',
+      'tests/modules/development/implementation-scope-ancestry.test.mjs',
+      'tests/modules/development/implementation-scope-workitemkey.test.mjs',
+      'tests/modules/development/implementation-workset-item-key.test.mjs',
+      'tests/modules/development/readiness-test-surface.test.mjs',
+      'tests/modules/development/settlement-placeholder-verdict.test.mjs',
+      'tests/modules/development/srs-derived-change-scopes.test.mjs',
+      'tests/modules/development/srs-module-manifest.test.mjs',
+      'tests/modules/development/text-set-manifest.test.mjs',
+      // workshop 4 — Delivery desks
+      'tests/modules/delivery/delivery-effect-contracts.test.mjs',
+      // conveyor seams of the desks, born from the 2026-08-24 incident
+      // investigation: the redevelop parent guard (every terminal shape,
+      // synthetic — the live-shaped suite skips without the stage-15 sandbox)
+      // and the replay-adoption seam (SW6: adoption is a byte-stable no-op —
+      // the exact mechanism the development-only entry used on 2026-08-24).
+      'tests/app/factory-redevelopment-guard.test.mjs',
+      'tests/infrastructure/replay-certification-sweep.test.mjs',
+    ],
+    concurrency: 1,
+    note: 'STAGE-23 desk-coverage audit — every workshop desk suite hosted (33 ex-orphans + the redevelop guard + the replay-adoption sweep); G2k ratchets the desk zones closed',
+  },
   'matrix-coverage': {
     globs: ['tests/infrastructure/acceptance-matrix-coverage.test.mjs'],
     note: 'CI-02 self-check — matrix completeness + no-hidden-failure guard',
@@ -216,9 +276,11 @@ const QUARANTINE = [
   { glob: 'tests/factory-temporal/*.test.mjs',
     kind: 'FLAKY',
     reason: 'whole suite churns run-to-run (temporal / orchestrate-cli driven). W9 scripted E2E replaces it.' },
-  { glob: 'tests/process-modules/development-task-graph-diagnostics.test.mjs',
-    kind: 'PRE-EXISTING-RED',
-    reason: 'stale producerExecutionRef mock; fails identically on the baseline.' },
+  // STAGE-23 (2026-08-24): tests/process-modules/development-task-graph-diagnostics.test.mjs
+  // was de-quarantined — re-validated GREEN (2/2, exit 0) on the current
+  // baseline; the 'stale producerExecutionRef mock' rotted away upstream but
+  // the quarantine was never re-checked (the R2 defect in the red-team
+  // audit). Quarantine entries must be revalidated when their subject moves.
   { glob: 'tests/architecture/submission-validator-diagnostics.test.mjs',
     kind: 'PRE-EXISTING-RED',
     reason: 'assertion mismatch (outcome expected "failed", got undefined) on a clean checkout.' },

@@ -85,6 +85,15 @@ jobs:
         # matrix-coverage step make de-hosting/deletion fail closed.
         run: node tools/run-acceptance-matrix.mjs --group discovery-live-v2
 
+      - name: Matrix — Workshop desk coverage (STAGE-23 desk audit)
+        # 2026-08-24 desk-coverage audit (operator directive: walk every desk
+        # of every workshop and host its orphans): 33 desk-zone suites were
+        # committed but matched by NO group glob — CI never executed them
+        # (the CC-GAP-8 orphan class). Exact-file group; the G2k completeness
+        # ratchet in the matrix-coverage step fails when a desk-zone file is
+        # neither hosted nor quarantined.
+        run: node tools/run-acceptance-matrix.mjs --group desk-coverage
+
       - name: Dispatcher race gate (concurrency safety)
         # Concurrent worker_next must never double-claim a card. These are plain
         # .mjs scripts (not auto-discovered by `node --test`), so they have their
