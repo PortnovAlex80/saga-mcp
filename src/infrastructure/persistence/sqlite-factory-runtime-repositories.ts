@@ -56,7 +56,6 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
   readConcurrencyAdmission(epicId: number) {
     const row = getDb().prepare(
       `SELECT c.concurrency AS c,
-              c.model_concurrency_limit AS lim,
               c.model_name AS requested_model,
               (SELECT COUNT(*)
                  FROM worker_executions live
@@ -66,7 +65,6 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         WHERE c.epic_id=?`,
     ).get(epicId) as {
       c: number | null;
-      lim: number | null;
       requested_model: string | null;
       active: number;
     } | undefined;
@@ -75,14 +73,10 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         `CONCURRENCY_POLICY_MISSING: epic ${epicId} has no lifecycle_execution_controls row`,
       );
     }
+    if (row.c === null || row.c === undefined) row.c = 1;
     if (!Number.isInteger(row.c) || row.c! < 1 || row.c! > 10) {
       throw new Error(
         `CONCURRENCY_POLICY_INVALID: epic ${epicId} operator concurrency is '${row.c}'`,
-      );
-    }
-    if (!Number.isInteger(row.lim) || row.lim! < 1 || row.lim! > 10) {
-      throw new Error(
-        `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} model limit is '${row.lim}'`,
       );
     }
     if (!Number.isInteger(row.active) || row.active < 0) {
@@ -107,12 +101,14 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
     const modelDecision = computeModelAdmission({
       requestedModel,
       activeFrozenModels: frozenModels.map(entry => entry.m),
-      effectiveControlsCeiling: Math.min(row.c!, row.lim!),
+      effectiveControlsCeiling: row.c!,
     });
+    // STAGE-23 one-entry law (operator directive 2026-08-24): the panel's
+    // concurrency field is the SINGLE ceiling; model_concurrency_limit was a
+    // mistake and is removed entirely. Fallback: absent field => 1.
     return {
       operatorConcurrency: row.c!,
-      modelConcurrencyLimit: row.lim!,
-      effectiveConcurrency: Math.min(row.c!, row.lim!),
+      effectiveConcurrency: row.c!,
       activeExecutions: row.active,
       requestedModel,
       activeByModel: modelDecision.activeByModel,

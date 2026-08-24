@@ -123,8 +123,8 @@ async function setupFreshDb(repoPath, baseCommit) {
   db.prepare(`INSERT INTO epics (id,project_id,name,status,priority)
               VALUES (1,1,'Pipeline','planned','high')`).run();
   db.prepare(`INSERT INTO lifecycle_execution_controls
-              (epic_id,concurrency,model_concurrency_limit)
-              VALUES (1,1,1)`).run();
+              (epic_id,concurrency)
+              VALUES (1,1)`).run();
   db.prepare(`INSERT INTO repositories (id,name,default_branch,metadata)
               VALUES (1,'golden-repo','dev','{}')`).run();
   db.prepare(`INSERT INTO project_repositories

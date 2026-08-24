@@ -69,10 +69,10 @@ function setupEpic(controls) {
   if (controls) {
     getDb().prepare(
       `INSERT INTO lifecycle_execution_controls
-         (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-       VALUES (?,?,?,?,?,?)`,
+         (epic_id,concurrency,model_provider,model_name,model_effort)
+       VALUES (?,?,?,?,?)`,
     ).run(e.id, controls.concurrency ?? 2, controls.provider ?? 'zai', controls.model ?? null,
-      controls.effort ?? null, controls.limit ?? 2);
+      controls.effort ?? null);
   }
   return { projectId: p.id, epicId: e.id };
 }

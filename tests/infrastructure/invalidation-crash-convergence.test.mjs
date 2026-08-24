@@ -115,50 +115,44 @@ test('K9/convergence: INVALIDATE crash mid-evidence-set → re-dispatch complete
   assert.equal(rows.length, 1, 'crash left partial evidence');
 
   // Re-dispatch (fresh execution, same authority semantics) converges.
+  // STAGE-23 loop-kill law (161d8f46): corruption-class evidence EXCLUDES a
+  // capsule from the selection, so the re-dispatch sees no selectable capsule
+  // and resolves as an ORDINARY MISS — exactly-once convergence instead of
+  // re-alarming forever.
   seedExecution(db, 'exec-crash-2', 101, 7);
-  assert.throws(
-    () => bindReplayToClaim(db, {
-      task: makeTask(101, taskMetadata(1200)),
-      executionId: 'exec-crash-2',
-      role: 'author',
-    }),
-    /REPLAY_KEY_PAYLOAD_CONFLICT/u,
-    'the conflict alarm still fires — the invariant is not silenced by convergence',
-  );
-  rows = db.prepare(
-    'SELECT capsule_ref, authority_ref FROM factory_replay_capsule_invalidations',
-  ).all();
-  // NOTE: the lookup index (project_id, replay_key, id DESC) returns the
-  // capsules in DESCENDING id order, so the crash lands on whichever capsule
-  // the scan hit second; the convergence property is order-independent.
-  const refs = rows.map(r => `${r.capsule_ref}@${r.authority_ref}`).sort();
-  assert.equal(refs.length, 3, 'exactly three evidence rows — no duplicates');
-  assert.ok(
-    refs.includes('conflict-a@replay-claim:exec-crash-2')
-      && refs.includes('conflict-b@replay-claim:exec-crash-2'),
-    'the re-dispatch authority audited both conflicting capsules',
-  );
-  assert.ok(
-    refs.some(r => r.endsWith('@replay-claim:exec-crash-1')),
-    "the crashed authority's surviving partial row is preserved (append-only)",
-  );
-  // The conflict alarm is STABLE across re-dispatch (the typed outcome for a
-  // divergent-payload key), and convergence added no further rows.
-  seedExecution(db, 'exec-crash-3', 101, 7);
-  assert.throws(
-    () => bindReplayToClaim(db, {
-      task: makeTask(101, taskMetadata(1200)),
-      executionId: 'exec-crash-3',
-      role: 'author',
-    }),
-    /REPLAY_KEY_PAYLOAD_CONFLICT/u,
-    'the invariant alarm is not silenced by convergence',
-  );
+  const selection = bindReplayToClaim(db, {
+    task: makeTask(101, taskMetadata(1200)),
+    executionId: 'exec-crash-2',
+    role: 'author',
+  });
+  // STAGE-23 loop-kill law (161d8f46): the evidenced capsule is EXCLUDED from
+  // the selection; the crash-unevidenced one is now the single selectable
+  // capsule, so the re-dispatch converges as a deterministic HIT on it —
+  // exactly-once, no re-alarm, no duplicate evidence rows.
+  const evidenced = db.prepare(
+    'SELECT capsule_ref FROM factory_replay_capsule_invalidations',
+  ).all().map(r => r.capsule_ref);
+  assert.equal(evidenced.length, 1,
+    'the crashed attempt left exactly one evidence row');
+  assert.ok(selection && typeof selection.capsuleRef === 'string',
+    'the re-dispatch selects the surviving clean capsule (deterministic replay)');
+  assert.ok(!evidenced.includes(selection.capsuleRef),
+    'the selection never replays a corruption-evidenced capsule');
   assert.equal(
     db.prepare('SELECT COUNT(*) AS n FROM factory_replay_capsule_invalidations').get().n,
-    3 + 2,
-    'the third authority appends exactly its own two audit rows',
+    1,
+    'convergence added no duplicate evidence rows',
   );
+  // Stability: the next dispatch resolves identically (idempotent).
+  seedExecution(db, 'exec-crash-3', 101, 7);
+  const again = bindReplayToClaim(db, {
+    task: makeTask(101, taskMetadata(1200)),
+    executionId: 'exec-crash-3',
+    role: 'author',
+  });
+  assert.equal(again?.capsuleRef, selection.capsuleRef,
+    'the converged selection is stable across further dispatches');
+
 });
 
 test('K9/convergence: bridge crash mid-loop → re-drive completes exactly-once', () => {

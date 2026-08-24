@@ -725,7 +725,7 @@ export function createLifecycleEndpointsApi({
       const route = withDb(db => db.prepare(
         `SELECT model_name AS model,
                 model_provider AS provider,
-                model_concurrency_limit AS model_limit
+                concurrency
            FROM lifecycle_execution_controls WHERE epic_id=?`,
       ).get(state.epicId));
       // TB-3: a dead engine leaves its reason ONLY in
@@ -762,7 +762,7 @@ export function createLifecycleEndpointsApi({
         watchdog: watchdog ?? null,
         model: route?.model ?? null,
         provider: route?.provider ?? null,
-        model_limit: route?.model_limit ?? null,
+        concurrency: route?.concurrency ?? null,
         last_launch: launch ? {
           state: launch.launch_state,
           error: launch.launch_error ?? launch.order_error ?? null,

@@ -90,7 +90,6 @@ test('a v13 DB fails closed at open — no ladder, no partial upgrade, no mutati
       model_provider TEXT,
       model_name TEXT,
       model_effort TEXT,
-      model_concurrency_limit INTEGER,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);

@@ -52,9 +52,9 @@ test('model-selector: returns the persisted choice after /api/model/set', () => 
   const profile = factoryModelProfile('glm-4.7');
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-     VALUES (?,?,?,?,?,?)`,
-  ).run(epicId, 2, profile.provider, profile.id, profile.effort, profile.limit);
+       (epic_id,concurrency,model_provider,model_name,model_effort)
+     VALUES (?,?,?,?,?)`,
+  ).run(epicId, 2, profile.provider, profile.id, profile.effort);
 
   assert.equal(activeModelForProject(product.id), 'glm-4.7');
 });

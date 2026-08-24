@@ -283,12 +283,12 @@ export function createBoardRenderApi({
       ).get(epicId));
       return {
         concurrency: Number.isInteger(row?.concurrency) && row.concurrency >= 1 && row.concurrency <= 10
-          ? row.concurrency : 4,
+          ? row.concurrency : 1,
         running: row?.running_state === 'running',
         model: typeof row?.model === 'string' && row.model ? row.model : null,
       };
     } catch {
-      return { concurrency: 4, running: false, model: null };
+      return { concurrency: 1, running: false, model: null };
     }
   }
 
@@ -363,7 +363,7 @@ export function createBoardRenderApi({
               return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
             }).join('')}
           </select>
-          <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency. Опция «↻ LM Studio» — обновить список локальных моделей.">
+          <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Потолок concurrency задаётся отдельным полем. Опция «↻ LM Studio» — обновить список локальных моделей.">
             ${(function() {
               // Read the per-epic choice from saga.db so F5 preserves it.
               // Without this the selector reset to the process-wide WORKER_MODEL

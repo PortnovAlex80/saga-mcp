@@ -63,13 +63,12 @@ db.prepare(`INSERT INTO trusted_providers
   VALUES (1,1,'saga-real-model-worker','1.0.0','deterministic_evidence',
           'real factory smoke execution','partial','factory-smoke','active')`).run();
 db.prepare(`INSERT INTO lifecycle_execution_controls
-  (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-  VALUES (1,?,?,?,?,?)`).run(
-    modelProfile.limit,
+  (epic_id,concurrency,model_provider,model_name,model_effort)
+  VALUES (1,?,?,?,?)`).run(
+    1,
     modelProfile.provider,
     modelProfile.id,
     modelProfile.effort,
-    modelProfile.limit,
   );
 
 const policyBase = { id: 'reference-development-policy', version: '1.0.0' };
