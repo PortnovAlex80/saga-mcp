@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url';
 const REPO_ROOT = process.cwd();
 const dist = name => pathToFileURL(path.resolve(REPO_ROOT, 'dist', name)).href;
 
-test('all four installed workshops expose manifest identity + definition identity', async () => {
+test('all five installed workshops expose manifest identity + definition identity', async () => {
   const modules = await Promise.all([
     import(dist('process-modules/modules/discovery/index.js')).catch(() =>
       import(dist('process-modules/modules/discovery/discovery-process-module.js'))),
@@ -28,11 +28,14 @@ test('all four installed workshops expose manifest identity + definition identit
       import(dist('process-modules/modules/development/development-process-module.js'))),
     import(dist('process-modules/modules/delivery/index.js')).catch(() =>
       import(dist('process-modules/modules/delivery/delivery-process-module.js'))),
+    import(dist('process-modules/modules/documentation/index.js')).catch(() =>
+      import(dist('process-modules/modules/documentation/documentation-process-module.js'))),
   ]);
-  const names = ['discovery', 'formalization', 'development', 'delivery'];
+  const names = ['discovery', 'formalization', 'development', 'delivery', 'documentation'];
   modules.forEach((mod, index) => {
     const definition = mod.discoveryProcessModule ?? mod.formalizationProcessModule
-      ?? mod.developmentProcessModule ?? mod.deliveryProcessModule;
+      ?? mod.developmentProcessModule ?? mod.deliveryProcessModule
+      ?? mod.documentationProcessModule;
     assert.ok(definition, `${names[index]} exports its ProcessModuleDefinition`);
     assert.ok(definition.identity?.name, `${names[index]} definition has identity.name`);
     assert.ok(Array.isArray(definition.flow?.nodes ?? definition.nodes),

@@ -37,6 +37,7 @@ import { DISCOVERY_CLOSURE_SCENARIOS } from './discovery-resilience-pack.mjs';
 import { FORMALIZATION_CLOSURE_SCENARIOS } from './formalization-resilience-pack.mjs';
 import { DEVELOPMENT_SCENARIOS } from './development-scenario-pack.mjs';
 import { DELIVERY_SCENARIOS } from './delivery-scenario-pack.mjs';
+import { DOCUMENTATION_HARVESTABLE_SCENARIOS } from './documentation-scenario-pack.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
@@ -68,6 +69,16 @@ const WORKSHOPS = [
     scenarios: DELIVERY_SCENARIOS,
     drive: 'delivery-scenario-drive.mjs',
     env: 'DELIVERY_SCENARIO',
+  },
+  // 2026-08-24 documentation admission (ADR-096 gate item 4): harvestable
+  // subset only — happy-documented needs the pending pdfkit engine decision.
+  // The committed evidence snapshot stays K0-ledger-frozen until the next
+  // operator harvest re-baselines it.
+  {
+    id: 'documentation',
+    scenarios: DOCUMENTATION_HARVESTABLE_SCENARIOS,
+    drive: 'documentation-scenario-drive.mjs',
+    env: 'DOCUMENTATION_SCENARIO',
   },
 ];
 

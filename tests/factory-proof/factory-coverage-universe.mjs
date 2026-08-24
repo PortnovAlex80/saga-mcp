@@ -49,6 +49,11 @@ import {
   DELIVERY_REQUIRED_UNIVERSE,
   DELIVERY_PENDING_UNIVERSE,
 } from './delivery-scenario-pack.mjs';
+import {
+  DOCUMENTATION_SCENARIOS,
+  DOCUMENTATION_REQUIRED_UNIVERSE,
+  DOCUMENTATION_PENDING_UNIVERSE,
+} from './documentation-scenario-pack.mjs';
 import { buildScenarioCoverageMatrix } from './coverage-kernel.mjs';
 
 const WORKSHOPS = Object.freeze([
@@ -78,6 +83,13 @@ const WORKSHOPS = Object.freeze([
     scenarios: DELIVERY_SCENARIOS,
     requiredUniverse: DELIVERY_REQUIRED_UNIVERSE,
     pendingUniverse: DELIVERY_PENDING_UNIVERSE,
+    platformFaultEdges: [],
+  },
+  {
+    id: 'documentation',
+    scenarios: DOCUMENTATION_SCENARIOS,
+    requiredUniverse: DOCUMENTATION_REQUIRED_UNIVERSE,
+    pendingUniverse: DOCUMENTATION_PENDING_UNIVERSE,
     platformFaultEdges: [],
   },
 ]);

@@ -107,6 +107,18 @@ export interface ProductDeliveryLifecycleInput {
         operatorAuthorization: null;
         deferredProfile: LifecycleDeliveryDeferredProfileShape;
       };
+  /**
+   * Optional documentation request (product-documentation lifecycle only):
+   * document kinds to render and the output root for PDF artifacts. Ignored
+   * by lifecycles without a documentation stage; validated by
+   * `assertProductDocumentationProfile` when present. New root-input members
+   * are optional-only (authoring law): previously pinned inputs must keep
+   * passing `assertProductDeliveryLifecycleInput` unchanged.
+   */
+  documentation?: {
+    kinds: readonly string[];
+    outputRoot: string;
+  };
 }
 
 /**

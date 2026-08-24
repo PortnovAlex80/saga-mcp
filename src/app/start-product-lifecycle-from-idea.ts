@@ -32,6 +32,11 @@ import {
   type DeliveryDeferredProfile,
 } from '../modules/delivery/domain/delivery-schemas.js';
 import { hashDeliveryDeferredProfile } from '../modules/delivery/domain/delivery-settlement-policy.js';
+import {
+  assertProductDocumentationProfile,
+  PRODUCT_DOCUMENTATION_LIFECYCLE_NAME,
+} from '../process-modules/lifecycles/product-documentation-lifecycle.js';
+import { DEFAULT_DOCUMENTATION_KINDS } from '../modules/documentation/domain/documentation-schemas.js';
 
 /**
  * Build a deterministic deferred Delivery profile. It carries no release
@@ -308,6 +313,21 @@ export function assembleProductLifecycleInput(params: {
       deferredProfile,
     },
   };
+
+  // Documentation profile is injected ONLY for the documentation lifecycle
+  // selection — a plain product-build start never carries it, and the
+  // product-documentation stage mapping requires it (no silent defaults at
+  // mapping time; the profile's presence is an explicit operator intent).
+  if (process.env.SAGA_FACTORY_LIFECYCLE === PRODUCT_DOCUMENTATION_LIFECYCLE_NAME) {
+    const repoRoot = process.env.SAGA_REPO_ROOT ?? process.cwd();
+    const documentationProfile = {
+      kinds: [...DEFAULT_DOCUMENTATION_KINDS],
+      outputRoot: process.env.SAGA_DOCS_OUTPUT_ROOT
+        ?? path.join(repoRoot, '.factory-docs', `project-${params.projectId}`),
+    };
+    assertProductDocumentationProfile(documentationProfile);
+    input.documentation = documentationProfile;
+  }
 
   // Fail closed BEFORE any LifecycleRun is created: the assembled input must
   // satisfy the exact structural contract the runtime's resolveInput enforces.

@@ -153,6 +153,13 @@ import { registerFormalization } from '../modules/formalization/index.js';
 import { registerDevelopment } from '../modules/development/index.js';
 import { promoteTaskToDone } from '../lifecycle/work-assignment-core.js';
 import { registerDelivery } from '../modules/delivery/index.js';
+import { registerDocumentation } from '../modules/documentation/index.js';
+import { createDocumentationLifecycleOutputPayloadResolver } from '../modules/documentation/application/documentation-installation.js';
+import { DOCUMENTATION_BUNDLE_SCHEMA } from '../modules/documentation/domain/documentation-schemas.js';
+import {
+  productDocumentationLifecycle,
+  PRODUCT_DOCUMENTATION_LIFECYCLE_NAME,
+} from '../process-modules/lifecycles/product-documentation-lifecycle.js';
 import type {
   ModuleRegistries,
   ModuleSharedDeps,
@@ -162,6 +169,7 @@ import type {
   DeliveryCompositionDependencies,
   DeliveryProviderConfiguration,
 } from '../modules/delivery/index.js';
+import type { DocumentationCompositionDependencies } from '../modules/documentation/index.js';
 import { SqliteResumeDirectiveRepository } from '../checkpoints/sqlite-resume-directive-repository.js';
 import { reevaluateDownstream } from '../tools/tasks.js';
 import { journalEvent } from '../observability/run-journal.js';
@@ -171,6 +179,7 @@ export type {
   DeliveryCompositionDependencies,
   DeliveryProviderConfiguration,
 };
+export type { DocumentationCompositionDependencies };
 
 export interface ProductLifecycleRuntimeOptions {
   workerExecutorFactory: WorkerExecutorFactory;
@@ -191,6 +200,14 @@ export interface ProductLifecycleRuntimeOptions {
   workAssignment?: WorkAssignmentPort;
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
+  /**
+   * Documentation composition dependencies (render provider, repository
+   * observation, output repository). All optional: the defaults wire the
+   * pdfkit-backed provider (lazy, honest typed `blocked` when the engine is
+   * absent), the git-exact observation adapter and the module's own SQLite
+   * output table.
+   */
+  documentation?: DocumentationCompositionDependencies;
   db?: Database.Database;
   packageInstallation?: ProductionInstallation;
   onLifecycleStarted?: (
@@ -881,6 +898,11 @@ export function createProductLifecycleRuntime(
     sharedDeps,
     options.delivery,
   );
+  const documentation = registerDocumentation(
+    registries,
+    sharedDeps,
+    options.documentation ?? {},
+  );
 
   const resolversBySchema = new Map<string, ResolveStageOutputPayload>([
     [
@@ -904,6 +926,12 @@ export function createProductLifecycleRuntime(
     [
       RELEASE_RECORD_SCHEMA,
       createDeliveryOutputPayloadResolver(delivery.outputRepository),
+    ],
+    [
+      DOCUMENTATION_BUNDLE_SCHEMA,
+      createDocumentationLifecycleOutputPayloadResolver(
+        documentation.outputRepository,
+      ),
     ],
   ]);
   const resolveOutputPayload: ResolveStageOutputPayload = async params => {
@@ -962,8 +990,21 @@ export function createProductLifecycleRuntime(
       }),
   });
 
+  /**
+   * Lifecycle selection at factory start (never per-run routing). The current
+   * parameterized mechanism (`options.lifecycleDefinition`, authoring guide
+   * §10.2 — used by the Delivery conformance proofs and the panel's
+   * product-delivery composition) keeps precedence; the documentation
+   * topology is the operator's per-engine-launch opt-in through
+   * SAGA_FACTORY_LIFECYCLE=product-documentation and fills the DEFAULT slot
+   * only. A resumed run always replays its own pinned definition snapshot.
+   */
+  const selectedLifecycle = options.lifecycleDefinition
+    ?? (process.env.SAGA_FACTORY_LIFECYCLE === PRODUCT_DOCUMENTATION_LIFECYCLE_NAME
+      ? productDocumentationLifecycle
+      : productBuildLifecycle);
   const baseEngine = new LifecycleOrchestrationEngineAdapter({
-    definition: options.lifecycleDefinition ?? productBuildLifecycle,
+    definition: selectedLifecycle,
     orchestrator,
     // CC-GAP-4 — the run.terminal journal boundary is gated by a durable
     // exactly-once claim on the lifecycle run's authority row: whichever of
@@ -980,7 +1021,7 @@ export function createProductLifecycleRuntime(
         command.projectId,
         input.idempotencyKey,
       );
-      if (!row) return options.lifecycleDefinition ?? productBuildLifecycle;
+      if (!row) return selectedLifecycle;
       return JSON.parse(row.definition_snapshot) as typeof productDeliveryLifecycle;
     },
     resolveInput(command) {
@@ -1260,6 +1301,7 @@ export function createProductLifecycleRuntime(
       formalization: formalization.executor,
       development: development.executor,
       delivery: delivery.executor,
+      documentation: documentation.executor,
     },
     packageInstallation,
     runtimes: {

@@ -47,6 +47,11 @@ export const DELIVERY_PROCESS_MODULE_REF = {
   version: '1.0.0',
 } as const satisfies ProcessModuleReference;
 
+export const DOCUMENTATION_PROCESS_MODULE_REF = {
+  name: 'documentation-release',
+  version: '1.0.0',
+} as const satisfies ProcessModuleReference;
+
 // ---------------------------------------------------------------------------
 // Schema-id string contracts referenced by the lifecycle stage mappings.
 // These are identity strings (the `schemaVersion` literal bound into a stage's
@@ -60,3 +65,5 @@ export const DELIVERY_DEFERRED_PROFILE_SCHEMA =
   'factory.delivery-deferred-profile.v1';
 export const DEVELOPMENT_CASE_SCHEMA = 'factory.development-case.v1';
 export const FORMALIZATION_CASE_SCHEMA = 'factory.formalization-case.v1';
+export const DOCUMENTATION_RELEASE_CASE_SCHEMA =
+  'factory.documentation-release-case.v1';

@@ -186,9 +186,20 @@ CONVEYOR-MENTAL-MODEL). Читать перед началом: `CONVEYOR-MENTAL
     `npm run build` (или минимум `tsc`) перед прогоном.
 17. **Элементы fan-out обязаны нести строковый `id`.** `extractItems`
     признаёт элемент только с полем `id` (или `key`/`workItemKey`/`criterionId`)
-    — иначе «fan-out source has no stable items». У брипов документации это
+    — иначе «fan-out source has no stable items». У брифов документации это
     ловилось только на первом прогоне. Проверяй тип элемента-источника до
     декларации ячейки.
+18. **(2026-08-24, порт documentation на каноничную ветку) Политика
+    submission-валидации узла.** Каждый LM-узел цеха обязан иметь запись в
+    `wire-submission-validation.ts` — иначе ПЕРВЫЙ `worker_done` умирает с
+    `SUBMISSION_VALIDATION_POLICY_MISSING: <module>@<version>/<node>` (это
+    17-я точка правки, не входившая в исходные 16; ловится только реальным
+    прогоном). Для цехов с типизированными продуктами ячеек — `mode: 'none'`
+    c rationale; ключ — из канонического `*_PROCESS_MODULE_REF`, никогда
+    hand-pinned литерал (правило ADR-095 Phase-6). Заодно: ядра ПОСЛЕ ячейки
+    получают `ctx.input` = выход ячейки (manifest), а не план — читай план из
+    `ctx.frame.productions['<узел-ассемблера>']` (canonical post-cell input
+    path), иначе `*_PLAN_SCHEMA_MISMATCH` на первом переходе к рендеру.
 
 ## 4. Как цех получает материалы (шпаргалка потока)
 

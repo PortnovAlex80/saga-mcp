@@ -112,8 +112,10 @@ export function traceDigest(trace) {
 
 export const K0_FLOORS = Object.freeze({
   blockingFactoryProofFiles: 7,
-  obligationContracts: 34,
-  installedProtections: 33,
+  // 2026-08-24 documentation admission (ADR-096 §4): +3 obligations
+  // (docs.completeness check-provider + 2 payload contracts).
+  obligationContracts: 37,
+  installedProtections: 36,
   mutationOperators: { structural: 7, relational: 21 },
   outcomeEdgeCoverage: { traced: 8, pending: 3, total: 11 },
   fullSuiteBaseline: { tests: 4217, fail: 0, note: 'c5f7f7aa (post-merge repair)' },

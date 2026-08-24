@@ -20,7 +20,10 @@ import { createAcceptanceContractValidator } from '../../modules/formalization/a
 import { createSrsContractValidator } from '../../modules/formalization/application/srs-contract-validator.js';
 import { createFormalizationContractValidator } from '../../modules/formalization/application/formalization-contract-validator.js';
 import { SRS_CONTRACT_REF } from '../../modules/formalization/domain/srs-contract.js';
-import { DISCOVERY_PROCESS_MODULE_REF } from '../lifecycles/product-delivery-module-contracts.js';
+import {
+  DISCOVERY_PROCESS_MODULE_REF,
+  DOCUMENTATION_PROCESS_MODULE_REF,
+} from '../lifecycles/product-delivery-module-contracts.js';
 
 const FORMALIZATION_MODULE_REF = 'solution-formalization@1.0.0';
 // ADR-095 Phase-6 repair (2026-08-24; independently found by the snapshot
@@ -148,4 +151,20 @@ export function wireSubmissionValidation(
     mode: 'none',
     rationale: 'provider-led evidence over an immutable adopted candidate; validated by current cell gates and deterministic settlement',
   });
+
+  // Documentation workers publish typed JSON products (structured document +
+  // review verdict). Their shape is pinned by the payload contracts installed
+  // in EVERY process, their completeness/sections by the deterministic author
+  // gate, and their workset lineage by Documentation settlement — the
+  // artifact-graph validator is not applicable to these nodes. Keyed at the
+  // canonical contracts constant (same ADR-095 Phase-6 repair rule as
+  // Discovery: derive the live key, never hand-pin a literal).
+  policyRegistry.register(
+    `${DOCUMENTATION_PROCESS_MODULE_REF.name}@${DOCUMENTATION_PROCESS_MODULE_REF.version}`,
+    'author-documents',
+    {
+      mode: 'none',
+      rationale: 'typed Production Cell products (documentation document + review verdict); validated by cell payload contracts, author/final gates and Documentation settlement',
+    },
+  );
 }

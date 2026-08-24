@@ -100,6 +100,8 @@ test('composition installs all module capabilities and refuses implicit input/pr
         // the replan-task-graph planner cell.
         'solution-development-managed',
         'delivery-release',
+        // 2026-08-24 documentation admission (ADR-096 gate item 4).
+        'documentation-release',
       ],
     );
     // externalAdapters removed in saga4 cutover (external node kind deleted);
