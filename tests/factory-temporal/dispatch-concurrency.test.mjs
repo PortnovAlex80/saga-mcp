@@ -219,10 +219,10 @@ test('dispatch-concurrency: effective concurrency cap is never exceeded', { time
       // The lifecycle_execution_controls row is the source of truth for the
       // effective cap. Assert it was seeded at 2/2.
       const controls = db.prepare(
-        'SELECT concurrency, model_concurrency_limit FROM lifecycle_execution_controls WHERE epic_id=?',
+        'SELECT concurrency FROM lifecycle_execution_controls WHERE epic_id=?',
       ).get(EPIC_ID);
       assert.ok(controls, 'lifecycle_execution_controls row exists');
-      const effective = Math.min(controls.concurrency, controls.model_concurrency_limit);
+      const effective = controls.concurrency;
       assert.equal(effective, 2, `effective concurrency seeded at ${effective}`);
 
       // Core property: peak observed concurrent executions <= effective cap.
@@ -308,10 +308,10 @@ test('dispatch-concurrency: concurrency cap respected and all executions drain t
       // (a) Cap respected throughout the run: peak observed concurrency must
       // not exceed the effective cap seeded into lifecycle_execution_controls.
       const controls = db.prepare(
-        'SELECT concurrency, model_concurrency_limit FROM lifecycle_execution_controls WHERE epic_id=?',
+        'SELECT concurrency FROM lifecycle_execution_controls WHERE epic_id=?',
       ).get(EPIC_ID);
       assert.ok(controls, 'lifecycle_execution_controls row exists');
-      const effective = Math.min(controls.concurrency, controls.model_concurrency_limit);
+      const effective = controls.concurrency;
       const peak = peakObservedConcurrency(db, PROJECT_ID, EPIC_ID);
       assert.ok(
         peak <= effective,

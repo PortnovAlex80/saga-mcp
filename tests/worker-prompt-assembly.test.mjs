@@ -769,3 +769,65 @@ test('G1.9-neg — absent recovery_feedback adds no summary block', () => {
   const projected = projectTaskForPrompt({ id: 8, metadata: { workplace_ref: 'w/8' } });
   assert.equal(projected.metadata.recovery_feedback, undefined);
 });
+
+// STAGE-23 secondary-defect repairs (2026-08-24 five-agent feedback-loop
+// investigation): G1.10 — loud blocks render ABSOLUTE desk paths (the worker
+// cwd is its worktree; product-relative paths resolved nowhere and live
+// workers self-healed only by guessing); G1.11 — a card with gate-rejected
+// attempts states that count loudly (clean exits were invisible to the death
+// channel).
+test('G1.10 — loud blocks prefer the absolute desk paths (worktree-cwd addressing)', () => {
+  const absDesk = makeDesk({
+    recoveryFeedback: {
+      present: true,
+      path: 'docs/development/projects/1/executions/node-author/exec-g1-0001/recovery-feedback.json',
+      reasons: ['scope: src/shared/utils.js outside frozen changeScopes'],
+    },
+    recoveryFeedbackAbsolutePath: 'C:/tmp/g1-workspace/docs/development/projects/1/executions/node-author/exec-g1-0001/recovery-feedback.json',
+    reviewFeedback: {
+      present: true,
+      path: 'docs/development/projects/1/executions/node-author/exec-g1-0001/review-feedback.json',
+      round: 2,
+      reasons: [],
+    },
+    reviewFeedbackAbsolutePath: 'C:/tmp/g1-workspace/docs/development/projects/1/executions/node-author/exec-g1-0001/review-feedback.json',
+  });
+  const { prompt } = makeFixture({ processWorkspace: absDesk });
+  assert.match(prompt, /READ C:\/tmp\/g1-workspace\/docs\/development\/projects\/1\/executions\/node-author\/exec-g1-0001\/recovery-feedback\.json FIRST/,
+    'the REPAIR ATTEMPT block must hand the worker a path that resolves from its worktree cwd');
+  assert.match(prompt, /READ C:\/tmp\/g1-workspace\/docs\/development\/projects\/1\/executions\/node-author\/exec-g1-0001\/review-feedback\.json FIRST/,
+    'the REVIEW REJECTION block must hand an absolute path too');
+  assert.match(prompt, /tracker_path=C:\/tmp\/g1-workspace\/docs\/development\/tracker\.md/,
+    'the tracker line prefers trackerAbsolutePath');
+  assert.doesNotMatch(prompt, /READ docs\/development\/projects\/1\/executions\/node-author\/exec-g1-0001\/recovery-feedback\.json FIRST/,
+    'the relative variant must not be the one the READ instruction names');
+});
+
+test('G1.10-neg — desks without absolute variants keep rendering (back-compat)', () => {
+  const relDesk = makeDesk({
+    recoveryFeedback: { present: true, path: 'docs/development/recovery-feedback.json', reasons: [] },
+  });
+  const { prompt } = makeFixture({ processWorkspace: relDesk });
+  assert.match(prompt, /READ docs\/development\/recovery-feedback\.json FIRST/,
+    'no absolute variant → the relative path still renders');
+});
+
+test('G1.11 — prior gate-rejected attempts are stated loudly from the episodic memory count', () => {
+  const rejectedCard = {
+    id: 77,
+    metadata: { attempt_count: 16, previous_failures: ['gate:4/author REJECTED: narrowed surface'] },
+  };
+  const { prompt } = makeFixture({
+    task: rejectedCard,
+    processWorkspace: makeDesk(),
+  });
+  assert.match(prompt, /THIS CARD HAS 16 PRIOR GATE-REJECTED ATTEMPT\(S\)/,
+    'a card rejected 16 times must not look identical to a fresh card');
+  assert.match(prompt, /is NOT worker death/,
+    'clean gate-rejected exits are distinguished from worker deaths');
+  assert.match(prompt, /task_get/,
+    'the worker is pointed at the durable history');
+  const fresh = makeFixture({ processWorkspace: makeDesk() });
+  assert.doesNotMatch(fresh.prompt, /PRIOR GATE-REJECTED ATTEMPT/,
+    'a fresh card stays clean — no fabricated history');
+});

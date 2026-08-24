@@ -283,12 +283,12 @@ export function createBoardRenderApi({
       ).get(epicId));
       return {
         concurrency: Number.isInteger(row?.concurrency) && row.concurrency >= 1 && row.concurrency <= 10
-          ? row.concurrency : 4,
+          ? row.concurrency : 1,
         running: row?.running_state === 'running',
         model: typeof row?.model === 'string' && row.model ? row.model : null,
       };
     } catch {
-      return { concurrency: 4, running: false, model: null };
+      return { concurrency: 1, running: false, model: null };
     }
   }
 
@@ -363,7 +363,7 @@ export function createBoardRenderApi({
               return `<option value="${i + 1}"${i + 1 === conc ? ' selected' : ''}>${i + 1}</option>`;
             }).join('')}
           </select>
-          <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Лимит модели — потолок concurrency. Опция «↻ LM Studio» — обновить список локальных моделей.">
+          <select id="agent-model-select" title="Модель для НОВЫХ воркеров. Активные доработают на старой. Потолок concurrency задаётся отдельным полем. Опция «↻ LM Studio» — обновить список локальных моделей.">
             ${(function() {
               // Read the per-epic choice from saga.db so F5 preserves it.
               // Without this the selector reset to the process-wide WORKER_MODEL
@@ -589,6 +589,22 @@ export function createBoardRenderApi({
       });
       const runnerConcurrency = document.getElementById('agent-concurrency');
       const runnerStatus = document.getElementById('agent-run-status');
+      // STAGE-23 one-entry law: this selector is the ONLY writer of the worker
+      // rate limit — POST /api/engine/concurrency updates controls.concurrency,
+      // which the engine's admission reads live. Every other layer (env stamps,
+      // catalog limits, resume re-stamping) is advisory or removed; an absent
+      // field falls back to 1.
+      runnerConcurrency.addEventListener('change', async () => {
+        const value = Number(runnerConcurrency.value);
+        const epicId = window.__sagaEpicId || ${controlEpic ? controlEpic.id : 'null'} || 1;
+        runnerConcurrency.disabled = true;
+        try {
+          await postOperation('/api/engine/concurrency', { value, epic_id: epicId });
+        } catch (err) {
+          alert('Не удалось установить concurrency: ' + err.message);
+          runnerConcurrency.disabled = false;
+        }
+      });
       function applyRunnerState(run) {
         const active = run?.active?.length || 0;
         // In v3 the agent-runner block is concurrency-only (no start/stop

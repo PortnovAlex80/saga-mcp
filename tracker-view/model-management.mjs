@@ -349,9 +349,8 @@ export function createModelManagementApi({
   // the new model. Active workers keep the old model — they've already started
   // `claude -p` and won't re-read settings.json. NO engine kill, NO spawn, NO
   // restart. We only persist the model info into lifecycle_execution_controls; the
-  // engine's pump loop reads `model_concurrency_limit` and uses min(concurrency, limit)
-  // as the effective ceiling, so concurrency naturally converges to the new
-  // model's limit as old workers finish and new ones spawn.
+  // One-entry law (2026-08-24): the panel concurrency field is the single
+  // ceiling; selecting a model does NOT change it.
   function handleModelSet(req, res) {
     readJsonRequest(req, fields => {
       const modelId = (fields.model || '').toString().trim();
@@ -447,11 +446,9 @@ export function createModelManagementApi({
         }
       }
 
-      // 2. Upsert model info into lifecycle_execution_controls. The engine's pump
-      //    loop reads model_concurrency_limit on every cycle and uses
-      //    min(opts.concurrency, model_concurrency_limit) as the effective ceiling —
-      //    active workers keep running on the old model, but no NEW workers spawn
-      //    until the active count drops below the new limit.
+      // 2. Upsert model info into lifecycle_execution_controls (routing only —
+      //    one-entry law: the concurrency field is untouched here and remains
+      //    the single ceiling, owned by POST /api/engine/concurrency).
       //    model_provider tells claude-runner whether to add LM Studio env to
       //    model_effort is the model-config reasoning effort (e.g. 'high'
       //    for z.ai cloud). LM Studio models have no effort field → null is
@@ -463,15 +460,14 @@ export function createModelManagementApi({
         try {
           withDbWrite(db => db.prepare(
             `INSERT INTO lifecycle_execution_controls
-               (epic_id, model_name, model_concurrency_limit, model_provider, model_effort)
-             VALUES (?, ?, ?, ?, ?)
+               (epic_id, model_name, model_provider, model_effort, concurrency)
+             VALUES (?, ?, ?, ?, 1)
              ON CONFLICT(epic_id) DO UPDATE SET
                model_name=excluded.model_name,
-               model_concurrency_limit=excluded.model_concurrency_limit,
                model_provider=excluded.model_provider,
                model_effort=excluded.model_effort,
                updated_at=datetime('now')`
-          ).run(epicId, modelId, model.limit, provider, model.effort ?? null));
+          ).run(epicId, modelId, provider, model.effort ?? null));
         } catch (e) {
           return respondJson(res, 500, { ok:false, error:'control write failed: ' + e.message });
         }
@@ -493,10 +489,43 @@ export function createModelManagementApi({
   // never see updates. Use getters so modelApi.LMSTUDIO_MODELS always reflects
   // the live current state. ZAI_MODELS / lmstudioUrl are constants, so a plain
   // property is fine for them.
+  // STAGE-23 (operator directive 2026-08-24): ONE entry point for the worker
+  // rate limit — the panel's special concurrency field. Everything else
+  // (model catalog limits, env stamps, resume re-stamping) is advisory or
+  // removed. Fallback is 1 (fail-safe: nothing set => one worker).
+  async function handleEngineConcurrencySet(req, res) {
+    try {
+      const body = await readJsonRequest(req);
+      const raw = Number(body?.value ?? body?.concurrency);
+      const epicId = Number(body?.epic_id ?? 1);
+      if (!Number.isInteger(epicId) || epicId < 1) {
+        return respondJson(res, 400, { ok: false, error: 'epic_id must be a positive integer' });
+      }
+      if (!Number.isInteger(raw) || raw < 1 || raw > 10) {
+        return respondJson(res, 400, { ok: false, error: 'value must be an integer 1..10' });
+      }
+      withDbWrite(db => db.prepare(
+        `INSERT INTO lifecycle_execution_controls (epic_id, concurrency)
+         VALUES (?, ?)
+         ON CONFLICT(epic_id) DO UPDATE SET
+           concurrency=excluded.concurrency,
+           concurrency_changed_at=datetime('now'),
+           updated_at=datetime('now')`,
+      ).run(epicId, raw));
+      const row = withDb(db => db.prepare(
+        'SELECT concurrency FROM lifecycle_execution_controls WHERE epic_id=?',
+      ).get(epicId));
+      return respondJson(res, 200, { ok: true, epic_id: epicId, concurrency: row.concurrency });
+    } catch (e) {
+      return respondJson(res, 500, { ok: false, error: 'concurrency write failed: ' + e.message });
+    }
+  }
+
   return {
     handleModelsList,
     handleLmstudioModelsList,
     handleModelSet,
+    handleEngineConcurrencySet,
     probeLmstudioModels,
     ZAI_MODELS,
     lmstudioUrl: LMSTUDIO_URL,

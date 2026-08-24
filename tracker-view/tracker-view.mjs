@@ -392,6 +392,10 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/model/set') {
     return modelApi.handleModelSet(req, res);
   }
+  // STAGE-23 one-entry law: the ONLY writer of the worker rate limit.
+  if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
+    return modelApi.handleEngineConcurrencySet(req, res);
+  }
 
   if (url.pathname === '/api/heartbeat') {
     let last = null;

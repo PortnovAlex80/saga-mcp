@@ -22,11 +22,11 @@ seed.prepare("INSERT INTO epics (id,project_id,name) VALUES (7,1,'e7'),(8,1,'e8'
 seed.close();
 const repository = new SqliteEpisodeRuntimeRepository();
 
-test('concurrency admission is min(operator, model) and counts durable active executions', () => {
+test('concurrency admission is the panel field (one-entry law) and counts durable active executions', () => {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-     VALUES (7,5,'zai','glm-4.7','high',2)`,
+       (epic_id,concurrency,model_provider,model_name,model_effort)
+     VALUES (7,5,'zai','glm-4.7','high')`,
   ).run();
   getDb().prepare(
     `INSERT INTO worker_executions
@@ -39,14 +39,13 @@ test('concurrency admission is min(operator, model) and counts durable active ex
 
   assert.deepEqual(repository.readConcurrencyAdmission(7), {
     operatorConcurrency: 5,
-    modelConcurrencyLimit: 2,
-    effectiveConcurrency: 2,
+    effectiveConcurrency: 5,
     activeExecutions: 2,
-    // C-4: seeded rows carry no execution_context → '(unfrozen)' bucket; the
-    // requested model glm-4.7 has catalog limit 2 and no frozen competition.
+    // One-entry law (2026-08-24): the panel field is the single ceiling; the
+    // anti-stack bound for every model is that same ceiling.
     requestedModel: 'glm-4.7',
     activeByModel: { '(unfrozen)': 2 },
-    requestedModelLimit: 2,
+    requestedModelLimit: 5,
     modelSlotsAvailable: true,
   });
 });
@@ -58,16 +57,16 @@ test('concurrency admission fails closed for a missing policy row', () => {
   );
 });
 
-test('concurrency admission fails closed for a missing model limit', () => {
+test('concurrency admission falls back to 1 when the field is absent (one-entry law)', () => {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-     VALUES (8,2,'zai','unknown','high',NULL)`,
+       (epic_id,concurrency,model_provider,model_name,model_effort)
+     VALUES (8,NULL,'zai','glm-4.7','high')`,
   ).run();
-  assert.throws(
-    () => repository.readConcurrencyAdmission(8),
-    /MODEL_CONCURRENCY_POLICY_INVALID/,
-  );
+  const admission = repository.readConcurrencyAdmission(8);
+  assert.equal(admission.operatorConcurrency, 1);
+  assert.equal(admission.effectiveConcurrency, 1,
+    'fallback is ONE worker — the fail-safe default of the single entry');
 });
 
 test.after(() => {

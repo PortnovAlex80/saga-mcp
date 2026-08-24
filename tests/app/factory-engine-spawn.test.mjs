@@ -61,8 +61,8 @@ function fixtureDb(root, { withControls = false, epicId = 1 } = {}) {
   if (withControls) {
     db.prepare(
       `INSERT INTO lifecycle_execution_controls
-         (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-       VALUES (?,?, 'zai', 'glm-4.7', 'high', 4)`,
+         (epic_id,concurrency,model_provider,model_name,model_effort)
+       VALUES (?,?, 'zai', 'glm-4.7', 'high')`,
     ).run(epicId, 2);
   }
   db.close();

@@ -1,20 +1,12 @@
 /**
- * C-4 (stage-11 PREVENTIVE-HUNT Layer 6) — FROZEN route limits are enforced by
- * admission.
- *
- * readConcurrencyAdmission used to count per-epic actives across ALL models
- * against the LIVE controls row only. A mid-run /api/model/set rewrites the
- * ceiling under in-flight workers: glm-5.2(10, 8 active) → glm-4.7(2) lets the
- * old workers keep running above the new ceiling, and a switch back stacks new
- * spawns past BOTH limits — nothing ever consults the FROZEN model of each
- * in-flight execution.
- *
- * The fix: group active executions by their FROZEN model
- * (worker_executions.metadata.execution_context.model_route.model) and admit a
- * new claim only when BOTH the live controls ceiling AND the per-model
- * aggregation allow it. Unknown model (not in the FACTORY_CLOUD_MODELS
- * catalog) → fail-open on the catalog lookup but never above the controls
- * ceiling.
+ * C-4 (stage-11 PREVENTIVE-HUNT Layer 6) + STAGE-23 one-entry law
+ * (operator directive 2026-08-24): admission is grouped by the FROZEN model
+ * of each in-flight execution, and the ONLY ceiling is the panel concurrency
+ * field (lifecycle_execution_controls.concurrency). The per-model catalog
+ * limit and the model_concurrency_limit column were a mistake and are gone:
+ * switching a model never changes the ceiling, and the anti-stacking bound
+ * for EVERY model — known or not — is the single field. Fallback: absent
+ * field => 1.
  */
 
 import test from 'node:test';
@@ -42,17 +34,16 @@ seed.prepare("INSERT INTO epics (id,project_id,name) VALUES (7,1,'e7'),(8,1,'e8'
 seed.close();
 const repository = new SqliteEpisodeRuntimeRepository();
 
-function setControls(epicId, { concurrency = 5, model = 'glm-4.7', limit = 2, provider = 'zai' } = {}) {
+function setControls(epicId, { concurrency = 5, model = 'glm-4.7', provider = 'zai' } = {}) {
   getDb().prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
-     VALUES (?,?,?,?,?,?)
+       (epic_id,concurrency,model_provider,model_name,model_effort)
+     VALUES (?,?,?,?,?)
      ON CONFLICT(epic_id) DO UPDATE SET
        concurrency=excluded.concurrency,
        model_provider=excluded.model_provider,
-       model_name=excluded.model_name,
-       model_concurrency_limit=excluded.model_concurrency_limit`,
-  ).run(epicId, concurrency, provider, model, 'high', limit);
+       model_name=excluded.model_name`,
+  ).run(epicId, concurrency, provider, model, 'high');
 }
 
 let execSeq = 0;
@@ -72,11 +63,8 @@ function insertActiveExecution(epicId, frozenModel) {
   ).run(`e-${epicId}-${execSeq}`, 'r', epicId, execSeq, `w${execSeq}`, 'host', metadata);
 }
 
-test('frozen-limit aggregation blocks a claim whose frozen model is over its catalog limit even when the live ceiling allows', () => {
-  // Epic 7: the mid-run rewrite scenario. 8 workers were frozen on glm-4.7
-  // (catalog limit 2) under an earlier controls state; the live controls row
-  // now names glm-4.7 with a stale limit of 10 and operator 10 — the LIVE
-  // ceiling alone would happily admit a 9th glm-4.7 worker.
+test('the single field binds: 8 frozen workers block the 9th spawn under ceiling 8', () => {
+  // Epic 7: 8 workers frozen on glm-4.7; the field says 8 — no 9th slot.
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
@@ -85,67 +73,66 @@ test('frozen-limit aggregation blocks a claim whose frozen model is over its cat
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
   insertActiveExecution(7, 'glm-4.7');
-  setControls(7, { concurrency: 10, model: 'glm-4.7', limit: 10 });
+  setControls(7, { concurrency: 8, model: 'glm-4.7' });
 
   const admission = repository.readConcurrencyAdmission(7);
   assert.equal(admission.activeExecutions, 8);
   assert.equal(admission.requestedModel, 'glm-4.7');
   assert.deepEqual(admission.activeByModel, { 'glm-4.7': 8 });
-  assert.equal(admission.requestedModelLimit, 2,
-    'the catalog limit of the requested model must be reported');
+  assert.equal(admission.requestedModelLimit, 8,
+    'one-entry law: the reported per-model bound IS the field');
   assert.equal(admission.modelSlotsAvailable, false,
-    '8 frozen glm-4.7 executions leave no slot under the catalog limit 2');
+    '8 frozen executions leave no slot under the single ceiling 8');
 });
 
-test('per-model aggregation admits exactly up to the requested model catalog limit', () => {
-  // Epic 8: mixed in-flight models. Controls name glm-4.7 with live limits
-  // loose enough that ONLY the per-model rule binds.
+test('per-model anti-stacking admits exactly up to the single field, regardless of catalog', () => {
+  // Epic 8: mixed in-flight models; the field (5) is the only bound.
   insertActiveExecution(8, 'glm-5.2');
   insertActiveExecution(8, 'glm-4.7');
-  setControls(8, { concurrency: 5, model: 'glm-4.7', limit: 5 });
+  setControls(8, { concurrency: 5, model: 'glm-4.7' });
 
   const first = repository.readConcurrencyAdmission(8);
   assert.deepEqual(first.activeByModel, { 'glm-5.2': 1, 'glm-4.7': 1 });
-  assert.equal(first.requestedModelLimit, 2);
-  assert.equal(first.modelSlotsAvailable, true,
-    'one frozen glm-4.7 execution still leaves a slot under catalog limit 2');
+  assert.equal(first.requestedModelLimit, 5);
+  assert.equal(first.modelSlotsAvailable, true);
 
   insertActiveExecution(8, 'glm-4.7');
+  insertActiveExecution(8, 'glm-4.7');
+  insertActiveExecution(8, 'glm-4.7');
+  insertActiveExecution(8, 'glm-4.7');
   const second = repository.readConcurrencyAdmission(8);
-  assert.deepEqual(second.activeByModel, { 'glm-5.2': 1, 'glm-4.7': 2 });
+  assert.deepEqual(second.activeByModel, { 'glm-5.2': 1, 'glm-4.7': 5 });
   assert.equal(second.modelSlotsAvailable, false,
-    'two frozen glm-4.7 executions exhaust the catalog limit 2 even though total active (3) is below the live ceiling (5)');
+    '5 glm-4.7 executions exhaust the single ceiling 5 (no catalog arithmetic)');
 });
 
-test('unknown requested model fails open on the catalog lookup but never above the controls ceiling', () => {
-  // Epic 9: a model that is NOT in the catalog. The per-model limit falls back
-  // to the epic's controls ceiling (min(operator, controls limit) = 3).
+test('an unknown requested model is bounded by the same single field', () => {
+  // Epic 9: a model that is NOT in the catalog — same bound, no special case.
   insertActiveExecution(9, 'glm-9.9');
-  setControls(9, { concurrency: 3, model: 'glm-9.9', limit: 3 });
+  setControls(9, { concurrency: 3, model: 'glm-9.9' });
 
   const first = repository.readConcurrencyAdmission(9);
-  assert.equal(first.requestedModelLimit, null,
-    'unknown model has no catalog limit to report');
-  assert.equal(first.modelSlotsAvailable, true,
-    '1 active under the controls-derived ceiling 3 leaves a slot');
+  assert.equal(first.requestedModelLimit, 3,
+    'unknown or not — the bound is the field');
+  assert.equal(first.modelSlotsAvailable, true);
 
   insertActiveExecution(9, 'glm-9.9');
   insertActiveExecution(9, 'glm-9.9');
   const second = repository.readConcurrencyAdmission(9);
   assert.equal(second.modelSlotsAvailable, false,
-    '3 actives of an unknown model exhaust the controls ceiling (fail-open on catalog, never above controls)');
+    '3 actives exhaust the field ceiling 3');
 });
 
-test('legacy executions without an execution context count under the unfrozen bucket and leave the per-model rule to the live ceiling', () => {
+test('legacy executions without an execution context count under the unfrozen bucket and against the field', () => {
   // Epic 10: one pre-D1.1 execution with no execution_context in metadata.
   insertActiveExecution(10, undefined);
-  setControls(10, { concurrency: 4, model: 'glm-4.7', limit: 4 });
+  setControls(10, { concurrency: 4, model: 'glm-4.7' });
 
   const admission = repository.readConcurrencyAdmission(10);
   assert.deepEqual(admission.activeByModel, { '(unfrozen)': 1 });
   assert.equal(admission.requestedModel, 'glm-4.7');
   assert.equal(admission.modelSlotsAvailable, true,
-    'the unfrozen bucket does not consume glm-4.7 catalog slots; the live ceiling still counts it (active=1 < 4)');
+    'the unfrozen bucket never consumes per-model slots; the field still counts the execution (active=1 < 4)');
 });
 
 // --- Consumer wiring: the dispatch loop must treat modelSlotsAvailable=false

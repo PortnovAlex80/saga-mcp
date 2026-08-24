@@ -61,7 +61,7 @@ db.prepare("INSERT INTO epics (id,project_id,name,description,status,priority) V
 db.prepare("INSERT INTO repositories (id,name) VALUES (1,?)").run(repoName);
 db.prepare(`INSERT INTO project_repositories (id,project_id,repository_id,role,local_path,integration_branch,status) VALUES (1,1,1,'component',?,'dev','active')`).run(repositoryPath);
 db.prepare(`INSERT INTO trusted_providers (id,project_id,name,version,category,trust_basis,determinism,scope,status) VALUES (1,1,'saga-real-model-worker','1.0.0','deterministic_evidence','real factory execution','partial','factory-smoke','active')`).run();
-db.prepare(`INSERT INTO lifecycle_execution_controls (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit) VALUES (1,1,'zai',?, 'medium',5)`).run(modelName);
+db.prepare(`INSERT INTO lifecycle_execution_controls (epic_id,concurrency,model_provider,model_name,model_effort) VALUES (1,1,'zai',?, 'medium')`).run(modelName);
 
 const policyBase = { id: 'reference-development-policy', version: '1.0.0' };
 const deferredBase = { schemaVersion: 'factory.delivery-deferred-profile.v1', reason: 'authorization-required', source: 'start-from-idea' };

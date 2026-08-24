@@ -103,9 +103,9 @@ export async function bootstrapFreshDb(opts) {
   ).run();
   db.prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_concurrency_limit)
-     VALUES (1,?,?)`,
-  ).run(concurrency, modelConcurrency);
+       (epic_id,concurrency)
+     VALUES (1,?)`,
+  ).run(concurrency);
   db.prepare(
     `INSERT INTO repositories (id,name,default_branch,metadata)
      VALUES (1,?,'dev','{}')`,
@@ -256,9 +256,9 @@ export async function bootstrapDeferredDb(opts) {
   ).run();
   db.prepare(
     `INSERT INTO lifecycle_execution_controls
-       (epic_id,concurrency,model_concurrency_limit)
-     VALUES (1,?,?)`,
-  ).run(concurrency, modelConcurrency);
+       (epic_id,concurrency)
+     VALUES (1,?)`,
+  ).run(concurrency);
   db.prepare(
     `INSERT INTO repositories (id,name,default_branch,metadata)
      VALUES (1,?,'main','{}')`,

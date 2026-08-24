@@ -221,3 +221,48 @@ test('K9/evidence: successor binding is single-shot and exact', () => {
     'regeneration authority binds exactly one successor',
   );
 });
+
+// STAGE-23 (2026-08-24) — the double-redevelop loop kill: the conflict
+// handler's promise "the next execution resolves to an ordinary miss" was
+// broken by the selection reading ALL capsule rows regardless of persisted
+// evidence — two divergent capsules under one key re-conflicted forever
+// (live: child-3 plan desk poisoned on every cycle). Corruption-class
+// evidence must exclude the capsule from the SELECTION.
+test('K9/loop-kill: after a payload-conflict, the NEXT bind resolves as an ordinary miss (no eternal loop)', () => {
+  const db = freshDb();
+  seedProcessRun(db, 1000, 7, PKG);
+  db.prepare(
+    `INSERT INTO factory_stage_runs (id, lifecycle_run_id, process_run_id, stage_id, status)
+     VALUES (1, 25, 1000, 'formalization', 'completed')`,
+  ).run();
+  const key = authorKey();
+  insertCapsule(db, {
+    capsuleRef: 'cap-left', replayKey: key, projectId: 7, payloadHash: 'hash-left',
+    payloadSnapshot: divergentPayloadSnapshot('approved'),
+  });
+  insertCapsule(db, {
+    capsuleRef: 'cap-right', replayKey: key, projectId: 7, payloadHash: 'hash-right',
+    payloadSnapshot: divergentPayloadSnapshot('rejected'),
+  });
+  seedExecution(db, 'exec-conflict', 81, 7);
+  assert.throws(
+    () => bindReplayToClaim(db, {
+      task: makeTask(81, taskMetadata(1000)),
+      executionId: 'exec-conflict',
+      role: 'author',
+    }),
+    /REPLAY_KEY_PAYLOAD_CONFLICT/u,
+    'first bind on divergent capsules fails closed and persists evidence',
+  );
+  // The second bind on a FRESH execution must see NO selectable capsule
+  // (both carry corruption-class evidence) and resolve as an ordinary miss —
+  // before the fix this threw the same conflict forever (live child-3 loop).
+  seedExecution(db, 'exec-miss', 81, 7);
+  const selection = bindReplayToClaim(db, {
+    task: makeTask(81, taskMetadata(1000)),
+    executionId: 'exec-miss',
+    role: 'author',
+  });
+  assert.ok(selection === null || selection.capsule === undefined,
+    'the post-conflict bind must resolve as an ordinary miss, never re-conflict');
+});

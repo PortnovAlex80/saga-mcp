@@ -41,10 +41,11 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     label: 'GLM 4.6 — legacy budget',
     provider: 'zai',
     effort: 'high',
-    limit: 2,
+    limit: 8,
     tier: 'sonnet',
     note: 'Served by the coding-plan endpoint (verified 2026-08-18 via /models). '
-      + 'Sonnet-level fallback for cheap dev loops.',
+      + 'Sonnet-level fallback for cheap dev loops. Operator-requested ceiling 8 '
+      + '(2026-08-24, DEVTEST stage-23: factory worker rate limit 6 -> 8).',
   }),
   Object.freeze({
     id: 'glm-4.7',
@@ -110,17 +111,22 @@ export function factoryModelProfile(modelId: string): FactoryModelProfile | null
   return FACTORY_CLOUD_MODELS.find(model => model.id === modelId) ?? null;
 }
 
+/**
+ * STAGE-23 one-entry law (operator directive 2026-08-24): the panel
+ * concurrency field is the SINGLE ceiling. The per-model catalog limit is a
+ * SUGGESTED default only; model_concurrency_limit is removed entirely.
+ *
+ * @deprecated the modelLimit argument is ignored — kept as a passthrough for
+ *   legacy callers; new code reads the controls field directly.
+ */
 export function effectiveFactoryConcurrency(
   requested: number,
-  modelLimit: number,
+  _modelLimit?: number,
 ): number {
   if (!Number.isInteger(requested) || requested < 1 || requested > 10) {
     throw new Error(`requested concurrency must be an integer 1..10, got '${requested}'`);
   }
-  if (!Number.isInteger(modelLimit) || modelLimit < 1 || modelLimit > 10) {
-    throw new Error(`model concurrency limit must be an integer 1..10, got '${modelLimit}'`);
-  }
-  return Math.min(requested, modelLimit);
+  return requested;
 }
 
 /**
@@ -164,39 +170,29 @@ export interface ModelAdmissionDecision {
 export function computeModelAdmission(input: {
   /** The model the NEXT claim would freeze (live controls model_name). */
   requestedModel: string | null;
-  /** FROZEN model of each active in-flight execution (null → unfrozen bucket). */
+  /** FROZEN model of each active in-flight execution (null -> unfrozen bucket). */
   activeFrozenModels: ReadonlyArray<string | null>;
-  /** Effective live ceiling: min(operator concurrency, controls model limit). */
+  /**
+   * Effective live ceiling - the panel concurrency field (one-entry law;
+   * per-model catalog limits no longer gate anything).
+   */
   effectiveControlsCeiling: number;
-  /** Catalog limit lookup — overridable for tests. */
-  catalog?: (model: string) => number | null;
 }): ModelAdmissionDecision {
-  const catalog = input.catalog
-    ?? ((model: string) => factoryModelProfile(model)?.limit ?? null);
   const activeByModel: Record<string, number> = {};
   for (const frozen of input.activeFrozenModels) {
     const key = frozen ?? UNFROZEN_MODEL_BUCKET;
     activeByModel[key] = (activeByModel[key] ?? 0) + 1;
   }
-  const requestedModelLimit = input.requestedModel !== null
-    ? catalog(input.requestedModel)
-    : null;
   if (input.requestedModel === null) {
     return { activeByModel, requestedModelLimit: null, modelSlotsAvailable: true };
   }
+  // One-entry law: the anti-stacking bound for EVERY model (known or not) is
+  // the single controls ceiling.
   const active = activeByModel[input.requestedModel] ?? 0;
-  if (requestedModelLimit !== null) {
-    return {
-      activeByModel,
-      requestedModelLimit,
-      modelSlotsAvailable: active < requestedModelLimit,
-    };
-  }
-  // Unknown model: fail-open on the catalog lookup, but never above the
-  // controls ceiling.
   return {
     activeByModel,
-    requestedModelLimit: null,
+    requestedModelLimit: input.effectiveControlsCeiling,
     modelSlotsAvailable: active < input.effectiveControlsCeiling,
   };
 }
+

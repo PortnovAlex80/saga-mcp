@@ -39,9 +39,9 @@ test('capture-run-snapshot is safe on a live WAL database under an active writer
       CREATE TABLE lifecycle_execution_controls (
         epic_id INTEGER PRIMARY KEY, engine_state TEXT, engine_pid INTEGER,
         concurrency INTEGER, model_provider TEXT, model_name TEXT,
-        model_effort TEXT, model_concurrency_limit INTEGER
+        model_effort TEXT
       );
-      INSERT INTO lifecycle_execution_controls VALUES (1, 'running', 424242, 2, 'zai', 'glm-4.7', 'high', 2);
+      INSERT INTO lifecycle_execution_controls VALUES (1, 'running', 424242, 2, 'zai', 'glm-4.7', 'high');
     `);
     setup.exec('CREATE TABLE live_telemetry (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT)');
     setup.prepare('INSERT INTO live_telemetry (note) VALUES (?)').run('seed');

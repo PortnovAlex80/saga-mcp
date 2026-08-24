@@ -96,7 +96,7 @@ async function main() {
     manifest.database.userVersion = source.pragma('user_version', { simple: true });
     try {
       const controls = source.prepare(
-        'SELECT epic_id, engine_state, engine_pid, concurrency, model_provider, model_name, model_effort, model_concurrency_limit FROM lifecycle_execution_controls',
+        'SELECT epic_id, engine_state, engine_pid, concurrency, model_provider, model_name, model_effort FROM lifecycle_execution_controls',
       ).all();
       manifest.resolvedConfig.lifecycleExecutionControls = controls;
       manifest.capturedWhileLive = controls.some((c) => c.engine_state === 'running' && c.engine_pid);

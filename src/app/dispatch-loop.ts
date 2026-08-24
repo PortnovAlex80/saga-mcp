@@ -583,18 +583,14 @@ function logTerminal(assignment: AssignedWork, snapshot: WorkerRunSnapshot): voi
 function assertAdmission(value: ConcurrencyAdmissionSnapshot): void {
   for (const [name, candidate] of [
     ['operatorConcurrency', value.operatorConcurrency],
-    ['modelConcurrencyLimit', value.modelConcurrencyLimit],
     ['effectiveConcurrency', value.effectiveConcurrency],
   ] as const) {
     if (!Number.isInteger(candidate) || candidate < 1 || candidate > 10) {
       throw new Error(`${name} must be an integer 1..10, got '${candidate}'`);
     }
   }
-  if (value.effectiveConcurrency !== Math.min(
-    value.operatorConcurrency,
-    value.modelConcurrencyLimit,
-  )) {
-    throw new Error('effectiveConcurrency must equal min(operatorConcurrency, modelConcurrencyLimit)');
+  if (value.effectiveConcurrency !== value.operatorConcurrency) {
+    throw new Error('effectiveConcurrency must equal operatorConcurrency (one-entry law: the panel concurrency field is the single ceiling)');
   }
   if (!Number.isInteger(value.activeExecutions) || value.activeExecutions < 0) {
     throw new Error(`activeExecutions must be a non-negative integer, got '${value.activeExecutions}'`);

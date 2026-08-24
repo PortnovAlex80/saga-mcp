@@ -253,11 +253,11 @@ export async function bootstrapFreshHarness(opts: BootstrapFreshHarnessOptions):
       `INSERT INTO epics (id,project_id,name,status,priority)
        VALUES (?, ?, 'Fresh Harness Pipeline','planned','high')`,
     ).run(epicId, projectId);
-    // The concurrency cap. effectiveConcurrency = min(concurrency, model_concurrency_limit).
+    // The concurrency cap (one-entry law: the single ceiling field).
     db.prepare(
-      `INSERT INTO lifecycle_execution_controls (epic_id,concurrency,model_concurrency_limit)
-       VALUES (?, ?, ?)`,
-    ).run(epicId, concurrencyCap, concurrencyCap);
+      `INSERT INTO lifecycle_execution_controls (epic_id,concurrency)
+       VALUES (?, ?)`,
+    ).run(epicId, concurrencyCap);
     const repoInfo = db.prepare(
       `INSERT INTO repositories (name,default_branch,metadata)
        VALUES ('fresh-harness-repo','dev','{}')`,

@@ -50,14 +50,13 @@ function configureFactoryControl(db, epicId, model, concurrency) {
   db.prepare(
     `INSERT INTO lifecycle_execution_controls
        (epic_id, engine_state, concurrency, model_provider, model_name,
-        model_effort, model_concurrency_limit)
-     VALUES (?, 'stopped', ?, ?, ?, ?, ?)
+        model_effort)
+     VALUES (?, 'stopped', ?, ?, ?, ?)
      ON CONFLICT(epic_id) DO UPDATE SET
        concurrency=excluded.concurrency,
        model_provider=excluded.model_provider,
        model_name=excluded.model_name,
        model_effort=excluded.model_effort,
-       model_concurrency_limit=excluded.model_concurrency_limit,
        updated_at=datetime('now')`,
   ).run(
     epicId,
@@ -65,7 +64,6 @@ function configureFactoryControl(db, epicId, model, concurrency) {
     model.provider,
     model.id,
     model.effort,
-    model.limit,
   );
 }
 

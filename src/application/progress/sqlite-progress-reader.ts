@@ -154,7 +154,7 @@ function readLatestEffectAttempts(
     `SELECT idempotency_key
        FROM factory_effect_attempts
       WHERE workplace_ref=?
-      ORDER BY id DESC
+      ORDER BY attempt_no DESC, created_at DESC
       LIMIT 1`,
   ).get(workplaceRef) as { idempotency_key: string } | undefined;
   if (!latest) return [];

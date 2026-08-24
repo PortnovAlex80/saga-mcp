@@ -370,10 +370,22 @@ export function bindReplayToClaim(
   certifyAcceptedReplayCapsules(db, keyMaterial.projectId);
 
   const replayKey = computeReplayKey(keyMaterial);
+  // ADR-080 §2 (STAGE-23 loop fix, 2026-08-24): the payload-conflict handler
+  // persists invalidation evidence "so the NEXT execution resolves to an
+  // ordinary miss" — but the selection read every capsule row regardless of
+  // evidence, so two divergent capsules under one key (the double-redevelop
+  // shape: parent capsule + child capsule, re-stamped base) re-conflicted on
+  // EVERY claim forever. Corruption-class evidence (payload-conflict,
+  // refused) must exclude a capsule from the selection; the obsolete class
+  // (package-changed et al.) keeps its designed hit-then-typed-miss route.
   const capsuleRows = db.prepare(
-    `SELECT capsule_ref,payload_hash,payload_snapshot
-       FROM factory_replay_capsules
-      WHERE project_id=? AND replay_key=?`,
+    `SELECT c.capsule_ref,c.payload_hash,c.payload_snapshot
+       FROM factory_replay_capsules c
+      WHERE c.project_id=? AND c.replay_key=?
+        AND NOT EXISTS (
+          SELECT 1 FROM factory_replay_capsule_invalidations i
+           WHERE i.capsule_ref=c.capsule_ref
+             AND i.reason IN ('payload-conflict','refused'))`,
   ).all(keyMaterial.projectId, replayKey) as Array<{
     capsule_ref: string;
     payload_hash: string;

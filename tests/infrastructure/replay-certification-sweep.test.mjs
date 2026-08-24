@@ -311,3 +311,48 @@ test('SW5/R-E1: a workplace whose capture fails is counted as failed', () => {
     db.close();
   }
 });
+
+// ===========================================================================
+// SW6 — adoption is a byte-stable no-op (STAGE-23, 2026-08-24).
+//
+// The development-only entry consumes the frozen workshops-1+2 past: the
+// child lifecycle's plan desk hit the sweep with the PARENT's certified
+// candidate sets and adopted them via skip(already-certified) — no worker,
+// no re-certification. That guarantee is two-sided: the skip must be counted
+// (SW4) AND the certified material must remain byte-identical with no side
+// writes — a rewritten capsule digest or a duplicated candidate row would
+// silently fork the replay identity the next redevelop inherits.
+// ===========================================================================
+test('SW6: adoption keeps the certified capsule byte-identical and writes nothing new', () => {
+  const world = makeWorld();
+  const { db } = world;
+  try {
+    const first = certifyAcceptedReplayCapsules(db, 1);
+    assert.equal(first.certified, 1, 'precondition: the parent material is certified');
+
+    const capsuleSnapshot = JSON.stringify(
+      db.prepare('SELECT * FROM factory_replay_capsules ORDER BY rowid').all(),
+    );
+    const tableCounts = [
+      'factory_replay_capsules',
+      'factory_candidate_sets',
+      'factory_candidate_set_members',
+      'factory_workplace_production_revisions',
+    ].map((t) => [t, db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n]);
+
+    const second = certifyAcceptedReplayCapsules(db, 1);
+    assert.equal(second.skipped['already-certified'], 1,
+      'the child run adopts the certified material as a counted skip');
+    assert.equal(
+      JSON.stringify(db.prepare('SELECT * FROM factory_replay_capsules ORDER BY rowid').all()),
+      capsuleSnapshot,
+      'adoption must not rewrite the certified capsule — identity is consumed byte-for-byte',
+    );
+    for (const [table, n] of tableCounts) {
+      assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, n,
+        `${table} must not grow on adoption`);
+    }
+  } finally {
+    db.close();
+  }
+});

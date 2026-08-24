@@ -1178,7 +1178,6 @@ CREATE TABLE IF NOT EXISTS lifecycle_execution_controls (
   model_provider       TEXT,
   model_name           TEXT,
   model_effort         TEXT,
-  model_concurrency_limit INTEGER,
   -- Antifreeze layer C (schema v14): the human-readable WHY for a
   -- non-'running' engine_state. Written by the panel engine supervisor when
   -- the restart budget is exhausted (engine_state='failed_watchdog'), cleared

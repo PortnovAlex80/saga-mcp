@@ -31,7 +31,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -321,17 +321,85 @@ test('G2n: the BM-5 upstream-routing proof is hosted blocking (per-file removal/
   );
 });
 
+// G2k — STAGE-23 desk-zone completeness ratchet (2026-08-24 desk audit).
+// The desk-coverage group closed the desk orphan class; this guard keeps it
+// closed: every desk-zone suite must be hosted in a blocking run-set or
+// quarantined with a reason. A new desk suite can never silently join the
+// CC-GAP-8 orphan class again.
+test('G2o: every workshop desk suite is hosted or quarantined (desk-zone completeness ratchet)', () => {
+  const deskZones = [
+    'tests/discovery',
+    'tests/modules/discovery',
+    'tests/modules/formalization',
+    'tests/modules/development',
+    'tests/modules/delivery',
+    // second sweep (2026-08-24): the SRS-004 AC-9 planner directory is a
+    // desk zone sitting outside tests/modules — same ratchet.
+    'tests/planner-ac9',
+  ];
+  const orphans = [];
+  for (const zone of deskZones) {
+    const dir = path.join(root, zone);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.test.mjs')) continue;
+      const rel = `${zone}/${name}`;
+      if (!runSet.has(rel) && !qSet.has(rel)) orphans.push(rel);
+    }
+  }
+  assert.deepEqual(orphans, [],
+    'desk-zone orphans found — every workshop desk suite must be hosted in a blocking '
+    + 'group (or quarantined with a documented reason) in the same commit it lands');
+});
+
+// G2l — R1 omnibus closure ratchet (2026-08-24 orphan research): NO test file
+// in the repository may be an orphan. Every *.test.mjs must be hosted in a
+// blocking run-set, quarantined with a reason, or on the explicit LIVE
+// allowlist (declared live-sandbox preconditions that skip everywhere —
+// hosting them adds no CI signal and would fake coverage with a green dot).
+// This makes the CC-GAP-8 orphan class (committed but never executed)
+// structurally impossible repo-wide.
+const LIVE_SANDBOX_ALLOWLIST = new Set([
+  'tests/app/factory-redevelopment.test.mjs',
+  'tests/infrastructure/development-verification-continuation-live.test.mjs',
+]);
+test('G2p: the repository has ZERO orphan test files (R1 omnibus ratchet)', () => {
+  const tracked = spawnSync('git', ['ls-files', '*.test.mjs'], {
+    cwd: root, encoding: 'utf8',
+  });
+  assert.equal(tracked.status, 0, 'git ls-files must succeed');
+  const ciText = readFileSync(ciPath, 'utf8');
+  const ciInvoked = new Set(
+    [...ciText.matchAll(/(?:node(?:\s+--test)?\s+)((?:tests|tools)\/[A-Za-z0-9_\/.-]+\.mjs)/g)].map((m) => m[1]),
+  );
+  const orphans = [];
+  for (const file of tracked.stdout.trim().split('\n').filter(Boolean)) {
+    if (runSet.has(file) || qSet.has(file) || LIVE_SANDBOX_ALLOWLIST.has(file) || ciInvoked.has(file)) continue;
+    orphans.push(file);
+  }
+  assert.deepEqual(orphans, [],
+    'orphan test files found — every suite must be hosted in a blocking group, quarantined '
+    + 'with a reason, or (live-sandbox class) added to LIVE_SANDBOX_ALLOWLIST in the same '
+    + 'commit it lands');
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
+// STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
+// the required list — re-validated GREEN (2/2) on the current baseline; the
+// stale producerExecutionRef mock rotted away upstream but the quarantine was
+// never re-checked (the R2 defect). It now runs in the process-modules group.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [
     'tests/factory-contract/golden-path.test.mjs',
     'tests/factory-contract/parallel-git-desk.test.mjs',
-    'tests/process-modules/development-task-graph-diagnostics.test.mjs',
     'tests/architecture/submission-validator-diagnostics.test.mjs',
   ];
   for (const f of required) {
     assert.ok(qSet.has(f), `required quarantine missing: ${f}`);
   }
+  assert.ok(!qSet.has('tests/process-modules/development-task-graph-diagnostics.test.mjs'),
+    'development-task-graph-diagnostics was de-quarantined 2026-08-24 (re-validated green) '
+    + 'and must not be re-quarantined without a fresh failing run');
   // factory-temporal: the whole suite is quarantined (>= 5 files).
   const temporal = quarantine.filter(q => q.path.startsWith('tests/factory-temporal/'));
   assert.ok(temporal.length >= 5, `factory-temporal quarantine incomplete: ${temporal.length}`);
