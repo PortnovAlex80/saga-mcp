@@ -1,6 +1,6 @@
 # ADR-053: Accepted material is a sealed Workplace production revision; WorkerExecution is provenance only
 
-- **Status:** Proposed (architectural diagnosis, not yet implemented)
+- **Status:** Accepted (see the 2026-08-25 addendum; closure evidence state is tracked separately in the closure registry)
 - **Date:** 2026-08-10
 - **Supersedes:** —
 - **Superseded by:** —
@@ -1019,3 +1019,51 @@ the sole accepted-material authority
 После него реальная модель перестанет быть основным средством поиска очередного
 адаптерного дефекта и вернётся к правильной роли — финального canary поверх уже
 доказанной фабричной физики.
+
+---
+
+## Addendum 2026-08-25 — implementation truth and closure state
+
+This decision was executed through releases K6–K13 (material-authority
+cutover phases 3–7) and independently re-audited on 2026-08-24/25 as Phase 3
+of `docs/plans/CANONICAL-CONSISTENCY-AND-ADR053-CLOSURE-PLAN.md`. The full
+per-criterion evidence matrix is
+`docs/verification/ADR-053-CLOSURE-MATRIX-2026-08-25.md`. Summary of the
+audited truth:
+
+- **EC-1..EC-9 of the «Жёсткие критерии завершения cutover» are MET** with
+  blocking, executable proofs run green on the audited canonical tree
+  (`57468bb6`), including the three residuals named by the 2026-08-16
+  conformance audit — the epic-scoped settlement readers are deleted (exact
+  lifecycle-scoped reads only), the replay capsule binder binds by semantic
+  key (typed conflict, never newest-wins), and resume compatibility compares
+  handler implementation digests (drift → restart-required, never
+  compatible). `producerExecutionRef` no longer exists in `src/`; the effect
+  input is exactly `AcceptedCandidateAuthority`.
+- **EC-10 remains OPEN.** The scripted-E2E leg was red at the audit base and
+  is repaired on the canonical line (`9ff82434` merged as `a4565be0`:
+  `SUBMISSION_VALIDATION_POLICY_MISSING@4.0.0` production wiring repair +
+  stale admission fixtures; w9-02/w9-03/golden-path 10/10 green). Its
+  frozen-immutable-build confirmation and the clean real canary are Phase-7
+  qualification evidence under ADR-096 and are NOT claimed here.
+- **Vocabulary reconciliation (EC-6):** the implemented contract fulfills the
+  criterion through the schema-versioned frozen baseline manifest
+  (per-AC artifact/code/hash entries frozen once at acceptance); the literal
+  entity names proposed in «Шаг 5» (`DocumentContainer`,
+  `containerAcceptedHash`, `memberSemanticHash`, `memberAnchor`) were not
+  introduced. Substance implemented, names differ.
+- **Workshop manifest (EC-7):** one declarative capability manifest with a
+  deterministic digest is installed by both process roots with fail-closed
+  binding receipts; cross-process equality holds by construction and is
+  durably recorded rather than compared at dispatch.
+- **Out of scope, recorded separately:** CC-U2 (non-circular warrant
+  oracle-command authority) is an open gap owned by reserved ADR-093 — it is
+  not an ADR-053 exit criterion and is not folded into this decision's
+  closure.
+
+**Decision status:** Accepted — the cutover direction is normative and
+executed; execution vocabulary (`presenterRef`,
+`WorkplaceProductionRevision`, `AcceptedCandidateAuthority`) is the shipped
+code. **Closure state:** in-progress — closure requires the Phase-7 evidence
+(EC-10) per the closure plan §3.4; the closure registry tracks this
+separately and its `in-progress` value remains the truthful record.
