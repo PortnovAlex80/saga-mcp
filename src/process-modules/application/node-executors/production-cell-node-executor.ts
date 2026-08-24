@@ -548,18 +548,59 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         production: this.manifestProduction(cell, workplaces, outcomes, false),
       };
     }
-    if (outcomes.some(outcome => outcome.pending)) {
+    // A pending item whose dependency closure holds a terminal-FAILED
+    // workplace has no wake source: it can never be admitted, so its pending
+    // is a wait on a dead predecessor. Counting such items as pending let a
+    // single failed root mask the honest domain failure forever — the live
+    // Elite-9 deadlock (2026-08-24): impl-shared-core terminal-failed under
+    // post-acceptance effect exhaustion while 7 dependents kept the node
+    // reporting paused/worker_active indefinitely. Propagate terminal failure
+    // over the item graph and let doomed pending count as failed. Independent
+    // branches are untouched: their pending still defers the verdict.
+    const dependenciesByItemId = new Map<string, readonly string[]>();
+    for (const workplace of workplaces) {
+      dependenciesByItemId.set(
+        workplace.itemId,
+        cell.materialization.dependencySelector
+          ? stringSelector(workplace.item, cell.materialization.dependencySelector)
+          : [],
+      );
+    }
+    const doomedItemIds = new Set<string>(
+      workplaces
+        .filter(workplace => {
+          const state = this.requireState(workplace.ref);
+          return state.loopState === 'terminal' && state.terminalReason !== 'accepted';
+        })
+        .map(workplace => workplace.itemId),
+    );
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const workplace of workplaces) {
+        if (doomedItemIds.has(workplace.itemId)) continue;
+        if ((dependenciesByItemId.get(workplace.itemId) ?? [])
+          .some(dependencyId => doomedItemIds.has(dependencyId))) {
+          doomedItemIds.add(workplace.itemId);
+          grew = true;
+        }
+      }
+    }
+    const outcomeFor = (index: number): 'pending' | 'failed' | 'settled' =>
+      outcomes[index]!.failed || (outcomes[index]!.pending && doomedItemIds.has(workplaces[index]!.itemId))
+        ? 'failed'
+        : outcomes[index]!.pending ? 'pending' : 'settled';
+    if (outcomes.some((_, index) => outcomeFor(index) === 'pending')) {
       return {
         runtimeEvent: 'paused',
         pause: {
           kind: 'worker_active',
           reason: `cell '${cell.id}' has production in flight `
-            + `(${outcomes.filter(outcome => outcome.pending).length}/${outcomes.length} items)`,
+            + `(${outcomes.filter((_, index) => outcomeFor(index) === 'pending').length}/${outcomes.length} items)`,
         },
         production: this.manifestProduction(cell, workplaces, outcomes, false),
       };
     }
-    if (outcomes.some(outcome => outcome.failed)) {
+    if (outcomes.some((_, index) => outcomeFor(index) === 'failed')) {
       return {
         runtimeEvent: 'completed',
         domainEvent: 'failed',

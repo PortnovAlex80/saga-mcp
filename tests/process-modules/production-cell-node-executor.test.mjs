@@ -654,6 +654,61 @@ test('authorized author production is carried into a new current CandidateSet an
   h.db.close();
 });
 
+test('a terminal-FAILED dependency root settles the node failed instead of pausing forever', async () => {
+  // Live Elite-9 deadlock shape (2026-08-24): the shared-core root terminally
+  // failed under post-acceptance effect exhaustion; every dependent returned
+  // pendingOutcome (its wake source is dead), and pending masked failed in the
+  // node's outcome aggregation — paused/worker_active forever, the honest
+  // domain failure never reached the stage. Doomed pending must count as
+  // failed; independent branches (none here) must still defer the verdict.
+  const h = harness();
+  const definition = cell({ fanout: true });
+  definition.materialization.dependencySelector = 'dependsOnKeys';
+  const frame = {
+    runInput: {}, receipts: {},
+    productions: {
+      source: {
+        schema: 'factory.source.v1', artifactRef: 'source:doomed', contentHash: sha('source:doomed'),
+        semanticDigest: sha('source:doomed'),
+        bindings: {
+          items: [
+            { key: 'root', dependsOnKeys: [] },
+            { key: 'dependent', dependsOnKeys: ['root'] },
+          ],
+        },
+      },
+    },
+  };
+  const ctx = context(definition, frame);
+  await h.executor.execute(ctx);
+  // The root is projected while idle on the first execute; once terminally
+  // failed it is read back via readProjectedRoleTask, which the harness mock
+  // does not define — wire it to the plan the first execute recorded.
+  const rootPlan = h.plans.find(
+    entry => entry.input.task.metadata.cell_input_item.key === 'root',
+  );
+  assert.ok(rootPlan, 'first execute must project the root author task');
+  h.executor.opts.persistence.readProjectedRoleTask = () => (
+    { taskId: rootPlan.result.taskId }
+  );
+  const rootRef = h.db.prepare(
+    `SELECT w.workplace_ref FROM factory_workplaces w
+      WHERE w.production_cell_id='fanout-cell'
+        AND NOT EXISTS (
+          SELECT 1 FROM factory_workplace_dependencies d WHERE d.workplace_ref=w.workplace_ref
+        )`,
+  ).get().workplace_ref;
+  h.db.prepare(
+    `UPDATE factory_workplaces
+        SET kanban_phase='failed', loop_state='terminal', terminal_reason='failed'
+      WHERE workplace_ref=?`,
+  ).run(rootRef);
+  const result = await h.executor.execute(ctx);
+  assert.equal(result.runtimeEvent, 'completed');
+  assert.equal(result.domainEvent, 'failed');
+  h.db.close();
+});
+
 test('invalid fan-out cycle leaves every Workplace idle and unclaimable', async () => {
   const h = harness();
   const definition = cell({ fanout: true });
