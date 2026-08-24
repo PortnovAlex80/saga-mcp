@@ -1563,6 +1563,13 @@ export const ADR_095_INVENTORY = Object.freeze({
         'relaxed or deleted; invariant 6 (one universal typed-product submit seam) and ' +
         'the fenced-resubmit refusal stay unchanged.',
     }),
+    Object.freeze({
+      file: 'tests/execution/migration-conformance.test.mjs',
+      hostedIn: 'process-modules',
+      obligation: 'remove the unreachable factory_proposals seed and dead certificate-store ' +
+        'implementation body; retain a blocking absence assertion proving the retired ' +
+        'Discovery persistence/projection surfaces cannot regrow after Phase 5.',
+    }),
   ]),
 });
 
@@ -1730,24 +1737,34 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
     errors.push('legacyHandlerIds contains duplicates');
   }
 
-  // Phase-5 closure: exactly the ADR ten tables, each present in the fresh
-  // SCHEMA_SQL today; kept tables present too; no dead index on a kept table.
+  // Phase-5 closure: exactly ten tables and nineteen indexes. Before Phase 5
+  // they are all present; afterwards they are all absent. Partial is invalid.
   const schema = fs.readFileSync(joinPath(root, 'src/schema.ts'), 'utf8');
   if (inv.deadPhase5Tables.length !== 10) {
     errors.push(`expected exactly 10 dead phase-5 tables (ADR ratchet 5), got ${inv.deadPhase5Tables.length}`);
   }
+  if (inv.deadPhase5Indexes.length !== 19) {
+    errors.push(`expected exactly 19 dead phase-5 indexes (ADR ratchet 5), got ${inv.deadPhase5Indexes.length}`);
+  }
+  const presentDeadTables = inv.deadPhase5Tables.filter((t) =>
+    new RegExp(`CREATE TABLE IF NOT EXISTS ${t}\\b`).test(schema));
+  const presentDeadIndexes = inv.deadPhase5Indexes.filter((i) =>
+    new RegExp(`CREATE (?:UNIQUE )?INDEX IF NOT EXISTS ${i}\\b`).test(schema));
   for (const t of inv.deadPhase5Tables) {
-    if (!new RegExp(`CREATE TABLE IF NOT EXISTS ${t}\\b`).test(schema)) {
-      errors.push(`dead phase-5 table not found in src/schema.ts: ${t}`);
-    }
     if (inv.keptLive.keptTables.includes(t)) {
       errors.push(`table both dead and kept: ${t}`);
     }
-  }
-  for (const i of inv.deadPhase5Indexes) {
-    if (!new RegExp(`CREATE (?:UNIQUE )?INDEX IF NOT EXISTS ${i}\\b`).test(schema)) {
-      errors.push(`dead phase-5 index not found in src/schema.ts: ${i}`);
+    if (new RegExp(`DROP TABLE(?: IF EXISTS)? ${t}\\b`, 'i').test(schema)) {
+      errors.push(`production schema must never DROP existing legacy table: ${t}`);
     }
+  }
+  const closureFullyPresent = presentDeadTables.length === 10 && presentDeadIndexes.length === 19;
+  const closureFullyAbsent = presentDeadTables.length === 0 && presentDeadIndexes.length === 0;
+  if (!closureFullyPresent && !closureFullyAbsent) {
+    errors.push(`phase-5 schema closure is partial: ${presentDeadTables.length}/10 tables, ${presentDeadIndexes.length}/19 indexes`);
+  }
+  if (!phase4Landed && !closureFullyPresent) {
+    errors.push('phase-5 schema closure changed before the Phase-4 versioned cutover');
   }
   for (const t of inv.keptLive.keptTables) {
     if (!new RegExp(`CREATE TABLE IF NOT EXISTS ${t}\\b`).test(schema)) {
@@ -1757,6 +1774,11 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
   for (const tg of inv.keptLive.keptTriggers) {
     if (!schema.includes(tg)) {
       errors.push(`kept trigger not found in src/schema.ts: ${tg}`);
+    }
+  }
+  for (const i of inv.keptLive.keptIndexes) {
+    if (!new RegExp(`CREATE (?:UNIQUE )?INDEX IF NOT EXISTS ${i}\\b`).test(schema)) {
+      errors.push(`kept index not found in src/schema.ts: ${i}`);
     }
   }
 

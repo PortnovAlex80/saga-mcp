@@ -317,10 +317,9 @@ test('ADR-095 restart discovery: retired duplicate certificate store stays absen
   assert.equal(
     existsSync(path.join(REPO_ROOT, 'src/modules/discovery/infrastructure/discovery-settlement-repository.ts')),
     false,
-    'ADR-095 retired the legacy repository; live certificate replay is covered by production-cell output/certificate suites',
+    'restart authority belongs to the live production-cell output/certificate path',
   );
 });
-
 // ===========================================================================
 // DIMENSION 3 — RECOVERY conformance.
 //
@@ -459,10 +458,9 @@ test('ADR-095 exact-output discovery: retired duplicate certificate projection s
   assert.equal(
     existsSync(path.join(REPO_ROOT, 'src/modules/discovery/application/discovery-outcome-certificate-projection.ts')),
     false,
-    'ADR-095 retired the duplicate projection; live exact output is emitted by the production-cell settlement handler',
+    'exact output belongs to the live production-cell settlement handler',
   );
 });
-
 // ===========================================================================
 // DIMENSION 5 — PACKAGE-ISOLATION (sibling surface; skip-on-absent-sibling).
 //
