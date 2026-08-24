@@ -6,7 +6,15 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
-## Status: RESUMED (operator directive, 2026-08-24 10:50 UTC / 13:50 local)
+## Status: STOPPED AGAIN (operator directive, 2026-08-24 ~12:25 local)
+
+Second full stop, same clean protocol: engine 29992 braked, 2 executions fenced
+(both with workplace rewind), 0 workers running, controls `stopped`, checkpoint
+`latest-1-all` refreshed, watchdog killed. State at stop: tasks 34+ → 9 done,
+2 in review, 3 todo (the graph grew to 14 cards across the resume — third wave
+review cards included). Resume protocol unchanged (unpark → resume → watchdog).
+
+## (historical) RESUMED (operator directive, 2026-08-24 10:50 UTC / 13:50 local)
 
 Resume executed per protocol: unpark released 1 operator hold (0 parked workplaces
 needed requeue), engine restarted as pid 29992 adopting the SAME launch
