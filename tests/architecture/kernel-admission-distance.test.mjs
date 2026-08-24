@@ -253,7 +253,6 @@ test('the linkType behavioural ternary exists in exactly the three known copies'
     // generation-exact role-task reader landed above it — same three copies,
     // refreshed anchor.
     'src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts:616',
-    'src/modules/discovery/infrastructure/sqlite-discovery-runtime.ts:413',
     'src/tools/tasks.ts:552',
   ], `the linkType stage-name ternary was copied or moved (${copies.join(', ')}); ` +
     'the kernel copy is the audit-blessed single behavioural leak (K15/C5 own it) — a fourth copy is new behavioural branching');

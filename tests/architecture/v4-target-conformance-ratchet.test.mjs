@@ -127,8 +127,8 @@ test('REG-11: artifact-ref bridge for Formalization exists', () => {
   assert.ok(existsSync(path.join(REPO_ROOT, 'src/modules/formalization/domain/artifact-ref-bridge.ts')));
 });
 
-test('REG-11: proposal-ref bridge for Discovery exists', () => {
-  assert.ok(existsSync(path.join(REPO_ROOT, 'src/modules/discovery/domain/proposal-ref-bridge.ts')));
+test('ADR-095: retired Discovery proposal-ref bridge stays absent', () => {
+  assert.equal(existsSync(path.join(REPO_ROOT, 'src/modules/discovery/domain/proposal-ref-bridge.ts')), false);
 });
 
 test('REG-11-AC-05: TextSetManifest for Development exists', () => {

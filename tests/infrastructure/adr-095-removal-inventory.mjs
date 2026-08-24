@@ -1581,6 +1581,9 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
   const errors = [];
   const inv = inventory;
   const root = repoRoot;
+  const versionPinSource = fs.readFileSync(joinPath(root, inv.moduleIdentity.versionPinPath), 'utf8');
+  const currentVersion = versionPinSource.match(/name:\s*'product-discovery',[\s\S]*?version:\s*'([^']+)'/)?.[1] ?? null;
+  const phase4Landed = currentVersion !== null && currentVersion !== inv.moduleIdentity.version;
 
   const deadFileEntries = [
     ...inv.deadPhase3.filter((e) => e.kind === 'file' || e.kind === 'resource'),
@@ -1696,11 +1699,19 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
     }
   }
 
-  // Every dead file/resource entry and every kept production/resource/test
-  // path must resolve on disk TODAY (Phase-2B deletes nothing).
+  // Prove both sides of the atomic boundary: present before, absent after.
   for (const e of deadFileEntries) {
-    if (!fs.existsSync(joinPath(root, e.path))) {
-      errors.push(`dead entry path missing on disk (expected present-today): ${e.path}`);
+    const exists = fs.existsSync(joinPath(root, e.path));
+    if (!phase4Landed && !exists) errors.push(`dead entry path missing before Phase 4: ${e.path}`);
+    if (phase4Landed && exists) errors.push(`dead entry path survived Phase 4: ${e.path}`);
+  }
+  for (const t of inv.legacyTests.filter((entry) => entry.phase === 4)) {
+    const exists = fs.existsSync(joinPath(root, t.path));
+    if (phase4Landed && ['delete', 'helper'].includes(t.verdict) && exists) {
+      errors.push(`legacy-only test/helper survived Phase 4: ${t.path}`);
+    }
+    if (phase4Landed && t.verdict === 'migrate' && !exists) {
+      errors.push(`mixed live test was deleted instead of migrated: ${t.path}`);
     }
   }
   for (const p of keptPaths) {
@@ -1864,8 +1875,11 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
   for (const id of symbols.manifestDeadLaneLogicalIds) {
     if (seenLogicalIds.has(id)) errors.push(`duplicate dead-lane logicalId: ${id}`);
     seenLogicalIds.add(id);
-    if (!manifestSrc.includes(id)) {
+    if (!phase4Landed && !manifestSrc.includes(id)) {
       errors.push(`dead-lane logicalId not present in manifest.ts today (pin is stale): ${id}`);
+    }
+    if (phase4Landed && manifestSrc.includes(id)) {
+      errors.push(`dead-lane logicalId survived the Phase-4 manifest cutover: ${id}`);
     }
   }
   for (const p of symbols.manifestDeadLaneAllowedIn) {
@@ -1927,7 +1941,7 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
   // -------------------------------------------------------------------------
   // BIDIRECTIONAL SCOPED PARTITION SCAN (C6).
   // -------------------------------------------------------------------------
-  const scanResult = runScopedPartitionScan(root, inv, listFilesOverride);
+  const scanResult = runScopedPartitionScan(root, inv, listFilesOverride, phase4Landed);
   errors.push(...scanResult.errors);
 
   if (errors.length > 0) {
@@ -1950,7 +1964,7 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
 // replaces disk walking for the trees — the mutation-negative hook proving
 // the scan is non-vacuous (an unclassified file, a missing classified file,
 // or a double classification must all fail).
-function runScopedPartitionScan(root, inv, listFilesOverride) {
+function runScopedPartitionScan(root, inv, listFilesOverride, phase4Landed) {
   const errors = [];
   const trees = inv.scopedPartitionScan.directoryTrees;
   const individualFiles = inv.scopedPartitionScan.individualFiles;
@@ -1967,8 +1981,13 @@ function runScopedPartitionScan(root, inv, listFilesOverride) {
     ['kept:resources', inv.keptLive.liveResources],
     ['kept:tests', inv.keptLive.testFiles],
   ]);
-  const legacyTests = new Set(inv.legacyTests.map((t) => t.path));
+  const legacyTests = new Set(inv.legacyTests
+    .filter((t) => !phase4Landed || t.phase !== 4 || t.verdict === 'migrate')
+    .map((t) => t.path));
   const hostedImporters = new Set(inv.hostedDeadImporters.map((h) => h.file));
+  const removedHostedAtPhase4 = new Set([
+    'tests/process-modules/discovery-outcome-certificate-projection.test.mjs',
+  ]);
 
   const classify = (rel) => {
     const buckets = [];
@@ -1999,6 +2018,12 @@ function runScopedPartitionScan(root, inv, listFilesOverride) {
   for (const rel of individualFiles) {
     const nested = scopedFiles.has(rel);
     if (!nested) {
+      const removedAtPhase4 = phase4Landed && (
+        deadPaths.has(rel)
+        || inv.legacyTests.some((t) => t.path === rel && t.phase === 4 && t.verdict !== 'migrate')
+        || removedHostedAtPhase4.has(rel)
+      );
+      if (removedAtPhase4) continue;
       if (!listFilesOverride && !fs.existsSync(joinPath(root, rel))) {
         errors.push(`scoped individual file missing on disk: ${rel}`);
         continue;
@@ -2020,13 +2045,13 @@ function runScopedPartitionScan(root, inv, listFilesOverride) {
   // Direction 2 — every classified path inside the scoped universe exists in
   // the scoped on-disk set (no ghost classifications).
   const classifiedPaths = new Set([
-    ...deadPaths,
+    ...(!phase4Landed ? deadPaths : []),
     ...keptFileBuckets.get('kept:production'),
     ...keptFileBuckets.get('kept:partialLive'),
     ...keptFileBuckets.get('kept:resources'),
     ...keptFileBuckets.get('kept:tests'),
     ...legacyTests,
-    ...hostedImporters,
+    ...[...hostedImporters].filter((rel) => !phase4Landed || !removedHostedAtPhase4.has(rel)),
   ]);
   for (const rel of classifiedPaths) {
     if (!scopedFiles.has(rel)) {

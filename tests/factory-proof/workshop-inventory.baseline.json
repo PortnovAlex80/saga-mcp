@@ -55,7 +55,12 @@
     },
     "development": {
       "scenarios": [
-        "development/happy-verified"
+        "development/happy-verified",
+        "development/fanout-scheduling-order-capped",
+        "development/fanout-concurrency-cap-limits-parallel-runnable",
+        "development/fanin-all-required-before-settlement",
+        "development/impl-scope-outside-rejected-repaired",
+        "development/acceptance-packaging-one-container"
       ],
       "nodes": [
         "plan-task-graph",
@@ -78,10 +83,9 @@
         "solution-development-verification-continuation@1.0.0"
       ],
       "pendingUniverse": [
-        "D2:fanout-scheduling:dependency-order-and-concurrency-cap",
-        "D2:fanin:completion-policy-all-blocks-early-fanin",
+        "D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable",
+        "restart:development:git-change-desk-replay",
         "D2:sibling-isolation:accepted-sibling-conserved-during-repair",
-        "D3:impl-scope:file-outside-effective-scope-rejected",
         "D3:claim-monotonicity:silent-narrowing-rejected",
         "D4:review:changes-returns-to-same-workplace-author",
         "D4:git-effect:integration-only-after-final-acceptance",
@@ -91,6 +95,8 @@
         "D7:bind:stale-readiness-hash-failed",
         "D8:verification:evidence-pins-exact-candidate-hash",
         "D8:verification:upstream-defect-routes-to-settlement",
+        "D8:verification:terminal-accounting-unknown",
+        "D8:verification:terminal-accounting-human-required",
         "D9:settlement:blocked-and-failed-outcomes",
         "D10:continuation:managed-source-author-no-git-authority",
         "D10:replan:superseded-tasks-not-claimable",
@@ -104,7 +110,15 @@
     },
     "delivery": {
       "scenarios": [
-        "delivery/happy-released-authorized"
+        "delivery/happy-released-authorized",
+        "delivery/deferred-approval-required",
+        "delivery/denied-blocked",
+        "delivery/pending-holds-publication",
+        "delivery/observation-mismatch-blocked",
+        "delivery/publication-unknown-fails-closed",
+        "delivery/grant-policy-hash-mismatch-blocked",
+        "delivery/candidate-immutability-drift-fails-closed",
+        "delivery/observe-before-retry-no-duplicate-effect"
       ],
       "nodes": [
         "preflight-release",
@@ -121,33 +135,25 @@
       ],
       "executionProfiles": [],
       "pendingUniverse": [
-        "L:deferred:approval-required-without-external-action",
-        "L:approval:pending-holds-publication",
-        "L:approval:denied-blocked",
-        "L:approval:binds-candidate+preflight+policy-hash",
-        "L:publication:unknown-fails-closed-effect-nonterminal",
-        "L:observation:mismatch-prevents-released",
-        "L:observe-before-retry:no-duplicate-non-idempotent-effect",
-        "L:candidate-immutability:drift-after-certification-blocks",
-        "restart:delivery:idempotent-settlement",
-        "K4:crash-after-effect-before-receipt"
+        "K4:crash-after-effect-before-receipt",
+        "restart:delivery:idempotent-settlement"
       ],
       "platformFaultEdges": []
     }
   },
   "crossTreeDependencies": {
-    "count": 25,
+    "count": 24,
     "modulesToLegacy": 12,
-    "legacyToModules": 13,
+    "legacyToModules": 12,
     "files": [
       "src/modules/delivery/application/delivery-installation.ts (modules->legacy)",
       "src/modules/delivery/index.ts (modules->legacy)",
       "src/modules/delivery/infrastructure/delivery-persistence.ts (modules->legacy)",
       "src/modules/delivery/infrastructure/sqlite-delivery-runtime.ts (modules->legacy)",
       "src/modules/development/application/development-installation.ts (modules->legacy)",
+      "src/modules/development/application/development-redevelopment-policy.ts (modules->legacy)",
       "src/modules/development/index.ts (modules->legacy)",
       "src/modules/development/infrastructure/development-persistence.ts (modules->legacy)",
-      "src/modules/discovery/application/discovery-outcome-certificate-projection.ts (modules->legacy)",
       "src/modules/discovery/application/discovery-production-cell-installation.ts (modules->legacy)",
       "src/modules/discovery/index.ts (modules->legacy)",
       "src/modules/formalization/index.ts (modules->legacy)",
@@ -161,11 +167,10 @@
       "src/process-modules/modules/development/package/manifest.ts (legacy->modules)",
       "src/process-modules/modules/development/package/verification-continuation-manifest.ts (legacy->modules)",
       "src/process-modules/modules/discovery/discovery-process-module.ts (legacy->modules)",
-      "src/process-modules/modules/discovery/package/contributions/handler-adapter.ts (legacy->modules)",
       "src/process-modules/modules/formalization/formalization-process-module.ts (legacy->modules)",
       "src/process-modules/modules/formalization/package/manifest.ts (legacy->modules)",
       "src/process-modules/modules/formalization/package/ports/formalization-package-ports.ts (legacy->modules)"
     ]
   },
-  "inventoryDigest": "51941d8d74c546f994c01db8fe1486124f71bbe411a345224b6616135ec4c33c"
+  "inventoryDigest": "9cba1d3a3747c95a9097053934d8749f4e70f027cd4bc09ab15f233f50d5c3dd"
 }

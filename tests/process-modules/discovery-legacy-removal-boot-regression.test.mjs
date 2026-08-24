@@ -41,6 +41,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -56,35 +57,73 @@ const { ensureFactoryProcessRunSchema } = await import(
 );
 const {
   discoveryPackageManifest,
-  DISCOVERY_HANDLER_IDS,
 } = await import('../../dist/process-modules/modules/discovery/package/manifest.js');
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-/** The one live handler ref the post-removal manifest keeps (ADR-095 item 4). */
-function oneHandlerRefs() {
-  return discoveryPackageManifest.handlerRefs.filter(
-    (h) => h.logicalId === DISCOVERY_HANDLER_IDS.settlementPolicy,
-  );
+const LEGACY_VERSION = '3.0.2';
+const LEGACY_HANDLER_IDS = Object.freeze([
+  'discovery-resolve-proposal-submission',
+  'discovery-prepare-normalization',
+  'discovery-resolve-normalized-proposal',
+  'discovery-prepare-readiness',
+  'discovery-resolve-readiness',
+  'discovery-settlement-policy',
+]);
+const LEGACY_HANDLER_REFS = Object.freeze(LEGACY_HANDLER_IDS.map((logicalId) => ({
+  logicalId,
+  version: '1.0.0',
+  digest: '95'.repeat(32),
+})));
+
+/**
+ * Frozen census fixture.  No field is copied from the current manifest: this
+ * must remain capable of constructing the retired 3.0.2 installation after
+ * the live package evolves again.
+ */
+function legacyFixtureManifest() {
+  return {
+    manifestFormatVersion: '1',
+    definition: {
+      identity: {
+        name: 'product-discovery',
+        version: LEGACY_VERSION,
+        kind: 'discovery',
+        displayName: 'Product Discovery',
+        description: 'Frozen pre-cutover compatibility fixture.',
+      },
+      inputContract: { id: 'factory.discovery-case.v1' },
+      outputContract: { id: 'factory.discovery-outcome-certificate.v1' },
+      outcomes: [],
+      flow: {},
+      artifacts: [],
+      policies: [],
+      invariants: [],
+      executionProfiles: [],
+    },
+    resourceIndex: [],
+    handlerRefs: LEGACY_HANDLER_REFS,
+    inputContractRef: {
+      schemaId: 'factory.discovery-case.v1', version: '1.0.0', digest: 'pending@wave-2',
+    },
+    outputContractRef: {
+      schemaId: 'factory.discovery-outcome-certificate.v1', version: '1.0.0', digest: 'pending@wave-2',
+    },
+    runtimeCompatibilityRange: '^3.0.0',
+  };
 }
 
 /** Post-removal manifest at the SAME module version (the forbidden cutover). */
 function sameVersionFlippedManifest() {
-  return { ...discoveryPackageManifest, handlerRefs: oneHandlerRefs() };
-}
-
-/** Post-removal manifest with the atomic module-version bump (ADR-095 F5). */
-function bumpedVersionManifest(nextVersion) {
   return {
     ...discoveryPackageManifest,
     definition: {
       ...discoveryPackageManifest.definition,
       identity: {
         ...discoveryPackageManifest.definition.identity,
-        version: nextVersion,
+        version: LEGACY_VERSION,
       },
     },
-    handlerRefs: oneHandlerRefs(),
   };
 }
 
@@ -95,14 +134,14 @@ function bumpedVersionManifest(nextVersion) {
  * (paused) ProcessRun pinned to that installation — the censused elite6-db
  * run#1 shape.
  */
-async function buildExistingLegacyDb(storeRoot) {
-  const db = new Database(':memory:');
+async function buildExistingLegacyDb(storeRoot, dbPath = ':memory:', retire = false) {
+  const db = new Database(dbPath);
   db.exec(SCHEMA_SQL);
   // factory_process_runs is created lazily by its single SQL owner (the
   // process-run repository), exactly as on a production database.
   ensureFactoryProcessRunSchema(db);
   const legacy = await installProductionModules(
-    db, repoRoot, [discoveryPackageManifest], storeRoot,
+    db, repoRoot, [legacyFixtureManifest()], storeRoot,
   );
   const legacyRecord = legacy.records.get('product-discovery');
   assert.ok(legacyRecord, 'legacy production-discovery installs');
@@ -127,6 +166,7 @@ async function buildExistingLegacyDb(storeRoot) {
     'paused', legacyRecord.id, legacyRecord.packageDigest,
     "ProcessRun 1 paused at node 'produce-proposal' and can be resumed (human_required)",
   );
+  if (retire) legacy.repository.retire(legacyRecord.id);
   return { db, legacyRecord };
 }
 
@@ -171,6 +211,44 @@ test('ADR-095 F5: same-version Discovery handler logical-ID drift fails closed (
   }
 });
 
+test('ADR-095 F5: spawned install host boots with a retired 3.0.2 installation and rehydrates its pinned run', async () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'adr095-spawn-'));
+  const storeRoot = path.join(temp, 'store');
+  const dbPath = path.join(temp, 'factory.sqlite');
+  const { db, legacyRecord } = await buildExistingLegacyDb(storeRoot, dbPath, true);
+  db.close();
+  try {
+    const childScript = `
+      import Database from 'better-sqlite3';
+      import { installProductionModules } from './dist/process-modules/installation/production-install.js';
+      import { discoveryPackageManifest } from './dist/process-modules/modules/discovery/package/manifest.js';
+      const db = new Database(process.env.ADR095_DB_PATH);
+      try {
+        const boot = await installProductionModules(db, process.cwd(), [discoveryPackageManifest], process.env.ADR095_STORE_ROOT);
+        const old = boot.repository.getByPackageDigest(process.env.ADR095_LEGACY_DIGEST);
+        if (!old || old.status !== 'retired') throw new Error('RETIRED_LEGACY_INSTALLATION_NOT_REHYDRATED');
+        if (!boot.packages.has(process.env.ADR095_LEGACY_DIGEST)) throw new Error('PINNED_LEGACY_PACKAGE_NOT_MATERIALIZED');
+        process.stdout.write(JSON.stringify({ oldStatus: old.status, nextVersion: boot.records.get('product-discovery').version }));
+      } finally { db.close(); }
+    `;
+    const spawned = spawnSync(process.execPath, ['--input-type=module', '--eval', childScript], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        ADR095_DB_PATH: dbPath,
+        ADR095_STORE_ROOT: storeRoot,
+        ADR095_LEGACY_DIGEST: legacyRecord.packageDigest,
+      },
+      timeout: 30_000,
+    });
+    assert.equal(spawned.status, 0, `spawned host failed: ${spawned.stderr || spawned.stdout}`);
+    assert.deepEqual(JSON.parse(spawned.stdout), { oldStatus: 'retired', nextVersion: '4.0.0' });
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('ADR-095 F5: module-version bump with the legacy installation preserved boots and rehydrates the pinned legacy package', async () => {
   const storeRoot = mkdtempSync(path.join(os.tmpdir(), 'adr095-bump-'));
   const { db, legacyRecord } = await buildExistingLegacyDb(storeRoot);
@@ -179,12 +257,12 @@ test('ADR-095 F5: module-version bump with the legacy installation preserved boo
     // production path against the EXISTING db. A rejection here (drift,
     // version collision, PINNED_PACKAGE_*) is the failure under test.
     const boot = await installProductionModules(
-      db, repoRoot, [bumpedVersionManifest('3.1.0')], storeRoot,
+      db, repoRoot, [discoveryPackageManifest], storeRoot,
     );
 
     const next = boot.records.get('product-discovery');
     assert.ok(next, 'bumped product-discovery installs');
-    assert.equal(next.version, '3.1.0');
+    assert.equal(next.version, '4.0.0');
     assert.deepEqual(
       next.handlerRefs.map((h) => h.logicalId),
       ['discovery-settlement-policy'],
@@ -204,7 +282,7 @@ test('ADR-095 F5: module-version bump with the legacy installation preserved boo
     assert.equal(retained.version, '3.0.2');
     assert.equal(
       retained.status, 'active',
-      'current-baseline characterization (not an ADR-095 requirement): the preserved 3.0.2 row is active under today\'s per-(name, version) unique-active invariant',
+      'in-process compatibility proof retains the old version alongside the new one',
     );
     const rows = discoveryInstallRows(db);
     assert.equal(rows.length, 2, 'exactly the legacy and bumped installations exist');
@@ -245,13 +323,10 @@ test('ADR-095 F5 counterfactual: the bumped boot alone does not satisfy the drif
   const storeRoot = mkdtempSync(path.join(os.tmpdir(), 'adr095-postbump-'));
   const { db } = await buildExistingLegacyDb(storeRoot);
   try {
-    await installProductionModules(db, repoRoot, [bumpedVersionManifest('3.1.0')], storeRoot);
+    await installProductionModules(db, repoRoot, [discoveryPackageManifest], storeRoot);
 
     // Same-version flip of the bumped slot must fail closed too.
-    const flippedBumped = {
-      ...bumpedVersionManifest('3.1.0'),
-      handlerRefs: discoveryPackageManifest.handlerRefs,
-    };
+    const flippedBumped = { ...discoveryPackageManifest, handlerRefs: LEGACY_HANDLER_REFS };
     await assert.rejects(
       () => installProductionModules(db, repoRoot, [flippedBumped], storeRoot),
       (err) => err.code === 'MODULE_INSTALLATION_INCOMPATIBLE_DRIFT',

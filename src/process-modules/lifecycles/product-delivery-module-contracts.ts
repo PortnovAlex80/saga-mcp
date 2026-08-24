@@ -29,7 +29,7 @@ import type { ProcessModuleReference } from '../domain/process-module.js';
 
 export const DISCOVERY_PROCESS_MODULE_REF = {
   name: 'product-discovery',
-  version: '3.0.2',
+  version: '4.0.0',
 } as const satisfies ProcessModuleReference;
 
 export const FORMALIZATION_PROCESS_MODULE_REF = {

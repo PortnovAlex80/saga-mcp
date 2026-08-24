@@ -495,7 +495,7 @@ test('BR6d: a DOUBLE classification fails the scan (a path cannot be both kept a
       ...ADR_095_INVENTORY.legacyTests,
       Object.freeze({
         path: 'tests/discovery/d4-settlement-policy.test.mjs',
-        verdict: 'delete',
+        verdict: 'migrate',
         phase: 4,
         justification: 'deliberate mutation: double classification must fail',
       }),

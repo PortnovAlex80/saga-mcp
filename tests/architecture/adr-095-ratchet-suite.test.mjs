@@ -112,14 +112,12 @@ const LEGACY_VERSION = ADR_095_INVENTORY.moduleIdentity.version; // '3.0.2'
 
 test('R0: ratchet state markers are coherent (dist built, version marker readable, pre-cutover today)', () => {
   assert.ok(state.distAvailable, 'dist/ must be built before the ratchet suite can testify (npm run build)');
-  assert.equal(state.srcVersion, LEGACY_VERSION,
-    `today's tree pins the censused legacy version ${LEGACY_VERSION} (got ${state.srcVersion})`);
+  assert.ok(semverGt(state.srcVersion, LEGACY_VERSION),
+    `the cutover version must be above ${LEGACY_VERSION} (got ${state.srcVersion})`);
   assert.equal(state.versionCoherent, true,
     'src and dist version markers must agree (rebuild in the same commit as any bump)');
-  assert.equal(state.phase4Landed, false,
-    'Phase 2C authors ratchets BEFORE the removal: the phase-4 marker must not have landed');
-  assert.equal(state.deadFilesRemaining.length, ADR_095_INVENTORY.deadPhase4Files.length,
-    'all classified dead phase-4 files must still be present today (deletion is Phase 4)');
+  assert.equal(state.phase4Landed, true, 'the module-version marker arms the post-cutover checks');
+  assert.equal(state.deadFilesRemaining.length, 0, 'all classified dead phase-4 files are absent');
   assert.equal(state.closureInSchema, true,
     'the fresh schema still creates the legacy closure today (removal is Phase 5)');
 });
@@ -160,20 +158,26 @@ test('R1b: MUTATION — a Discovery-scoped allowlist edge (or a raised baseline)
 test('R2a: pre-cutover arm — the manifest holds the EXACT censused six-handler baseline with the dead-dist digest (real tree GREEN)', async () => {
   const errors = checkR2(state, { ...manifestFacts, srcVersion: state.srcVersion, distVersion: state.distVersion });
   assert.deepEqual(errors, [],
-    `the censused pre-cutover baseline (six ids, six refs, shared dead-dist digest, handler version 1.0.0) must be GREEN today: ${errors.join(' | ')}`);
-  // Cross-pin the census shape against the dist manifest directly.
-  assert.equal(manifestFacts.handlerRefs.length, 6, 'censused shape: six handler refs at 3.0.2');
-  assert.deepEqual(
-    [...manifestFacts.handlerIdsValues].sort(),
-    [...ADR_095_INVENTORY.legacyHandlerIds].sort(),
-    'declared ids == the Phase-1 census baseline',
-  );
+    `the one-handler production-cell manifest must be GREEN: ${errors.join(' | ')}`);
+  assert.equal(manifestFacts.handlerRefs.length, 1, 'post-cutover shape: one handler ref');
+  assert.deepEqual(manifestFacts.handlerIdsValues, [ADR_095_INVENTORY.liveHandlerId]);
 });
 
 test('R2b: MUTATION — six stale refs at the BUMPED version (post-cutover arm) turn ratchet 2 RED', () => {
+  const staleRefs = ADR_095_INVENTORY.legacyHandlerIds.map((logicalId) => ({
+    logicalId,
+    version: '1.0.0',
+    digest: manifestFacts.productionCellDigest,
+  }));
   const errors = checkR2(
     { phase4Landed: true },
-    { ...manifestFacts, srcVersion: '3.1.0', distVersion: '3.1.0' },
+    {
+      ...manifestFacts,
+      srcVersion: '4.0.0',
+      distVersion: '4.0.0',
+      handlerIdsValues: [...ADR_095_INVENTORY.legacyHandlerIds],
+      handlerRefs: staleRefs,
+    },
   );
   assert.ok(errors.some((e) => e.includes('EXACTLY ONE handler ref')),
     `six refs at the bumped version must RED (got: ${errors.join(' | ')})`);

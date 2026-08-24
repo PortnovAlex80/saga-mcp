@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 const WORKSHOPS = [
-  ['discovery', '../../../../modules/discovery/application/discovery-installation.js'],
+  ['discovery', '../../../../modules/discovery/application/discovery-production-cell-installation.js'],
   ['formalization', '../../../../modules/formalization/application/formalization-production-cell-installation.js'],
   ['development', '../../../../modules/development/application/development-installation.js'],
   ['delivery', '../../../../modules/delivery/application/delivery-installation.js'],

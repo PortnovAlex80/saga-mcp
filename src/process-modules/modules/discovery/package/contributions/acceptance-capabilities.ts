@@ -60,10 +60,6 @@ export const DISCOVERY_CAP_MANAGED_PRODUCTION_LEDGER: CapabilityRequirement = {
  * Required: every resolver handler depends on it to materialize the exact
  * durable product for one (intent, task, execution).
  */
-export const DISCOVERY_CAP_RUNTIME_PERSISTENCE: CapabilityRequirement = {
-  ref: 'capability.saga.discovery-runtime-persistence',
-  version: '1.0.0',
-};
 
 /**
  * The settlement-policy repository capability. The settlement handler assembles
@@ -72,10 +68,6 @@ export const DISCOVERY_CAP_RUNTIME_PERSISTENCE: CapabilityRequirement = {
  * capability. Required for every terminal outcome (go/clarify/reject/defer/
  * inconclusive/failed).
  */
-export const DISCOVERY_CAP_SETTLEMENT_POLICY_REPOSITORY: CapabilityRequirement = {
-  ref: 'capability.saga.discovery-settlement-policy-repository',
-  version: '1.0.0',
-};
 
 /**
  * The outcome-certificate issuer capability. The settlement handler forms the
@@ -106,8 +98,6 @@ export const DISCOVERY_CAP_LM_NODE_EXECUTION_PERSISTENCE: CapabilityRequirement 
  */
 export const DISCOVERY_CAPABILITY_REQUIREMENTS: readonly CapabilityRequirement[] = Object.freeze([
   DISCOVERY_CAP_MANAGED_PRODUCTION_LEDGER,
-  DISCOVERY_CAP_RUNTIME_PERSISTENCE,
-  DISCOVERY_CAP_SETTLEMENT_POLICY_REPOSITORY,
   DISCOVERY_CAP_OUTCOME_CERTIFICATE_ISSUER,
   DISCOVERY_CAP_LM_NODE_EXECUTION_PERSISTENCE,
 ]);
@@ -165,10 +155,6 @@ export const DISCOVERY_GUARD_EXECUTION_ID_FENCE: GuardBinding = {
  * submission carrying an override/new-outcome field is rejected before it
  * reaches the kernel.
  */
-export const DISCOVERY_GUARD_DIAGNOSIS_ADVISORY: GuardBinding = {
-  ref: 'guard.saga.diagnosis-advisory',
-  scope: 'submit',
-};
 
 /**
  * Every package-level guard binding the Discovery package declares. The
@@ -182,5 +168,4 @@ export const DISCOVERY_GUARD_BINDINGS: readonly GuardBinding[] = Object.freeze([
   DISCOVERY_GUARD_MANAGED_PRODUCTION,
   DISCOVERY_GUARD_NODE_ALLOWED_TOOLS,
   DISCOVERY_GUARD_EXECUTION_ID_FENCE,
-  DISCOVERY_GUARD_DIAGNOSIS_ADVISORY,
 ]);
