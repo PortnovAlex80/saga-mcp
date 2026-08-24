@@ -400,13 +400,24 @@ test('settlement_explain: discovery run traced generically, legacy settlement qu
     assert.equal('discoverySettlement' in result, false,
       'settlement_explain must not carry a discoverySettlement key after ADR-095 Phase 3.2');
 
-    // (3) The legacy query is absent at the SQL seam: no prepared statement
+    // (3) Positive control for the SQL trace: the prepare hook DID capture
+    // the handler's statements — tracedSql contains the exact real generic
+    // run query (FROM factory_process_runs WHERE id = ?). Without this, the
+    // zero-legacy-reads assertion below could pass vacuously if the hook had
+    // captured nothing (e.g., the handler resolved another db handle).
+    assert.ok(
+      tracedSql.some((sql) => sql.includes('FROM factory_process_runs WHERE id = ?')),
+      'positive control: tracedSql must contain the generic factory_process_runs query '
+        + `before zero-legacy-reads is asserted (got ${tracedSql.length} traced statements)`,
+    );
+
+    // (4) The legacy query is absent at the SQL seam: no prepared statement
     // touches the legacy settlement table.
     const legacyReads = tracedSql.filter((sql) => sql.includes(LEGACY_SETTLEMENT_TABLE));
     assert.deepEqual(legacyReads, [],
       `settlement_explain must not query ${LEGACY_SETTLEMENT_TABLE} (got: ${legacyReads.join(' | ')})`);
 
-    // (4) The seeded legacy row is untouched — the tool neither read nor
+    // (5) The seeded legacy row is untouched — the tool neither read nor
     // altered it (read-only generic trace only).
     assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${LEGACY_SETTLEMENT_TABLE}`).get().n, 1);
   } finally {
