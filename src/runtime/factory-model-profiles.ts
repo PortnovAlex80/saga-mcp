@@ -41,11 +41,11 @@ export const FACTORY_CLOUD_MODELS: readonly FactoryModelProfile[] = Object.freez
     label: 'GLM 4.6 — legacy budget',
     provider: 'zai',
     effort: 'high',
-    limit: 6,
+    limit: 8,
     tier: 'sonnet',
     note: 'Served by the coding-plan endpoint (verified 2026-08-18 via /models). '
-      + 'Sonnet-level fallback for cheap dev loops. Operator-requested ceiling 6 '
-      + '(2026-08-24, DEVTEST stage-23: raise the factory worker rate limit to 6).',
+      + 'Sonnet-level fallback for cheap dev loops. Operator-requested ceiling 8 '
+      + '(2026-08-24, DEVTEST stage-23: factory worker rate limit 6 -> 8).',
   }),
   Object.freeze({
     id: 'glm-4.7',
