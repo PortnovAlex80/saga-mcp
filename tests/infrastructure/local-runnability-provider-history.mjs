@@ -59,7 +59,7 @@ export const PROVIDER_HISTORY = [
   // landing): 1.15.0. The digest is the sha256 of the canonical digest
   // object in candidate-check-contracts.ts at the introducing commit
   // (verified against the built module of that commit's tree).
-  { version: '1.15.0', introducedBy: '0000000000000000000000000000000000000000', digest: '982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8' },
+  { version: '1.15.0', introducedBy: 'd762ce528c4888a7b6f1e8159b60f5a67502a15e', digest: '982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8' },
 ];
 
 /** The CURRENT entry (last) of the history vector. */
