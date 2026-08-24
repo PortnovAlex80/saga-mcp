@@ -6,6 +6,20 @@ be spent re-running Discovery/Formalization. The entry point is prepared
 separately (runbook below). Launched with the incident fixes riding
 (commit `a9a3f289`).
 
+## Qualification correction: REG-28 remains open
+
+The earlier green narrative did not include the lifecycle-2 failure recorded at
+14:01:42 in `docs/testing/WORKSHOP-JOURNAL.md`: `REG-28-AC-01` failed because
+the Kanban board still contained `todo`/`queued` work at the asserted terminal
+boundary. This is a real production-shaped regression, not a successful full
+run. It remains OPEN until a focused regression reproduces the lifecycle shape
+and rejects premature terminalization. Later recovery runs do not erase this
+incident and must not be counted as independent qualification evidence.
+
+The current consolidation work deliberately performs no new factory run. All
+run-status and green-suite statements below are historical evidence from their
+named branch/build, not qualification of the canonical integration branch.
+
 ## Status: RUNNING — child lifecycle 4 (Elite-10 incident recovered, 2026-08-24 ~20:45 local)
 
 **The Elite-10 deadlock (15:40–17:30 UTC):** `impl-shared-core` (task 67)
