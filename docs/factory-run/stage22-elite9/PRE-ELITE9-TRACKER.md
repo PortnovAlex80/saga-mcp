@@ -215,10 +215,15 @@ defined scenario universe, execution of the real scenario driver in CI, and
 three consecutive Development-only terminal successes. These do not replace
 Point 7 or the later three clean whole-conveyor qualifications.
 
-- [ ] **Task-shadow binding (P0, SM-14/MM-3):** fix `readTaskForWorkplace`
-      newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
-      + integration test on a REAL multi-task singleton workplace (R3;
-      every current unit stubs the port).
+- [x] **Task-shadow binding (P0, SM-14/MM-3):** integrated from
+      `stage22/task-shadow-exact`. All production consumers now bind the
+      author task or the reviewer task's exact current subject generation;
+      newest-task inference is removed from lifecycle recovery and engine
+      adoption. The real multi-task/generation regressions are blocking in
+      `task-shadow-binding-integration.test.mjs` and
+      `engine-start-adoption.test.mjs`. The source-level anti-recency ratchet
+      is being hardened on the canonical branch; green results recorded on
+      the source branch are historical evidence, not canonical qualification.
 - [x] **§2.2 × §D2/§D1 joint satisfiability (MM-4/BM-5):** LANDED 2026-08-24
       (both halves of the "OR"): §2.2 tokens are normalized against the
       §D2/§D1 file surface at one canonical boundary

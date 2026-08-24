@@ -39,9 +39,14 @@ staleness) by `tests/architecture/authority-recency-classification.test.mjs`.
     `read(id)` / `findByPackageDigest` (ADR-077 package fingerprint).
   - `sqlite-production-cell-projection-persistence.ts` —
     `readProjectedRoleTask` hardened from `ORDER BY id DESC LIMIT 1` to
-    fail-closed uniqueness (`PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE`):
-    the projection is unique by generationKey and feeds the
-    accepted-authority head (ADR-053 C5-02).
+    fail-closed exact-key reads (`PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_
+    UNIQUE` on duplicates of the EXACT key): the author key is the stable
+    (workplace, `author`) task; the reviewer key is the exact CURRENT
+    generation — (workplace, `reviewer`, `subject_candidate_set_ref` from the
+    accepted-author authority head). Role alone is NOT unique for the
+    reviewer: generations are minted per accepted author set, so superseded
+    rows legally coexist (task-shadow F1). The reader feeds the
+    accepted-authority head (ADR-053 C5-02) and the recovery budget.
 - **Reclassified — legal run-history boundary traversal, exact-verified
   (chronology selects the failed RUN boundary, never a material subject):**
   - `sqlite-author-candidate-carry-forward.ts` — the boundary stage/node run

@@ -18,10 +18,16 @@
 //       findByPackageDigest (ADR-077 package fingerprint), never recency.
 //     - sqlite-production-cell-projection-persistence.ts —
 //       readProjectedRoleTask hardened from `ORDER BY id DESC LIMIT 1` to
-//       fail-closed uniqueness (PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_
-//       UNIQUE): the role-task projection is unique by generationKey, and the
-//       reader feeds the accepted-authority head (C5-02) — a silent
-//       latest-wins tiebreak could bind the head to the wrong task.
+//       fail-closed exact-key reads (PRODUCTION_CELL_ROLE_TASK_PROJECTION_
+//       NOT_UNIQUE on duplicates of the EXACT key): the author key is the
+//       stable (workplace, 'author') task; the reviewer key is the exact
+//       CURRENT generation (workplace, 'reviewer',
+//       subject_candidate_set_ref from the accepted-author authority head).
+//       Role ALONE is not unique for the reviewer — generations are minted
+//       per accepted author set, so superseded rows legally coexist
+//       (task-shadow F1); the reader feeds the accepted-authority head
+//       (C5-02) and the recovery budget, where a silent latest-wins
+//       tiebreak could bind the wrong task in a repair cycle.
 //
 //   RECLASSIFIED — legal run-history traversal with exact verification
 //   (NOT material selection; the material subject is resolved through the
@@ -56,6 +62,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,6 +107,10 @@ const CLASSIFICATION = Object.freeze({
     release: 'FINDING-TRAJECTORY-BUDGET',
     verdict: 'kept: append-only audit frontier — the latest row id of an append-only chain scoped by exact (workplace_ref, repair_target_role) defines the comparison scope (gate_ref + check_plan_digest); the material (finding keys) then flows through the FULL exact-scope tail read, never through the latest row alone; id is the append ordinal (no wall-clock chronology)',
   },
+  'src/infrastructure/workplace/sqlite-recovery-epoch-ledger.ts': {
+    release: 'TASK-SHADOW-F4',
+    verdict: 'kept: append-only epoch-chain frontier — readRecoveryEpochBaseline picks the MAX epoch row of ONE EXACT (workplace_ref, role) pair (epoch is a per-scope ordinal minted monotonically by the rollover writer under UNIQUE(workplace_ref, role, epoch), never wall-clock chronology); the picked row itself carries the full baseline material (counter baselines + last_diagnosis + created_at backoff anchor) that the budget subtracts, so chronology selects the frontier of an already-exactly-named chain, not a material subject. F4 extracted this SQL from the duplicated composition-root closure + test harness into ONE production owner',
+  },
   'src/infrastructure/workplace/sqlite-scope-widening-ledger.ts': {
     release: 'STAGE-13',
     verdict: 'kept: append-only authority-revision frontier — readEffectiveChangeScopes picks the MAX granted_revision row per EXACT task (granted_revision is a per-task ordinal minted monotonically by the decide writer, never wall-clock chronology, and the grant row carries the FULL frozen scope set, so the material flows through the picked row itself); readPendingRequest is the latest undecided append row scoped by exact workplace and a request is decided exactly once (grant/refusal reference request_event_id); no material subject is ever selected by recency',
@@ -141,6 +152,45 @@ test('K7: every newest-wins selector in authority persistence is classified, and
     + 'baseline (both growth and staleness fail). If you removed a selector, '
     + 're-run `node tools/legacy-freeze.mjs --snapshot` in the same commit.',
   );
+});
+
+test('K2 provenance: legacy-allowlist capturedAtSha names a commit whose tree contains every allowlisted file', () => {
+  // TASK-SHADOW L3 (2026-08-24): the re-snapshot that admitted
+  // sqlite-recovery-epoch-ledger.ts had recorded capturedAtSha=ee4090207ff8 —
+  // the pre-commit HEAD — but that tree does NOT contain the file (the
+  // snapshot content first exists in c33ee9e2's tree). `--snapshot` runs
+  // before its own commit, so the honest provenance value is the FIRST
+  // commit whose tree actually carries the captured baseline. This check
+  // makes that contract machine-enforced: every allowlisted file must exist
+  // in the tree of the named commit, so a future re-snapshot cannot point at
+  // a tree that predates the files it claims to have captured.
+  assert.match(
+    String(allowlist.capturedAtSha),
+    /^[0-9a-f]{7,40}$/u,
+    'legacy-allowlist.json must record a commit hash as capturedAtSha',
+  );
+  const ls = spawnSync(
+    'git',
+    ['-C', REPO_ROOT, 'ls-tree', '-r', '--name-only', String(allowlist.capturedAtSha)],
+    { encoding: 'utf8' },
+  );
+  assert.equal(
+    ls.status,
+    0,
+    `capturedAtSha '${allowlist.capturedAtSha}' must name an existing commit: ${ls.stderr}`,
+  );
+  const treeFiles = new Set(ls.stdout.split(/\r?\n/));
+  for (const [category, entry] of Object.entries(allowlist.categories)) {
+    for (const file of entry.files ?? []) {
+      assert.ok(
+        treeFiles.has(file),
+        `capturedAtSha ${allowlist.capturedAtSha} (category '${category}') does not contain `
+          + `allowlisted file ${file} — the provenance sha must name a commit whose tree `
+          + `actually carries the captured baseline; never invent a hash, point at the `
+          + `first commit that truly contains the snapshot content`,
+      );
+    }
+  }
 });
 
 test('K7: no K7-owned file remains unclassified as authority-latest-wins', () => {

@@ -181,21 +181,61 @@ export function createSqliteProductionCellProjectionPersistence(
       return row.project_repository_id;
     },
 
-    readProjectedRoleTask(workplaceRef, role) {
+    readProjectedRoleTask(workplaceRef, role, subjectCandidateSetRef) {
       const serialized = serializeWorkplaceRef(workplaceRef);
-      // K7 — the role-task projection is unique by construction (generationKey
-      // `${workplaceRef}:${role}`); a duplicate would mean a broken
-      // idempotence fence. Fail closed instead of silently picking the newest
-      // row: this reader feeds the accepted-authority head (C5-02) and a
-      // latest-wins tiebreak could bind the head to the WRONG task in a
-      // repair cycle.
-      const rows = db.prepare(
-        `SELECT id AS taskId FROM tasks
-          WHERE workplace_ref=? AND json_extract(metadata,'$.role')=?`,
-      ).all(serialized, role) as Array<{ taskId: number }>;
+      // TASK-SHADOW F1 (Red-Team HIGH follow-up, ADR-053) — role ALONE is not
+      // a unique task key. Reviewer generations are minted per accepted
+      // author set (generationKey
+      // `${workplaceRef}:reviewer:${sha256(subjectRef)}`), so a LEGAL second
+      // review round leaves the superseded reviewer task row on the desk
+      // next to the current one. The exact keys are:
+      //   author  : (workplace, 'author') — one stable task for the desk's
+      //             life; a duplicate is a broken idempotence fence.
+      //   reviewer: (workplace, 'reviewer', subject_candidate_set_ref) — the
+      //             CURRENT generation's subject, taken from the explicit
+      //             argument or, when omitted, from the accepted-author
+      //             authority head (`factory_accepted_authority_head` — the
+      //             SAME subject that minted the current generation), never
+      //             task-row recency.
+      // Fail closed ONLY on duplicates of that EXACT generation; superseded
+      // generations are legal history; absence is an exact null. This reader
+      // feeds the accepted-authority head (C5-02) and the recovery budget:
+      // a latest-wins tiebreak could bind either to the WRONG task in a
+      // repair cycle, and a role-only uniqueness claim threw on every legal
+      // second review round (the F1 production failure).
+      let subject: string | null;
+      if (role === 'author') {
+        subject = null;
+      } else if (subjectCandidateSetRef !== undefined) {
+        subject = subjectCandidateSetRef;
+      } else {
+        const head = db.prepare(
+          `SELECT accepted_author_candidate_set_ref
+             FROM factory_accepted_authority_head
+            WHERE workplace_ref=?`,
+        ).get(serialized) as
+          | { accepted_author_candidate_set_ref: string }
+          | undefined;
+        subject = head?.accepted_author_candidate_set_ref ?? null;
+      }
+      const rows = role === 'reviewer'
+        ? db.prepare(
+            `SELECT id AS taskId FROM tasks
+              WHERE workplace_ref=?
+                AND json_extract(metadata,'$.role')='reviewer'
+                AND ((? IS NULL
+                      AND json_extract(metadata,'$.subject_candidate_set_ref') IS NULL)
+                     OR json_extract(metadata,'$.subject_candidate_set_ref')=?)`,
+        ).all(serialized, subject, subject) as Array<{ taskId: number }>
+        : db.prepare(
+            `SELECT id AS taskId FROM tasks
+              WHERE workplace_ref=?
+                AND json_extract(metadata,'$.role')='author'`,
+        ).all(serialized) as Array<{ taskId: number }>;
       if (rows.length > 1) {
         throw new Error(
-          `PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE: ${serialized}/${role} has ${rows.length} rows`,
+          `PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE: ${serialized}/${role}`
+          + `${role === 'reviewer' ? ` subject=${subject}` : ''} has ${rows.length} rows`,
         );
       }
       return rows[0] ?? null;

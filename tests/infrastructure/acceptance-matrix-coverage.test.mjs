@@ -383,6 +383,13 @@ test('G2p: the repository has ZERO orphan test files (R1 omnibus ratchet)', () =
     + 'commit it lands');
 });
 
+test('G2q: engine-start-adoption exact task-binding regressions stay blocking (task-shadow)', () => {
+  assert.ok(
+    runSet.has('tests/infrastructure/engine-start-adoption.test.mjs'),
+    'engine-start-adoption must stay in a blocking run-set (task-shadow exact-binding proof hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 // STAGE-23 (2026-08-24): development-task-graph-diagnostics was REMOVED from
 // the required list — re-validated GREEN (2/2) on the current baseline; the

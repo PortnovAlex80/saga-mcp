@@ -42,7 +42,9 @@ import { recoveryEpochBackoffMs } from '../../dist/process-modules/domain/workpl
 import { encodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
 import {
   countGateRejectedCandidateSets,
+  createSqliteProductionCellProjectionPersistence,
 } from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import { countTerminalExecutionsForTask } from '../../dist/app/product-lifecycle-runtime.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -116,6 +118,8 @@ function cell() {
 function harness() {
   const db = new Database(':memory:');
   db.exec(SCHEMA_SQL);
+  db.prepare(`INSERT INTO projects (name) VALUES ('budget-unit')`).run();
+  db.prepare(`INSERT INTO epics (project_id, name) VALUES (1, 'budget-unit-epic')`).run();
   const workplaceRepo = new SqliteWorkplaceRepository(db);
   const candidateSetRepo = new SqliteCandidateSetRepository(db);
   const gateRepo = new SqliteGateRepository(db);
@@ -142,7 +146,6 @@ function harness() {
   };
   let id = 100;
   let checkOutcome = { outcome: 'passed', evidenceRefs: [] };
-  let crashes = 0;
   const persistence = {
     ensureExecutionPlan() { return { intentId: id++, taskId: id++, replayed: false }; },
     bindProjectedTaskProcessContext() {},
@@ -155,8 +158,28 @@ function harness() {
   };
   persistence.countGateRejectedCandidateSets = (ref, role) =>
     countGateRejectedCandidateSets(db, serializeWorkplaceRef(ref), role);
-  persistence.readTaskForWorkplace = () => ({ taskId: 1 });
-  persistence.countTerminalExecutionsForTask = () => crashes;
+  // TASK-SHADOW FIX — the crash-attempt binding resolves through the REAL K7
+  // exact-key role-task projection (metadata $.role + workplace_ref), backed
+  // by a REAL tasks row; the retired stub returned a constant task id and the
+  // retired production port picked the newest row of the workplace.
+  const authorTaskId = db.prepare(
+    `INSERT INTO tasks
+       (epic_id,title,description,status,priority,task_kind,workflow_stage,
+        execution_mode,tags,metadata,workplace_ref)
+     VALUES (1,'budget author','budget author','todo','high','test.author',
+             'test','tracker_only','[]',?,?)`,
+  ).run(
+    JSON.stringify({ role: 'author' }),
+    serializeWorkplaceRef({
+      processRunId: 7, moduleRef: 'test-module@1.0.0',
+      productionCellId: 'singleton-cell', workKey: 'singleton',
+    }),
+  );
+  const authorTaskRowId = Number(authorTaskId.lastInsertRowid);
+  persistence.readProjectedRoleTask =
+    createSqliteProductionCellProjectionPersistence(db).readProjectedRoleTask;
+  persistence.countTerminalExecutionsForTask = taskId =>
+    countTerminalExecutionsForTask(db, taskId);
   const executor = new ProductionCellNodeExecutor({
     db,
     coordinator,
@@ -197,7 +220,27 @@ function harness() {
   const setCheckDiagnostics = (outcome, diagnostics) => {
     checkOutcome = { outcome, evidenceRefs: diagnostics };
   };
-  const setCrashes = count => { crashes = count; };
+  // Real terminal (lost) executions on the AUTHOR task row — counted by the
+  // REAL countTerminalExecutionsForTask SQL, exactly what the dispatch loop's
+  // crash accounting observes in production.
+  const setCrashes = count => {
+    for (let index = 0; index < count; index += 1) {
+      db.prepare(
+        `INSERT INTO worker_executions
+           (execution_id,run_id,project_id,epic_id,task_id,worker_id,machine_id,
+            launcher,state,phase)
+         VALUES (?,?,?,?,?,?,?,'claude_cli','lost','executing')`,
+      ).run(
+        `execution:crash-${count}-${index}`,
+        `run:crash-${count}-${index}`,
+        1,
+        1,
+        authorTaskRowId,
+        `worker:crash-${count}-${index}`,
+        'budget-unit-test',
+      );
+    }
+  };
   return {
     db, workplaceRepo, coordinator, candidateSetRepo, executor, products, persistence,
     setCheckDiagnostics, setCrashes,

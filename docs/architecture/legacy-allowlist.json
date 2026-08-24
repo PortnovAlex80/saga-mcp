@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "capturedAtSha": "e1c141ec68b7",
-  "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md.",
+  "capturedAtSha": "c33ee9e209a3",
+  "note": "Legacy freeze baseline (K2). Counts/files may only decrease; broadening requires a new ADR. See docs/architecture/LEGACY-INVENTORY.md. capturedAtSha provenance correction (task-shadow L3, 2026-08-24): the re-snapshot that admitted sqlite-recovery-epoch-ledger.ts ran with ee409020 as HEAD, but that tree does NOT contain the file; c33ee9e2 is the first commit whose tree actually carries this captured baseline (every allowlisted file exists in its tree — machine-checked by authority-recency-classification.test.mjs).",
   "categories": {
     "escalate-vocabulary": {
       "owningRelease": "K15",
@@ -28,6 +28,7 @@
         "src/infrastructure/workplace/sqlite-author-candidate-carry-forward.ts",
         "src/infrastructure/workplace/sqlite-gate-finding-set-chain.ts",
         "src/infrastructure/workplace/sqlite-production-cell-projection-persistence.ts",
+        "src/infrastructure/workplace/sqlite-recovery-epoch-ledger.ts",
         "src/infrastructure/workplace/sqlite-scope-widening-ledger.ts",
         "src/modules/development/infrastructure/sqlite-development-verification-adoption.ts",
         "src/process-modules/persistence/sqlite-lifecycle-continuation-repository.ts",

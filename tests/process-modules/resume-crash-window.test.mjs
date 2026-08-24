@@ -240,11 +240,22 @@ test('W6: the walk seeds its budget, logs the debris and fails closed on spin', 
 });
 
 test('W6b: the epoch reader delivers last_diagnosis to the rollover decision', () => {
+  // TASK-SHADOW F4 — the epoch SQL moved from inline composition-root
+  // closures into the PRODUCTION helper
+  // (infrastructure/workplace/sqlite-recovery-epoch-ledger.ts). The invariant
+  // is unchanged and now pinned at both ends: the root must call the helper,
+  // and the helper (the one owner of the SQL) must SELECT last_diagnosis.
   const runtimeSource = readFileSync(
     new URL('../../src/app/product-lifecycle-runtime.ts', import.meta.url),
     'utf8',
   );
-  assert.match(runtimeSource, /last_diagnosis/,
+  assert.match(runtimeSource, /sqlite-recovery-epoch-ledger\.js/,
+    'the composition root must read/write epochs through the production helper');
+  const epochLedgerSource = readFileSync(
+    new URL('../../src/infrastructure/workplace/sqlite-recovery-epoch-ledger.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(epochLedgerSource, /last_diagnosis/,
     'readRecoveryEpochBaseline must SELECT the persisted last_diagnosis');
   const executorSource = readFileSync(
     new URL(

@@ -119,7 +119,10 @@ import {
   deserializeWorkplaceRef,
   serializeWorkplaceRef,
 } from '../process-modules/domain/workplace/workplace-ref.js';
-import { recoveryEpochBackoffMs } from '../process-modules/domain/workplace/production-cell-definition.js';
+import {
+  readRecoveryEpochBaseline as readRecoveryEpochBaselineSql,
+  recordRecoveryEpoch as recordRecoveryEpochSql,
+} from '../infrastructure/workplace/sqlite-recovery-epoch-ledger.js';
 import { isWorkplaceProductionSnapshot, workplaceProductionSemanticDigest } from '../process-modules/shared/workplace-production-snapshot.js';
 import { SqliteProcessOutcomeCertificateRepository } from '../process-modules/persistence/sqlite-process-outcome-certificate-repository.js';
 import { SqliteProcessRunRepository } from '../process-modules/persistence/sqlite-process-run-repository.js';
@@ -577,15 +580,22 @@ export function createProductLifecycleRuntime(
             for (const taskId of taskIds) reevaluateDownstream(db, taskId);
           }
         },
-        // Keep the crash-attempt accounting added on saga4. A process that
-        // dies before CandidateSet seal still consumes the cell recovery budget.
-        readTaskForWorkplace: (workplaceRef) => {
-          const serialized = serializeWorkplaceRef(workplaceRef);
-          const row = db.prepare(
-            'SELECT id AS taskId FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1',
-          ).get(serialized) as { taskId: number } | undefined;
-          return row ?? null;
-        },
+        // TASK-SHADOW FIX (SM-14/MM-3, RED-TEAM R3 + F1, ADR-053) — the
+        // crash-attempt accounting and the scope-widening binding resolve the
+        // workplace's role task through the K7 exact-key read
+        // (`readProjectedRoleTask`, provided by the
+        // productionCellProjectionPersistence spread above). The AUTHOR key is
+        // the stable role task; the REVIEWER key is the exact CURRENT
+        // generation — the accepted-author authority head's CandidateSet (the
+        // same subject that minted the generation), derived inside the
+        // reader. The retired newest-wins reader (`ORDER BY id DESC LIMIT 1`)
+        // let the reviewer's task row shadow the author's in this singleton
+        // workplace, so a dying author's executions were never counted and
+        // the recovery budget never engaged (Elite-8: 15 deaths, empty
+        // rollover table); the role-only uniqueness claim then threw on every
+        // legal second review round (F1). A process that dies before
+        // CandidateSet seal still consumes the cell recovery budget — that
+        // semantics is unchanged, now counted against the exact role task.
         // BLINDSIGHT C6 — durable reviewer round history for the reviewer
         // projection: the round number, prior verdicts and rejected author
         // candidates ride the reviewer objective into the worker prompt.
@@ -657,61 +667,32 @@ export function createProductLifecycleRuntime(
             db, serializeWorkplaceRef(workplaceRef),
           ),
         // ADR-075 — latest recovery-epoch rollover for the (workplace, role):
-        // counter baselines plus the inter-epoch backoff deadline derived from
-        // the immutable row's created_at (SQLite datetime('now') is UTC) and
-        // the epoch's exponential delay.
-        readRecoveryEpochBaseline: (workplaceRef, role) => {
-          const row = db.prepare(
-            `SELECT epoch, baseline_rejected_sets, baseline_terminal_executions,
-                    baseline_effect_repairs, created_at, last_diagnosis
-               FROM factory_workplace_recovery_epochs
-              WHERE workplace_ref=? AND role=?
-              ORDER BY epoch DESC LIMIT 1`,
-          ).get(serializeWorkplaceRef(workplaceRef), role) as {
-            epoch: number;
-            baseline_rejected_sets: number;
-            baseline_terminal_executions: number;
-            baseline_effect_repairs: number;
-            created_at: string;
-            last_diagnosis: string | null;
-          } | undefined;
-          if (!row) return null;
-          return {
-            epoch: row.epoch,
-            baselineRejectedSets: row.baseline_rejected_sets,
-            baselineTerminalExecutions: row.baseline_terminal_executions,
-            baselineEffectRepairs: row.baseline_effect_repairs,
-            // BLINDSIGHT F6 — deliver the PREVIOUS epoch's persisted diagnosis
-            // to the rollover decision (it was written at every rollover and
-            // never read: epoch amnesia).
-            lastDiagnosis: row.last_diagnosis ?? null,
-            rolledBackoffUntilMs:
-              Date.parse(`${row.created_at.replace(' ', 'T')}Z`)
-              + recoveryEpochBackoffMs(row.epoch),
-          };
-        },
+        // counter baselines plus the inter-epoch backoff deadline. TASK-SHADOW
+        // F4 — read through the PRODUCTION helper
+        // (infrastructure/workplace/sqlite-recovery-epoch-ledger.ts), the one
+        // owner of the epoch SQL + backoff derivation; the task-shadow
+        // integration harness calls the same helper instead of duplicating
+        // the predicate (B-004/W-1).
+        readRecoveryEpochBaseline: (workplaceRef, role) =>
+          readRecoveryEpochBaselineSql(
+            db, serializeWorkplaceRef(workplaceRef), role,
+          ),
         // ADR-075 — append one immutable rollover row; idempotent by the
-        // UNIQUE (workplace_ref, role, epoch) constraint.
+        // UNIQUE (workplace_ref, role, epoch) constraint. F4: same production
+        // helper as the read above.
         recordRecoveryEpoch: (input) => {
-          db.prepare(
-            `INSERT OR IGNORE INTO factory_workplace_recovery_epochs
-               (workplace_ref, role, epoch,
-                baseline_rejected_sets, baseline_terminal_executions,
-                baseline_effect_repairs, exhausted_attempts,
-                max_attempts, total_attempts_cap, last_diagnosis)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          ).run(
-            serializeWorkplaceRef(input.workplaceRef),
-            input.role,
-            input.epoch,
-            input.baselineRejectedSets,
-            input.baselineTerminalExecutions,
-            input.baselineEffectRepairs,
-            input.exhaustedAttempts,
-            input.maxAttempts,
-            input.totalAttemptsCap,
-            input.lastDiagnosis,
-          );
+          recordRecoveryEpochSql(db, {
+            workplaceRef: serializeWorkplaceRef(input.workplaceRef),
+            role: input.role,
+            epoch: input.epoch,
+            baselineRejectedSets: input.baselineRejectedSets,
+            baselineTerminalExecutions: input.baselineTerminalExecutions,
+            baselineEffectRepairs: input.baselineEffectRepairs,
+            exhaustedAttempts: input.exhaustedAttempts,
+            maxAttempts: input.maxAttempts,
+            totalAttemptsCap: input.totalAttemptsCap,
+            lastDiagnosis: input.lastDiagnosis,
+          });
         },
       } as ProductionCellProjectionPersistence,
       productReader: {
