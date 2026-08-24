@@ -511,3 +511,23 @@ mid-run intervention.
 
 *Preserved exactly seven top-level points. Amendments append inside a point;
 no point may be removed or renumbered.*
+
+## LAUNCH ENTRY (2026-08-24 03:42Z / 06:42 local) — Point 7 executed by the OBSERVER session (operator directive)
+
+- Operator directive "Запуск 9 версии" superseded the points 1-6 exit gate at
+  06:38 local; phases 1+2A of ADR-095 were landed (d4a19d51), phase 2b pending.
+- Build: dedicated worktree `D:/Development/saga-mcp-ELITE9`, branch
+  `stage22/elite9-run` at saga4 consolidation tip `d4a19d51`; npm ci + tsc exit 0;
+  factory-proof group 112/112 green on the fresh dist.
+- Settings sha256 anchored: `2d6176e8d1382fe1a05791892840aa3a4f023ab87157ecaa13d1bc3a5545c6d0` (unchanged since stage-19).
+- LAUNCH: engine detached pid 46052, launch `launch-b37e2659-f054-46b0-8258-ad659974f343`,
+  log `saga-engine-1-2026-08-24T03-42-02.412Z.log`, model glm-4.6, inline env
+  (SAGA_REAL_CLAUDE_PATH/SAGA_CLAUDE_PATH = agent-proxy shim;
+  SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS=1). NO FACTORY_CLAUDE_BACKEND_FORBIDDEN.
+- Controls raised to concurrency 8 / model_concurrency_limit 8 at +18 s
+  (operator rate-limit-8 channel directive; re-apply after any resume).
+- First card: task 1 claimed, first worker opencode spawned (fresh pid 31168);
+  prompt-budget telemetry live; idea = `elite-idea.txt` verbatim (Elite-3..8 lineage).
+- Watchdog live: 60 s samples / 45 min stagnation / 12 h max / settings tripwire.
+- Per the Point-7 contract: STOP AFTER LAUNCH VERIFICATION — observation only,
+  no mid-run repairs/builds/merges; escalate on anomaly.
