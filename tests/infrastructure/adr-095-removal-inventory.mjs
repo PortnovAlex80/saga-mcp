@@ -74,6 +74,17 @@
 // status/contentMarkers enforced machine-side by the validator (see the
 // deadPhase3 section comment). No bucket changed; no file deleted; the
 // presence counter is untouched (phase 3 contributes code-blocks only).
+// AMENDED at the canonical Phase-3.3 integration (2026-08-24): deadPhase3[2]
+// (the runtimePersistence construction in product-lifecycle-runtime.ts) and
+// deadPhase3[3] (the ModuleSharedDeps.runtimePersistence field) are EXECUTED
+// (authored on the stage22/discovery-phase3-3 branch line over the Phase-2C
+// + 3.1 base, integrated by union cherry-pick over the canonical 3.1 + 3.2
+// lineage) — the shared runtime-persistence port construction is gone from
+// the live composition, so every ensure*/lazy CREATE TABLE IF NOT EXISTS
+// recreation site reachable through that port is inert (their only
+// remaining definers are deadPhase4Files, which die at the phase-4 cutover
+// BEFORE the phase-5 schema work — F2 ordering). ALL FOUR deadPhase3
+// entries are EXECUTED and the pending set is EMPTY (Phase 3 exit).
 // `entry.kind`:
 //   file        — a whole source file deleted at the phase;
 //   resource    — a package resource file deleted at the phase;
@@ -128,14 +139,19 @@ export const ADR_095_INVENTORY = Object.freeze({
   //
   // Phase-3.1 (2026-08-24): entry[0] (the products.ts projection block) is
   // EXECUTED; Phase-3.2 (2026-08-24): entry[1] (the settlement-debug legacy
-  // Discovery query) is EXECUTED; entries[2] and [3] remain PENDING (the
-  // Phase-3.3 slice: runtimePersistence construction +
-  // ModuleSharedDeps.runtimePersistence). Machine truthfulness: every entry
-  // carries `status` ('executed'|'pending') plus `contentMarkers` (strings
-  // that MUST be absent from the host file once executed, MUST be present
-  // while pending) — validateAdr095Inventory enforces BOTH directions against
-  // the on-disk host file, so the executed/pending claim can never drift from
-  // the code truth.
+  // Discovery query) is EXECUTED in the canonical lineage. Machine
+  // truthfulness: every entry carries `status` ('executed'|'pending') plus
+  // `contentMarkers` (strings that MUST be absent from the host file once
+  // executed, MUST be present while pending) — validateAdr095Inventory
+  // enforces BOTH directions against the on-disk host file, so the
+  // executed/pending claim can never drift from the code truth.
+  //
+  // Phase-3.3 (2026-08-24; authored on branch stage22/discovery-phase3-3,
+  // integrated into the canonical lineage by the union cherry-pick over
+  // 3.1 + 3.2): entries[2] (the runtimePersistence construction) and [3]
+  // (the ModuleSharedDeps field) are EXECUTED. Canonical merged truth: ALL
+  // FOUR entries are EXECUTED (3.1, 3.2, 3.3, 3.3) and the pending set is
+  // EMPTY — the Phase-3 exit state; Phase 4 remains pending.
   // -------------------------------------------------------------------------
   deadPhase3: Object.freeze([
     Object.freeze({
@@ -198,21 +214,37 @@ export const ADR_095_INVENTORY = Object.freeze({
     Object.freeze({
       kind: 'code-block',
       path: 'src/app/product-lifecycle-runtime.ts',
-      status: 'pending',
+      status: 'executed',
+      executedAt: '2026-08-24',
+      executedIn: 'Phase 3.3',
       contentMarkers: Object.freeze(['discoveryRuntimePersistence', 'SqliteFactoryDiscoveryRuntime']),
       detail: 'the shared runtimePersistence construction (options.discoveryRuntimePersistence ' +
         '?? new SqliteFactoryDiscoveryRuntime()) and its runtimePersistence hand-off into ' +
-        'module registration; the file ITSELF STAYS',
+        'module registration — REMOVED (Phase 3.3, 2026-08-24); the file ITSELF STAYS; the ' +
+        'constructor was the ONLY live entry to the ensure*/lazy CREATE TABLE IF NOT EXISTS ' +
+        'recreation sites (pre-mortem F2), so they are inert until their deadPhase4Files ' +
+        'deletion at phase 4',
       evidence: 'ADR-095 Decision 3 (F2); map STRATA 4; 01_DISCOVERY.md §6.4',
-      sameCommitObligations: Object.freeze([]),
+      sameCommitObligations: Object.freeze([
+        'tests/architecture/adr-095-phase3-runtime-persistence-removal.test.mjs (BLOCKING-hosted ' +
+        'by the architecture glob) proves the removal behaviorally: the REAL ' +
+        'createProductLifecycleRuntime composition over a REAL getDb() database no longer ' +
+        'regrows the ten-table legacy closure after it is dropped from the test DB (the F2 ' +
+        'counterfactual), factory_work_intents stays live with its paused status transition, ' +
+        'and the src absence arms pin the construction/port/field to the dead files only ' +
+        '(hosted dead-importer entry records its Phase-4 positive-control obligation)',
+      ]),
     }),
     Object.freeze({
       kind: 'code-block',
       path: 'src/modules/module-registration.ts',
-      status: 'pending',
+      status: 'executed',
+      executedAt: '2026-08-24',
+      executedIn: 'Phase 3.3',
       contentMarkers: Object.freeze(['runtimePersistence']),
       detail: 'the ModuleSharedDeps.runtimePersistence field (FactoryDiscoveryRuntimePersistence ' +
-        'type import + field); the file ITSELF STAYS',
+        'type import + field) — REMOVED (Phase 3.3, 2026-08-24); the file ITSELF STAYS; the ' +
+        'shared module-registration contract carries no Discovery legacy port',
       evidence: 'ADR-095 Decision 3 (F2); module-registration.ts:23,64',
       sameCommitObligations: Object.freeze([]),
     }),
@@ -1180,6 +1212,18 @@ export const ADR_095_INVENTORY = Object.freeze({
       obligation: 'pins dependency edges naming the DEAD discovery-outcome-certificate-projection.ts ' +
         '"(modules->legacy)" and contributions/handler-adapter.ts "(legacy->modules)" — Phase-4 ' +
         'same-commit baseline regeneration (the edge scan changes when the files die)',
+    }),
+    Object.freeze({
+      file: 'tests/architecture/adr-095-phase3-runtime-persistence-removal.test.mjs',
+      hostedIn: 'architecture',
+      obligation: 'imports dist sqlite-discovery-runtime.js ONLY as the Phase-3.3 positive ' +
+        'control (constructing the dead adapter on a closure-dropped test DB proves the ' +
+        'regrow detector is non-vacuous and that the lazy ensure* sites still exist in the ' +
+        'dead lane nothing live constructs) — Phase-4 same-commit obligation: when ' +
+        'sqlite-discovery-runtime.ts is deleted, replace the positive control with an ' +
+        'inline equivalent DDL execution (or drop the control arm, keeping the composition ' +
+        'absence proof) in the SAME commit; the suite must never weaken its composition ' +
+        'no-regrow assertion',
     }),
   ]),
 

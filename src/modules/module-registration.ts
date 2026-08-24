@@ -20,7 +20,6 @@ import type { SqliteManagedNodeSubmissionRepository } from '../process-modules/p
 import type { SqliteProcessProductRepository } from '../process-modules/persistence/sqlite-process-product-repository.js';
 import type { SqliteCandidateSetRepository } from '../infrastructure/workplace/sqlite-candidate-set-repository.js';
 import type { SqliteGateRepository } from '../infrastructure/workplace/sqlite-gate-repository.js';
-import type { FactoryDiscoveryRuntimePersistence } from './discovery/infrastructure/discovery-runtime-port.js';
 import type { ProductRef } from '../process-modules/domain/spi/index.js';
 import type { WorkplaceProductPort } from '../process-modules/application/workplace-product-port.js';
 import type { AdoptedNodeResultPort } from '../checkpoints/sqlite-resume-directive-repository.js';
@@ -61,7 +60,6 @@ export interface ModuleSharedDeps {
     repairNodeId: string,
   ) => void;
 
-  readonly runtimePersistence: FactoryDiscoveryRuntimePersistence;
   readonly candidateSetRepo: SqliteCandidateSetRepository;
   readonly gateRepo: SqliteGateRepository;
   readonly workplaceProductPort: WorkplaceProductPort;

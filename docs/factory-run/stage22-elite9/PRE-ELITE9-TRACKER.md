@@ -602,18 +602,71 @@ boot baseline) are executed under this point.
      (`tests/infrastructure/adr-095-removal-inventory.mjs`) amended:
      `deadPhase3[0]` carries `status:'executed'` + `contentMarkers`, every
      phase-3 entry's status is machine-enforced BOTH directions by
-     `validateAdr095Inventory`; BR7 (bridge ratchets) pins the executed /
-     pending split with mutation negatives. No file deleted; presence
-     counter untouched (36/27/9); no bucket changed. STILL OPEN in phase 3
-     after the canonical Phase-3.2 integration: runtimePersistence
-     construction (deadPhase3[2]), `ModuleSharedDeps.runtimePersistence`
-     field (deadPhase3[3]) — the Phase-3.3 slice — and the full live-v2 E2E
-     on the still-existing schema as the phase-3 exit gate (the
-     `discovery-live-v2` group is green post-removal in this commit's
-     validation). The settlement-debug legacy Discovery query
-     (deadPhase3[1]) named here as open at Phase-3.1 time is CLOSED by the
-     Phase-3.2 record above (kernel-admission-distance re-pin included
-     there).
+      `validateAdr095Inventory`; BR7 (bridge ratchets) pins the executed /
+      pending split with mutation negatives. No file deleted; presence
+      counter untouched (36/27/9); no bucket changed. STILL OPEN in phase 3
+      after the canonical Phase-3.2 integration: runtimePersistence
+      construction (deadPhase3[2]), `ModuleSharedDeps.runtimePersistence`
+      field (deadPhase3[3]) — the Phase-3.3 slice — and the full live-v2 E2E
+      on the still-existing schema as the phase-3 exit gate (the
+      `discovery-live-v2` group is green post-removal in this commit's
+      validation). The settlement-debug legacy Discovery query
+      (deadPhase3[1]) named here as open at Phase-3.1 time is CLOSED by the
+      Phase-3.2 record above (kernel-admission-distance re-pin included
+      there); the runtimePersistence items named here as open are CLOSED by
+      the Phase-3.3 record below.
+      **Phase-3.3 DONE 2026-08-24 (branch `stage22/discovery-phase3-3`,
+      worktree `saga-mcp-DISCOVERY-P3-3`, base saga4 `30f52350` = Phase-2C
+      + 3.1; independent Red Team verdict PASS with a mandatory integration
+      remediation; integrated into canonical `saga4` by cherry-pick over
+      Phase 3.1 + 3.2 with conflicts resolved as the UNION — see the
+      Commit/evidence record below):** the remaining runtimePersistence live
+      surface is removed —
+      `src/app/product-lifecycle-runtime.ts` no longer constructs
+      `options.discoveryRuntimePersistence ?? new SqliteFactoryDiscoveryRuntime()`
+      (import + option + construction + `sharedDeps` hand-off all gone), and
+      `src/modules/module-registration.ts` no longer declares the
+      `ModuleSharedDeps.runtimePersistence` field (type import + field).
+      With the construction gone, every ensure*/lazy `CREATE TABLE IF NOT
+      EXISTS` recreation site reachable through that port is inert: the
+      only remaining definers/consumers are `deadPhase4Files` (dead tools,
+      dead repositories, `sqlite-discovery-runtime.ts` itself), which die at
+      the Phase-4 cutover BEFORE Phase-5 schema work — the F2 ordering
+      invariant. DB compatibility preserved: `factory_work_intents` (KEPT
+      shared protocol entity) carries its paused CHECK + immutability
+      trigger natively from `SCHEMA_SQL`, and `getDb()`'s v15 policy
+      (fresh-or-exactly-current, anything else fails closed) means the
+      removed `ensurePausedWorkIntentStatus` compat rebuild guarded no
+      reachable DB. Same-commit obligations executed: inventory
+      `deadPhase3[2]`/`[3]` → `status:'executed'` (executedIn Phase 3.3)
+      with machine-checked content markers; BR7b re-pinned to the canonical
+      merged truth (ALL FOUR executed, pending set EMPTY) + new BR7e names
+      the Phase-3.3 split; NEW blocking suite
+      `tests/architecture/adr-095-phase3-runtime-persistence-removal.test.mjs`
+      (architecture glob) proves behaviorally that the REAL
+      `createProductLifecycleRuntime` composition AND the
+      `installProductionModules` boot entry do not regrow the dropped
+      ten-table closure (positive control: the dead adapter constructed
+      directly DOES regrow its seven ensured tables and crashes on the
+      absent `factory_proposals` — proving non-vacuity and that pre-3.3
+      failed this proof), keeps the kept-table paused-transition proof, and
+      src-scans the construction/port/field to the dead files with
+      mutation negatives; its dist positive-control import is recorded in
+      `hostedDeadImporters` with the Phase-4 same-commit obligation. The
+      settlement-debug legacy query (deadPhase3[1]) that this 3.3 branch
+      line still carried as pending is CLOSED in the canonical lineage by
+      the Phase-3.2 record above — the union integration keeps BOTH slices.
+      **Phase-3 EXIT gate: PASSED in the canonical lineage — ALL FOUR
+      `deadPhase3` entries are EXECUTED (3.1 products.ts projection, 3.2
+      settlement-debug legacy query, 3.3 runtimePersistence construction +
+      ModuleSharedDeps field), the pending set is EMPTY, the ensure*/lazy
+      recreation sites are inert behind dead-only definers (F2 ordering
+      ahead of Phase 5), and the live-v2 E2E exit gate is green over the
+      still-existing schema (the `discovery-live-v2` group in this
+      integration's validation). Phase 4 (atomic version bump + manifest
+      repin + code/resource deletion + existing-DB boot test) REMAINS
+      PENDING — nothing in Phase 3 deleted a dead file, bumped a version,
+      or touched the schema.**
   4. Atomic version bump + manifest repin (one-handler, digest =
      production-cell installation bytes) + code/resources deletion +
      existing-DB boot test (retired old installation rehydrates pinned
@@ -685,6 +738,32 @@ settlement-debug legacy Discovery query removed + same-commit ratchet repins
 table-allowance) + deadness corroboration + behavioral non-vacuity with the
 SQL-trace positive control (follow-up commit `7ba9cb3b`) — see the
 phase-3 record above.
+Phase-3.3 (commit `e2bbda66`, worktree `saga-mcp-DISCOVERY-P3-3`, branch
+`stage22/discovery-phase3-3` from saga4 `30f52350` = Phase-2C + 3.1;
+independent Red Team verdict PASS with a mandatory integration remediation;
+integrated into canonical `saga4` over `d52d78dd` (= 3.1 + LOW follow-up +
+3.2 + the settlement-debug SQL-trace positive control) by cherry-pick with
+conflicts resolved as the UNION, never one side): runtimePersistence live
+construction + `ModuleSharedDeps.runtimePersistence` removed; the new
+blocking Phase-3.3 suite hosted via the architecture glob with its dist
+positive-control import recorded in `hostedDeadImporters` (Phase-4
+same-commit obligation preserved). Canonical integration remediation
+executed in the same integration commit: (1) merged inventory truth — ALL
+FOUR `deadPhase3` entries EXECUTED with Phase 3.1/3.2/3.3 attribution
+preserved, pending set EMPTY; the branch-local "settlement-debug pending"
+wording amended to the union truth; `mandatoryPhase5Repins`, the hosted
+importers and all validators preserved; (2) BR7b re-pinned to the
+four-entry executed set + BR7e kept; (3) hidden repin debt closed —
+ratchet-suite P3a repinned from the two-entry executed set to the exact
+four-entry set; P3b/BR7c lying-executed mutation negatives re-based onto
+synthetic mutated inventories (executed entries gain genuinely-present
+host markers; the validator's untruthful-executed direction stays RED) and
+lying-pending flip-backs extended to all four entries — both-direction
+non-vacuity preserved without weakening any assertion; (4) the Phase-3
+EXIT gate recorded as PASSED with Phase 4 explicitly PENDING. Historical
+evidence was not rewritten: the 3.1/3.2 records and the source branch's
+commit message keep their epoch truth; this record and the union-resolved
+inventory state supersede.
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

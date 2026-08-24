@@ -15,8 +15,6 @@ import { sha256Hex } from '../shared/canonical-json.js';import type {
 } from '../application/ports/worker-executor.js';
 import { getDb } from '../db.js';
 import { engineLog } from '../runtime/engine-file-logger.js';
-import type { FactoryDiscoveryRuntimePersistence } from '../modules/discovery/infrastructure/discovery-runtime-port.js';
-import { SqliteFactoryDiscoveryRuntime } from '../modules/discovery/infrastructure/sqlite-discovery-runtime.js';
 import {
   PROCESS_OUTCOME_EMITTER_HANDLER_ID,
   processOutcomeEmitter,
@@ -191,7 +189,6 @@ export interface ProductLifecycleRuntimeOptions {
   development?: DevelopmentCompositionDependencies;
   delivery: DeliveryCompositionDependencies;
   db?: Database.Database;
-  discoveryRuntimePersistence?: FactoryDiscoveryRuntimePersistence;
   packageInstallation?: ProductionInstallation;
   onLifecycleStarted?: (
     run: import('../process-modules/persistence/lifecycle-run.js').LifecycleRunRecord,
@@ -346,8 +343,6 @@ export function createProductLifecycleRuntime(
   };
   const executorV2Options = { productRepo: assemblerProductRepo, resolvePackagePin };
 
-  const runtimePersistence = options.discoveryRuntimePersistence
-    ?? new SqliteFactoryDiscoveryRuntime();
   const productionCellProjectionPersistence =
     createSqliteProductionCellProjectionPersistence(db);
   const managedNodeSubmissions =
@@ -831,7 +826,6 @@ export function createProductLifecycleRuntime(
     nodeExecutors,
     resolveNodeProducts,
     executorV2Options,
-    runtimePersistence,
     candidateSetRepo,
     gateRepo,
     workplaceProductPort,

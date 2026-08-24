@@ -38,12 +38,15 @@
 //        negatives show the scan fails on an UNCLASSIFIED scoped file, on a
 //        classified file ABSENT from the scanned set, and on a DOUBLE
 //        classification — the scan cannot pass vacuously;
-//   BR7  Phase-3.1 code-block truth (2026-08-24) — the products.ts projection
-//        block is EXECUTED (no removed marker remains in src), the other
-//        three phase-3 code-blocks are still PENDING (Phase 3 ≠ Phase 3.1),
-//        the migrated conveyor-v4.3 suite carries no dead projection import,
-//        and a lying executed/pending status fails validation (the inventory
-//        status can never drift from the code truth).
+//   BR7  Phase-3 code-block truth (2026-08-24, canonical merged lineage) —
+//        ALL FOUR phase-3 code-blocks are EXECUTED (products.ts projection
+//        block 3.1, settlement-debug legacy query 3.2, runtimePersistence
+//        construction + ModuleSharedDeps field 3.3; no removed marker remains
+//        in src; BR7a/BR7e pin the split; the pending set is EMPTY — Phase 3
+//        exit), the migrated conveyor-v4.3 suite carries no dead projection
+//        import, and a lying executed/pending status (real flipped or
+//        synthetic mutated inventory) fails validation (the inventory status
+//        can never drift from the code truth).
 //
 // Deliberately NOT duplicated here: the same-version six→one handler drift
 // negative (MODULE_INSTALLATION_INCOMPATIBLE_DRIFT) is already machine-proven
@@ -509,10 +512,11 @@ test('BR6d: a DOUBLE classification fails the scan (a path cannot be both kept a
 // BR7 — Phase-3 code-block state is MACHINE TRUTHFUL. The validator
 // (validateAdr095Inventory) enforces every deadPhase3 entry's status against
 // the on-disk host file content in BOTH directions; these tests pin the
-// expected canonical merged state (products.ts projection block EXECUTED at
-// Phase 3.1; settlement-debug legacy query EXECUTED at Phase 3.2; the other
-// two phase-3 code-blocks still PENDING — the Phase-3.3 slice) and prove
-// non-vacuously that a lying status is rejected.
+// expected canonical merged state (ALL FOUR phase-3 code-blocks EXECUTED:
+// products.ts projection block at Phase 3.1, settlement-debug legacy query at
+// Phase 3.2, runtimePersistence construction + ModuleSharedDeps field at
+// Phase 3.3; pending set EMPTY — Phase 3 exit) and prove non-vacuously that
+// a lying status is rejected.
 // ---------------------------------------------------------------------------
 
 test('BR7a: Phase 3.1 is executed — products.ts carries none of the removed projection surface', () => {
@@ -530,27 +534,55 @@ test('BR7a: Phase 3.1 is executed — products.ts carries none of the removed pr
   }
 });
 
-test('BR7b: the executed set is EXACTLY products.ts (3.1) + settlement-debug (3.2); the other two phase-3 code-blocks are still PENDING (Phase 3 ≠ 3.1+3.2)', () => {
+test('BR7b: the executed set is ALL FOUR phase-3 code-blocks and the pending set is EMPTY (Phase 3 complete: 3.1+3.2+3.3)', () => {
+  const pending = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'pending');
+  assert.deepEqual(
+    pending.map((e) => e.path).sort(),
+    [],
+    'phase 3 has no pending slice left: every deadPhase3 code-block is executed in the ' +
+      'canonical merged lineage (3.1 + the canonical 3.2 + 3.3)',
+  );
   const executed = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'executed');
   assert.deepEqual(
     executed.map((e) => e.path).sort(),
     [
+      'src/app/product-lifecycle-runtime.ts',
+      'src/modules/module-registration.ts',
       'src/tools/products.ts',
       'src/tools/settlement-debug.ts',
     ],
-    'the canonical merged lineage has executed exactly the two phase-3 slices landed so far',
+    'the canonical merged lineage has executed ALL FOUR phase-3 code-blocks',
   );
-  const pending = ADR_095_INVENTORY.deadPhase3.filter((e) => e.status === 'pending');
   assert.deepEqual(
-    pending.map((e) => e.path).sort(),
-    [
-      'src/app/product-lifecycle-runtime.ts',
-      'src/modules/module-registration.ts',
-    ],
-    'phase 3 is NOT complete: the runtimePersistence construction and the ' +
-      'ModuleSharedDeps field are still pending (the Phase-3.3 slice; their ' +
-      'same-commit obligations stand)',
+    executed.map((e) => e.executedIn).sort(),
+    ['Phase 3.1', 'Phase 3.2', 'Phase 3.3', 'Phase 3.3'],
+    'executed phase-3 code-blocks: products.ts (3.1) + settlement-debug (3.2, canonical) + ' +
+      'runtimePersistence construction and ModuleSharedDeps field (3.3)',
   );
+});
+
+test('BR7e: Phase 3.3 is executed — the composition hosts carry none of the removed runtime-persistence surface', () => {
+  // Mirrors BR7a for the Phase-3.3 pair: the two host files carry NONE of the
+  // removed markers, and the inventory records them as executed in Phase 3.3.
+  // (validateAdr095Inventory already enforces marker absence machine-side in
+  // BOTH directions — this pin names the Phase-3.3 split explicitly so a
+  // silent revert of either host file fails a NAMED test, not just the
+  // import-time validation.)
+  const hosts = [
+    ['src/app/product-lifecycle-runtime.ts', ['discoveryRuntimePersistence', 'SqliteFactoryDiscoveryRuntime']],
+    ['src/modules/module-registration.ts', ['runtimePersistence']],
+  ];
+  for (const [rel, markers] of hosts) {
+    const entry = ADR_095_INVENTORY.deadPhase3.find((e) => e.path === rel);
+    assert.ok(entry, `the ${rel} phase-3 code-block entry must exist`);
+    assert.equal(entry.status, 'executed', `${rel} removal is Phase 3.3 EXECUTED`);
+    assert.equal(entry.executedIn, 'Phase 3.3');
+    const src = readFileSync(path.join(REPO_ROOT, ...rel.split('/')), 'utf8');
+    for (const marker of markers) {
+      assert.ok(!src.includes(marker),
+        `removed runtime-persistence marker '${marker}' re-introduced in ${rel}`);
+    }
+  }
 });
 
 test('BR7c: a lying phase-3 status fails validation (the executed/pending state cannot drift)', () => {
@@ -584,17 +616,40 @@ test('BR7c: a lying phase-3 status fails validation (the executed/pending state 
     'claiming the settlement-debug block is still pending while it is removed must fail validation',
   );
   // And the mirror direction: claiming a still-present block is executed.
+  // Since the Phase-3.3 union (all four entries executed, none pending), no
+  // REAL inventory entry has markers on disk anymore — so this direction is
+  // proven with a SYNTHETIC mutated inventory (an honest mutation of the
+  // DATA, never of the validator): the executed product-lifecycle-runtime
+  // entry gains a marker that IS genuinely present in the host file
+  // ('createProductLifecycleRuntime' — the live export of that file), while
+  // its status stays 'executed'. The validator must reject exactly the same
+  // untruthful-executed code path a real premature execution claim would take.
   const mutated2 = {
     ...ADR_095_INVENTORY,
     deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
       e.path === 'src/app/product-lifecycle-runtime.ts'
-        ? { ...e, status: 'executed', executedAt: '2026-08-24' }
+        ? { ...e, contentMarkers: [...e.contentMarkers, 'createProductLifecycleRuntime'] }
         : e),
   };
   assert.throws(
     () => validateAdr095Inventory(REPO_ROOT, mutated2),
-    /marker 'discoveryRuntimePersistence' is still present/,
-    'claiming the runtimePersistence construction is executed while it is still present must fail validation',
+    /marker 'createProductLifecycleRuntime' is still present/,
+    'claiming an executed status while a claimed-removed marker is still on disk must fail validation',
+  );
+  // Same synthetic lying-executed direction for the module-registration host
+  // (marker genuinely present: 'ModuleSharedDeps' — the live interface of
+  // that file; the removed field marker 'runtimePersistence' stays absent).
+  const mutated3 = {
+    ...ADR_095_INVENTORY,
+    deadPhase3: ADR_095_INVENTORY.deadPhase3.map((e) =>
+      e.path === 'src/modules/module-registration.ts'
+        ? { ...e, contentMarkers: [...e.contentMarkers, 'ModuleSharedDeps'] }
+        : e),
+  };
+  assert.throws(
+    () => validateAdr095Inventory(REPO_ROOT, mutated3),
+    /marker 'ModuleSharedDeps' is still present/,
+    'claiming an executed status while a claimed-removed marker is still on disk must fail validation (module-registration host)',
   );
 });
 
