@@ -203,10 +203,38 @@ decision + journal + registry + this refinement; no implementation
 claimed); its phases 2-6 and the open half of phase 1 (inventory/census/
 boot baseline) are executed under this point.
 
-- [ ] **Task-shadow binding (P0, SM-14/MM-3):** fix `readTaskForWorkplace`
+- [x] **Task-shadow binding (P0, SM-14/MM-3):** fix `readTaskForWorkplace`
       newest-wins selection (`src/app/product-lifecycle-runtime.ts:587-593`)
       + integration test on a REAL multi-task singleton workplace (R3;
       every current unit stubs the port).
+      **CLOSED 2026-08-24 on branch `stage22/task-shadow-exact`:** the
+      newest-wins port is DELETED (ADR-053-style removal, not a fallback):
+      both consumers — `rawAttemptCounters` (recovery-budget crash counting)
+      and `resolveScopeWidening` (widening request binding) — now resolve the
+      role task through the existing K7 exact-key read
+      `readProjectedRoleTask` (`tasks.metadata $.role` binding + workplace
+      ref, fail-closed `PRODUCTION_CELL_ROLE_TASK_PROJECTION_NOT_UNIQUE` on
+      ambiguity, exact null on a missing binding — never recency). The
+      production composition root already provides the K7 read via the
+      projection-persistence spread, so the fix removes the divergent second
+      predicate (B-004/W-1) instead of adding one. Integration regression
+      `tests/process-modules/task-shadow-binding-integration.test.mjs`
+      (blocking, matrix `process-modules` glob): S1 drives a REAL multi-task
+      singleton workplace (real `ensureExecutionPlan` +
+      `activateProductionCellRoleTask` projections) through author-accept →
+      reviewer desk → final-gate rejection, then 2 REAL terminal
+      `worker_executions` on the author task: the budget ENGAGES (ADR-075
+      rollover row exists, `baseline_terminal_executions=2`) while the
+      retired `ORDER BY id DESC LIMIT 1` SQL is probed side-by-side and
+      provably resolves the reviewer row whose count is 0 (the Elite-8
+      signature); S2 negative — a duplicate role row throws the K7 fence
+      through the executor budget path; S3 negative — reviewer-only/empty
+      desks resolve exact null, never a newest-row fallback. The two
+      port-stubbing units (`finding-trajectory-budget`,
+      `scope-widening-routing`) now wire the REAL K7 read + REAL
+      `countTerminalExecutionsForTask`. Verified: build exit 0; acceptance
+      matrix process-modules `tests 1464 / pass 1464 / fail 0 / skipped 0`;
+      architecture `455 / 455 / 0 / 0`; full matrix "all groups green".
 - [ ] **§2.2 × §D2/§3 joint satisfiability (MM-4/BM-5):** normalize §2.2
       tokens against the §D2/§D1 file surface at the decoder boundary OR add
       a pre-Development satisfiability check over the frozen SRS; negative

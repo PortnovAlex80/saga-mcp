@@ -42,7 +42,10 @@ import { SqliteTransitionObligationLedger } from '../../dist/process-modules/per
 import { SqliteScopeWideningLedger } from '../../dist/infrastructure/workplace/sqlite-scope-widening-ledger.js';
 import { serializeWorkplaceRef } from '../../dist/process-modules/domain/workplace/workplace-ref.js';
 import { encodeCheckDiagnostic } from '../../dist/process-modules/domain/workplace/check-diagnostic.js';
-import { countGateRejectedCandidateSets } from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
+import {
+  countGateRejectedCandidateSets,
+  createSqliteProductionCellProjectionPersistence,
+} from '../../dist/infrastructure/workplace/sqlite-production-cell-projection-persistence.js';
 import { sha256Hex } from '../../dist/shared/canonical-json.js';
 
 const sha = sha256Hex;
@@ -161,13 +164,13 @@ function harness() {
   };
   persistence.countGateRejectedCandidateSets = (ref, role) =>
     countGateRejectedCandidateSets(db, serializeWorkplaceRef(ref), role);
-  persistence.readTaskForWorkplace = ref => {
-    const serialized = serializeWorkplaceRef(ref);
-    const row = db.prepare(
-      'SELECT id AS taskId FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1',
-    ).get(serialized);
-    return row ?? null;
-  };
+  // TASK-SHADOW FIX — the widening request binds through the REAL K7
+  // exact-key role-task projection (metadata $.role + workplace_ref). The
+  // retired stub reimplemented the production port's newest-wins SQL, which
+  // in a multi-task singleton workplace binds the request to the newest
+  // (neighbor/reviewer) task row.
+  persistence.readProjectedRoleTask =
+    createSqliteProductionCellProjectionPersistence(db).readProjectedRoleTask;
   persistence.countTerminalExecutionsForTask = () => 0;
   const executorOptions = {
     db,
@@ -245,7 +248,11 @@ function workplaceRef() {
  */
 function seedTaskRow(h, ref, overrides = {}) {
   const serialized = serializeWorkplaceRef(ref);
+  // role:'author' is the durable role binding the REAL projection writes
+  // (activateProductionCellRoleTask/ensureExecutionPlan task metadata); the
+  // exact-key reader resolves the card through it.
   const metadata = JSON.stringify({
+    role: 'author',
     process_run_id: 7,
     cell_input_item: {
       key: overrides.key ?? 'singleton',

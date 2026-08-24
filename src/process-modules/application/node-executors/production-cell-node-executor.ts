@@ -217,8 +217,6 @@ export interface ProductionCellProjectionPersistence {
       dependencyTaskIds: readonly number[];
     }[];
   }): void;
-  readProjectedRoleTask?(workplaceRef: WorkplaceRef, role: 'author' | 'reviewer'):
-    { taskId: number } | null;
   /**
    * BLINDSIGHT C6 — the durable reviewer round history of a workplace
    * (prior verdicts + rejected author candidates), read at PROJECTION time
@@ -252,11 +250,20 @@ export interface ProductionCellProjectionPersistence {
     readonly authorizationRef: string;
   }): void;
   /**
-   * Read the task associated with a workplace (for crash-recovery attempt
-   * counting). Optional — when absent, attemptCount falls back to sealed
-   * CandidateSet count only.
+   * TASK-SHADOW FIX (SM-14/MM-3, RED-TEAM R3, ADR-053) — the crash-attempt
+   * accounting (`rawAttemptCounters`) and the scope-widening request binding
+   * (`resolveScopeWidening`) resolve the workplace's role task through THIS
+   * exact-key read (metadata `$.role` binding), never by task-row recency.
+   * The retired `readTaskForWorkplace` port selected `ORDER BY id DESC LIMIT
+   * 1`, so in a singleton workplace with author+reviewer task rows the newest
+   * (reviewer) row shadowed the author's task: the recovery budget read the
+   * shadow's clean executions and never engaged across real worker deaths
+   * (Elite-8: 15 deaths, rollover table empty). K7 fail-closed semantics
+   * apply: ambiguity throws, a missing binding is null (no executions of a
+   * never-projected role can exist), recency is never consulted.
    */
-  readTaskForWorkplace?(workplaceRef: WorkplaceRef): { taskId: number } | null;
+  readProjectedRoleTask?(workplaceRef: WorkplaceRef, role: 'author' | 'reviewer'):
+    { taskId: number } | null;
   /**
    * Count terminal (lost/terminated/failed) worker executions for a task.
    * Used by crash recovery to prevent infinite crash loops when sealed
@@ -2329,7 +2336,11 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
         .filter(set => set.role === role).length
       : rejected;
     const effectRepairs = this.opts.persistence.countFailedAcceptanceEffectRepairs?.(ref) ?? 0;
-    const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
+    // TASK-SHADOW FIX (SM-14/MM-3) — the crash counter binds to the ROLE's
+    // exact task projection (K7), not the workplace's newest task row: in a
+    // singleton workplace the newest row is typically the reviewer's, whose
+    // clean executions must never hide the author's deaths from the budget.
+    const taskRow = this.opts.persistence.readProjectedRoleTask?.(ref, role);
     const terminalExecutions = taskRow
       ? this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0
       : 0;
@@ -2437,7 +2448,13 @@ export class ProductionCellNodeExecutor implements NodeExecutor {
     const serialized = serializeWorkplaceRef(workplace.ref);
     const ledger = this.scopeWideningLedger();
     void cell;
-    const taskBinding = this.opts.persistence.readTaskForWorkplace?.(workplace.ref);
+    // TASK-SHADOW FIX (SM-14/MM-3) — a widening request binds to the CURRENT
+    // ROLE's exact task projection (K7 fail-closed read). The retired
+    // recency port could bind the request to a neighbor role's task row.
+    const taskBinding = this.opts.persistence.readProjectedRoleTask?.(
+      workplace.ref,
+      state.nextRole,
+    );
     const taskId = taskBinding?.taskId;
     if (typeof taskId !== 'number') return null;
     let request = ledger.readPendingRequest(serialized);

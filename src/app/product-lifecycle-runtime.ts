@@ -582,15 +582,19 @@ export function createProductLifecycleRuntime(
             for (const taskId of taskIds) reevaluateDownstream(db, taskId);
           }
         },
-        // Keep the crash-attempt accounting added on saga4. A process that
-        // dies before CandidateSet seal still consumes the cell recovery budget.
-        readTaskForWorkplace: (workplaceRef) => {
-          const serialized = serializeWorkplaceRef(workplaceRef);
-          const row = db.prepare(
-            'SELECT id AS taskId FROM tasks WHERE workplace_ref=? ORDER BY id DESC LIMIT 1',
-          ).get(serialized) as { taskId: number } | undefined;
-          return row ?? null;
-        },
+        // TASK-SHADOW FIX (SM-14/MM-3, RED-TEAM R3, ADR-053) — the
+        // crash-attempt accounting and the scope-widening binding resolve the
+        // workplace's role task through the K7 exact-key read
+        // (`readProjectedRoleTask`, provided by the
+        // productionCellProjectionPersistence spread above): the durable
+        // tasks.metadata `$.role` binding with the fail-closed uniqueness
+        // fence. The retired newest-wins reader (`ORDER BY id DESC LIMIT 1`)
+        // let the reviewer's task row shadow the author's in this singleton
+        // workplace, so a dying author's executions were never counted and
+        // the recovery budget never engaged (Elite-8: 15 deaths, empty
+        // rollover table). A process that dies before CandidateSet seal still
+        // consumes the cell recovery budget — that semantics is unchanged,
+        // now counted against the exact role task.
         // BLINDSIGHT C6 — durable reviewer round history for the reviewer
         // projection: the round number, prior verdicts and rejected author
         // candidates ride the reviewer objective into the worker prompt.

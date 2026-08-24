@@ -481,7 +481,7 @@ repair target → `human_required`.
 **Declaration:** `cell.recovery.maxAttempts` (positive integer) and
 `cell.recovery.onExhausted: 'fail' | 'pause'` (production-cell-definition.ts:56-59).
 
-**Attempt counting** (`attemptCount`, production-cell-node-executor.ts:971-997):
+**Attempt counting** (`attemptCount`, production-cell-node-executor.ts):
 
 ```ts
 private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {
@@ -492,7 +492,12 @@ private attemptCount(ref: WorkplaceRef, role: 'author' | 'reviewer'): number {
   // count terminal (failed/lost) worker executions for the task.
   const state = this.opts.coordinator.readState(ref);
   if (state && sealedAttempts === 0 && state.loopState === 'repair_wait') {
-    const taskRow = this.opts.persistence.readTaskForWorkplace?.(ref);
+    // TASK-SHADOW FIX (SM-14/MM-3, ADR-053): the ROLE's task is resolved by
+    // the exact-key projection read (tasks.metadata $.role binding, K7
+    // fail-closed fence) — never by the workplace's newest task row, which
+    // in a multi-task singleton workplace is the reviewer's card shadowing
+    // the author's (Elite-8: 15 author deaths, budget never engaged).
+    const taskRow = this.opts.persistence.readProjectedRoleTask?.(ref, role);
     if (taskRow) {
       const failedExecs = this.opts.persistence.countTerminalExecutionsForTask?.(taskRow.taskId) ?? 0;
       return Math.max(sealedAttempts, failedExecs);
