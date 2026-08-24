@@ -248,4 +248,13 @@ Do not execute this phase as part of code/branch consolidation.
 - [ ] ADR-053 ten-item closure matrix.
 - [ ] Explicit ADR-053 verdict: `CLOSED` or `IN-PROGRESS` with exact residuals.
 - [ ] No claim of stable autonomous factory operation without the separately
-  authorized immutable-build qualification runs.
+      authorized immutable-build qualification runs.
+
+## Successor plan
+
+After every final deliverable above exists and `saga4` points at the reviewed
+clean SHA, execution continues with
+`docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md`. No
+production-code phase of that successor may start before this plan's completion
+receipt. The successor is a greenfield database-protocol cutover: it provides
+no migration, backfill, dual-authority or old-run compatibility path.
