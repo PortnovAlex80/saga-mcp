@@ -52,6 +52,15 @@ Committed evidence digests at base SHA:
 > `e64b1a34` per the ledger's own supersession discipline; see
 > `supersededValues` in CC-00-baseline-ledger.json. The harvest-manifest
 > blob is unchanged and keeps its original pin.
+>
+> **Pin re-capture (2026-08-24, canonical BM-5 integration):** the BM-5
+> series was cherry-picked onto canonical saga4 `27a81403` with
+> byte-identical evidence blobs (raw committed blob hashes recomputed at
+> the integrated tree: conformance-report `5c83feec`, harvest-manifest
+> `3ae2c03c`). The pins above are UNCHANGED; only the ledger base SHA
+> advances to the canonical integration head `087f1a65` so the
+> evidence-freeze commit is reachable from the saga4 lineage itself. See
+> the baseSha-only entry in `supersededValues`.
 
 ### Digest domain and method (K0 baseline-identity repair, 2026-08-23)
 
