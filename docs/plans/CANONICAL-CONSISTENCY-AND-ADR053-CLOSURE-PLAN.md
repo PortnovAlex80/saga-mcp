@@ -258,3 +258,10 @@ clean SHA, execution continues with
 production-code phase of that successor may start before this plan's completion
 receipt. The successor is a greenfield database-protocol cutover: it provides
 no migration, backfill, dual-authority or old-run compatibility path.
+
+Per ADR-098, this predecessor must not define or implement the successor's
+complexity envelope, CanonicalRoleContract or cumulative prompt/context
+envelope from legacy task/ExecutionProfile/runner/tracker representations. EK-1
+is itself a no-production-change, independently verified admission phase: it
+freezes those three contracts before EK-2 and invalidates downstream work if a
+frozen contract changes.

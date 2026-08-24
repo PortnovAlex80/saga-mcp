@@ -4,7 +4,7 @@
 
 - **Status:** ready for execution, but blocked by the predecessor gate.
 - **Predecessor:** `docs/plans/CANONICAL-CONSISTENCY-AND-ADR053-CLOSURE-PLAN.md`.
-- **Parent decisions:** ADR-053 and ADR-097.
+- **Parent decisions:** ADR-053, ADR-097 and ADR-098.
 - **Start rule:** no production-code work from this plan may start until the
   predecessor has a signed completion receipt, `saga4` points at its reviewed
   canonical SHA, the worktree is clean, and every predecessor residual is
@@ -48,8 +48,13 @@ with all of the following evidence:
       operator repair, manual SQL, hot-swapped `dist` or oracle weakening;
 - [ ] the legacy-zero, fresh-schema, test-hosting and current-document ratchets
       are green on Windows and in blocking CI;
-- [ ] `saga4` ends at the reviewed qualification SHA with a clean worktree and
-      no valuable code left only in a temporary branch or worktree.
+- [ ] the final measured structure satisfies every finite EK-1 complexity cap,
+      all launches use one pinned role-contract path, and every request has a
+      cumulative prompt/context receipt within its provider/model envelope;
+- [ ] `saga4` ends at the reviewed docs-only closure SHA whose executable tree
+      and all runtime-consumed inputs are byte-identical to the qualified source
+      SHA, with a clean worktree and no valuable code left only in a temporary
+      branch or worktree.
 
 Any failure resets the affected consecutive-success series. A run repaired by
 editing its database, repository, capsule, source tree, build output, task
@@ -75,6 +80,13 @@ The refactor is complete only when all of these statements are true together:
       They do not own queues, schedulers, retry engines or workflow tables.
 - [ ] Scripted, replay and real LLM actors replace only cognition and use the
       same commands, product ingress and validation path.
+- [ ] Actual structural counts stay inside the conjunctive complexity envelope
+      frozen in EK-1; there is no active waiver or unmeasured new mechanism.
+- [ ] Every ActivityAttempt pins one immutable CanonicalRoleContract, and no
+      dispatcher, runner, prompt builder or tracker re-infers that contract.
+- [ ] Every launch is admitted by one cumulative context accountant and stores
+      an immutable PromptAssemblyReceipt; an unset or zero budget is never
+      interpreted as unlimited.
 - [ ] Only the new schema protocol exists in production source and fixtures.
 - [ ] No reachable legacy production runtime, schema, compatibility adapter,
       migration helper or stale operating instruction remains.
@@ -176,6 +188,194 @@ cross-cutting constraints and integration surfaces.
       imported through public new-protocol ingress into a fresh database; it is
       not an old SQLite snapshot and does not seed authority rows directly.
 
+### Bounded successor complexity
+
+The incident history is not permission to add one mechanism per incident. EK-1
+must freeze a machine-readable, conjunctive complexity envelope before EK-2
+changes production code. A single weighted score, line-count target or prose
+claim is not an envelope: every dimension must pass independently.
+
+- [ ] `complexity-budget.json` records, for every dimension, the observed
+      predecessor baseline, target maximum or exact target, deterministic
+      measurement command, rationale and accountable work package.
+- [ ] At minimum it measures mutable owners/reducers, authoritative relations,
+      command/event/obligation/wait/proof kinds, decision readers and writers,
+      orchestration entrypoints, obligation-consumer implementations,
+      role-binding authorities, prompt/context assemblers and accountants,
+      workshop-name branches, new runtime dependencies, and temporary
+      legacy/replacement debt.
+- [ ] Contract-shape dimensions include field count, schema alternatives,
+      reference fan-out and maximum depth, policy-reference kinds, arbitrary
+      metadata/extension fields, and static protocol/role prompt bytes/tokens.
+- [ ] Route-policy dimensions include declarative rule count, condition-key
+      universe, branch count and serialized bytes.
+- [ ] The hard target is one production composition, one obligation-consumer
+      protocol, one role-binding compilation path, one cumulative context
+      accountant, zero projection-authority reads, zero workshop-owned
+      schedulers or workshop-name kernel branches, and zero temporary
+      legacy/replacement debt after EK-8.
+- [ ] The execution structure is capped at the 14 named phases EK-0 through
+      EK-13 and the 24 top-level work packages listed below. A coordinator may
+      split a package into tracked subtasks under the same owner/dependencies,
+      but may not add another top-level package after EK-1 without replacing or
+      merging an existing package and reopening the admission decision.
+- [ ] A legacy baseline is diagnostic evidence, not an entitlement for the new
+      kernel to be equally complex.
+- [ ] A newly discovered incident may add a minimized scenario. It may not add
+      a state, relation, mutable owner, orchestration path or policy layer until
+      an independent verifier approves a measured complexity delta before code
+      is written.
+- [ ] EK-13 permits no active complexity waiver and no unmeasured dimension.
+
+### Canonical role contract
+
+The protocol has only `author` and `reviewer` Workplace roles. Planner,
+implementer, reviewer and certifier are semantic profiles; repair is a
+transition/behavior, not another kernel owner. The installed workshop manifest
+contains one immutable binding value:
+
+```text
+CanonicalRoleContract {
+  schemaVersion
+  roleContractRef
+  protocolRole                 // author | reviewer
+  semanticProfileRef
+  protocolSkillRef + digest
+  semanticSkillRef + digest
+  executorRoutePolicyRef + digest
+  allowedCapabilityRefs[]
+  allowedToolRefs[]
+  inputProductContracts[]
+  outputProductContracts[]
+  evidenceObligations[]
+  completionCommandSchemaRef + digest
+  trackerProjectionProfileRef + digest
+  promptBudgetProfileRef + digest
+  contractDigest
+}
+```
+
+- [ ] The Workplace reducer alone owns role transitions.
+- [ ] WorkIntent and ActivityAttempt pin the exact role-contract reference and
+      digest; scripted, replay and real actors observe the same digest.
+- [ ] ActivityAttempt copies `roleContractRef` and `roleContractDigest` from its
+      exact WorkIntent. Attempt creation atomically verifies their equality,
+      installed-package digest, protocolRole and current Workplace transition;
+      it never resolves the installed manifest independently.
+- [ ] The dispatcher transports the contract, the runner consumes it and the
+      tracker displays its references. None of them selects or repairs it.
+- [ ] The route-policy reference is static and content-addressed; the exact
+      provider/model selected for an attempt is pinned as attempt evidence.
+      The tracker profile controls presentation only and cannot authorize work.
+- [ ] `executorRoutePolicyRef` is the sole provider/model selection authority.
+      It names a finite declarative eligibility table, never executable code or
+      hooks, and contains no task/status/workshop inference, transition, retry,
+      tool, prompt or implicit-fallback semantics.
+- [ ] ActivityAttempt creation evaluates that one pinned policy once and stores
+      the exact provider/model/version. Dispatcher, runner, limit lookup and
+      retry paths may not reselect it; a route change requires a typed new
+      attempt through the owning Workplace transition.
+- [ ] There is no fallback to task status/tags, execution status,
+      `assignment.skill`, `roleFromTask`, tracker state or global skill roots.
+- [ ] A skill contains cognition instructions only. It cannot own transition,
+      capability, tool, evidence or budget policy.
+- [ ] The role contract binds content-addressed references; it must not become
+      a giant duplicated prompt or a new mutable authority.
+- [ ] The role contract contains no free-form metadata, extension bag, inline
+      transition policy or executable policy blob. Adding a field or reference
+      kind reopens EK-1. Its tracker profile contains presentation rules only,
+      never cognition, tool, completion, transition or budget instructions.
+
+### Bounded prompt and context envelope
+
+The current byte logger and optional `SAGA_PROMPT_MAX_BYTES` are baseline
+evidence only. The successor must account for the complete request, not merely
+the initial prompt, and must never depend on an environment variable to turn a
+safety invariant on.
+
+```text
+PromptBudgetProfile {
+  providerModelLimitTableRef + digest
+  providerContextLimitTokens
+  tokenCounterRef + digest + version
+  maxProviderRequests
+  maxStaticTokens
+  maxDynamicTokens
+  maxRecoveryTokens
+  maxToolResultTokens
+  maxTotalInputTokens
+  maxCumulativeSessionInputTokens
+  reservedOutputTokens
+  providerOverheadReserveTokens
+  safetyMarginTokens
+  maxPromptBytes
+}
+
+effectiveInputLimit = providerContextLimit
+  - reservedOutputTokens
+  - providerOverheadReserveTokens
+  - safetyMarginTokens
+
+requestInputTokens <= min(maxTotalInputTokens, effectiveInputLimit)
+cumulativeInputTokens + requestInputTokens <= maxCumulativeSessionInputTokens
+requestOrdinal <= maxProviderRequests
+```
+
+- [ ] ActivityAttempt is the sole mutable owner of context admission and stores
+      CAS-fenced `contextRevision`, `nextRequestOrdinal` and
+      `cumulativeInputTokens`. Receipts are evidence, not counter authority.
+- [ ] `admitProviderRequest(expectedContextRevision, envelope)` atomically
+      validates every limit. On admission it advances ordinal/cumulative
+      counters, appends an admitted PromptAssemblyReceipt and creates the exact
+      idempotent provider-send TransitionObligation. On refusal it appends a
+      refused receipt and persists the rejected-envelope digest/typed result
+      without consuming context or worker-retry budget.
+- [ ] The accountant never derives current authority by selecting a latest
+      receipt or summing receipt rows.
+- [ ] One cumulative accountant runs before every provider request and covers
+      the initial prompt, protocol and semantic instructions, tool schemas,
+      hooks/additional context, recovery history and tool results. It enforces
+      both the per-request context window and the cumulative session budget.
+- [ ] The token counter/version, normalized layer digests, per-layer counts,
+      request ordinal, per-request/cumulative counts, omissions, external
+      references and admission decision form an immutable PromptAssemblyReceipt
+      attached to ActivityAttempt evidence for each provider request.
+- [ ] Large products and histories travel as content-addressed references with
+      bounded summaries and chunked reads; raw material is not recopied into
+      every prompt.
+- [ ] Mandatory semantic layers never disappear through silent truncation.
+      Optional omission order is deterministic and recorded in the receipt.
+- [ ] Static over-budget workshop packages fail installation/admission.
+      Dynamic overflow produces a typed owning-aggregate result before the
+      affected provider request and before retry budget is charged; the
+      identical request is not reissued.
+- [ ] Every PromptBudgetProfile has a positive finite limit. Zero, missing and
+      unsupported provider/model limits fail closed.
+- [ ] `providerModelLimitTableRef` is a read-only lookup keyed by the exact
+      provider/model/version already pinned on ActivityAttempt. It cannot
+      select, reroute, fallback or infer a route.
+- [ ] Provider-reported usage is postflight evidence, never the admission
+      oracle. EK-1 freezes exact overflow and repair semantics.
+- [ ] The accounting linearization point is immediately before final provider
+      request serialization/network send, after system prompts, skills, tool
+      schemas, hook `additionalContext`, retained assistant/tool results and
+      recovery injections. Every cognition transport must call the admission
+      command at that boundary.
+- [ ] An opaque CLI loop that cannot expose every final request and receipt is
+      nonconforming and cannot pass EK-12. WP-18 supplies an instrumented
+      OpenCode transport or fails closed against a pinned OpenCode interface;
+      postflight event usage cannot substitute for pre-send admission.
+- [ ] Hook-originated provider calls are forbidden unless they use the same
+      transport and admission command.
+- [ ] PromptAssemblyReceipt records `admitted` or `refused`, never `sent`.
+      Send/outcome evidence is separate. A crash before send redrives the same
+      TransitionObligation and ordinal instead of admitting a new request; a
+      crash after an un-idempotent external send becomes typed uncertainty,
+      never a blind duplicate send.
+- [ ] The transport enforces `maxOutputTokens <= reservedOutputTokens` or
+      refuses a provider/model for which no conservative output bound can be
+      enforced.
+
 ## Target logical model
 
 Physical names are frozen by Phase EK-1 before implementation. The new schema
@@ -193,7 +393,9 @@ catalog/authentication relations justified in the authority census.
 | `WorkItem` | Immutable semantic/planning definition; no mutable board status. |
 | `WorkItemDependency` | Immutable exact dependency edge. |
 | `Workplace` | Owns the author/reviewer/repair loop and current revision. |
-| `ActivityAttempt` | Worker attempt, lease, heartbeat and provenance; never accepted-material authority. |
+| `WorkIntent` | Immutable launch intent binding WorkItem, Workplace expected revision, input evidence, command and role-contract digest. |
+| `ActivityAttempt` | Owns worker-attempt lease/provenance and CAS-fenced context admission counters; never accepted-material authority. |
+| `PromptAssemblyReceipt` | Append-only admitted/refused evidence per provider request; never proof that a request was sent. |
 | `WorkplaceProductionRevision` | Immutable accepted production revision. |
 | `CandidateSet` | Immutable author or reviewer presentation bound to one production revision. |
 | `GateDecision` | Immutable decision over one exact CandidateSet and CheckPlan. |
@@ -215,6 +417,10 @@ revision.
 Do not add a generic mutable "current state" table that becomes a second owner.
 Do not add a run-wide supervisor authority. A scheduler may lease obligations,
 but it is stateless and replaceable.
+
+`CanonicalRoleContract` and `PromptBudgetProfile` are immutable,
+content-addressed values in the installed workshop manifest. They are not
+mutable workflow relations or additional aggregate owners.
 
 ## Execution model for subagents
 
@@ -267,7 +473,7 @@ terminal proof, legacy deletion or qualification result.
 ```text
 predecessor completion
   -> EK-0 freeze
-  -> EK-1 authority/specification/deletion manifests
+  -> EK-1 authority/transition/admission/deletion specifications
   -> EK-2 pure kernel model
   -> EK-3 fresh schema and repositories
   -> EK-4 obligation driver and fault semantics
@@ -297,29 +503,42 @@ way that gives one agent both an implementation and its independent approval.
 | WP-02 | Derive the forward graph from inputs and commands only | EK-0 | private forward draft delivered to coordinator |
 | WP-03 | Derive the reverse graph from terminal claims/evidence only | EK-0 | private reverse draft delivered to coordinator |
 | WP-04 | Build legacy and document deletion manifests | EK-0 | the two deletion manifests |
-| WP-05 | Implement pure kernel reducers and model explorer | EK-1 | `src/workflow-kernel/domain/**` and model tests |
+| WP-05 | Implement pure kernel reducers and model explorer | EK-1, WP-16 | `src/workflow-kernel/domain/**` and model tests |
 | WP-06 | Implement greenfield schema and repositories | WP-05 | `src/workflow-kernel/persistence/**` |
 | WP-07 | Implement obligation consumer, waits and fault points | WP-06 | `src/workflow-kernel/application/**` |
-| WP-08 | Implement the Development/material vertical | WP-07 | Development adapter, capsule ingress and focused tests |
+| WP-08 | Implement the Development/material vertical | WP-07, WP-17, WP-18 | Development adapter, capsule ingress and focused tests |
 | WP-09 | Implement planning, dependency and aggregate settlement | WP-07 | WorkItem/aggregate composition and tests |
-| WP-10 | Implement Kanban projection and command-only UI adapters | WP-08, WP-09 | projector, read API, UI and tests |
-| WP-11D | Convert Discovery semantic package | WP-09 | Discovery package paths only |
-| WP-11F | Convert Formalization semantic package | WP-09 | Formalization package paths only |
-| WP-11V | Finalize Development semantic package | WP-08, WP-09 | Development package paths only |
-| WP-11L | Convert Delivery semantic package | WP-09 | Delivery package paths only |
-| WP-12 | Integrate adapters and perform hard cutover/legacy deletion | WP-10, all WP-11 | entrypoints and deletion manifest |
+| WP-10 | Implement Kanban projection and command-only UI adapters | WP-08, WP-09, WP-17 | projector, read API, UI and tests |
+| WP-11D | Convert Discovery semantic package | WP-09, WP-17 | Discovery package paths only |
+| WP-11F | Convert Formalization semantic package | WP-09, WP-17 | Formalization package paths only |
+| WP-11V | Finalize Development semantic package | WP-08, WP-09, WP-17 | Development package paths only |
+| WP-11L | Convert Delivery semantic package | WP-09, WP-17 | Delivery package paths only |
+| WP-12 | Integrate adapters and perform hard cutover/legacy deletion | WP-10, WP-11D, WP-11F, WP-11V, WP-11L, WP-16, WP-17, WP-18 | entrypoints and deletion manifest |
 | WP-13A | Implement scenario contract/model comparison/minimizer | WP-05 | workflow test-engine core |
-| WP-13B | Implement actors, fault scheduler and production-size fixtures | WP-07 | actor/fault test paths |
+| WP-13B | Implement actors, fault scheduler and production-size fixtures | WP-07, WP-18 | actor/fault test paths |
 | WP-13C | Implement CI hosting, removal guards and mutation coverage | WP-13A, WP-13B | test manifests/tools; coordinator lands shared files |
 | WP-13D | Implement 20-project corpus and qualification drivers | WP-08, WP-13A | project corpus and run drivers |
 | WP-14 | Rewrite canonical docs and prepare deletion patch | EK-1 | documentation paths only |
-| WP-15 | Execute immutable scripted and real qualification | EK-10 | evidence only; no production source edits |
+| WP-15 | Execute immutable scripted and real qualification | EK-10, WP-16, WP-17, WP-18 | evidence only; no production source edits |
+| WP-16 | Freeze and validate all three EK admission specifications | WP-01, WP-02, WP-03, WP-04 | three specifications, `validate:ek-admission-specs`, receipt and mutation tests |
+| WP-17 | Implement the EK-1-frozen CanonicalRoleContract compiler and consumer port | WP-05 | target schema/compiler/resolver, synthetic fixtures and focused adapters under new-kernel paths only |
+| WP-18 | Implement the EK-1-frozen context envelope and receipt protocol | WP-07, WP-17 | `src/workflow-kernel/context-envelope/**`, accountant, admission policy and scale tests |
 
 WP-02 and WP-03 must not be committed or placed in a mutually visible shared
 path until both derivations are frozen. The coordinator records their hashes,
 then imports both for reconciliation. Workshop packages WP-11D/F/V/L may run
 in parallel because they own disjoint paths; the common workshop interface is
 frozen before they start.
+
+The EK-1 author and independent verifier of a frozen complexity, role or
+prompt/context specification may not implement WP-05, WP-17 or WP-18. The
+coordinator records the specification hashes before assigning production work.
+WP-17 and WP-18 alone own their target protocols. Consumer packages adapt to
+their public ports but may not copy schemas, compile roles or assemble/account
+context locally; the EK-9 conformance tests keep WP-17/WP-18 accountable for
+end-to-end parity.
+WP-17 must not edit any reachable legacy dispatcher, runner, tracker or
+workshop entrypoint; WP-12 owns the atomic production consumer replacement.
 
 ## Phase EK-0 - Predecessor gate and immutable baseline
 
@@ -329,6 +548,9 @@ Owner: integration coordinator.
       full.
 - [ ] Verify every final deliverable of
       `CANONICAL-CONSISTENCY-AND-ADR053-CLOSURE-PLAN.md` exists.
+- [ ] Verify ADR-098 is accepted and that its placement rule has not been
+      diluted: the successor contracts are frozen in EK-1, not inferred from
+      predecessor representations.
 - [ ] Record the predecessor completion receipt, canonical SHA, ADR-053 verdict
       and exact residual list.
 - [ ] Require `saga4` to point at that reviewed SHA and require a clean
@@ -338,6 +560,8 @@ Owner: integration coordinator.
 - [ ] Preserve any old database needed for incident evidence outside the new
       runtime path. Do not copy it into a new test kit.
 - [ ] Create the refactor integration branch and record its base SHA.
+- [ ] Confirm no target implementation exists under `src/workflow-kernel/**`
+      and no WP-05/WP-17/WP-18 production work started before EK-1 admission.
 - [ ] Create `docs/refactoring/event-kernel/EXECUTION-TRACKER.md` with one row
       per work package: owner, base SHA, status, commit, verifier, evidence and
       residual. Only the coordinator edits the tracker or this plan.
@@ -354,6 +578,10 @@ Owner: integration coordinator.
   - [ ] `npm test`.
 - [ ] Write `docs/refactoring/event-kernel/BASELINE.md` with exact counts,
       durations, failures and the frozen SHA.
+- [ ] Record the observed large-prompt incidents (including the approximately
+      436 KB Elite-3 planner request and the largest preserved Elite-8 request),
+      every current role-resolution site, every prompt/context assembly site,
+      and the fact that `SAGA_PROMPT_MAX_BYTES=0` currently means unlimited.
 
 Exit:
 
@@ -406,6 +634,52 @@ Owner: architecture/specification package. No production behavior changes.
 - [ ] Freeze both outputs, then reconcile typed node and edge sets.
 - [ ] Resolve every difference in the protocol, not with explanatory prose.
 
+### Successor admission specifications
+
+These specifications describe the new protocol. They are not copied from the
+legacy task/ExecutionProfile/runner/tracker representations. Freeze and hash
+all of them before any EK-2 production implementation begins.
+
+- [ ] Produce `complexity-budget.json` with every required dimension,
+      baseline, finite target, measurement command and owner.
+- [ ] Produce `canonical-role-contract.schema.json` and a complete manifest
+      table that maps each protocol role plus semantic profile to exactly one
+      content-addressed role contract.
+- [ ] Produce `prompt-budget-profile.schema.json`, pin the token-counter
+      protocol/version, classify every context source, and define exact
+      pre-spawn overflow, repair, retry-charge and terminal semantics.
+- [ ] Prove the role universe is finite and separate these dimensions:
+  - [ ] protocol role: `author` or `reviewer`;
+  - [ ] semantic profile: planner, implementer, reviewer or certifier;
+  - [ ] actor behavior: compliant, repairing, adversarial or failed.
+- [ ] Prove every prompt/context source is classified as mandatory inline,
+      bounded summary, content-addressed reference, bounded tool result or
+      forbidden duplication.
+- [ ] Run deterministic measurements twice on the same tree and require the
+      same complexity vector, role-contract digests and prompt-fixture counts.
+- [ ] Implement and host `npm run validate:ek-admission-specs`; before WP-05 it
+      validates finite complexity caps, exact equality of the canonical role
+      universe and manifest bindings, one role-binding source, positive finite
+      request/token/output limits, and exhaustive context-source classification.
+- [ ] Prove deliberate mutations are red when they remove a complexity
+      dimension, duplicate/omit a role binding, set a zero/unbounded limit, add
+      an arbitrary contract field, add an executable/implicit-fallback route
+      rule, let a limit table select a route, or introduce an unclassified
+      hook/tool context source.
+- [ ] Assign an independent verifier who did not author the specifications and
+      who is forbidden from implementing WP-05, WP-17 or WP-18.
+- [ ] Record all specification and verifier-receipt hashes in the execution
+      tracker. Any later semantic change reopens EK-1 and invalidates downstream
+      qualification evidence; it is not an informal plan edit.
+- [ ] Define
+      `admissionContractDigest = H(canonical(specificationDigests, validatorDigest, mutationCorpusDigest))`.
+      The digest excludes checkout/build provenance so it is reproducible on a
+      later source SHA without claiming that the whole receipt is unchanged.
+- [ ] Issue `EK-ADMISSION-RECEIPT.json` with `admissionContractDigest`, the EK-1
+      source SHA as separate provenance, all three specification digests,
+      validator/mutation-corpus digests, two-run measurement evidence, mutation
+      results, author and independent-verifier identities.
+
 ### Deletion manifests
 
 - [ ] Create `LEGACY-DELETION-MANIFEST.md` listing every old production file,
@@ -425,6 +699,16 @@ Exit:
 - [ ] The target protocol and physical schema names are frozen.
 - [ ] Forward and reverse graphs match exactly.
 - [ ] Every current authority access and deletion target is classified.
+- [ ] The conjunctive complexity envelope has measurable finite caps and no
+      waiver.
+- [ ] One finite role-binding source covers every launch kind with no fallback.
+- [ ] Every context source is classified and every provider/model profile has a
+      positive finite cumulative limit.
+- [ ] The three admission specifications and independent verifier receipt are
+      frozen by digest before production implementation.
+- [ ] `npm run validate:ek-admission-specs` is blocking-green and WP-05 records
+      both the admissionContractDigest and exact EK admission-receipt digest as
+      prerequisites.
 - [ ] An independent verifier can name no missing owner or transition.
 
 ## Phase EK-2 - Pure workflow kernel and executable model
@@ -434,6 +718,9 @@ Owner paths: new `src/workflow-kernel/domain/**` and
 
 - [ ] Implement pure types and reducers for aggregate revisions, commands,
       events, obligations, waits and terminal proofs.
+- [ ] Implement the frozen CanonicalRoleContract reference/digest types and
+      Workplace-owned author/reviewer role transitions without importing
+      runner, task or tracker types.
 - [ ] Implement one deterministic canonical serialization and digest rule.
 - [ ] Implement the write-time progress invariant.
 - [ ] Implement transition legality, idempotency keys, fences and expected
@@ -455,6 +742,12 @@ Owner paths: new `src/workflow-kernel/domain/**` and
   - [ ] duplicate effect accepted twice;
   - [ ] dead predecessor leaving a dependant pending;
   - [ ] workshop-specific branch in the kernel.
+- [ ] Add deliberate mutations for WorkIntent role digest A paired with
+      ActivityAttempt digest B, an attempt that independently re-resolves the
+      manifest, a semantic profile treated as a kernel role, and a transition
+      universe widened without an approved complexity delta.
+- [ ] Implement the deterministic complexity checker and require the current
+      vector to satisfy every EK-1 cap before EK-3.
 - [ ] Add `npm run test:workflow-model` and make every new test blocking.
 
 Exit:
@@ -474,6 +767,14 @@ focused persistence tests. The coordinator owns the schema entrypoint.
 - [ ] Add required primary keys, foreign keys, uniqueness, append-only guards
       and CAS revisions.
 - [ ] Make event/evidence/obligation writes transactional.
+- [ ] Pin the exact CanonicalRoleContract reference/digest on WorkIntent and
+      ActivityAttempt at creation; no later component may rewrite it.
+- [ ] Make ActivityAttempt creation copy the binding from the exact WorkIntent
+      and atomically refuse role/digest/package/Workplace-transition mismatch
+      before a lease or worker launch exists.
+- [ ] Persist each PromptAssemblyReceipt as immutable ActivityAttempt evidence
+      before its provider request (the first is paired with launch admission),
+      without creating a second mutable owner.
 - [ ] Give each mutable aggregate one repository and forbid all other direct
       writes.
 - [ ] Implement exact-version open and fail-closed unsupported-database open.
@@ -519,6 +820,13 @@ Owner paths: new `src/workflow-kernel/application/**` and driver/fault tests.
       quota with exact wake sources.
 - [ ] Distinguish worker loss, provider refusal, malformed result, semantic
       rejection, effect uncertainty and policy terminal.
+- [ ] Treat context-budget overflow as a typed pre-provider-request result owned
+      by the target aggregate. It neither consumes worker retry budget nor
+      creates a wait without the exact repair/wake obligation frozen in EK-1.
+- [ ] Refuse an identical provider request after deterministic budget rejection.
+- [ ] Implement `admitProviderRequest` as an ActivityAttempt CAS command; commit
+      its receipt and exact provider-send obligation with the counter update in
+      one transaction.
 - [ ] Implement idempotent wake/redrive without reading Kanban or inferred
       current task status.
 - [ ] Implement durable operator stop/resume as commands and evidence, not
@@ -529,6 +837,9 @@ Owner paths: new `src/workflow-kernel/application/**` and driver/fault tests.
       outcome.
 - [ ] Prove two consumers cannot both own one obligation.
 - [ ] Prove a stale consumer cannot complete after its fence is lost.
+- [ ] Prove two concurrent admissions at one context revision cannot both pass,
+      and inject crashes after admission/before send, after send/before outcome,
+      and after outcome/before obligation completion.
 - [ ] Prove watchdogs observe and issue commands only; they cannot repair SQL.
 
 Exit:
@@ -553,9 +864,23 @@ ingress and simple-server corpus. This is the first hard vertical.
       revision -> CandidateSet -> gate -> effect -> CellFinalAcceptance through
       the new commands/events/obligations only.
 - [ ] Preserve exact author/reviewer/repair identity and revision binding.
+- [ ] Resolve the frozen CanonicalRoleContract once at WorkIntent creation and
+      prove dispatcher, runner, prompt builder and tracker receive the same
+      reference/digest without reclassification.
 - [ ] Route out-of-scope and upstream-material defects to typed repair
       obligations; do not widen Development silently.
 - [ ] Make scripted, replay and real actors implement the same cognition port.
+- [ ] Admit all three actor types through the same cumulative context accountant
+      and persist the same PromptAssemblyReceipt schema.
+- [ ] WP-18 provides an instrumented OpenCode cognition transport whose
+      admission call occurs after final hook/tool/context assembly and directly
+      before each network send, or a fail-closed proof that the pinned OpenCode
+      interface exposes that exact boundary. The current stdin/stream-event
+      shim alone is explicitly insufficient because it sees only the initial
+      input and postflight events.
+- [ ] Keep that transport test-only until WP-12 performs the atomic production
+      replacement; never fall back to an opaque `opencode run` loop after
+      cutover.
 - [ ] A scripted actor returns ordinary tool calls/text/products. It may not
       write factory tables, fabricate factory receipts or skip ingress.
 - [ ] Define the canonical simple product:
@@ -575,6 +900,11 @@ ingress and simple-server corpus. This is the first hard vertical.
       performs the production cutover.
 - [ ] Add foreign-ref, stale-revision, missing-integration-surface, duplicate
       completion and malformed-actor mutations.
+- [ ] Add production-size prompt fixtures for the preserved Elite-3 and Elite-8
+      failure classes: repeated recovery, large accepted products, duplicate
+      metadata, Unicode, hooks/additional context and bounded tool results.
+- [ ] Prove required scope/unknown/terminal-claim information is referenced or
+      admitted, never silently dropped merely to fit the budget.
 
 Exit:
 
@@ -590,6 +920,8 @@ owners and their tests.
 
 - [ ] Implement immutable WorkItem and dependency creation from the complete
       idea/claim/unknown/integration graph, not ACs alone.
+- [ ] Give planner attempts the exact same positive finite context-budget and
+      role-contract admission rules as every other semantic profile.
 - [ ] Require epic scope equality: covered plus explicit deferred equals
       declared scope.
 - [ ] Require terminal-claim equality: owned and verifiable equals required.
@@ -641,6 +973,9 @@ Owner paths: projector, read API, UI and command adapters.
       three cases.
 - [ ] Verify tools and hooks receive exact context from authoritative commands,
       never by reverse-reading the board.
+- [ ] Display pinned role-contract and prompt-receipt references for diagnosis;
+      the tracker may not select a role, skill, tool set, completion command or
+      prompt budget.
 
 Exit:
 
@@ -665,6 +1000,17 @@ Owner: bounded workshop-adapter packages plus a dedicated deletion package.
 - [ ] Add a synthetic non-game workshop and prove it requires no new kernel
       transition kind, table, driver or reconciler.
 - [ ] Route every workshop through the new obligation driver.
+- [ ] Populate all real workshop CanonicalRoleContract bindings, require exact
+      role-universe equality, and prove dispatcher/runner/tracker consumers see
+      the same digests before the hard cutover.
+- [ ] Route production cognition through the WP-18 instrumented OpenCode
+      transport in the same landing that removes the opaque legacy path; no
+      Claude CLI or unaccounted OpenCode fallback is allowed.
+- [ ] Delete every role resolver that falls back to task status/tags,
+      execution status, mutable assignment skill, tracker state or global skill
+      roots after the canonical binding path lands.
+- [ ] Delete duplicate prompt assemblers, environment-only/unlimited prompt
+      admission and any hook/tool path outside the cumulative accountant.
 - [ ] Remove every old production coordinator, dispatcher, lifecycle adapter,
       transition reconciler, direct aggregate writer, task-status scheduler,
       recovery SQL writer and old-schema helper classified DELETE in EK-1.
@@ -687,6 +1033,10 @@ Exit:
 
 - [ ] The deletion manifest is 100% complete.
 - [ ] There is exactly one production orchestration composition.
+- [ ] There is exactly one role-binding compilation path and one cumulative
+      context accountant, with zero compatibility fallback.
+- [ ] The measured complexity vector contains zero temporary
+      legacy/replacement debt and satisfies every EK-1 target.
 - [ ] A fresh build and all focused suites pass with no legacy allowlist.
 
 ## Phase EK-9 - Universal test engine and blocking CI truth
@@ -713,10 +1063,11 @@ are normalized only when they are not semantic.
 
 ### Required dimensions
 
-- [ ] actor role: planner, author, reviewer, repairer, certifier;
+- [ ] protocol role: author and reviewer;
+- [ ] semantic profile: planner, implementer, reviewer and certifier;
 - [ ] actor behavior: compliant, omission, extra paths, malformed product,
-      stale hash, foreign ref, duplicate completion, prose-only review, timeout,
-      crash and tool misuse;
+      repairing, stale hash, foreign ref, duplicate completion, prose-only
+      review, timeout, crash and tool misuse;
 - [ ] gate result: accept, repair, upstream repair, human wait and terminal
       reject;
 - [ ] effect result: success, already applied, retryable, unknown, human wait
@@ -727,6 +1078,12 @@ are normalized only when they are not semantic.
       gate, effect and settlement commit;
 - [ ] projection state: absent, stale, false, delayed and rebuilt;
 - [ ] payload scale: minimum, normal production and current observed maximum;
+- [ ] role binding: correct digest, foreign digest, stale digest, task/tag
+      mismatch and attempted downstream re-resolution;
+- [ ] context budget: one token below, exact limit, one token above, reduced
+      provider limit, duplicate history, raw product metadata, disabled/zero
+      cap, silent truncation attempt, large reference, token-counter drift,
+      concurrent admission and output-limit mismatch;
 - [ ] platform: Windows production lane and Linux CI lane;
 - [ ] concurrency: 1, exact cap 2, cap saturation with deterministic barrier,
       stale lease and two consumers.
@@ -744,6 +1101,19 @@ are normalized only when they are not semantic.
       adapter.
 - [ ] Make production-sized fixtures mandatory for budget, review, scale and
       rollover tests.
+- [ ] Compare the PromptAssemblyReceipt and role-contract digest in reference
+      and production traces; prompt text alone is not the oracle.
+- [ ] Prove an admitted receipt is not accepted as send evidence, the same
+      provider-send obligation/ordinal is redriven after pre-send crash, and an
+      uncertain non-idempotent send is never duplicated automatically.
+- [ ] Inject oversized hook `additionalContext` and an oversized tool result;
+      require each to appear in the exact next pre-send receipt and be refused
+      before network send when the envelope is exceeded.
+- [ ] Exercise two concurrent admission commands at the same context revision
+      and require exactly one successful CAS and one stale typed refusal.
+- [ ] Include structural-complexity mutations in the independent obligation
+      universe so a second owner, binding path, accountant, scheduler or
+      workshop branch is blocking-red.
 - [ ] Maintain an independently declared
       `WORKFLOW_OBLIGATION_UNIVERSE` and require declared equals demonstrated.
 - [ ] Classify every test file as blocking. The new suite has no quarantine,
@@ -757,10 +1127,14 @@ are normalized only when they are not semantic.
 
 Create and host these stable commands:
 
+- [ ] `npm run validate:ek-admission-specs`;
 - [ ] `npm run test:workflow-model`;
 - [ ] `npm run test:workflow-persistence`;
 - [ ] `npm run test:workflow-faults`;
 - [ ] `npm run test:development-capsule`;
+- [ ] `npm run test:workflow-complexity`;
+- [ ] `npm run test:role-contract`;
+- [ ] `npm run test:prompt-budget`;
 - [ ] `npm run test:project-corpus`;
 - [ ] `npm run test:legacy-zero`;
 - [ ] `npm run test:docs-current`.
@@ -786,6 +1160,8 @@ Exit:
 - [ ] Declared obligations equal demonstrated obligations.
 - [ ] Every required mutation is killed.
 - [ ] Production-sized and Windows-only behavior has executable evidence.
+- [ ] Role binding and context admission use one production path for scripted,
+      replay and real actors.
 
 ## Phase EK-10 - Canonical documentation rewrite and purge
 
@@ -848,11 +1224,18 @@ Owner: run operator. No source edits while a series is active.
 ### Immutable kit
 
 - [ ] Freeze one source SHA, clean `dist`, schema fingerprint, installed package
-      digests, scenario universe and actor version.
+      digests, scenario universe, actor version, complexity-budget digest,
+      role-contract manifest digest, PromptBudgetProfile digest, token counter
+      version, admissionContractDigest and EK admission-receipt digest.
 - [ ] Generate every run from a new empty database path and new repository.
 - [ ] Import capsules through public ingress; never copy a database.
 - [ ] Record OS, Node/npm versions, environment, build digest and scenario seed.
-- [ ] Store evidence under a build-addressed qualification directory.
+- [ ] Store raw evidence under a build-addressed evidence root outside the
+      source checkout, hash its manifest, and reference that digest from the
+      later closure receipt; qualification must not dirty its source tree.
+- [ ] Require every ActivityAttempt to carry its pinned role-contract digest
+      and an unbroken PromptAssemblyReceipt sequence for every provider
+      request; no qualifying run may omit either.
 
 ### Development reliability series
 
@@ -932,6 +1315,11 @@ $env:SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS = "1"
 
 - [ ] Never invoke the Claude CLI directly.
 - [ ] Pin the OpenCode provider/model and record it in the run receipt.
+- [ ] Pin a positive finite PromptBudgetProfile compatible with that exact
+      provider/model and refuse to start if the limit cannot be established.
+- [ ] Verify the pinned OpenCode transport exposes and receipts every final
+      pre-send request. Refuse qualification if only initial stdin or postflight
+      token events are observable.
 - [ ] Verify the `~/.claude/settings.json` tripwire only; never edit that file.
 - [ ] Use the exact immutable kit that passed EK-11.
 - [ ] Execute
@@ -948,6 +1336,9 @@ $env:SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS = "1"
 - [ ] Require the complete idea -> Discovery -> Formalization -> Development ->
       Delivery path for each run.
 - [ ] Require idea/scope/unknown/terminal-claim forward/reverse reconciliation.
+- [ ] During a non-qualifying preflight, inject oversized hook context and an
+      oversized tool result and prove the exact next provider request is
+      refused by its pre-send receipt without reaching the network.
 - [ ] Verify the produced repository independently: install, build, test,
       start, API/CLI/browser smoke and local delivery receipt.
 - [ ] Require no operator repair, manual SQL, hot reload, stale process,
@@ -962,34 +1353,81 @@ Exit:
 - [ ] Every success has a truthful terminal proof and independent product
       verification.
 - [ ] Every observed trace is inside the declared transition/claim universe.
+- [ ] Every attempt stayed inside its frozen role and context contracts without
+      silent omission or an environment-enabled exception.
 
 ## Phase EK-13 - Final qualification, closure and canonical merge
 
 Owner: integration coordinator with independent verifier.
 
-- [ ] Run all EK-9 blocking commands on a clean checkout.
+Use two non-self-referential identities:
+
+- `qualificationSourceSha` is the clean immutable source whose executable
+  tree, build and product runs are qualified;
+- `closureSha` is the later commit containing only allowlisted closure
+  evidence/ADR/registry/plan documentation. Its executable tree must be
+  byte-identical to `qualificationSourceSha`.
+
+- [ ] Freeze `qualificationSourceSha` and its build digest before any command
+      below; no production, test, schema, package, tool or `dist` byte changes
+      are allowed afterward without restarting EK-11 through EK-13.
+- [ ] Run all EK-9 blocking commands on a clean checkout of
+      `qualificationSourceSha`.
 - [ ] Run `npm test` and record exact pass/fail/skip counts and duration.
 - [ ] Run the fresh-schema fingerprint and unsupported-old-DB tests.
 - [ ] Run legacy-zero and require an empty allowlist.
-- [ ] Run current-document/link checks.
+- [ ] Run the pre-closure current-document/link checks.
+- [ ] Run `npm run test:workflow-complexity`, `npm run test:role-contract` and
+      `npm run test:prompt-budget` on the clean checkout.
+- [ ] Run `npm run validate:ek-admission-specs`, recompute
+      admissionContractDigest and require it to match EK-1 and the immutable
+      qualification kit. Preserve the original EK admission-receipt digest;
+      compare the final source SHA only with the qualification build SHA.
 - [ ] Re-run authority census and require one owner/writer for every mutable
       fact and no unclassified decision read.
 - [ ] Re-run the independently derived forward/reverse graph reconciliation.
 - [ ] Rebuild Kanban from zero and compare the terminal evidence.
-- [ ] Review EK-11 and EK-12 receipts against the frozen build digest.
-- [ ] Update ADR-097 and its closure registry only to the state supported by
-      executable evidence.
+- [ ] Review EK-11 and EK-12 receipts against qualificationSourceSha and its
+      frozen build digest.
+- [ ] Re-measure the structural complexity vector and require every conjunctive
+      cap, one role-binding path, one cumulative context accountant and zero
+      active waiver.
+- [ ] Prepare one closure-only change that updates ADR-097 and ADR-098 and their
+      closure-registry entries only to the states supported by executable
+      evidence. ADR-098 may leave `planned` only when every ADR-098 closure
+      checkbox is green and FINAL-RECEIPT records its evidence digests.
 - [ ] Write `docs/refactoring/event-kernel/FINAL-RECEIPT.md` containing:
   - [ ] predecessor completion SHA and receipt;
-  - [ ] final source/build/schema/package/corpus digests;
+  - [ ] original EK admission-receipt digest, EK-1 source SHA,
+        admissionContractDigest and all three frozen specification digests;
+  - [ ] qualificationSourceSha and its build/schema/package/corpus digests;
   - [ ] authority and deletion summaries;
   - [ ] test command counts;
   - [ ] mutation and fault-schedule results;
+  - [ ] initial/final complexity vectors and every approved delta;
+  - [ ] role-contract manifest digest and prompt-size/token distribution;
   - [ ] 10-run, 20-project and 3-run qualification tables;
   - [ ] exact known residuals, if any.
+- [ ] The receipt must not attempt to embed the hash of its own commit. It
+      defines `closureSha` as "the commit containing this receipt" and records
+      `qualificationSourceSha` as its expected executable-source identity.
+- [ ] Commit only the allowlisted closure paths: FINAL-RECEIPT, ADR-097,
+      ADR-098, the ADR closure registry, this plan's closure state and any exact
+      execution-tracker/current-document index entries required for those
+      files. Record the resulting commit externally as `closureSha`.
+- [ ] Require the diff from qualificationSourceSha to closureSha to contain
+      only those paths, and require identical hashes for every production,
+      test, schema, package, tool, `dist`, installed skill/prompt/hook/config and
+      other runtime-consumed path. Prove the closure-only allowlist is not read
+      by production or agent context assembly.
+- [ ] On a clean checkout of closureSha, run ADR registry validation,
+      current-document/link checks and legacy-zero. If an allowlisted document
+      fails, recreate/review the closure-only commit and repeat these checks;
+      any executable-tree change invalidates qualification.
 - [ ] A residual in an architecture law, legacy deletion, schema policy or
       qualifying run blocks completion; it may not be relabeled as follow-up.
-- [ ] Fast-forward `saga4` to the reviewed final SHA.
+- [ ] Fast-forward `saga4` to reviewed closureSha, whose containing receipt and
+      executable-tree equality point back to qualificationSourceSha.
 - [ ] Remove temporary branches/worktrees only after their commits are
       ancestors of `saga4` and their worktrees are clean.
 - [ ] Verify no valuable unique commit exists only on a disposable branch.
@@ -997,7 +1435,9 @@ Owner: integration coordinator with independent verifier.
 Final exit:
 
 - [ ] All phases are complete.
-- [ ] `saga4` is clean and points at the qualified SHA.
+- [ ] `saga4` is clean and points at closureSha; closureSha's executable tree is
+      byte-identical to qualificationSourceSha, every runtime-consumed input is
+      identical, and only its allowlisted non-runtime documentation differs.
 - [ ] Only the new production protocol is reachable.
 - [ ] Legacy source/schema/fixtures/docs are absent.
 - [ ] The immutable project qualification evidence is reproducible.
@@ -1015,6 +1455,9 @@ Forbidden paths:
 Required reading:
 Objective:
 Architecture laws exercised:
+Complexity budget and approved delta:
+CanonicalRoleContract refs/digests affected:
+PromptBudgetProfile and context-source classes affected:
 Exact changes or counterexamples requested:
 Legacy entries that must be deleted:
 Required positive tests:
@@ -1043,6 +1486,15 @@ Every implementation handoff must include:
 - Stop if the old and new authority would both be reachable after landing.
 - Stop if an agent cannot name the owner, command, event, obligation and proof
   for a changed transition.
+- Stop if a change exceeds a complexity dimension, adds an unmeasured
+  dimension, or relies on a waiver deferred until qualification.
+- Stop if any downstream component re-infers a role/skill/tool/budget contract
+  instead of consuming the pinned CanonicalRoleContract.
+- Stop if any provider/model limit is zero, missing or treated as unlimited, or
+  if mandatory context is silently truncated.
+- Stop if the cognition transport cannot expose and atomically admit the final
+  serialized request immediately before each network send; initial stdin or
+  postflight usage alone is not evidence.
 - Stop if expected results were copied from production output.
 - Stop if a project run needs a manual database/repository/build repair.
 - Stop if an implementation-specific regression is deleted before its

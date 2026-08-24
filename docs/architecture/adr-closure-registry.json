@@ -1372,6 +1372,26 @@
         "docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md — material authority and explicit durable-handoff diagnosis",
         "docs/architecture/CONVEYOR-MENTAL-MODEL.md section 23 — composed bounded machines and progress-obligation invariant"
       ]
+    },
+    {
+      "adr": "098",
+      "file": "098-freeze-successor-complexity-role-and-context-contracts-in-ek1.md",
+      "decisionStatus": "accepted",
+      "closureState": "planned",
+      "owningReleases": [
+        "K21"
+      ],
+      "evidenceOwner": "K21",
+      "principalProof": "Before WP-05 or any event-kernel production implementation, the blocking validate:ek-admission-specs command verifies independently frozen digests for a conjunctive structural complexity budget, one finite CanonicalRoleContract binding universe, and one positive finite cumulative PromptBudgetProfile/accounting protocol, kills invalid mutations, and issues an EK receipt with a cross-SHA admissionContractDigest; later gates prove atomic WorkIntent-to-ActivityAttempt role inheritance, executorRoutePolicyRef as the sole provider/model selector with a read-only non-routing limit table, one binding path, ActivityAttempt-owned CAS context counters, an exact pre-send receipt for every OpenCode provider request, no fallback/unlimited budget or silent truncation, and zero complexity waiver or temporary legacy/replacement debt.",
+      "successor": null,
+      "notes": "Accepted 2026-08-24 after the autonomous-decision loop. The initial hybrid placement was rejected by hostile review because predecessor-owned target contracts would derive the replacement from legacy task/ExecutionProfile/runner/tracker semantics and recreate a cross-plan authority boundary. EK-1 is already a no-production-change independent specification phase, so it owns the three admission contracts and their executable validator; changing a frozen contract reopens EK-1 and invalidates downstream evidence. A final hostile verification identified that the current stdin/postflight OpenCode shim cannot observe every final provider request, so an instrumented pre-send OpenCode transport is a blocking WP-18/EK-12 requirement rather than assumed evidence. No third bridge plan is created and the ADR-053 closure predecessor receives no target implementation scope.",
+      "evidence": [
+        "docs/architecture/decisions/098-freeze-successor-complexity-role-and-context-contracts-in-ek1.md - Cynefin triage, four options, revised MCDA, pre-mortem, hostile correction and decision journal",
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md - EK-1 admission specifications, WP-16/WP-17/WP-18, blocking tests and qualification exits",
+        "docs/plans/CANONICAL-CONSISTENCY-AND-ADR053-CLOSURE-PLAN.md - explicit predecessor/successor authority boundary",
+        "tracker-view/claude-runner.mjs - current partial prompt-byte measurement and role-contract consumption baseline",
+        "src/lifecycle/work-assignment-core.ts and src/infrastructure/work/sqlite-work-assignment-adapter.ts - current downstream role re-derivation baseline"
+      ]
     }
   ]
 }
