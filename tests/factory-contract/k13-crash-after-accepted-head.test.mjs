@@ -45,8 +45,13 @@ async function setupFreshDb(repoPath, baseCommit) {
     .run(1, 'K13 crash fixture', 'Crash test', 'active', '[]', '{}');
   db.prepare('INSERT INTO epics (id, project_id, name, status, priority) VALUES (?, ?, ?, ?, ?)')
     .run(1, 1, 'Pipeline', 'planned', 'high');
-  db.prepare('INSERT INTO lifecycle_execution_controls (epic_id, concurrency) VALUES (?, ?)')
-    .run(1, 1);
+  // Pin the same complete admission policy that Factory Start persists.
+  // NULL model fields are deliberately rejected by production before the
+  // crash window this suite is intended to exercise.
+  db.prepare(`INSERT INTO lifecycle_execution_controls
+      (epic_id, concurrency, model_provider, model_name, model_effort, model_concurrency_limit)
+    VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(1, 1, 'zai', 'glm-4.7', 'high', 2);
   db.prepare('INSERT INTO repositories (id, name, default_branch, metadata) VALUES (?, ?, ?, ?)').run(1, 'crash-repo', 'main', '{}');
   db.prepare('INSERT INTO project_repositories (id, project_id, repository_id, role, local_path, integration_branch, status) VALUES (?, ?, ?, ?, ?, ?, ?)').run(1, 1, 1, 'component', repoPath, 'dev', 'active');
   const { ensureReplayCapsuleSchema } = await import(pathToFileURL(path.resolve(REPO_ROOT, 'dist', 'infrastructure', 'replay', 'sqlite-replay-capsule-repository.js')).href);

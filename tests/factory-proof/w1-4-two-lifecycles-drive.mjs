@@ -260,7 +260,7 @@ function productContractAuthorWithDecoy(base) {
   };
 }
 
-const DIS = 'product-discovery@3.0.2';
+const DIS = 'product-discovery@4.0.0';
 
 // Option-1: B's use-cases output must differ too — the UC fixture bytes are
 // identical across runs and the acceptance cell's input snapshot binds the

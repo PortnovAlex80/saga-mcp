@@ -100,9 +100,12 @@ for (const module of [discoveryProcessModule, formalizationProcessModule]) {
 test('built-in registry registers all lifecycle modules by versioned identity', () => {
   const registry = createBuiltInProcessModuleRegistry();
   const refs = registry.list().map(module => `${module.identity.name}@${module.identity.version}`);
+  // ADR-095 Phase 4 bumped product-discovery 3.0.2 -> 4.0.0 atomically with
+  // the manifest cutover; the expectation is DERIVED from the registered
+  // module identity so a future bump cannot leave this catalog pin stale.
   assert.deepEqual(refs.sort(), [
     'delivery-release@1.0.0',
-    'product-discovery@3.0.2',
+    `product-discovery@${discoveryProcessModule.identity.version}`,
     'solution-development@1.4.4',
     'solution-formalization@1.0.0',
   ]);

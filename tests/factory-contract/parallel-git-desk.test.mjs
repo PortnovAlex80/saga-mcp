@@ -99,9 +99,12 @@ async function setupFreshDb(repoPath, baseCommit) {
               VALUES (1,'Parallel Desk Test','Worktree isolation under concurrency=2','active','[]','{}')`).run();
   db.prepare(`INSERT INTO epics (id,project_id,name,status,priority)
               VALUES (1,1,'Pipeline','planned','high')`).run();
+  // Pin the exact model admission policy Factory Start persists; NULL model
+  // fields are rejected fail-closed before the cells can be admitted. The
+  // suite drives concurrency=2, matching the glm-4.7 catalog quota (limit 2).
   db.prepare(`INSERT INTO lifecycle_execution_controls
-              (epic_id,concurrency)
-              VALUES (1,2,2)`).run();
+              (epic_id,concurrency,model_provider,model_name,model_effort,model_concurrency_limit)
+              VALUES (1,2,'zai','glm-4.7','high',2)`).run();
   db.prepare(`INSERT INTO repositories (id,name,default_branch,metadata)
               VALUES (1,'parallel-repo','dev','{}')`).run();
   db.prepare(`INSERT INTO project_repositories

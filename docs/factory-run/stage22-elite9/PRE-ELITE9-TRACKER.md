@@ -271,8 +271,9 @@ Point 7 or the later three clean whole-conveyor qualifications.
       worker_done; multi-round feedback evolution (fixtures today never loop
       more than once); 15-22 AC 15-20 KB document shapes (Team-1's measured
       gaps).
-- [ ] **FULL Discovery legacy ControlIntent/tools/handlers removal — decided
-      by ADR-095 (docs recorded; implementation PENDING):** complete removal
+- [x] **FULL Discovery legacy ControlIntent/tools/handlers removal — decided
+      by ADR-095 (ALL SIX PHASES LANDED 2026-08-24; per-phase records under
+      the numbered list below; registry `implemented`):** complete removal
       of the dead six-handler factory
       (`src/modules/discovery/application/discovery-installation.ts:122-141`),
       dead MCP discovery tools (`src/tools/discovery-proposal-tools.ts`,
@@ -744,6 +745,51 @@ Point 7 or the later three clean whole-conveyor qualifications.
      constants, live E2E/constraint/output suites). Legacy-only test
      deletion is operator-approved (ADR-095 §7); tests also covering live
      surfaces migrate FIRST.
+     **DONE 2026-08-24 (branch `phase6/finish-discovery-legacy-closure`,
+     worktree `saga-mcp-DISCOVERY-P6`, base = canonical
+     `integration/canonical-2026-08-24` head `57468bb6`; the interrupted
+     six-file Phase-6 start was transplanted, not discarded):** dependency-
+     direction allowlist holds ZERO Discovery-scoped entries (ceiling 1 =
+     the unrelated TB-8 development→formalization edge only); BR5's
+     retired-handler-ID allowed set emptied to its terminal state (the
+     Phase-4 same-commit tightening the bridge suite's own note required);
+     all EIGHT ratchets GREEN with per-ratchet executable owners and the
+     FIVE deliberate real-tree mutation RED/GREEN cycles executed and
+     recorded (dead handler ref → BR5; legacy tool import → R3a + TS2307;
+     projection write → R3a; legacy CREATE TABLE → R0/R5a; stale 3.0.2
+     version pin → R0/R2a naming the F5 STOP-SHIP shape) — full mapping in
+     `docs/factory-run/stage22-elite9/DISCOVERY-PHASE6-CLOSURE.md`; all six
+     blocker suites green individually (16/4/6/35/4/5). Phase-6 repair
+     class (same fixture class, production root cause): the Phase-4 atomic
+     version bump left `wire-submission-validation.ts` registering
+     Discovery node policies under the stale `product-discovery@3.0.2`
+     key, so every live Discovery worker_done failed
+     `SUBMISSION_VALIDATION_POLICY_MISSING: product-discovery@4.0.0/...`
+     (k13 + AC-28/T10 + all w9 scripted E2E drives dead). Fixed by deriving
+     the live key from `DISCOVERY_PROCESS_MODULE_REF` and retaining the
+     3.0.2 key for legacy pinned-run resume (same multi-version
+     enumeration Development uses); the stale-fixture sweep (3.0.2 route
+     keys + bare `lifecycle_execution_controls` inserts) covered
+     golden-path, parallel-git-desk (whose insert was left as broken SQL
+     `(epic_id,concurrency) VALUES (1,2,2)` by `18662636`),
+     w1-4-two-lifecycles-drive, worker-boundary-crash-scenarios.
+     Registry entry moved `planned` → `implemented` with the Phase-6
+     evidence bundle. NOT claimed: full-factory qualification (ADR-096
+     Phase 7, separately authorized).
+     Resumed-session completion (2026-08-24, after the machine reboot
+     killed the interrupted session mid-validation): the sweep was
+     completed over the interrupted session's post-repair matrix reds —
+     two more stale catalog pins fixed by DERIVING the expectation from
+     the module identity (`process-module-validation`,
+     `process-module-tools`: 28/28, 5/5), the settlement-debug fixture
+     repaired for Phase-5 semantics (fresh DBs no longer create the
+     legacy table; the fixture recreates it as an EXISTING pre-cutover
+     DB carries it — 4/4), and the twelve 3-4 ms matrix failures in the
+     interrupted log re-attributed to the reboot (`Error: spawn UNKNOWN`,
+     errno -4094 — the runner could not spawn children while the host
+     died; all green standalone and in the resumed full matrix). Full
+     validation re-run from a clean build on the resumed session —
+     results in DISCOVERY-PHASE6-CLOSURE.md §6.
 - [ ] Quarantine re-validation executed (R2): both PRE-EXISTING-RED rows
       re-run standalone; honest re-admission or fresh typed reasons.
 
@@ -812,6 +858,20 @@ EXIT gate recorded as PASSED with Phase 4 explicitly PENDING. Historical
 evidence was not rewritten: the 3.1/3.2 records and the source branch's
 commit message keep their epoch truth; this record and the union-resolved
 inventory state supersede.
+Phase-6 (branch `phase6/finish-discovery-legacy-closure`, worktree
+`saga-mcp-DISCOVERY-P6`, base canonical `57468bb6`; interrupted six-file
+start transplanted with each modification verified against production
+truth before acceptance): empty Discovery allowlist + BR5 terminal
+tightening + all eight ratchets green + five real-tree mutation
+RED/GREEN cycles + six blocker suites green + the
+`wire-submission-validation.ts` stale 3.0.2 policy-key production repair
+(see the phase-6 record above) + full validation; evidence
+`docs/factory-run/stage22-elite9/DISCOVERY-PHASE6-CLOSURE.md`; registry
+`planned` → `implemented`. The session was machine-rebooted mid
+full-validation; the resumed session completed the sweep (two derived
+catalog pins + the settlement-debug existing-DB fixture), re-verified
+mutation cycles (a) and (c) with captured transcripts, and re-ran the
+entire validation from a clean build (DISCOVERY-PHASE6-CLOSURE.md §6).
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the
