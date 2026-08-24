@@ -127,9 +127,24 @@ const GROUPS = {
       // (mandatoryPhase4Repins) and pinned by coverage guard G2j. Exact file
       // on purpose: no directory glob, the surface cannot silently widen.
       'tests/execution/migration-conformance.test.mjs',
+      // ADR-095 Phase-3.1 canonical integration (Red Team LOW-1): the
+      // conveyor v4.3 focused-invariants suite (11 live conveyor
+      // invariants, including the Phase-3.1-migrated projection-free
+      // product_submit invariant 5 with its negative proofs) was committed
+      // but hosted in NO group — the same orphan class CC-GAP-8 closed.
+      // Deterministic standalone (10/10 green, temp DB via DB_PATH, env
+      // restored in finally; node --test isolates each file in its own
+      // process). Exact file on purpose: no directory glob, so the hosted
+      // surface cannot silently widen. The removal/de-hosting guard is G2l
+      // in tests/infrastructure/acceptance-matrix-coverage.test.mjs; its
+      // Phase-5 same-commit repin obligation (the factory_proposals
+      // negative assertion) is recorded machine-readably in
+      // tests/infrastructure/adr-095-removal-inventory.mjs
+      // (mandatoryPhase5Repins).
+      'tests/replay/conveyor-v4.3-focused-invariants.test.mjs',
     ],
     concurrency: 1,
-    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts + ADR-095 migration-conformance (green on legacy baseline, Phase-4 repin owed)',
+    note: 'module composition + LR-07 development-local-readiness binding + CC-GAP-8 verification-accounting ledger + terminal-exit accounting oracle + worker prompt-assembly contracts + ADR-095 migration-conformance (green on legacy baseline, Phase-4 repin owed) + ADR-095 conveyor v4.3 focused-invariants (Phase-3.1 migrated live oracle, Phase-5 repin owed)',
   },
   // ADR-095 Phase-2A (blocker (a) resolution): the four proven LIVE Discovery
   // v2 oracles were CI orphans — no blocking run-set and no quarantine hosted

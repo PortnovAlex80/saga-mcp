@@ -548,8 +548,10 @@ boot baseline) are executed under this point.
      .test.mjs` invariant 5 MIGRATED (never deleted) to the projection-free
      product_submit seam — it now drives the REAL handler and proves the
      negative (no `discovery_proposal_id` field, zero `factory_proposals`
-     rows, zero proposal-ref desk products, idempotent resubmit stays
-     projection-free); the other 10 invariants are untouched. Inventory
+     rows, zero proposal-ref desk products; a repeat submit from the same
+     execution after the presentation close is typed-refused by the
+     `MANAGED_NODE_SUBMISSION_*` fence — one effective submission, no
+     second row anywhere); the other 10 invariants are untouched. Inventory
      (`tests/infrastructure/adr-095-removal-inventory.mjs`) amended:
      `deadPhase3[0]` carries `status:'executed'` + `contentMarkers`, every
      phase-3 entry's status is machine-enforced BOTH directions by
@@ -567,7 +569,16 @@ boot baseline) are executed under this point.
      existing-DB boot test (retired old installation rehydrates pinned
      runs; no `MODULE_INSTALLATION_INCOMPATIBLE_DRIFT`).
   5. Atomic fresh-schema closure removal (no DROP) + fresh-DB absence
-     test.
+     test. Same-commit repin obligation (Red Team LOW-2, recorded
+     machine-readably in the inventory `mandatoryPhase5Repins`): the
+     hosted `tests/replay/conveyor-v4.3-focused-invariants.test.mjs`
+     invariant-5 negative asserts `factory_proposals` COUNT(*)=0 on a
+     fresh DB — when the closure leaves SCHEMA_SQL this becomes a missing
+     table, so the SAME Phase-5 commit must repin it to the stronger
+     truthful negative (table + its indexes ABSENT from the fresh schema);
+     the migration-conformance `factory_proposals` INSERT seed follows the
+     closure the same way (its obligation already lives in
+     `mandatoryPhase4Repins`).
   6. Empty legacy allowlist + deliberate mutation RED/GREEN proofs + full
      validation. Guards: eight ratchets (shrinking allowlist first; exact
      one-handler manifest/digest; full src symbol/table absence;
@@ -602,9 +613,18 @@ eight-ratchet suite + mutation proofs (inventory schemaVersion 3
 `removalSymbols`; pure checkers; 22-test blocking suite + G2k guard;
 evidence `DISCOVERY-PHASE2C-RATCHETS.md`). No
 production legacy was deleted; no oracle quarantined or weakened.
-Phase-3.1 (worktree `saga-mcp-DISCOVERY-P3-1`): products.ts projection block
-removed + invariant-5 migration + inventory status/contentMarkers machine
-truthfulness + BR7 — see the phase-3 record above.
+Phase-3.1 (commit `18a934b9`, worktree `saga-mcp-DISCOVERY-P3-1`; integrated
+into canonical `saga4` by cherry-pick over Phase-2C): products.ts projection
+block removed + invariant-5 migration + inventory status/contentMarkers machine
+truthfulness + BR7 — see the phase-3 record above. Canonical integration
+follow-up (this commit): Red Team LOW findings closed — LOW-1 the conveyor
+v4.3 focused-invariants suite is hosted BLOCKING (exact process-modules
+entry; removal/de-hosting guard G2l); LOW-2 the Phase-5 same-commit repin
+obligation for its `factory_proposals` negative assertion is recorded
+machine-readably (inventory `mandatoryPhase5Repins` + validator structural
+rules + the item-5 record above); LOW-3 the phase-3 record's resubmit
+wording corrected from "idempotent resubmit" to the typed fenced/refused
+resubmit truth (one effective submission).
 
 **Blockers:** the previous "Elite-8 liveness (no builds)" blocker is STALE —
 Elite-8 is terminal (failed 19:17:27Z; the terminal gate receipts of the

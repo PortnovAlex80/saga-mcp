@@ -229,6 +229,32 @@ test('G2k: the ADR-095 eight-ratchet suite is hosted blocking (Phase-2C proof ho
   );
 });
 
+test('G2l: the conveyor v4.3 focused-invariants suite is hosted blocking (ADR-095 Phase-3.1 migrated live oracle)', () => {
+  // tests/replay/conveyor-v4.3-focused-invariants.test.mjs carries the 11
+  // live conveyor invariants (executor-kind unification, capsule routing,
+  // retired-simulator exclusion, replay-capsule payload shape, idempotency
+  // binding, gate-rejected/failed-replay detectability, replay-certification
+  // fail-closure) plus the Phase-3.1-migrated invariant 5 that drives the
+  // REAL projection-free product_submit handler and proves the negative
+  // (no discovery_proposal_id field, no factory_proposals row, no
+  // proposal-ref side product, fenced resubmit). Red Team LOW-1 (canonical
+  // Phase-3.1 integration): it was committed but hosted in NO group — the
+  // same orphan class CC-GAP-8 closed, so CI never executed the migrated
+  // oracle. Removing the exact file (deletion OR de-hosting from the
+  // process-modules run-set) must fail HERE, not silently orphan the
+  // oracle again. Asserted against runSet only: reclassifying the live
+  // conveyor oracle as FLAKY/PRE-EXISTING-RED is not an honest way to drop
+  // it. Its Phase-5 same-commit repin obligation (the factory_proposals
+  // negative assertion must flip to table-absence when the fresh-schema
+  // closure is removed) is recorded machine-readably in
+  // tests/infrastructure/adr-095-removal-inventory.mjs
+  // (mandatoryPhase5Repins).
+  assert.ok(
+    runSet.has('tests/replay/conveyor-v4.3-focused-invariants.test.mjs'),
+    'conveyor-v4.3-focused-invariants must stay in a blocking run-set (ADR-095 Phase-3.1 migrated live conveyor oracle hosting)',
+  );
+});
+
 // G3 — specific known flaky / pre-existing-red files are quarantined.
 test('G3: known flaky / pre-existing-red files are quarantined', () => {
   const required = [

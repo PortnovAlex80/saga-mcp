@@ -1084,7 +1084,10 @@ export const ADR_095_INVENTORY = Object.freeze({
       phase: 3,
       executedAt: '2026-08-24',
       executedInPhase: '3.1',
-      justification: 'MIXED (hosted in NO group — matrix-checked 2026-08-24). Live invariants to ' +
+      justification: 'MIXED (hosted BLOCKING in the process-modules group since the canonical ' +
+        'Phase-3.1 integration, 2026-08-24 — Red Team LOW-1; unhosted before that; ' +
+        'removal/de-hosting guard G2l in acceptance-matrix-coverage; its Phase-5 ' +
+        'same-commit repin obligation is recorded in mandatoryPhase5Repins). Live invariants to ' +
         'PRESERVE (10 of 11): executor-kind unification, capsule routing, retired-simulator ' +
         'exclusion, replay-capsule payload shape, idempotency binding, gate-rejected/failed-replay ' +
         'detectability, replay-certification fail-closure — all over live replay/routing/authority ' +
@@ -1469,6 +1472,34 @@ export const ADR_095_INVENTORY = Object.freeze({
         'INSERT follows the schema closure removal.',
     }),
   ]),
+
+  // -------------------------------------------------------------------------
+  // Mandatory same-commit Phase-5 repins (Red Team LOW-2, canonical Phase-3.1
+  // integration 2026-08-24). Phase 5 removes the ten-table closure from the
+  // fresh SCHEMA_SQL (no DROP): every BLOCKING-hosted assertion that reads a
+  // closure table against a FRESH database flips from "zero rows on the
+  // still-existing table" to "table ABSENT" — a COUNT(*) over a missing
+  // table is a hard SQLITE_ERROR, not a green negative. Each obligation
+  // below names the exact hosted file and the assertion that MUST be repinned
+  // in the SAME Phase-5 commit; the validator enforces structurally that the
+  // file exists on disk and is a classified inventory path (no prose-only
+  // obligations that can silently rot).
+  // -------------------------------------------------------------------------
+  mandatoryPhase5Repins: Object.freeze([
+    Object.freeze({
+      file: 'tests/replay/conveyor-v4.3-focused-invariants.test.mjs',
+      hostedIn: 'process-modules (Red Team LOW-1 hosting; de-hosting guard G2l)',
+      obligation: 'the Phase-3.1-migrated invariant 5 proves the projection-free ' +
+        'product_submit seam with SELECT COUNT(*) FROM factory_proposals = 0 (negative ' +
+        'proof on the still-existing table, asserted twice incl. after the fenced ' +
+        'resubmit). At the Phase-5 fresh-schema closure removal the table no longer ' +
+        'exists in a fresh DB: in the SAME Phase-5 commit both assertions MUST be ' +
+        'repinned to the stronger truthful negative — the factory_proposals table (and ' +
+        'its idx_factory_proposals_* indexes) are ABSENT from the fresh schema — never ' +
+        'relaxed or deleted; invariant 6 (one universal typed-product submit seam) and ' +
+        'the fenced-resubmit refusal stay unchanged.',
+    }),
+  ]),
 });
 
 // ---------------------------------------------------------------------------
@@ -1789,6 +1820,43 @@ export function validateAdr095Inventory(repoRoot, inventory = ADR_095_INVENTORY,
       if (!fs.existsSync(joinPath(root, p))) {
         errors.push(`tableAllowedOutsideSpecific[${table}] path missing on disk: ${p}`);
       }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // MANDATORY PHASE-5 REPINS (Red Team LOW-2, canonical Phase-3.1
+  // integration). Structural truthfulness: every obligation names a real,
+  // on-disk, CLASSIFIED hosted test file — a path that stops existing, or
+  // one that was never classified in this inventory, fails here instead of
+  // rotting as prose. (The listFilesOverride hook is intentionally NOT
+  // applied: obligation targets are individually pinned files, and the
+  // partition scan below already honors the override for scope.)
+  // -------------------------------------------------------------------------
+  if (!Array.isArray(inv.mandatoryPhase5Repins) || inv.mandatoryPhase5Repins.length === 0) {
+    throw new Error(
+      'ADR-095 removal inventory self-validation FAILED:\n  - mandatoryPhase5Repins section missing/empty ' +
+        '(required since the canonical Phase-3.1 integration / Red Team LOW-2)',
+    );
+  }
+  const seenPhase5RepinFiles = new Set();
+  for (const entry of inv.mandatoryPhase5Repins) {
+    if (seenPhase5RepinFiles.has(entry.file)) {
+      errors.push(`duplicate mandatoryPhase5Repins file: ${entry.file}`);
+    }
+    seenPhase5RepinFiles.add(entry.file);
+    if (!classifiedPaths.has(entry.file)) {
+      errors.push(`mandatoryPhase5Repins file is not a classified inventory path: ${entry.file}`);
+    }
+    if (!fs.existsSync(joinPath(root, entry.file))) {
+      errors.push(`mandatoryPhase5Repins file missing on disk: ${entry.file}`);
+    }
+    if (typeof entry.hostedIn !== 'string' || entry.hostedIn.trim().length === 0) {
+      errors.push(`mandatoryPhase5Repins entry without hostedIn group: ${entry.file}`);
+    }
+    if (typeof entry.obligation !== 'string' || !entry.obligation.includes('factory_proposals')) {
+      errors.push(
+        `mandatoryPhase5Repins obligation must name the factory_proposals assertion it repins: ${entry.file}`,
+      );
     }
   }
 
