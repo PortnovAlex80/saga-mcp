@@ -1001,15 +1001,24 @@ export function findInvariantViolations(world: KernelWorld): InvariantViolation[
     seenKeys.add(key);
   }
 
-  const effectCounts = new Map<string, number>();
+  // DUPLICATE_EFFECT (WP-13B residual, fixed 2026-08-26): the exactly-once
+  // law is over EFFECT EXECUTION — a producer may record several receipts on
+  // the legal D2 outcome ladder (unknown → TypedWait:effect-uncertainty →
+  // operator wake → success; retryable → retry → success), so counting every
+  // receipt flagged the legal post-uncertainty re-settle. The duplicate the
+  // oracle must name is the effect EXECUTED to completion twice: two
+  // `EffectReceipt:success` facts for one producer. `already-applied` is the
+  // idempotent-replay marker (proof no second execution happened), never a
+  // duplicate.
+  const successCounts = new Map<string, number>();
   for (const fact of world.evidence) {
-    if (fact.kind.startsWith('EffectReceipt:')) {
-      effectCounts.set(fact.producer, (effectCounts.get(fact.producer) ?? 0) + 1);
+    if (fact.kind === 'EffectReceipt:success') {
+      successCounts.set(fact.producer, (successCounts.get(fact.producer) ?? 0) + 1);
     }
   }
-  for (const [producer, count] of effectCounts) {
+  for (const [producer, count] of successCounts) {
     if (count > 1) {
-      violations.push({ kind: 'DUPLICATE_EFFECT', detail: `producer ${producer} recorded ${count} effect receipts (duplicate effect accepted twice)` });
+      violations.push({ kind: 'DUPLICATE_EFFECT', detail: `producer ${producer} recorded ${count} successful effect receipts (the effect executed twice; retries after unknown/retryable are legal, duplicate success is not)` });
     }
   }
 

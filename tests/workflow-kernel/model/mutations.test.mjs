@@ -144,6 +144,27 @@ test('mutation f: a duplicate effect accepted twice is killed', () => {
   assert.ok(violations.some((v) => v.kind === 'DUPLICATE_EFFECT'), `oracle killed the duplicate effect: ${JSON.stringify(violations).slice(0, 200)}`);
 });
 
+test('DUPLICATE_EFFECT regression: the legal post-uncertainty re-settle is NOT a duplicate (D12 wake path)', () => {
+  // WP-13B residual fix (2026-08-26): unknown -> TypedWait:effect-uncertainty
+  // -> operator wake -> success is the LEGAL effect ladder; the oracle must
+  // not flag it. Only two SUCCESS receipts for one producer are a duplicate
+  // (the effect executed twice). Killing this fix re-broadens the count to
+  // every EffectReceipt kind and this test goes red on the first assert.
+  const prefix = spineInputs('factoryRun.recordRunTerminalProof');
+  const settleIndex = prefix.findIndex((s) => s.command === 'workplace.settleEffect');
+  const run = runSteps(prefix.slice(0, settleIndex + 1), SEED);
+  const success = run.world.evidence.find((e) => e.kind === 'EffectReceipt:success');
+  assert.ok(success, 'spine settled the effect with a success receipt');
+  const legalLadder = { ...run.world, evidence: [...run.world.evidence,
+    { ...success, kind: 'EffectReceipt:unknown', ref: success.ref + '#uncertain' },
+    { ...success, kind: 'EffectReceipt:already-applied', ref: success.ref + '#idem' } ] };
+  assert.equal(findInvariantViolations(legalLadder).filter(v => v.kind === 'DUPLICATE_EFFECT').length, 0,
+    'unknown + already-applied siblings of one success are the legal D2 ladder, not duplicates');
+  const executedTwice = { ...run.world, evidence: [...run.world.evidence,
+    { ...success, ref: success.ref + '#dup' }] };
+  assert.ok(findInvariantViolations(executedTwice).some(v => v.kind === 'DUPLICATE_EFFECT'),
+    'two SUCCESS receipts for one producer stay a named violation');
+});
 test('mutation g: a dead predecessor leaving a dependant pending is killed (D7)', () => {
   const prefix = spineInputs('nodeRun.settleUnreachable');
   const failIndex = prefix.findIndex((s) => s.command === 'workplace.issueWorkplaceTerminalProof');
