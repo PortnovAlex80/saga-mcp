@@ -21,7 +21,7 @@
     "CanonicalFast"
   ],
   "composition": {
-    "fingerprint": "21464228a9cd71672fdeba9099c5e1286955508578e2965ce13c606d0eea4b3c",
+    "fingerprint": "21974287a9c03c2fe115cf157f8357d926c914cc98543fbff5d8db4bbd62f7ab",
     "overlayKeys": [
       "delivery.providers",
       "resolveWorkerContext",
@@ -29,13 +29,13 @@
     ],
     "sections": {
       "lifecycle": "4c676ef0c383f4d52c475f6c2a4c340dca62b4fbd3a1137999196fba7c3b0462",
-      "modules": "13aab873989bf02071532e8d3e5e1c45ceefda9962a0aec1da775fcd5b93a2a4",
+      "modules": "63d03b305d618f145e6863fe156dc26f5396d85d6bf27a68dcf66a27a818b04e",
       "providers": "97d4d446b0dad23e219a610f99d1d24e0d2929bf41fb961013b11a7c3cef6f78",
       "overlay": "25dc717b8eb00d51a8f5725e28227da8bf496855e450147531008e9226692f4f"
     }
   },
-  "installationFingerprint": "1cfa5a9cc7ed24ed62139bad5a3c16d5c75a16a1d5e2d74ed7fc5aab207c96cd",
-  "durableTraceDigest": "5c0a92f646bb14da93395f2972cc3608b81edb3786aab4fe676ac585424a224c",
+  "installationFingerprint": "40c98bdcea2c5ea6f654980133317fecf36c63b33a53f207b5bc4319b3cc26c9",
+  "durableTraceDigest": "6351ddfa79a36b59e7312e78dfbe1618ad93368611953bd5b9eac675b96f1408",
   "normalizedTrace": {
     "acceptedAuthorityHeads": [
       {
@@ -139,7 +139,7 @@
       {
         "current_stage_id": "initial-discovery",
         "id": 1,
-        "input_hash": "8d899532b8ae8837b8ea5db2e8c3c28297e8a436cd6869ccc33d58e8a3c0d104",
+        "input_hash": "55c19fc56df519ca62a888a675febeef9a27a8dc6d66cf49008bdfe52d9cf23e",
         "status": "paused",
         "terminal_status": null
       }
@@ -147,35 +147,35 @@
     "managedSubmissions": [
       {
         "content_hash": "d14ec3307ee484487671179df3050de1f69780f513fc4fd7cabc690845ebaff6",
-        "execution_id": "worker-execution:790b696b-2113-4a1b-8e31-3c0a68db417e",
+        "execution_id": "worker-execution:7ac4d374-aff7-4252-9344-95d8f3e706ca",
         "id": 1,
         "intent_id": 1,
         "node_id": "produce-proposal",
         "process_run_id": 1,
         "schema_version": "factory.discovery-proposal.v1",
-        "submitted_at": "2026-08-25 00:11:26",
+        "submitted_at": "2026-08-25 00:56:43",
         "task_id": 1
       },
       {
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "execution_id": "worker-execution:c84f18ce-4100-4fdf-98f0-0b27bee81a98",
+        "execution_id": "worker-execution:388d2a06-af34-407d-902c-9e9e4923483e",
         "id": 2,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:11:26",
+        "submitted_at": "2026-08-25 00:56:43",
         "task_id": 2
       },
       {
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "execution_id": "worker-execution:3cbc5404-cb15-47d3-b7b2-61250b8abdc6",
+        "execution_id": "worker-execution:bfef6604-d1ce-4382-ad21-69e3123290c1",
         "id": 3,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:11:26",
+        "submitted_at": "2026-08-25 00:56:43",
         "task_id": 2
       }
     ],
@@ -285,22 +285,22 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:3cbc5404-cb15-47d3-b7b2-61250b8abdc6",
-        "finished_at": "2026-08-25 00:11:26",
+        "execution_ref": "worker-execution:388d2a06-af34-407d-902c-9e9e4923483e",
+        "finished_at": "2026-08-25 00:56:43",
         "state": "exited",
         "task_id": 2,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:790b696b-2113-4a1b-8e31-3c0a68db417e",
-        "finished_at": "2026-08-25 00:11:26",
+        "execution_ref": "worker-execution:7ac4d374-aff7-4252-9344-95d8f3e706ca",
+        "finished_at": "2026-08-25 00:56:43",
         "state": "exited",
         "task_id": 1,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:c84f18ce-4100-4fdf-98f0-0b27bee81a98",
-        "finished_at": "2026-08-25 00:11:26",
+        "execution_ref": "worker-execution:bfef6604-d1ce-4382-ad21-69e3123290c1",
+        "finished_at": "2026-08-25 00:56:43",
         "state": "exited",
         "task_id": 2,
         "voided_at": null
@@ -373,7 +373,7 @@
     {
       "target": "readiness",
       "variant": "absent",
-      "executionRef": "worker-execution:c84f18ce-4100-4fdf-98f0-0b27bee81a98",
+      "executionRef": "worker-execution:388d2a06-af34-407d-902c-9e9e4923483e",
       "feedbackPresent": false,
       "output": {
         "action": "repeat-invalid-production"
@@ -384,7 +384,7 @@
     {
       "target": "readiness",
       "variant": "absent",
-      "executionRef": "worker-execution:3cbc5404-cb15-47d3-b7b2-61250b8abdc6",
+      "executionRef": "worker-execution:bfef6604-d1ce-4382-ad21-69e3123290c1",
       "feedbackPresent": false,
       "output": {
         "action": "repeat-invalid-production"
@@ -471,14 +471,14 @@
   "mutationCoverage": null,
   "counterexample": null,
   "rawDurableTrace": {
-    "observedAt": "2026-08-25T00:11:26.567Z",
+    "observedAt": "2026-08-25T00:56:43.774Z",
     "lifecycleRuns": [
       {
         "id": 1,
         "status": "paused",
         "current_stage_id": "initial-discovery",
         "terminal_status": null,
-        "input_hash": "8d899532b8ae8837b8ea5db2e8c3c28297e8a436cd6869ccc33d58e8a3c0d104"
+        "input_hash": "55c19fc56df519ca62a888a675febeef9a27a8dc6d66cf49008bdfe52d9cf23e"
       }
     ],
     "stageRuns": [
@@ -537,10 +537,10 @@
         "node_id": "produce-proposal",
         "intent_id": 1,
         "task_id": 1,
-        "execution_id": "worker-execution:790b696b-2113-4a1b-8e31-3c0a68db417e",
+        "execution_id": "worker-execution:7ac4d374-aff7-4252-9344-95d8f3e706ca",
         "schema_version": "factory.discovery-proposal.v1",
         "content_hash": "d14ec3307ee484487671179df3050de1f69780f513fc4fd7cabc690845ebaff6",
-        "submitted_at": "2026-08-25 00:11:26"
+        "submitted_at": "2026-08-25 00:56:43"
       },
       {
         "id": 2,
@@ -548,10 +548,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:c84f18ce-4100-4fdf-98f0-0b27bee81a98",
+        "execution_id": "worker-execution:388d2a06-af34-407d-902c-9e9e4923483e",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "submitted_at": "2026-08-25 00:11:26"
+        "submitted_at": "2026-08-25 00:56:43"
       },
       {
         "id": 3,
@@ -559,10 +559,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:3cbc5404-cb15-47d3-b7b2-61250b8abdc6",
+        "execution_id": "worker-execution:bfef6604-d1ce-4382-ad21-69e3123290c1",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "submitted_at": "2026-08-25 00:11:26"
+        "submitted_at": "2026-08-25 00:56:43"
       }
     ],
     "submissionValidationRejections": [],
@@ -575,7 +575,7 @@
         "status": "done",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "title": "discovery-proposal/author: Investigate the bounded subject and submit one canonical typed DiscoveryProposal",
-        "created_at": "2026-08-25 00:11:26",
+        "created_at": "2026-08-25 00:56:43",
         "item_key": null
       },
       {
@@ -584,7 +584,7 @@
         "status": "in_progress",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "title": "discovery-readiness/author: Read the exact accepted Proposal product and submit one source-bound readiness a",
-        "created_at": "2026-08-25 00:11:26",
+        "created_at": "2026-08-25 00:56:43",
         "item_key": null
       }
     ],
@@ -613,13 +613,13 @@
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/8fa5ca19db459697beaf1a0b0141547cc524384c6194bcbeece2865efb167035/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:11:26.284Z"
+        "sealed_at": "2026-08-25T00:56:43.554Z"
       },
       {
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-readiness/singleton/6b902a47fb363daf8d10a68bafd3fc951e6f0bab9e18f898d7575573bdd4f45c/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:11:26.393Z"
+        "sealed_at": "2026-08-25T00:56:43.647Z"
       }
     ],
     "gateDecisions": [
@@ -628,21 +628,21 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:11:26"
+        "decided_at": "2026-08-25 00:56:43"
       },
       {
         "decision_key": "decision:gate-run:ea6f32cec7af41820fb1f6e070f1915a6bbf740ba14409082b14f444956ac99a",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:11:26"
+        "decided_at": "2026-08-25 00:56:43"
       },
       {
         "decision_key": "decision:gate-run:db0363fa021eb8d3244b48c7800b28efe7bb44075e186e31cb6a3de540239221",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:11:26"
+        "decided_at": "2026-08-25 00:56:43"
       }
     ],
     "checkReceipts": [
@@ -694,7 +694,7 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/8fa5ca19db459697beaf1a0b0141547cc524384c6194bcbeece2865efb167035/author",
         "gate_decision_key": "decision:gate-run:90a24a5d68dee4be1a80c6597e9e7a8dce16bafec1d86284f34158dadffa5f12",
-        "accepted_at": "2026-08-25T00:11:26.349Z"
+        "accepted_at": "2026-08-25T00:56:43.603Z"
       }
     ],
     "acceptedAuthorityHeads": [
@@ -747,28 +747,28 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:3cbc5404-cb15-47d3-b7b2-61250b8abdc6",
+        "execution_ref": "worker-execution:388d2a06-af34-407d-902c-9e9e4923483e",
         "task_id": 2,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:11:26.434Z",
-        "finished_at": "2026-08-25 00:11:26"
+        "started_at": "2026-08-25T00:56:43.620Z",
+        "finished_at": "2026-08-25 00:56:43"
       },
       {
-        "execution_ref": "worker-execution:790b696b-2113-4a1b-8e31-3c0a68db417e",
+        "execution_ref": "worker-execution:7ac4d374-aff7-4252-9344-95d8f3e706ca",
         "task_id": 1,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:11:26.249Z",
-        "finished_at": "2026-08-25 00:11:26"
+        "started_at": "2026-08-25T00:56:43.524Z",
+        "finished_at": "2026-08-25 00:56:43"
       },
       {
-        "execution_ref": "worker-execution:c84f18ce-4100-4fdf-98f0-0b27bee81a98",
+        "execution_ref": "worker-execution:bfef6604-d1ce-4382-ad21-69e3123290c1",
         "task_id": 2,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:11:26.368Z",
-        "finished_at": "2026-08-25 00:11:26"
+        "started_at": "2026-08-25T00:56:43.676Z",
+        "finished_at": "2026-08-25 00:56:43"
       }
     ],
     "processProducts": [
@@ -779,7 +779,7 @@
         "product_key": "content:d14ec3307ee484487671179df3050de1f69780f513fc4fd7cabc690845ebaff6",
         "node_id": "produce-proposal",
         "product_hash": "d14ec3307ee484487671179df3050de1f69780f513fc4fd7cabc690845ebaff6",
-        "created_at": "2026-08-25 00:11:26"
+        "created_at": "2026-08-25 00:56:43"
       },
       {
         "id": 2,
@@ -788,10 +788,10 @@
         "product_key": "content:afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
         "node_id": "assess-readiness",
         "product_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "created_at": "2026-08-25 00:11:26"
+        "created_at": "2026-08-25 00:56:43"
       }
     ],
     "developmentVerificationLedger": []
   },
-  "bundleDigest": "e39726d9ec67290c5fccc7a3eaed02f643afcf1bd15adf4723e5e35d7cc898da"
+  "bundleDigest": "049c578eabe5d814bb1e2d72d70d9135e9ca279cf78188823ea69ce80b540548"
 }

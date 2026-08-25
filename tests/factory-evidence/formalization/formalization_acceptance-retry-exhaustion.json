@@ -22,7 +22,7 @@
     "CanonicalFast"
   ],
   "composition": {
-    "fingerprint": "71020044f2489eefc167be065d2916d5a18ab7183b89127086f578f4c96e918b",
+    "fingerprint": "0f9c9b64bfff9d92e409cd6190d93e086b191a1cf0f2b1d86d852c94dde70ab5",
     "overlayKeys": [
       "delivery.providers",
       "resolveWorkerContext",
@@ -30,13 +30,13 @@
     ],
     "sections": {
       "lifecycle": "4c676ef0c383f4d52c475f6c2a4c340dca62b4fbd3a1137999196fba7c3b0462",
-      "modules": "13aab873989bf02071532e8d3e5e1c45ceefda9962a0aec1da775fcd5b93a2a4",
-      "providers": "83b3cf87c5075dd11d03e0e2b9a93f34f2c501b5554596af82a6dcc676f259aa",
+      "modules": "63d03b305d618f145e6863fe156dc26f5396d85d6bf27a68dcf66a27a818b04e",
+      "providers": "7b2d105a1a800abc2a3a1a15e54a466c06185a53aa9a8e4f4583cba123ca608a",
       "overlay": "25dc717b8eb00d51a8f5725e28227da8bf496855e450147531008e9226692f4f"
     }
   },
-  "installationFingerprint": "fa6cb9f09f0558d9906ccbf05a09152ec22ebec8f1611ae73467d53e755f8616",
-  "durableTraceDigest": "0eef4e2c2deb1e635ff750105a816b4441bbd4a65cc62a662916ab1990ca0a81",
+  "installationFingerprint": "aaf70d6c975caaea230c6882093a817c8b947f6cc08faa16f267c630c9d42190",
+  "durableTraceDigest": "b3da1628be3adf2bd99d5603a3aa396012d2c9ec37877a8ea2a7e17fd8d02e68",
   "normalizedTrace": {
     "acceptedAuthorityHeads": [
       {
@@ -514,7 +514,7 @@
       {
         "current_stage_id": null,
         "id": 1,
-        "input_hash": "abea5e6e4e2f37f6823633d11c4f7df0ea8a93da40c491e7534315e8b3139417",
+        "input_hash": "ebfb2df13c86c9ddca8596117399906afac6b8efc55b677432e442ca71abe8c5",
         "status": "completed",
         "terminal_status": "failed"
       }
@@ -522,66 +522,66 @@
     "managedSubmissions": [
       {
         "content_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
-        "execution_id": "worker-execution:1ba13147-5505-4afc-80cd-24b6db9c9a01",
+        "execution_id": "worker-execution:907b9009-148a-4f23-886e-cdb3b86a2f0f",
         "id": 1,
         "intent_id": 1,
         "node_id": "produce-proposal",
         "process_run_id": 1,
         "schema_version": "factory.discovery-proposal.v1",
-        "submitted_at": "2026-08-25 00:17:10",
+        "submitted_at": "2026-08-25 01:02:05",
         "task_id": 1
       },
       {
         "content_hash": "415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
-        "execution_id": "worker-execution:ab2dbcc5-1106-4222-963e-c4ff6ab1d35d",
+        "execution_id": "worker-execution:2dbb219c-51e7-4de8-907b-b79cddd53987",
         "id": 2,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:17:10",
+        "submitted_at": "2026-08-25 01:02:05",
         "task_id": 2
       },
       {
         "content_hash": "e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
-        "execution_id": "worker-execution:e6aa6fc4-94e9-4512-bbf5-4597e50e32e9",
+        "execution_id": "worker-execution:12a12c0c-0e3f-4b9f-966c-920ee000a7b9",
         "id": 3,
         "intent_id": 4,
         "node_id": "define-product-contract",
         "process_run_id": 2,
         "schema_version": "factory.review-verdict.v1",
-        "submitted_at": "2026-08-25 00:17:10",
+        "submitted_at": "2026-08-25 01:02:05",
         "task_id": 4
       },
       {
         "content_hash": "77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
-        "execution_id": "worker-execution:5c75a93a-5649-44e9-a2c1-371e2f45618c",
+        "execution_id": "worker-execution:015ccf7e-b6b1-4d82-a101-bdf94cecb514",
         "id": 4,
         "intent_id": 6,
         "node_id": "model-use-cases",
         "process_run_id": 2,
         "schema_version": "factory.review-verdict.v1",
-        "submitted_at": "2026-08-25 00:17:10",
+        "submitted_at": "2026-08-25 01:02:05",
         "task_id": 6
       },
       {
         "content_hash": "75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
-        "execution_id": "worker-execution:aa1e224d-2769-45d3-aebb-ed9848cc319d",
+        "execution_id": "worker-execution:7993bc41-f55c-4967-99ea-3e155139d935",
         "id": 5,
         "intent_id": 8,
         "node_id": "define-acceptance-contract",
         "process_run_id": 2,
         "schema_version": "factory.review-verdict.v1",
-        "submitted_at": "2026-08-25 00:17:11",
+        "submitted_at": "2026-08-25 01:02:06",
         "task_id": 8
       }
     ],
     "processOutcomeCertificates": [
       {
-        "certificate_payload": "{\"constraintRegister\":{\"constraints\":[{\"class\":\"material\",\"evidenceRef\":\"proposal.unknowns\",\"id\":\"ord-c-001\",\"kind\":\"open-question\",\"text\":\"None blocking.\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-002\",\"kind\":\"synthesis\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"the delivered product is synthesized and assembled as one whole that is runnable locally\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-003\",\"kind\":\"ordered-smoke\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"an ordered smoke test performs the install step, then the start step, then reaches the running product\"}],\"registerDigest\":\"619f3c86e209d40cbec69b903f9ed2ff5f4104aa85db66150fa9b7b64d66c11b\",\"schemaVersion\":\"factory.order-constraint-register.v2\"},\"decision\":\"go\",\"inputHash\":\"9af3297277e4bcf14c87247791a6360afb4d7cf1072c80561b7df120ad395db5\",\"lifecycleBinding\":{\"definitionHash\":\"b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7\",\"injectionTableRefs\":[\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"],\"lifecycleRunId\":1,\"terminalClassifications\":[\"failed\",\"failed\",\"formalization-inconsistent\",\"development-blocked\",\"failed\",\"runnable-local\"]},\"payload\":{\"policyHash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"policyVersion\":\"factory.discovery-settlement-policy.v1\",\"processInputHash\":\"2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1\",\"proposalProductRef\":{\"digest\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"managed-node-submission:1\",\"schemaId\":\"factory.discovery-proposal.v1\"},\"readinessProductRef\":{\"digest\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"ref\":\"managed-node-submission:2\",\"schemaId\":\"factory.discovery-readiness-assessment.v2\"},\"settlementInput\":{\"captured_at\":\"2026-08-25 00:17:10\",\"epic_id\":1,\"policy\":{\"content_hash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"version\":\"factory.discovery-settlement-policy.v1\"},\"proposal\":{\"content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"id\":1,\"normalization_proposal_id\":null,\"payload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"source_intent_id\":1,\"source_submission_id\":1},\"readiness\":{\"assessment_id\":2,\"content_hash\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"payload\":{\"blocking_gaps\":[],\"confidence\":0.95,\"dimension_assessments\":{\"assumption_visibility\":{\"rationale\":\"Explicit.\",\"source_refs\":[\"$.assumptions\"],\"status\":\"sufficient\"},\"evidence_grounding\":{\"rationale\":\"Grounded.\",\"source_refs\":[\"$.evidence_refs\"],\"status\":\"sufficient\"},\"problem_clarity\":{\"rationale\":\"Clear.\",\"source_refs\":[\"$.problem_statement\"],\"status\":\"sufficient\"},\"risk_visibility\":{\"rationale\":\"Visible.\",\"source_refs\":[\"$.risks\"],\"status\":\"sufficient\"},\"scope_boundedness\":{\"rationale\":\"Bounded.\",\"source_refs\":[\"$.candidate_scope\"],\"status\":\"sufficient\"},\"stakeholder_coverage\":{\"rationale\":\"Identified.\",\"source_refs\":[\"$.stakeholders_or_actors\"],\"status\":\"sufficient\"},\"unknowns_manageability\":{\"rationale\":\"No blocker.\",\"source_refs\":[\"$.unknowns\"],\"status\":\"sufficient\"}},\"non_blocking_gaps\":[],\"overall_readiness\":\"ready\",\"proposal_content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"rationale\":\"Ready for deterministic formalization.\",\"recommended_next_action\":\"proceed_to_settlement\"},\"status\":\"accepted_by_kernel\"},\"schema_version\":\"factory.discovery-settlement-input.v1\"},\"settlementInputHash\":\"9af3297277e4bcf14c87247791a6360afb4d7cf1072c80561b7df120ad395db5\"},\"rationale\":\"Proposal is ready, grounded, and confident enough to proceed\",\"reasonCodes\":[\"GO_READY_AND_GROUNDED\"],\"schemaVersion\":\"factory.discovery-outcome-certificate.v1\"}",
+        "certificate_payload": "{\"constraintRegister\":{\"constraints\":[{\"class\":\"material\",\"evidenceRef\":\"proposal.unknowns\",\"id\":\"ord-c-001\",\"kind\":\"open-question\",\"text\":\"None blocking.\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-002\",\"kind\":\"synthesis\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"the delivered product is synthesized and assembled as one whole that is runnable locally\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-003\",\"kind\":\"ordered-smoke\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"an ordered smoke test performs the install step, then the start step, then reaches the running product\"}],\"registerDigest\":\"619f3c86e209d40cbec69b903f9ed2ff5f4104aa85db66150fa9b7b64d66c11b\",\"schemaVersion\":\"factory.order-constraint-register.v2\"},\"decision\":\"go\",\"inputHash\":\"ed91016f61f654d7ee6f30904eadefed7cb7c16144a1774dccc70fd8a3ab591f\",\"lifecycleBinding\":{\"definitionHash\":\"b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7\",\"injectionTableRefs\":[\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"],\"lifecycleRunId\":1,\"terminalClassifications\":[\"failed\",\"failed\",\"formalization-inconsistent\",\"development-blocked\",\"failed\",\"runnable-local\"]},\"payload\":{\"policyHash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"policyVersion\":\"factory.discovery-settlement-policy.v1\",\"processInputHash\":\"2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1\",\"proposalProductRef\":{\"digest\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"managed-node-submission:1\",\"schemaId\":\"factory.discovery-proposal.v1\"},\"readinessProductRef\":{\"digest\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"ref\":\"managed-node-submission:2\",\"schemaId\":\"factory.discovery-readiness-assessment.v2\"},\"settlementInput\":{\"captured_at\":\"2026-08-25 01:02:05\",\"epic_id\":1,\"policy\":{\"content_hash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"version\":\"factory.discovery-settlement-policy.v1\"},\"proposal\":{\"content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"id\":1,\"normalization_proposal_id\":null,\"payload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"source_intent_id\":1,\"source_submission_id\":1},\"readiness\":{\"assessment_id\":2,\"content_hash\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"payload\":{\"blocking_gaps\":[],\"confidence\":0.95,\"dimension_assessments\":{\"assumption_visibility\":{\"rationale\":\"Explicit.\",\"source_refs\":[\"$.assumptions\"],\"status\":\"sufficient\"},\"evidence_grounding\":{\"rationale\":\"Grounded.\",\"source_refs\":[\"$.evidence_refs\"],\"status\":\"sufficient\"},\"problem_clarity\":{\"rationale\":\"Clear.\",\"source_refs\":[\"$.problem_statement\"],\"status\":\"sufficient\"},\"risk_visibility\":{\"rationale\":\"Visible.\",\"source_refs\":[\"$.risks\"],\"status\":\"sufficient\"},\"scope_boundedness\":{\"rationale\":\"Bounded.\",\"source_refs\":[\"$.candidate_scope\"],\"status\":\"sufficient\"},\"stakeholder_coverage\":{\"rationale\":\"Identified.\",\"source_refs\":[\"$.stakeholders_or_actors\"],\"status\":\"sufficient\"},\"unknowns_manageability\":{\"rationale\":\"No blocker.\",\"source_refs\":[\"$.unknowns\"],\"status\":\"sufficient\"}},\"non_blocking_gaps\":[],\"overall_readiness\":\"ready\",\"proposal_content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"rationale\":\"Ready for deterministic formalization.\",\"recommended_next_action\":\"proceed_to_settlement\"},\"status\":\"accepted_by_kernel\"},\"schema_version\":\"factory.discovery-settlement-input.v1\"},\"settlementInputHash\":\"ed91016f61f654d7ee6f30904eadefed7cb7c16144a1774dccc70fd8a3ab591f\"},\"rationale\":\"Proposal is ready, grounded, and confident enough to proceed\",\"reasonCodes\":[\"GO_READY_AND_GROUNDED\"],\"schemaVersion\":\"factory.discovery-outcome-certificate.v1\"}",
         "decision": "go",
         "id": 1,
-        "issued_at": "2026-08-25 00:17:10",
+        "issued_at": "2026-08-25 01:02:05",
         "module_name": "product-discovery",
         "module_ref_key": "product-discovery@4.0.0",
         "rationale": "Proposal is ready, grounded, and confident enough to proceed",
@@ -721,7 +721,7 @@
     "processRuns": [
       {
         "authority": "discovery-settlement-policy",
-        "certificate_hash": "2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c",
+        "certificate_hash": "5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0",
         "certificate_ref": "certificate:1",
         "certificate_schema": "factory.discovery-outcome-certificate.v1",
         "error": null,
@@ -742,7 +742,7 @@
         "certificate_schema": null,
         "error": null,
         "id": 2,
-        "input_hash": "4ffbfb50b5a0a030d447645dd03c76b47955665f0f9ce94342f22a097d68d7cd",
+        "input_hash": "32f41f895b828791e9d79e19ab88c5f99ce3250ddc91d48b50afab706b37602f",
         "local_outcome": "failed",
         "module_name": "solution-formalization",
         "module_version": "1.0.0",
@@ -754,10 +754,10 @@
     ],
     "processTransitions": [
       {
-        "decision_hash": "9c5035073e995f2a66268580ae1e8cf6568c856f25b38cc1498e1772b7ddef10",
+        "decision_hash": "65103111f26fd188b471cef023305d7ff411dee038e08c573bf9f9a865aea165",
         "from_stage_run_id": 1,
-        "handoff_hash": "c73cbb7dab47239a4ffd06dbbf9031b24baf66ea3e7ca9e92304adae216d7869",
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1}}}",
+        "handoff_hash": "a40b9548a91bd66febd7b8df3d4825fca8b6ad72e5ee1ea0531b76789afe5ad9",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1}}}",
         "id": 1,
         "lifecycle_run_id": 1,
         "outcome": "go",
@@ -768,10 +768,10 @@
         "transition_key": "lifecycle:1:stage-run:1:outcome"
       },
       {
-        "decision_hash": "99d4b9c763f8ddff640f4cc088b687c796333aa413216e5587ce7fac273df47d",
+        "decision_hash": "c9a5ca38f7096266644a9d224d1cc1df1e8392ec7560818cfcb6460a45368276",
         "from_stage_run_id": 2,
-        "handoff_hash": "4a5610ec6108a37a832bd9ab3a1185940d82262f74812ed6ccad6ddc7e522aeb",
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1},\"solution-formalization\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":2,\"stageRunId\":2}}}",
+        "handoff_hash": "a39e5a831ea297ead7f2301d68eacd726eef65ef11d84f9da1834814cd014d23",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1},\"solution-formalization\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":2,\"stageRunId\":2}}}",
         "id": 2,
         "lifecycle_run_id": 1,
         "outcome": "failed",
@@ -798,7 +798,7 @@
         "authority": "discovery-settlement-policy",
         "binding_hash": "f18634d4b2c0d8ced7076c73da370cb03fd91246855f88ebf8e77c6bf4c62654",
         "binding_snapshot": "{\"displayName\":\"Initial Discovery\",\"entryConditions\":[\"initiative.subject exists\"],\"exitConditions\":[\"Discovery has an immutable local outcome and certificate lineage\"],\"id\":\"initial-discovery\",\"inputMapping\":{\"constraints\":\"$.initiative.constraints\",\"context\":\"$.initiative.context\",\"epicId\":{\"runtime\":\"epicId\"},\"evidence\":\"$.initiative.evidence\",\"initiatedBy\":{\"runtime\":\"initiatedBy\"},\"objective\":\"$.initiative.subject\",\"projectId\":{\"runtime\":\"projectId\"},\"subject\":\"$.initiative.subject\"},\"moduleRef\":{\"name\":\"product-discovery\",\"version\":\"4.0.0\"},\"outcomeRoutes\":{\"clarify\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"failed\":{\"status\":\"failed\",\"type\":\"terminal\"},\"go\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"},\"reject\":{\"stageId\":\"solution-formalization\",\"type\":\"stage\"}},\"outputMapping\":{\"authority\":\"$.processOutcome.authority\",\"certificate.hash\":\"$.processOutcome.certificateHash\",\"certificate.ref\":\"$.processOutcome.certificateRef\",\"certificate.schema\":\"$.processOutcome.certificateSchema\",\"decision\":\"$.processOutcome.code\",\"proposal.hash\":\"$.processOutcome.outputHash\",\"proposal.ref\":\"$.processOutcome.outputRef\",\"proposal.schema\":\"$.processOutcome.outputSchema\",\"proposalPayload\":\"$.processOutcome.outputPayload\"}}",
-        "certificate_hash": "2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c",
+        "certificate_hash": "5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0",
         "certificate_ref": "certificate:1",
         "certificate_schema": "factory.discovery-outcome-certificate.v1",
         "id": 1,
@@ -807,7 +807,7 @@
         "input_snapshot": "{\"constraints\":{},\"context\":{},\"epicId\":1,\"evidence\":{},\"initiatedBy\":\"fresh-harness\",\"objective\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"projectId\":1,\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}",
         "lifecycle_run_id": 1,
         "local_outcome": "go",
-        "mapped_output_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]}}",
+        "mapped_output_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]}}",
         "module_name": "product-discovery",
         "module_ref_key": "product-discovery@4.0.0",
         "module_version": "4.0.0",
@@ -816,7 +816,7 @@
         "output_ref": "product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
         "output_schema": "factory.discovery-proposal.v1",
         "process_run_id": 1,
-        "result_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"}",
+        "result_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"}",
         "stage_id": "initial-discovery",
         "status": "completed"
       },
@@ -829,9 +829,9 @@
         "certificate_ref": null,
         "certificate_schema": null,
         "id": 2,
-        "input_hash": "4ffbfb50b5a0a030d447645dd03c76b47955665f0f9ce94342f22a097d68d7cd",
+        "input_hash": "32f41f895b828791e9d79e19ab88c5f99ce3250ddc91d48b50afab706b37602f",
         "input_schema": "factory.formalization-case.v1",
-        "input_snapshot": "{\"discoveryCertificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"discoveryCertificateRef\":\"certificate:1\",\"discoveryEpicId\":1,\"discoveryOutcome\":\"go\",\"discoveryProposalHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"discoveryProposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"discoveryProposalRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"formalizationEpicId\":1,\"initiatedBy\":\"fresh-harness\",\"initiativeSubject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"schemaVersion\":\"factory.formalization-case.v1\"}",
+        "input_snapshot": "{\"discoveryCertificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"discoveryCertificateRef\":\"certificate:1\",\"discoveryEpicId\":1,\"discoveryOutcome\":\"go\",\"discoveryProposalHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"discoveryProposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"discoveryProposalRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"formalizationEpicId\":1,\"initiatedBy\":\"fresh-harness\",\"initiativeSubject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"schemaVersion\":\"factory.formalization-case.v1\"}",
         "lifecycle_run_id": 1,
         "local_outcome": "failed",
         "mapped_output_snapshot": "{}",
@@ -933,25 +933,25 @@
       {
         "handoff_kind": "close-presentation",
         "last_error": null,
-        "obligation_key": "final-presentation-committed:final-presentation:007441749b347f95154ce7373f2bea013cfa7b67a4c3bd4e4d1099f66c6c80b8:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:c1546e5c8ef6e1b438afce006b75c07d801c23d23d551e821d43be263c9662b3:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:007441749b347f95154ce7373f2bea013cfa7b67a4c3bd4e4d1099f66c6c80b8",
+        "source_ref": "final-presentation:c1546e5c8ef6e1b438afce006b75c07d801c23d23d551e821d43be263c9662b3",
         "state": "completed"
       },
       {
         "handoff_kind": "close-presentation",
         "last_error": null,
-        "obligation_key": "final-presentation-committed:final-presentation:8f328137759890f6e1be3493023ecde61d71fdc828a27e67f034c1baad5f45be:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:cc20ea141198d69f2fa716b27df68083e28f1e8011f0997cf9d29bbdc97a6c28:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:8f328137759890f6e1be3493023ecde61d71fdc828a27e67f034c1baad5f45be",
+        "source_ref": "final-presentation:cc20ea141198d69f2fa716b27df68083e28f1e8011f0997cf9d29bbdc97a6c28",
         "state": "completed"
       },
       {
         "handoff_kind": "close-presentation",
         "last_error": null,
-        "obligation_key": "final-presentation-committed:final-presentation:e49f511732df1b3525880df75f8beee724fa706c5ebf7f59d3a8987c37f0bad7:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:e6ed5ce576b33a843cf2c63331ccd642b0cd0eae588e1baed609968fa52a5d83:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:e49f511732df1b3525880df75f8beee724fa706c5ebf7f59d3a8987c37f0bad7",
+        "source_ref": "final-presentation:e6ed5ce576b33a843cf2c63331ccd642b0cd0eae588e1baed609968fa52a5d83",
         "state": "completed"
       },
       {
@@ -1005,94 +1005,94 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:1ba13147-5505-4afc-80cd-24b6db9c9a01",
-        "finished_at": "2026-08-25 00:17:10",
-        "state": "exited",
-        "task_id": 1,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:45d7a23a-ef65-4c93-b683-6476326da2e5",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 7,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:544d3dc3-51f3-42aa-8c91-84eb6cc7a601",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 7,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:5bffb1f7-dcb1-4fa2-a3bf-ff3f9358284f",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 7,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:5c75a93a-5649-44e9-a2c1-371e2f45618c",
-        "finished_at": "2026-08-25 00:17:10",
+        "execution_ref": "worker-execution:015ccf7e-b6b1-4d82-a101-bdf94cecb514",
+        "finished_at": "2026-08-25 01:02:06",
         "state": "exited",
         "task_id": 6,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:6e0105a7-33be-4281-bc39-b985e233376a",
-        "finished_at": "2026-08-25 00:17:10",
+        "execution_ref": "worker-execution:12a12c0c-0e3f-4b9f-966c-920ee000a7b9",
+        "finished_at": "2026-08-25 01:02:05",
         "state": "exited",
-        "task_id": 3,
+        "task_id": 4,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:73a3bc9b-0110-4830-811f-344ab1983ab6",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 7,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:8240800f-cec4-466c-9a6f-563717e9b63c",
-        "finished_at": "2026-08-25 00:17:10",
-        "state": "exited",
-        "task_id": 5,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:876a1882-c48c-4e77-8ba7-2f592cff68d4",
-        "finished_at": "2026-08-25 00:18:12",
+        "execution_ref": "worker-execution:1ebc720f-e41d-47fd-ac66-06ce01998541",
+        "finished_at": "2026-08-25 01:03:07",
         "state": "exited",
         "task_id": 7,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:877ace5c-ae78-4aa2-8bca-0c7b92455206",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 7,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:aa1e224d-2769-45d3-aebb-ed9848cc319d",
-        "finished_at": "2026-08-25 00:17:11",
-        "state": "exited",
-        "task_id": 8,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:ab2dbcc5-1106-4222-963e-c4ff6ab1d35d",
-        "finished_at": "2026-08-25 00:17:10",
+        "execution_ref": "worker-execution:2dbb219c-51e7-4de8-907b-b79cddd53987",
+        "finished_at": "2026-08-25 01:02:05",
         "state": "exited",
         "task_id": 2,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:e6aa6fc4-94e9-4512-bbf5-4597e50e32e9",
-        "finished_at": "2026-08-25 00:17:10",
+        "execution_ref": "worker-execution:61f61461-4fa9-44a4-8891-8c62a3d54269",
+        "finished_at": "2026-08-25 01:02:06",
         "state": "exited",
-        "task_id": 4,
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:6557bca4-d837-485e-bdba-bcf450ab92a2",
+        "finished_at": "2026-08-25 01:02:05",
+        "state": "exited",
+        "task_id": 5,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:772f83d3-cb3d-41d7-8267-a3323e7e6dea",
+        "finished_at": "2026-08-25 01:02:06",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:7993bc41-f55c-4967-99ea-3e155139d935",
+        "finished_at": "2026-08-25 01:02:06",
+        "state": "exited",
+        "task_id": 8,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:834e8bbc-b878-4de8-9667-92fa740a59f4",
+        "finished_at": "2026-08-25 01:02:06",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:907b9009-148a-4f23-886e-cdb3b86a2f0f",
+        "finished_at": "2026-08-25 01:02:05",
+        "state": "exited",
+        "task_id": 1,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:c32e64a8-90c4-4c37-b032-0fbdc9bca3f5",
+        "finished_at": "2026-08-25 01:02:06",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:c9879886-9bbf-4d0a-a05f-94b2df29dd38",
+        "finished_at": "2026-08-25 01:02:06",
+        "state": "exited",
+        "task_id": 7,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:e9855d7b-938e-4a92-86b1-7997502e92f5",
+        "finished_at": "2026-08-25 01:02:05",
+        "state": "exited",
+        "task_id": 3,
         "voided_at": null
       }
     ],
@@ -1316,14 +1316,14 @@
   "mutationCoverage": null,
   "counterexample": null,
   "rawDurableTrace": {
-    "observedAt": "2026-08-25T00:18:12.572Z",
+    "observedAt": "2026-08-25T01:03:07.503Z",
     "lifecycleRuns": [
       {
         "id": 1,
         "status": "completed",
         "current_stage_id": null,
         "terminal_status": "failed",
-        "input_hash": "abea5e6e4e2f37f6823633d11c4f7df0ea8a93da40c491e7534315e8b3139417"
+        "input_hash": "ebfb2df13c86c9ddca8596117399906afac6b8efc55b677432e442ca71abe8c5"
       }
     ],
     "stageRuns": [
@@ -1350,9 +1350,9 @@
         "output_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
         "certificate_schema": "factory.discovery-outcome-certificate.v1",
         "certificate_ref": "certificate:1",
-        "certificate_hash": "2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c",
-        "mapped_output_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]}}",
-        "result_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"}"
+        "certificate_hash": "5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0",
+        "mapped_output_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]}}",
+        "result_snapshot": "{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"}"
       },
       {
         "id": 2,
@@ -1366,8 +1366,8 @@
         "binding_snapshot": "{\"displayName\":\"Solution Formalization\",\"entryConditions\":[\"Discovery certificate ref and hash exist\"],\"exitConditions\":[\"Formalization has a frozen content-addressed Solution Contract\"],\"id\":\"solution-formalization\",\"inputMapping\":{\"discoveryCertificateHash\":\"$.stages.initial-discovery.certificate.hash\",\"discoveryCertificateRef\":\"$.stages.initial-discovery.certificate.ref\",\"discoveryEpicId\":{\"runtime\":\"epicId\"},\"discoveryOutcome\":\"$.stages.initial-discovery.decision\",\"discoveryProposalHash\":\"$.stages.initial-discovery.proposal.hash\",\"discoveryProposalPayload\":\"$.stages.initial-discovery.proposalPayload\",\"discoveryProposalRef\":\"$.stages.initial-discovery.proposal.ref\",\"formalizationEpicId\":{\"runtime\":\"epicId\"},\"initiatedBy\":{\"runtime\":\"initiatedBy\"},\"initiativeSubject\":\"$.initiative.subject\",\"schemaVersion\":{\"literal\":\"factory.formalization-case.v1\"}},\"moduleRef\":{\"name\":\"solution-formalization\",\"version\":\"1.0.0\"},\"outcomeRoutes\":{\"failed\":{\"status\":\"failed\",\"type\":\"terminal\"},\"formalized\":{\"stageId\":\"solution-development\",\"type\":\"stage\"},\"inconsistent\":{\"status\":\"formalization-inconsistent\",\"type\":\"terminal\"}},\"outputMapping\":{\"authority\":\"$.processOutcome.authority\",\"certificate.hash\":\"$.processOutcome.certificateHash\",\"certificate.ref\":\"$.processOutcome.certificateRef\",\"certificate.schema\":\"$.processOutcome.certificateSchema\",\"decision\":\"$.processOutcome.code\",\"solutionContract.hash\":\"$.processOutcome.outputHash\",\"solutionContract.ref\":\"$.processOutcome.outputRef\",\"solutionContract.schema\":\"$.processOutcome.outputSchema\",\"solutionContractPayload\":\"$.processOutcome.outputPayload\"}}",
         "binding_hash": "1bded168e886e1ac4c6a2264c88971be055757cc7c0baac6e38a6e3845365dc5",
         "input_schema": "factory.formalization-case.v1",
-        "input_snapshot": "{\"discoveryCertificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"discoveryCertificateRef\":\"certificate:1\",\"discoveryEpicId\":1,\"discoveryOutcome\":\"go\",\"discoveryProposalHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"discoveryProposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"discoveryProposalRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"formalizationEpicId\":1,\"initiatedBy\":\"fresh-harness\",\"initiativeSubject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"schemaVersion\":\"factory.formalization-case.v1\"}",
-        "input_hash": "4ffbfb50b5a0a030d447645dd03c76b47955665f0f9ce94342f22a097d68d7cd",
+        "input_snapshot": "{\"discoveryCertificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"discoveryCertificateRef\":\"certificate:1\",\"discoveryEpicId\":1,\"discoveryOutcome\":\"go\",\"discoveryProposalHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"discoveryProposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"discoveryProposalRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"formalizationEpicId\":1,\"initiatedBy\":\"fresh-harness\",\"initiativeSubject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\",\"schemaVersion\":\"factory.formalization-case.v1\"}",
+        "input_hash": "32f41f895b828791e9d79e19ab88c5f99ce3250ddc91d48b50afab706b37602f",
         "status": "completed",
         "process_run_id": 2,
         "local_outcome": "failed",
@@ -1393,9 +1393,9 @@
         "target_stage_id": "solution-formalization",
         "terminal_status": null,
         "to_stage_run_id": 2,
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1}}}",
-        "handoff_hash": "c73cbb7dab47239a4ffd06dbbf9031b24baf66ea3e7ca9e92304adae216d7869",
-        "decision_hash": "9c5035073e995f2a66268580ae1e8cf6568c856f25b38cc1498e1772b7ddef10"
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1}}}",
+        "handoff_hash": "a40b9548a91bd66febd7b8df3d4825fca8b6ad72e5ee1ea0531b76789afe5ad9",
+        "decision_hash": "65103111f26fd188b471cef023305d7ff411dee038e08c573bf9f9a865aea165"
       },
       {
         "id": 2,
@@ -1407,9 +1407,9 @@
         "target_stage_id": null,
         "terminal_status": "failed",
         "to_stage_run_id": null,
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"41af8e0962dc8dd194d97eef59ef77f68fbf2924\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1},\"solution-formalization\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":2,\"stageRunId\":2}}}",
-        "handoff_hash": "4a5610ec6108a37a832bd9ab3a1185940d82262f74812ed6ccad6ddc7e522aeb",
-        "decision_hash": "99d4b9c763f8ddff640f4cc088b687c796333aa413216e5587ce7fac273df47d"
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"85b53eb0553c17aac166645ed78fb1e4fea58d8d\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"hash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"ref\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"decision\":\"go\",\"processOutcome\":{\"authority\":\"discovery-settlement-policy\",\"certificate\":{\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"schema\":\"factory.discovery-outcome-certificate.v1\"},\"certificateHash\":\"5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0\",\"certificateRef\":\"certificate:1\",\"certificateSchema\":\"factory.discovery-outcome-certificate.v1\",\"code\":\"go\",\"outcome\":\"go\",\"output\":{\"artifactRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"contentHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"outputHash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputRef\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"outputSchema\":\"factory.discovery-proposal.v1\"},\"processRunId\":1,\"proposal\":{\"hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"product:factory.discovery-proposal.v1:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"schema\":\"factory.discovery-proposal.v1\"},\"proposalPayload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"stageRunId\":1},\"solution-formalization\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":2,\"stageRunId\":2}}}",
+        "handoff_hash": "a39e5a831ea297ead7f2301d68eacd726eef65ef11d84f9da1834814cd014d23",
+        "decision_hash": "c9a5ca38f7096266644a9d224d1cc1df1e8392ec7560818cfcb6460a45368276"
       }
     ],
     "processRuns": [
@@ -1426,7 +1426,7 @@
         "output_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
         "certificate_schema": "factory.discovery-outcome-certificate.v1",
         "certificate_ref": "certificate:1",
-        "certificate_hash": "2a3dc91459580a5aae526ba033d9224bf791f19f726053ec89112c5276499f1c",
+        "certificate_hash": "5111c19b7555ae8c8957093b3f5e2f0b1e01f2e7fac33ace72ee2a7ac8106ef0",
         "error": null
       },
       {
@@ -1436,7 +1436,7 @@
         "status": "completed",
         "local_outcome": "failed",
         "authority": null,
-        "input_hash": "4ffbfb50b5a0a030d447645dd03c76b47955665f0f9ce94342f22a097d68d7cd",
+        "input_hash": "32f41f895b828791e9d79e19ab88c5f99ce3250ddc91d48b50afab706b37602f",
         "output_schema": null,
         "output_ref": null,
         "output_hash": null,
@@ -1454,8 +1454,8 @@
         "decision": "go",
         "reason_codes": "[\"GO_READY_AND_GROUNDED\"]",
         "rationale": "Proposal is ready, grounded, and confident enough to proceed",
-        "issued_at": "2026-08-25 00:17:10",
-        "certificate_payload": "{\"constraintRegister\":{\"constraints\":[{\"class\":\"material\",\"evidenceRef\":\"proposal.unknowns\",\"id\":\"ord-c-001\",\"kind\":\"open-question\",\"text\":\"None blocking.\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-002\",\"kind\":\"synthesis\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"the delivered product is synthesized and assembled as one whole that is runnable locally\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-003\",\"kind\":\"ordered-smoke\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"an ordered smoke test performs the install step, then the start step, then reaches the running product\"}],\"registerDigest\":\"619f3c86e209d40cbec69b903f9ed2ff5f4104aa85db66150fa9b7b64d66c11b\",\"schemaVersion\":\"factory.order-constraint-register.v2\"},\"decision\":\"go\",\"inputHash\":\"9af3297277e4bcf14c87247791a6360afb4d7cf1072c80561b7df120ad395db5\",\"lifecycleBinding\":{\"definitionHash\":\"b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7\",\"injectionTableRefs\":[\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"],\"lifecycleRunId\":1,\"terminalClassifications\":[\"failed\",\"failed\",\"formalization-inconsistent\",\"development-blocked\",\"failed\",\"runnable-local\"]},\"payload\":{\"policyHash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"policyVersion\":\"factory.discovery-settlement-policy.v1\",\"processInputHash\":\"2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1\",\"proposalProductRef\":{\"digest\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"managed-node-submission:1\",\"schemaId\":\"factory.discovery-proposal.v1\"},\"readinessProductRef\":{\"digest\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"ref\":\"managed-node-submission:2\",\"schemaId\":\"factory.discovery-readiness-assessment.v2\"},\"settlementInput\":{\"captured_at\":\"2026-08-25 00:17:10\",\"epic_id\":1,\"policy\":{\"content_hash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"version\":\"factory.discovery-settlement-policy.v1\"},\"proposal\":{\"content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"id\":1,\"normalization_proposal_id\":null,\"payload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"source_intent_id\":1,\"source_submission_id\":1},\"readiness\":{\"assessment_id\":2,\"content_hash\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"payload\":{\"blocking_gaps\":[],\"confidence\":0.95,\"dimension_assessments\":{\"assumption_visibility\":{\"rationale\":\"Explicit.\",\"source_refs\":[\"$.assumptions\"],\"status\":\"sufficient\"},\"evidence_grounding\":{\"rationale\":\"Grounded.\",\"source_refs\":[\"$.evidence_refs\"],\"status\":\"sufficient\"},\"problem_clarity\":{\"rationale\":\"Clear.\",\"source_refs\":[\"$.problem_statement\"],\"status\":\"sufficient\"},\"risk_visibility\":{\"rationale\":\"Visible.\",\"source_refs\":[\"$.risks\"],\"status\":\"sufficient\"},\"scope_boundedness\":{\"rationale\":\"Bounded.\",\"source_refs\":[\"$.candidate_scope\"],\"status\":\"sufficient\"},\"stakeholder_coverage\":{\"rationale\":\"Identified.\",\"source_refs\":[\"$.stakeholders_or_actors\"],\"status\":\"sufficient\"},\"unknowns_manageability\":{\"rationale\":\"No blocker.\",\"source_refs\":[\"$.unknowns\"],\"status\":\"sufficient\"}},\"non_blocking_gaps\":[],\"overall_readiness\":\"ready\",\"proposal_content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"rationale\":\"Ready for deterministic formalization.\",\"recommended_next_action\":\"proceed_to_settlement\"},\"status\":\"accepted_by_kernel\"},\"schema_version\":\"factory.discovery-settlement-input.v1\"},\"settlementInputHash\":\"9af3297277e4bcf14c87247791a6360afb4d7cf1072c80561b7df120ad395db5\"},\"rationale\":\"Proposal is ready, grounded, and confident enough to proceed\",\"reasonCodes\":[\"GO_READY_AND_GROUNDED\"],\"schemaVersion\":\"factory.discovery-outcome-certificate.v1\"}"
+        "issued_at": "2026-08-25 01:02:05",
+        "certificate_payload": "{\"constraintRegister\":{\"constraints\":[{\"class\":\"material\",\"evidenceRef\":\"proposal.unknowns\",\"id\":\"ord-c-001\",\"kind\":\"open-question\",\"text\":\"None blocking.\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-002\",\"kind\":\"synthesis\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"the delivered product is synthesized and assembled as one whole that is runnable locally\"},{\"class\":\"execution\",\"evidenceRef\":\"lifecycle.classification.runnable-local\",\"id\":\"ord-c-003\",\"kind\":\"ordered-smoke\",\"lifecycleSynthesis\":{\"classification\":\"runnable-local\",\"injectionTableRef\":\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"},\"text\":\"an ordered smoke test performs the install step, then the start step, then reaches the running product\"}],\"registerDigest\":\"619f3c86e209d40cbec69b903f9ed2ff5f4104aa85db66150fa9b7b64d66c11b\",\"schemaVersion\":\"factory.order-constraint-register.v2\"},\"decision\":\"go\",\"inputHash\":\"ed91016f61f654d7ee6f30904eadefed7cb7c16144a1774dccc70fd8a3ab591f\",\"lifecycleBinding\":{\"definitionHash\":\"b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7\",\"injectionTableRefs\":[\"lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872\"],\"lifecycleRunId\":1,\"terminalClassifications\":[\"failed\",\"failed\",\"formalization-inconsistent\",\"development-blocked\",\"failed\",\"runnable-local\"]},\"payload\":{\"policyHash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"policyVersion\":\"factory.discovery-settlement-policy.v1\",\"processInputHash\":\"2cf3a4a3a4627c536e15fc21bcda2358488e673dc8a29f5e2aa94ca3170134d1\",\"proposalProductRef\":{\"digest\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"ref\":\"managed-node-submission:1\",\"schemaId\":\"factory.discovery-proposal.v1\"},\"readinessProductRef\":{\"digest\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"ref\":\"managed-node-submission:2\",\"schemaId\":\"factory.discovery-readiness-assessment.v2\"},\"settlementInput\":{\"captured_at\":\"2026-08-25 01:02:05\",\"epic_id\":1,\"policy\":{\"content_hash\":\"a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402\",\"version\":\"factory.discovery-settlement-policy.v1\"},\"proposal\":{\"content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"id\":1,\"normalization_proposal_id\":null,\"payload\":{\"assumptions\":[\"Factory physics is correct in isolation.\",\"Deterministic workers can substitute LLM.\"],\"candidate_scope\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] Run Product Delivery through the real Factory with deterministic physical workers.\",\"evidence_refs\":[\"CONVEYOR-MENTAL-MODEL.md\",\"factory-e2e harness\"],\"observed_context\":\"Unit tests cover pure domain logic. No full factory test exists.\",\"problem_statement\":\"[Unified Formalization proof scenario: formalization/acceptance-retry-exhaustion] The current pipeline lacks automated end-to-end validation.\",\"rationale\":\"Concrete gap, bounded scope and deterministic verification path.\",\"recommended_outcome\":\"go\",\"risks\":[\"Fixture drift risk.\"],\"stakeholders_or_actors\":[\"Platform team\",\"Module authors\",\"CI reviewers\"],\"unknowns\":[\"None blocking.\"]},\"source_intent_id\":1,\"source_submission_id\":1},\"readiness\":{\"assessment_id\":2,\"content_hash\":\"415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9\",\"payload\":{\"blocking_gaps\":[],\"confidence\":0.95,\"dimension_assessments\":{\"assumption_visibility\":{\"rationale\":\"Explicit.\",\"source_refs\":[\"$.assumptions\"],\"status\":\"sufficient\"},\"evidence_grounding\":{\"rationale\":\"Grounded.\",\"source_refs\":[\"$.evidence_refs\"],\"status\":\"sufficient\"},\"problem_clarity\":{\"rationale\":\"Clear.\",\"source_refs\":[\"$.problem_statement\"],\"status\":\"sufficient\"},\"risk_visibility\":{\"rationale\":\"Visible.\",\"source_refs\":[\"$.risks\"],\"status\":\"sufficient\"},\"scope_boundedness\":{\"rationale\":\"Bounded.\",\"source_refs\":[\"$.candidate_scope\"],\"status\":\"sufficient\"},\"stakeholder_coverage\":{\"rationale\":\"Identified.\",\"source_refs\":[\"$.stakeholders_or_actors\"],\"status\":\"sufficient\"},\"unknowns_manageability\":{\"rationale\":\"No blocker.\",\"source_refs\":[\"$.unknowns\"],\"status\":\"sufficient\"}},\"non_blocking_gaps\":[],\"overall_readiness\":\"ready\",\"proposal_content_hash\":\"d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098\",\"rationale\":\"Ready for deterministic formalization.\",\"recommended_next_action\":\"proceed_to_settlement\"},\"status\":\"accepted_by_kernel\"},\"schema_version\":\"factory.discovery-settlement-input.v1\"},\"settlementInputHash\":\"ed91016f61f654d7ee6f30904eadefed7cb7c16144a1774dccc70fd8a3ab591f\"},\"rationale\":\"Proposal is ready, grounded, and confident enough to proceed\",\"reasonCodes\":[\"GO_READY_AND_GROUNDED\"],\"schemaVersion\":\"factory.discovery-outcome-certificate.v1\"}"
       }
     ],
     "managedSubmissions": [
@@ -1465,10 +1465,10 @@
         "node_id": "produce-proposal",
         "intent_id": 1,
         "task_id": 1,
-        "execution_id": "worker-execution:1ba13147-5505-4afc-80cd-24b6db9c9a01",
+        "execution_id": "worker-execution:907b9009-148a-4f23-886e-cdb3b86a2f0f",
         "schema_version": "factory.discovery-proposal.v1",
         "content_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
-        "submitted_at": "2026-08-25 00:17:10"
+        "submitted_at": "2026-08-25 01:02:05"
       },
       {
         "id": 2,
@@ -1476,10 +1476,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:ab2dbcc5-1106-4222-963e-c4ff6ab1d35d",
+        "execution_id": "worker-execution:2dbb219c-51e7-4de8-907b-b79cddd53987",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
-        "submitted_at": "2026-08-25 00:17:10"
+        "submitted_at": "2026-08-25 01:02:05"
       },
       {
         "id": 3,
@@ -1487,10 +1487,10 @@
         "node_id": "define-product-contract",
         "intent_id": 4,
         "task_id": 4,
-        "execution_id": "worker-execution:e6aa6fc4-94e9-4512-bbf5-4597e50e32e9",
+        "execution_id": "worker-execution:12a12c0c-0e3f-4b9f-966c-920ee000a7b9",
         "schema_version": "factory.review-verdict.v1",
         "content_hash": "e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
-        "submitted_at": "2026-08-25 00:17:10"
+        "submitted_at": "2026-08-25 01:02:05"
       },
       {
         "id": 4,
@@ -1498,10 +1498,10 @@
         "node_id": "model-use-cases",
         "intent_id": 6,
         "task_id": 6,
-        "execution_id": "worker-execution:5c75a93a-5649-44e9-a2c1-371e2f45618c",
+        "execution_id": "worker-execution:015ccf7e-b6b1-4d82-a101-bdf94cecb514",
         "schema_version": "factory.review-verdict.v1",
         "content_hash": "77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
-        "submitted_at": "2026-08-25 00:17:10"
+        "submitted_at": "2026-08-25 01:02:05"
       },
       {
         "id": 5,
@@ -1509,10 +1509,10 @@
         "node_id": "define-acceptance-contract",
         "intent_id": 8,
         "task_id": 8,
-        "execution_id": "worker-execution:aa1e224d-2769-45d3-aebb-ed9848cc319d",
+        "execution_id": "worker-execution:7993bc41-f55c-4967-99ea-3e155139d935",
         "schema_version": "factory.review-verdict.v1",
         "content_hash": "75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
-        "submitted_at": "2026-08-25 00:17:11"
+        "submitted_at": "2026-08-25 01:02:06"
       }
     ],
     "submissionValidationRejections": [],
@@ -1688,7 +1688,7 @@
         "status": "done",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "title": "discovery-proposal/author: Investigate the bounded subject and submit one canonical typed DiscoveryProposal",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1697,7 +1697,7 @@
         "status": "done",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "title": "discovery-readiness/author: Read the exact accepted Proposal product and submit one source-bound readiness a",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1706,7 +1706,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "title": "formalization-product-contract/author: Produce PRD plus FR/NFR/RULE artifacts and root lineage.",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1715,7 +1715,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "title": "formalization-product-contract/reviewer: Produce PRD plus FR/NFR/RULE artifacts and root lineage.",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1724,7 +1724,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "title": "formalization-use-cases/author: Produce accepted use cases covering the product requirements.",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1733,7 +1733,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "title": "formalization-use-cases/reviewer: Produce accepted use cases covering the product requirements.",
-        "created_at": "2026-08-25 00:17:10",
+        "created_at": "2026-08-25 01:02:05",
         "item_key": null
       },
       {
@@ -1742,7 +1742,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "title": "formalization-acceptance-contract/author: Produce acceptance criteria derived from UC/FR/NFR.",
-        "created_at": "2026-08-25 00:17:11",
+        "created_at": "2026-08-25 01:02:06",
         "item_key": null
       },
       {
@@ -1751,7 +1751,7 @@
         "status": "done",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "title": "formalization-acceptance-contract/reviewer: Produce acceptance criteria derived from UC/FR/NFR.",
-        "created_at": "2026-08-25 00:17:11",
+        "created_at": "2026-08-25 01:02:06",
         "item_key": null
       }
     ],
@@ -1807,49 +1807,49 @@
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/41ccf72550048a176df52c1cbca0e7ab91d078f27fa4ef615233dc4c44225711/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:17:10.489Z"
+        "sealed_at": "2026-08-25T01:02:05.650Z"
       },
       {
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-readiness/singleton/27eba56554b016832c6c851c665be382f82825f16e134a6fe8581cbf43ab9cf3/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:17:10.597Z"
+        "sealed_at": "2026-08-25T01:02:05.740Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/c488cebe810d19ae7b4313abc1c6823fe1f1d5c5b4e0e970dad9f65726a26854/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "role": "reviewer",
-        "sealed_at": "2026-08-25T00:17:11.193Z"
+        "sealed_at": "2026-08-25T01:02:06.165Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/f38f88525148dd2167b5f8caff819cd6741a0945d06d937123480740e6c2084f/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:17:11.134Z"
+        "sealed_at": "2026-08-25T01:02:06.116Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:17:10.740Z"
+        "sealed_at": "2026-08-25T01:02:05.851Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/c615d58517102760b80ef250cedbd67a566792e97b507426f47445061dfd354a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "role": "reviewer",
-        "sealed_at": "2026-08-25T00:17:10.803Z"
+        "sealed_at": "2026-08-25T01:02:05.890Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:17:10.941Z"
+        "sealed_at": "2026-08-25T01:02:05.977Z"
       },
       {
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/813484952a2e71a2b14414b4e823bb6e5beb2b1d4bce95538a14ab74284976d6/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "role": "reviewer",
-        "sealed_at": "2026-08-25T00:17:11.005Z"
+        "sealed_at": "2026-08-25T01:02:06.024Z"
       }
     ],
     "gateDecisions": [
@@ -1858,56 +1858,56 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:10"
+        "decided_at": "2026-08-25 01:02:05"
       },
       {
         "decision_key": "decision:gate-run:8d91af4d9cba17422d4d524258946d6073f569c43e908baed84c6e5e0e60400b",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:10"
+        "decided_at": "2026-08-25 01:02:05"
       },
       {
         "decision_key": "decision:gate-run:ec90d2c0fca114578b97b808b92429ea7b6b3ab294f6e439e0592e51332e0704",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "gate_phase": "author",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:10"
+        "decided_at": "2026-08-25 01:02:05"
       },
       {
         "decision_key": "decision:gate-run:5ae3eea5a4e912983bf24f7a446aafe2a78882268f19bfefdb6fe47af1a2cd9f",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:10"
+        "decided_at": "2026-08-25 01:02:05"
       },
       {
         "decision_key": "decision:gate-run:a6ed80002b3fc8776b64f8049a924785856a83c171696fe712ed576c24cd1c0d",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "gate_phase": "author",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:10"
+        "decided_at": "2026-08-25 01:02:05"
       },
       {
         "decision_key": "decision:gate-run:341a4ba39961210066abef2e9ccc655247c3fd63989961dc6b066600d7f392b7",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:11"
+        "decided_at": "2026-08-25 01:02:06"
       },
       {
         "decision_key": "decision:gate-run:29450e3533b9d9d6519b0f72d09d5071cc8b454c994bc33497607d6937b16628",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "gate_phase": "author",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:17:11"
+        "decided_at": "2026-08-25 01:02:06"
       },
       {
         "decision_key": "decision:gate-run:7f0a48933855d3e479b8d7037cd4947a1693808e345fbb1f9967c38c69707262",
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:17:11"
+        "decided_at": "2026-08-25 01:02:06"
       }
     ],
     "checkReceipts": [
@@ -2029,25 +2029,25 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/41ccf72550048a176df52c1cbca0e7ab91d078f27fa4ef615233dc4c44225711/author",
         "gate_decision_key": "decision:gate-run:a7bf9ed4ff57950067be9b99374ce48881200cb64d72b35c712485fac429c1cf",
-        "accepted_at": "2026-08-25T00:17:10.551Z"
+        "accepted_at": "2026-08-25T01:02:05.696Z"
       },
       {
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-readiness/singleton/27eba56554b016832c6c851c665be382f82825f16e134a6fe8581cbf43ab9cf3/author",
         "gate_decision_key": "decision:gate-run:8d91af4d9cba17422d4d524258946d6073f569c43e908baed84c6e5e0e60400b",
-        "accepted_at": "2026-08-25T00:17:10.631Z"
+        "accepted_at": "2026-08-25T01:02:05.767Z"
       },
       {
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton",
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/9c321dcff5fd5a01062a9092c1f472aaf0b64f7be4ce7d336bf7b6812d70564b/author",
         "gate_decision_key": "decision:gate-run:5ae3eea5a4e912983bf24f7a446aafe2a78882268f19bfefdb6fe47af1a2cd9f",
-        "accepted_at": "2026-08-25T00:17:10.873Z"
+        "accepted_at": "2026-08-25T01:02:05.927Z"
       },
       {
         "workplace_ref": "workplace/2/solution-formalization@1.0.0/formalization-use-cases/singleton",
         "candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2f3b15bec461f3150250f0491007f0c79aef6aec0a8b2e823cebfb4cd80a3afd/author",
         "gate_decision_key": "decision:gate-run:341a4ba39961210066abef2e9ccc655247c3fd63989961dc6b066600d7f392b7",
-        "accepted_at": "2026-08-25T00:17:11.054Z"
+        "accepted_at": "2026-08-25T01:02:06.077Z"
       }
     ],
     "acceptedAuthorityHeads": [
@@ -2210,25 +2210,25 @@
         "last_error": null
       },
       {
-        "obligation_key": "final-presentation-committed:final-presentation:007441749b347f95154ce7373f2bea013cfa7b67a4c3bd4e4d1099f66c6c80b8:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:c1546e5c8ef6e1b438afce006b75c07d801c23d23d551e821d43be263c9662b3:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:007441749b347f95154ce7373f2bea013cfa7b67a4c3bd4e4d1099f66c6c80b8",
+        "source_ref": "final-presentation:c1546e5c8ef6e1b438afce006b75c07d801c23d23d551e821d43be263c9662b3",
         "handoff_kind": "close-presentation",
         "state": "completed",
         "last_error": null
       },
       {
-        "obligation_key": "final-presentation-committed:final-presentation:8f328137759890f6e1be3493023ecde61d71fdc828a27e67f034c1baad5f45be:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:cc20ea141198d69f2fa716b27df68083e28f1e8011f0997cf9d29bbdc97a6c28:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:8f328137759890f6e1be3493023ecde61d71fdc828a27e67f034c1baad5f45be",
+        "source_ref": "final-presentation:cc20ea141198d69f2fa716b27df68083e28f1e8011f0997cf9d29bbdc97a6c28",
         "handoff_kind": "close-presentation",
         "state": "completed",
         "last_error": null
       },
       {
-        "obligation_key": "final-presentation-committed:final-presentation:e49f511732df1b3525880df75f8beee724fa706c5ebf7f59d3a8987c37f0bad7:close-presentation",
+        "obligation_key": "final-presentation-committed:final-presentation:e6ed5ce576b33a843cf2c63331ccd642b0cd0eae588e1baed609968fa52a5d83:close-presentation",
         "source_kind": "final-presentation-committed",
-        "source_ref": "final-presentation:e49f511732df1b3525880df75f8beee724fa706c5ebf7f59d3a8987c37f0bad7",
+        "source_ref": "final-presentation:e6ed5ce576b33a843cf2c63331ccd642b0cd0eae588e1baed609968fa52a5d83",
         "handoff_kind": "close-presentation",
         "state": "completed",
         "last_error": null
@@ -2294,108 +2294,108 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:1ba13147-5505-4afc-80cd-24b6db9c9a01",
-        "task_id": 1,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.452Z",
-        "finished_at": "2026-08-25 00:17:10"
-      },
-      {
-        "execution_ref": "worker-execution:45d7a23a-ef65-4c93-b683-6476326da2e5",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.288Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:544d3dc3-51f3-42aa-8c91-84eb6cc7a601",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.335Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:5bffb1f7-dcb1-4fa2-a3bf-ff3f9358284f",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.101Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:5c75a93a-5649-44e9-a2c1-371e2f45618c",
+        "execution_ref": "worker-execution:015ccf7e-b6b1-4d82-a101-bdf94cecb514",
         "task_id": 6,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.973Z",
-        "finished_at": "2026-08-25 00:17:10"
+        "started_at": "2026-08-25T01:02:05.998Z",
+        "finished_at": "2026-08-25 01:02:06"
       },
       {
-        "execution_ref": "worker-execution:6e0105a7-33be-4281-bc39-b985e233376a",
-        "task_id": 3,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.672Z",
-        "finished_at": "2026-08-25 00:17:10"
-      },
-      {
-        "execution_ref": "worker-execution:73a3bc9b-0110-4830-811f-344ab1983ab6",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.385Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:8240800f-cec4-466c-9a6f-563717e9b63c",
-        "task_id": 5,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.901Z",
-        "finished_at": "2026-08-25 00:17:10"
-      },
-      {
-        "execution_ref": "worker-execution:876a1882-c48c-4e77-8ba7-2f592cff68d4",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:18:12.527Z",
-        "finished_at": "2026-08-25 00:18:12"
-      },
-      {
-        "execution_ref": "worker-execution:877ace5c-ae78-4aa2-8bca-0c7b92455206",
-        "task_id": 7,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.229Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:aa1e224d-2769-45d3-aebb-ed9848cc319d",
-        "task_id": 8,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:11.161Z",
-        "finished_at": "2026-08-25 00:17:11"
-      },
-      {
-        "execution_ref": "worker-execution:ab2dbcc5-1106-4222-963e-c4ff6ab1d35d",
-        "task_id": 2,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.569Z",
-        "finished_at": "2026-08-25 00:17:10"
-      },
-      {
-        "execution_ref": "worker-execution:e6aa6fc4-94e9-4512-bbf5-4597e50e32e9",
+        "execution_ref": "worker-execution:12a12c0c-0e3f-4b9f-966c-920ee000a7b9",
         "task_id": 4,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:17:10.774Z",
-        "finished_at": "2026-08-25 00:17:10"
+        "started_at": "2026-08-25T01:02:05.873Z",
+        "finished_at": "2026-08-25 01:02:05"
+      },
+      {
+        "execution_ref": "worker-execution:1ebc720f-e41d-47fd-ac66-06ce01998541",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:03:07.463Z",
+        "finished_at": "2026-08-25 01:03:07"
+      },
+      {
+        "execution_ref": "worker-execution:2dbb219c-51e7-4de8-907b-b79cddd53987",
+        "task_id": 2,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:05.714Z",
+        "finished_at": "2026-08-25 01:02:05"
+      },
+      {
+        "execution_ref": "worker-execution:61f61461-4fa9-44a4-8891-8c62a3d54269",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.189Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:6557bca4-d837-485e-bdba-bcf450ab92a2",
+        "task_id": 5,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:05.952Z",
+        "finished_at": "2026-08-25 01:02:05"
+      },
+      {
+        "execution_ref": "worker-execution:772f83d3-cb3d-41d7-8267-a3323e7e6dea",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.271Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:7993bc41-f55c-4967-99ea-3e155139d935",
+        "task_id": 8,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.139Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:834e8bbc-b878-4de8-9667-92fa740a59f4",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.318Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:907b9009-148a-4f23-886e-cdb3b86a2f0f",
+        "task_id": 1,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:05.621Z",
+        "finished_at": "2026-08-25 01:02:05"
+      },
+      {
+        "execution_ref": "worker-execution:c32e64a8-90c4-4c37-b032-0fbdc9bca3f5",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.090Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:c9879886-9bbf-4d0a-a05f-94b2df29dd38",
+        "task_id": 7,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:06.240Z",
+        "finished_at": "2026-08-25 01:02:06"
+      },
+      {
+        "execution_ref": "worker-execution:e9855d7b-938e-4a92-86b1-7997502e92f5",
+        "task_id": 3,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T01:02:05.796Z",
+        "finished_at": "2026-08-25 01:02:05"
       }
     ],
     "processProducts": [
@@ -2406,7 +2406,7 @@
         "product_key": "content:d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
         "node_id": "produce-proposal",
         "product_hash": "d5fa6fcac9a5ef14dd4734b18e3a5a370a69eb3cba2befae189a948bf5bad098",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 2,
@@ -2415,7 +2415,7 @@
         "product_key": "content:415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
         "node_id": "assess-readiness",
         "product_hash": "415d7437ee67de4d090d8937e96e7e0958e91dcb1719341fbda88421a4c045c9",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 3,
@@ -2424,7 +2424,7 @@
         "product_key": "artifact:1",
         "node_id": "define-product-contract",
         "product_hash": "fcf7db143d74e9e08195fd8e34a404a68e01dd655884651a445043f8d08d3be5",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 4,
@@ -2433,7 +2433,7 @@
         "product_key": "artifact:2",
         "node_id": "define-product-contract",
         "product_hash": "ca1cc498d2fe3aec4af3fe36a0f88e58e44a4db790db45824a5dbc2768a69273",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 5,
@@ -2442,7 +2442,7 @@
         "product_key": "artifact:3",
         "node_id": "define-product-contract",
         "product_hash": "f0d2e86f70fc4a3a3eba1a30cd5217d6adca52c9a02ea8705d1758b86a23b536",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 6,
@@ -2451,7 +2451,7 @@
         "product_key": "artifact:4",
         "node_id": "define-product-contract",
         "product_hash": "108050f537e230627fd7f377f01faeed7241add09e3b1646e0088164005d2162",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 7,
@@ -2460,7 +2460,7 @@
         "product_key": "artifact:5",
         "node_id": "define-product-contract",
         "product_hash": "cebf027bdb86b8112a40f5ef19d472615f5b29b887aa8646ecb0f5496c546ba9",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 8,
@@ -2469,7 +2469,7 @@
         "product_key": "workplace:solution-formalization@1.0.0:define-product-contract:db43fe7ede631f7772083607229a80820d3e3330f7d7262f418299ce51863948",
         "node_id": "define-product-contract",
         "product_hash": "db43fe7ede631f7772083607229a80820d3e3330f7d7262f418299ce51863948",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 9,
@@ -2478,7 +2478,7 @@
         "product_key": "content:e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
         "node_id": "define-product-contract",
         "product_hash": "e1214f8d8ffaf6db0a3fe619c1d277a22cd53c40f234232bf6ce7983ac6acc8c",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 10,
@@ -2487,7 +2487,7 @@
         "product_key": "artifact:6",
         "node_id": "model-use-cases",
         "product_hash": "1ef9c35cd1ff593c861c908906ddcffe06da71f68bb7821c9400ac8db3c52d98",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 11,
@@ -2496,7 +2496,7 @@
         "product_key": "workplace:solution-formalization@1.0.0:model-use-cases:86f7f0e0bfbb2d69ffb69f9232fff64643e2866d82dcea6608d544199298592b",
         "node_id": "model-use-cases",
         "product_hash": "86f7f0e0bfbb2d69ffb69f9232fff64643e2866d82dcea6608d544199298592b",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 12,
@@ -2505,7 +2505,7 @@
         "product_key": "content:77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
         "node_id": "model-use-cases",
         "product_hash": "77f6e499f2d62be423a202e1569bb06826cb57b0a7eb8e4b19ea475b8c5a0639",
-        "created_at": "2026-08-25 00:17:10"
+        "created_at": "2026-08-25 01:02:05"
       },
       {
         "id": 13,
@@ -2514,7 +2514,7 @@
         "product_key": "artifact:7",
         "node_id": "define-acceptance-contract",
         "product_hash": "77dbf658b262bdb04f7338d598d988acaaad7fe938b7103b67cfba9773f9b39b",
-        "created_at": "2026-08-25 00:17:11"
+        "created_at": "2026-08-25 01:02:06"
       },
       {
         "id": 14,
@@ -2523,7 +2523,7 @@
         "product_key": "artifact:8",
         "node_id": "define-acceptance-contract",
         "product_hash": "950093e4103b45d8b80ca349c9ed5e90c6aba3a1bfe666f00f025f8dd02a342d",
-        "created_at": "2026-08-25 00:17:11"
+        "created_at": "2026-08-25 01:02:06"
       },
       {
         "id": 15,
@@ -2532,7 +2532,7 @@
         "product_key": "workplace:solution-formalization@1.0.0:define-acceptance-contract:fbd2931a6d317992a04d23bc6461c16c541f56585921b0b24751588c0f014257",
         "node_id": "define-acceptance-contract",
         "product_hash": "fbd2931a6d317992a04d23bc6461c16c541f56585921b0b24751588c0f014257",
-        "created_at": "2026-08-25 00:17:11"
+        "created_at": "2026-08-25 01:02:06"
       },
       {
         "id": 16,
@@ -2541,10 +2541,10 @@
         "product_key": "content:75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
         "node_id": "define-acceptance-contract",
         "product_hash": "75edd0e40ca6f4df9483aee278c0b81cd1da3e8c02d1a961cce0fc824a92a385",
-        "created_at": "2026-08-25 00:17:11"
+        "created_at": "2026-08-25 01:02:06"
       }
     ],
     "developmentVerificationLedger": []
   },
-  "bundleDigest": "50b301fda6bb6c1912a64553176bd29994321be0f7801bb6251eb7867fd0a181"
+  "bundleDigest": "31efff135780d2252c4cd6e4c1d81280f72798cb8cb07edf8e4ac425f02e3c3d"
 }

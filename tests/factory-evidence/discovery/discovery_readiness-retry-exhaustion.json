@@ -22,7 +22,7 @@
     "CanonicalFast"
   ],
   "composition": {
-    "fingerprint": "71020044f2489eefc167be065d2916d5a18ab7183b89127086f578f4c96e918b",
+    "fingerprint": "0f9c9b64bfff9d92e409cd6190d93e086b191a1cf0f2b1d86d852c94dde70ab5",
     "overlayKeys": [
       "delivery.providers",
       "resolveWorkerContext",
@@ -30,13 +30,13 @@
     ],
     "sections": {
       "lifecycle": "4c676ef0c383f4d52c475f6c2a4c340dca62b4fbd3a1137999196fba7c3b0462",
-      "modules": "13aab873989bf02071532e8d3e5e1c45ceefda9962a0aec1da775fcd5b93a2a4",
-      "providers": "83b3cf87c5075dd11d03e0e2b9a93f34f2c501b5554596af82a6dcc676f259aa",
+      "modules": "63d03b305d618f145e6863fe156dc26f5396d85d6bf27a68dcf66a27a818b04e",
+      "providers": "7b2d105a1a800abc2a3a1a15e54a466c06185a53aa9a8e4f4583cba123ca608a",
       "overlay": "25dc717b8eb00d51a8f5725e28227da8bf496855e450147531008e9226692f4f"
     }
   },
-  "installationFingerprint": "fa6cb9f09f0558d9906ccbf05a09152ec22ebec8f1611ae73467d53e755f8616",
-  "durableTraceDigest": "93c532c6124610491c6f32ee5810e786614eb48354b71782a7b11551cbbaf907",
+  "installationFingerprint": "aaf70d6c975caaea230c6882093a817c8b947f6cc08faa16f267c630c9d42190",
+  "durableTraceDigest": "5c15ab22594051d92904315401c3a7db647ccbbac5abca323bdb4d207851680e",
   "normalizedTrace": {
     "acceptedAuthorityHeads": [
       {
@@ -160,7 +160,7 @@
       {
         "current_stage_id": null,
         "id": 1,
-        "input_hash": "2b209be5f5778545c0e208b89d759336dc382cfc2f63a69a6f6020e8671f22e3",
+        "input_hash": "fa7b820f20a5c4259079a9ce4d930cc9ac935d4c61f132e12a2b4128722105c9",
         "status": "completed",
         "terminal_status": "failed"
       }
@@ -168,46 +168,46 @@
     "managedSubmissions": [
       {
         "content_hash": "eaa957b61fa1a4a5d2181374df0359866e3d3e98764e9be7940ffb8a7f6154a9",
-        "execution_id": "worker-execution:f8c65cb3-014e-41b8-8199-8ff752443aeb",
+        "execution_id": "worker-execution:51176b34-2b13-4d2f-825a-e20a7ab0f46e",
         "id": 1,
         "intent_id": 1,
         "node_id": "produce-proposal",
         "process_run_id": 1,
         "schema_version": "factory.discovery-proposal.v1",
-        "submitted_at": "2026-08-25 00:13:05",
+        "submitted_at": "2026-08-25 00:58:15",
         "task_id": 1
       },
       {
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "execution_id": "worker-execution:d875d0d8-83eb-4639-b3ad-155d142ccee1",
+        "execution_id": "worker-execution:95350ab2-2c65-4f37-98bd-dc905614aa39",
         "id": 2,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:13:05",
+        "submitted_at": "2026-08-25 00:58:15",
         "task_id": 2
       },
       {
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "execution_id": "worker-execution:47024d41-efc9-47fc-a687-b6f4c792a5e2",
+        "execution_id": "worker-execution:2d04f768-4554-4242-8e3f-2595b6de83ef",
         "id": 3,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:13:05",
+        "submitted_at": "2026-08-25 00:58:15",
         "task_id": 2
       },
       {
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "execution_id": "worker-execution:837699ec-36bd-4b3e-9558-c34d47a063ad",
+        "execution_id": "worker-execution:a7430d8c-a927-4c54-90c4-dde194112069",
         "id": 4,
         "intent_id": 2,
         "node_id": "assess-readiness",
         "process_run_id": 1,
         "schema_version": "factory.discovery-readiness-assessment.v2",
-        "submitted_at": "2026-08-25 00:14:06",
+        "submitted_at": "2026-08-25 00:59:16",
         "task_id": 2
       }
     ],
@@ -250,10 +250,10 @@
     ],
     "processTransitions": [
       {
-        "decision_hash": "a0c4b67a81328ec6d066134d07579f8b3b9b2746210672d3795d24900a3c1ffb",
+        "decision_hash": "8541f50073b78ec189b9091290121c4a29829cd80f4722290dbc4c2ed0c214cb",
         "from_stage_run_id": 1,
-        "handoff_hash": "3f07f56e9042651e9eef5990f6be241431de872e46ca2b18fdb30c8f2f5859d5",
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"f967e08efe565fdf30fd0532ac045885c5d163d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"f967e08efe565fdf30fd0532ac045885c5d163d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":1,\"stageRunId\":1}}}",
+        "handoff_hash": "03bb9dfc7595679efda4e04b5f7271144208531142822ba7182840c371186705",
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"5ae740df871e1ed3deab1a9782e76843f5b82377\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"5ae740df871e1ed3deab1a9782e76843f5b82377\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":1,\"stageRunId\":1}}}",
         "id": 1,
         "lifecycle_run_id": 1,
         "outcome": "failed",
@@ -340,31 +340,31 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:47024d41-efc9-47fc-a687-b6f4c792a5e2",
-        "finished_at": "2026-08-25 00:13:05",
+        "execution_ref": "worker-execution:2d04f768-4554-4242-8e3f-2595b6de83ef",
+        "finished_at": "2026-08-25 00:58:15",
         "state": "exited",
         "task_id": 2,
         "voided_at": null
       },
       {
-        "execution_ref": "worker-execution:837699ec-36bd-4b3e-9558-c34d47a063ad",
-        "finished_at": "2026-08-25 00:14:06",
-        "state": "exited",
-        "task_id": 2,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:d875d0d8-83eb-4639-b3ad-155d142ccee1",
-        "finished_at": "2026-08-25 00:13:05",
-        "state": "exited",
-        "task_id": 2,
-        "voided_at": null
-      },
-      {
-        "execution_ref": "worker-execution:f8c65cb3-014e-41b8-8199-8ff752443aeb",
-        "finished_at": "2026-08-25 00:13:05",
+        "execution_ref": "worker-execution:51176b34-2b13-4d2f-825a-e20a7ab0f46e",
+        "finished_at": "2026-08-25 00:58:15",
         "state": "exited",
         "task_id": 1,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:95350ab2-2c65-4f37-98bd-dc905614aa39",
+        "finished_at": "2026-08-25 00:58:15",
+        "state": "exited",
+        "task_id": 2,
+        "voided_at": null
+      },
+      {
+        "execution_ref": "worker-execution:a7430d8c-a927-4c54-90c4-dde194112069",
+        "finished_at": "2026-08-25 00:59:16",
+        "state": "exited",
+        "task_id": 2,
         "voided_at": null
       }
     ],
@@ -495,14 +495,14 @@
   "mutationCoverage": null,
   "counterexample": null,
   "rawDurableTrace": {
-    "observedAt": "2026-08-25T00:14:06.480Z",
+    "observedAt": "2026-08-25T00:59:16.399Z",
     "lifecycleRuns": [
       {
         "id": 1,
         "status": "completed",
         "current_stage_id": null,
         "terminal_status": "failed",
-        "input_hash": "2b209be5f5778545c0e208b89d759336dc382cfc2f63a69a6f6020e8671f22e3"
+        "input_hash": "fa7b820f20a5c4259079a9ce4d930cc9ac935d4c61f132e12a2b4128722105c9"
       }
     ],
     "stageRuns": [
@@ -545,9 +545,9 @@
         "target_stage_id": null,
         "terminal_status": "failed",
         "to_stage_run_id": null,
-        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"f967e08efe565fdf30fd0532ac045885c5d163d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"f967e08efe565fdf30fd0532ac045885c5d163d0\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":1,\"stageRunId\":1}}}",
-        "handoff_hash": "3f07f56e9042651e9eef5990f6be241431de872e46ca2b18fdb30c8f2f5859d5",
-        "decision_hash": "a0c4b67a81328ec6d066134d07579f8b3b9b2746210672d3795d24900a3c1ffb"
+        "handoff_snapshot": "{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"5ae740df871e1ed3deab1a9782e76843f5b82377\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"},\"lifecycleInput\":{\"delivery\":{\"deferredProfile\":{\"profileHash\":\"96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8\",\"reason\":\"authorization-required\",\"schemaVersion\":\"factory.delivery-deferred-profile.v1\",\"source\":\"start-from-idea\"},\"mode\":\"deferred\",\"operatorAuthorization\":null,\"policy\":null},\"development\":{\"policy\":{\"contentHash\":\"0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4\",\"id\":\"reference-development-policy\",\"requiredChangeScopes\":[],\"version\":\"1.2.0\"},\"repositories\":[{\"expectedBaseCommit\":\"5ae740df871e1ed3deab1a9782e76843f5b82377\",\"integrationBranch\":\"dev\",\"repositoryRef\":{\"repositoryName\":\"fresh-harness-repo\",\"role\":\"component\"}}]},\"initiative\":{\"constraints\":{},\"context\":{},\"evidence\":{},\"subject\":\"Unified Discovery proof scenario: discovery/readiness-retry-exhaustion\"}},\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"stages\":{\"initial-discovery\":{\"processOutcome\":{\"authority\":null,\"certificate\":null,\"certificateHash\":null,\"certificateRef\":null,\"certificateSchema\":null,\"code\":\"failed\",\"outcome\":\"failed\",\"output\":null,\"outputHash\":null,\"outputRef\":null,\"outputSchema\":null},\"processRunId\":1,\"stageRunId\":1}}}",
+        "handoff_hash": "03bb9dfc7595679efda4e04b5f7271144208531142822ba7182840c371186705",
+        "decision_hash": "8541f50073b78ec189b9091290121c4a29829cd80f4722290dbc4c2ed0c214cb"
       }
     ],
     "processRuns": [
@@ -576,10 +576,10 @@
         "node_id": "produce-proposal",
         "intent_id": 1,
         "task_id": 1,
-        "execution_id": "worker-execution:f8c65cb3-014e-41b8-8199-8ff752443aeb",
+        "execution_id": "worker-execution:51176b34-2b13-4d2f-825a-e20a7ab0f46e",
         "schema_version": "factory.discovery-proposal.v1",
         "content_hash": "eaa957b61fa1a4a5d2181374df0359866e3d3e98764e9be7940ffb8a7f6154a9",
-        "submitted_at": "2026-08-25 00:13:05"
+        "submitted_at": "2026-08-25 00:58:15"
       },
       {
         "id": 2,
@@ -587,10 +587,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:d875d0d8-83eb-4639-b3ad-155d142ccee1",
+        "execution_id": "worker-execution:95350ab2-2c65-4f37-98bd-dc905614aa39",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "submitted_at": "2026-08-25 00:13:05"
+        "submitted_at": "2026-08-25 00:58:15"
       },
       {
         "id": 3,
@@ -598,10 +598,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:47024d41-efc9-47fc-a687-b6f4c792a5e2",
+        "execution_id": "worker-execution:2d04f768-4554-4242-8e3f-2595b6de83ef",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "submitted_at": "2026-08-25 00:13:05"
+        "submitted_at": "2026-08-25 00:58:15"
       },
       {
         "id": 4,
@@ -609,10 +609,10 @@
         "node_id": "assess-readiness",
         "intent_id": 2,
         "task_id": 2,
-        "execution_id": "worker-execution:837699ec-36bd-4b3e-9558-c34d47a063ad",
+        "execution_id": "worker-execution:a7430d8c-a927-4c54-90c4-dde194112069",
         "schema_version": "factory.discovery-readiness-assessment.v2",
         "content_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "submitted_at": "2026-08-25 00:14:06"
+        "submitted_at": "2026-08-25 00:59:16"
       }
     ],
     "submissionValidationRejections": [],
@@ -625,7 +625,7 @@
         "status": "done",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "title": "discovery-proposal/author: Investigate the bounded subject and submit one canonical typed DiscoveryProposal",
-        "created_at": "2026-08-25 00:13:05",
+        "created_at": "2026-08-25 00:58:15",
         "item_key": null
       },
       {
@@ -634,7 +634,7 @@
         "status": "done",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "title": "discovery-readiness/author: Read the exact accepted Proposal product and submit one source-bound readiness a",
-        "created_at": "2026-08-25 00:13:05",
+        "created_at": "2026-08-25 00:58:15",
         "item_key": null
       }
     ],
@@ -663,13 +663,13 @@
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/0edcddcbd52851b8a14c276dbd6a9a137ff1f8d0e97e1bd460d1a176d8e1de27/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:13:05.120Z"
+        "sealed_at": "2026-08-25T00:58:15.091Z"
       },
       {
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-readiness/singleton/6b902a47fb363daf8d10a68bafd3fc951e6f0bab9e18f898d7575573bdd4f45c/author",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "role": "author",
-        "sealed_at": "2026-08-25T00:13:05.227Z"
+        "sealed_at": "2026-08-25T00:58:15.182Z"
       }
     ],
     "gateDecisions": [
@@ -678,28 +678,28 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "gate_phase": "final",
         "verdict": "accepted",
-        "decided_at": "2026-08-25 00:13:05"
+        "decided_at": "2026-08-25 00:58:15"
       },
       {
         "decision_key": "decision:gate-run:ea6f32cec7af41820fb1f6e070f1915a6bbf740ba14409082b14f444956ac99a",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:13:05"
+        "decided_at": "2026-08-25 00:58:15"
       },
       {
         "decision_key": "decision:gate-run:db0363fa021eb8d3244b48c7800b28efe7bb44075e186e31cb6a3de540239221",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:13:05"
+        "decided_at": "2026-08-25 00:58:15"
       },
       {
         "decision_key": "decision:gate-run:f979b917cb4459fe2fc736f5b22bcb9a3f3b7b29c3c9d3d4f75357b68f989d96",
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-readiness/singleton",
         "gate_phase": "final",
         "verdict": "repair_required",
-        "decided_at": "2026-08-25 00:14:06"
+        "decided_at": "2026-08-25 00:59:16"
       }
     ],
     "checkReceipts": [
@@ -765,7 +765,7 @@
         "workplace_ref": "workplace/1/product-discovery@4.0.0/discovery-proposal/singleton",
         "candidate_set_ref": "candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/0edcddcbd52851b8a14c276dbd6a9a137ff1f8d0e97e1bd460d1a176d8e1de27/author",
         "gate_decision_key": "decision:gate-run:83ff6bc9080edff6d01f31141443c2fad1d2d42ee928c4fca50b681007081fb1",
-        "accepted_at": "2026-08-25T00:13:05.179Z"
+        "accepted_at": "2026-08-25T00:58:15.148Z"
       }
     ],
     "acceptedAuthorityHeads": [
@@ -826,36 +826,36 @@
     ],
     "workerExecutions": [
       {
-        "execution_ref": "worker-execution:47024d41-efc9-47fc-a687-b6f4c792a5e2",
+        "execution_ref": "worker-execution:2d04f768-4554-4242-8e3f-2595b6de83ef",
         "task_id": 2,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:13:05.263Z",
-        "finished_at": "2026-08-25 00:13:05"
+        "started_at": "2026-08-25T00:58:15.207Z",
+        "finished_at": "2026-08-25 00:58:15"
       },
       {
-        "execution_ref": "worker-execution:837699ec-36bd-4b3e-9558-c34d47a063ad",
-        "task_id": 2,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:14:06.430Z",
-        "finished_at": "2026-08-25 00:14:06"
-      },
-      {
-        "execution_ref": "worker-execution:d875d0d8-83eb-4639-b3ad-155d142ccee1",
-        "task_id": 2,
-        "state": "exited",
-        "voided_at": null,
-        "started_at": "2026-08-25T00:13:05.199Z",
-        "finished_at": "2026-08-25 00:13:05"
-      },
-      {
-        "execution_ref": "worker-execution:f8c65cb3-014e-41b8-8199-8ff752443aeb",
+        "execution_ref": "worker-execution:51176b34-2b13-4d2f-825a-e20a7ab0f46e",
         "task_id": 1,
         "state": "exited",
         "voided_at": null,
-        "started_at": "2026-08-25T00:13:05.086Z",
-        "finished_at": "2026-08-25 00:13:05"
+        "started_at": "2026-08-25T00:58:15.058Z",
+        "finished_at": "2026-08-25 00:58:15"
+      },
+      {
+        "execution_ref": "worker-execution:95350ab2-2c65-4f37-98bd-dc905614aa39",
+        "task_id": 2,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T00:58:15.166Z",
+        "finished_at": "2026-08-25 00:58:15"
+      },
+      {
+        "execution_ref": "worker-execution:a7430d8c-a927-4c54-90c4-dde194112069",
+        "task_id": 2,
+        "state": "exited",
+        "voided_at": null,
+        "started_at": "2026-08-25T00:59:16.355Z",
+        "finished_at": "2026-08-25 00:59:16"
       }
     ],
     "processProducts": [
@@ -866,7 +866,7 @@
         "product_key": "content:eaa957b61fa1a4a5d2181374df0359866e3d3e98764e9be7940ffb8a7f6154a9",
         "node_id": "produce-proposal",
         "product_hash": "eaa957b61fa1a4a5d2181374df0359866e3d3e98764e9be7940ffb8a7f6154a9",
-        "created_at": "2026-08-25 00:13:05"
+        "created_at": "2026-08-25 00:58:15"
       },
       {
         "id": 2,
@@ -875,10 +875,10 @@
         "product_key": "content:afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
         "node_id": "assess-readiness",
         "product_hash": "afb2bb6db8ef1cb0a701e1be32930dc7967a07b99614ae08ff85a984f0f4d08b",
-        "created_at": "2026-08-25 00:13:05"
+        "created_at": "2026-08-25 00:58:15"
       }
     ],
     "developmentVerificationLedger": []
   },
-  "bundleDigest": "22b5723405421d1c3a5ef66189f85ea6787a784dcf8ce012f4f26f96596da702"
+  "bundleDigest": "22fc58822dc5148c9d5cc61b083493235fc0be19b03d684afe894dfb60ee810f"
 }

@@ -22,7 +22,7 @@
     "CanonicalFast"
   ],
   "composition": {
-    "fingerprint": "1efdadc794c20769859278501d56c300dbfa2e68734db2b13e94f5d21068e68e",
+    "fingerprint": "4fb315d0d54e2d64617ce9c7d572127e7627bfb2a60dcf49acfac62efbfcf02f",
     "overlayKeys": [
       "delivery.providers",
       "lifecycleDefinition",
@@ -31,12 +31,12 @@
     ],
     "sections": {
       "lifecycle": "ff4f5c9bdc051a58a6cb0d2e0c0d2cea0920d96c6bfbb2158ae8684d6ff15005",
-      "modules": "13aab873989bf02071532e8d3e5e1c45ceefda9962a0aec1da775fcd5b93a2a4",
-      "providers": "83b3cf87c5075dd11d03e0e2b9a93f34f2c501b5554596af82a6dcc676f259aa",
+      "modules": "63d03b305d618f145e6863fe156dc26f5396d85d6bf27a68dcf66a27a818b04e",
+      "providers": "7b2d105a1a800abc2a3a1a15e54a466c06185a53aa9a8e4f4583cba123ca608a",
       "overlay": "e77d79560ea8ecd8ca47c3b558ebe3245060ad7b63f72af7edfe55ae4bce6fb8"
     }
   },
-  "installationFingerprint": "ff6a591780805e9d8682b69178fc94d7599e829d53cbbd271c31ad0512b4405b",
+  "installationFingerprint": "a26c4a7b14793c3588a81a3c11cff1c2d6d45d70293bcd26c7bbf1c6530ecd32",
   "durableTraceDigest": "0fb2329ba0a6abfa2200d4fbff35f296dd1a9e5bdbede0cd08d58c0f267adef6",
   "normalizedTrace": {
     "acceptedAuthorityHeads": [],
@@ -114,7 +114,7 @@
   "mutationCoverage": null,
   "counterexample": null,
   "rawDurableTrace": {
-    "observedAt": "2026-08-25T00:25:54.279Z",
+    "observedAt": "2026-08-25T01:10:40.775Z",
     "lifecycleRuns": [],
     "stageRuns": [],
     "processTransitions": [],
@@ -142,5 +142,5 @@
     "processProducts": [],
     "developmentVerificationLedger": []
   },
-  "bundleDigest": "7c5778eaf321bb6afd7596346f0b2b074e948a6810362d48f06b872532db13a8"
+  "bundleDigest": "abce383c90cb12dac37ffafd2498bd79f71625516a434f693673c88f9924109c"
 }
