@@ -251,6 +251,7 @@ const GROUPS = {
   // R1 omnibus closure (2026-08-24 orphan research, operator-approved): the W9 scripted E2E harness — built as the DETERMINISTIC successor of the flaky orchestrate-cli suites per CI-02 — was committed but never hosted. All 5 drives deterministic-green in isolation (192s total).
   'e2e-deterministic': {
     globs: [
+      'tests/factory-e2e/perturbation-tapes.test.mjs',
       'tests/factory-e2e/w9-02-happy-path.test.mjs',
       'tests/factory-e2e/w9-03-adversarial.test.mjs',
       'tests/factory-e2e/w9-04-outcome-edges.test.mjs',
@@ -455,6 +456,7 @@ const GROUPS = {
       'tests/tracker-view/model-management-guard.test.mjs',
       'tests/worker-names-display.test.mjs',
       'tools/adr-closure-registry.test.mjs',
+      'tools/build-receipt.test.mjs',
       'tools/module-authoring-kit/conform.test.mjs',
       'tools/module-authoring-kit/scaffold.test.mjs',
       'tools/module-authoring-kit/validator.test.mjs',
