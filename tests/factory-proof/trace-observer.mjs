@@ -99,7 +99,9 @@ export function observeDurableTrace(dbPath) {
            FROM artifact_traces ORDER BY id`,
       ),
       workIntents: all(
-        'SELECT id, task_kind, status, workplace_ref, title, created_at FROM tasks ORDER BY id',
+        `SELECT id, task_kind, status, workplace_ref, title, created_at,
+                json_extract(metadata, '$.cell_input_item.key') AS item_key
+           FROM tasks ORDER BY id`,
       ),
       workplaces: all(
         'SELECT workplace_ref, process_run_id, kanban_phase, loop_state, terminal_reason, revision, next_role FROM factory_workplaces ORDER BY workplace_ref',
@@ -170,6 +172,19 @@ export function observeDurableTrace(dbPath) {
         `SELECT id, process_run_id, product_kind, product_key, node_id,
                 product_hash, created_at
            FROM factory_process_products ORDER BY id`,
+      ),
+      // CC-GAP-8 criterion-key ledger (D8 terminal accounting): the
+      // append-only Development verification obligation ledger. Terminal
+      // route facts (terminal-unknown / terminal-blocked /
+      // terminal-human-required, with reason codes + provenance + human-gate
+      // attribution) and executed facts live here — the mechanically
+      // distinct accounting the S-rung demands oracles read directly.
+      developmentVerificationLedger: all(
+        `SELECT id, process_run_id, criterion_key, verification_item_key,
+                required, entry_state, outcome, candidate_hash, receipt_ref,
+                terminal_route, terminal_reason_codes, terminal_provenance_ref,
+                terminal_attributed_to, recorded_at
+           FROM factory_development_verification_ledger ORDER BY id`,
       ),
     };
   } finally {

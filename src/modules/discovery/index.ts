@@ -63,6 +63,7 @@ export function registerDiscovery(
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
     transitionObligations: sharedDeps.transitionObligations,
+    settleDrain: sharedDeps.settleDrain,
     nodeExecutors: sharedDeps.nodeExecutors,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,
     adoptedNodeResults: sharedDeps.adoptedNodeResults,

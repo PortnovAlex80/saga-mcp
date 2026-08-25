@@ -3,13 +3,15 @@
 //
 // Execute ONE Development scenario on a fresh canonical Factory and print
 // one ScenarioEvidenceBundle JSON line (same contract as the Formalization
-// drive). Tranche D-A: the positive spine.
+// drive). The spine corpus (D-A) plus the W2 resilience corpus and the
+// multi-start restart proof (specialDrive).
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { runScenario } from './scenario-runner.mjs';
 import { buildDevelopmentRuntimeCase } from './development-scenario-pack.mjs';
+import { runDevelopmentRestartProof } from './development-restart-proof.mjs';
 
 const REPO_ROOT = process.cwd();
 const scenarioId = process.env.DEVELOPMENT_SCENARIO ?? process.argv[2] ?? '';
@@ -36,14 +38,25 @@ const bootstrap = await bootstrapFreshHarness({
 });
 
 try {
-  const evidence = await runScenario({
-    scenario: runtime.scenario,
-    proofModes: ['Durable', 'CanonicalFast'],
-    bootstrap,
-    handlers: runtime.handlers,
-    oracles: runtime.oracles,
-    driveOptions: runtime.driveOptions,
-  });
+  let evidence;
+  if (runtime.specialDrive === 'development-restart-idempotency') {
+    evidence = await runDevelopmentRestartProof({
+      scenario: runtime.scenario,
+      bootstrap,
+      handlers: runtime.handlers,
+      concurrencyCap: HARNESS_CONCURRENCY_CEILING,
+    });
+  } else {
+    evidence = await runScenario({
+      scenario: runtime.scenario,
+      proofModes: ['Durable', 'CanonicalFast'],
+      bootstrap,
+      handlers: runtime.handlers,
+      oracles: runtime.oracles,
+      actorEvidence: runtime.actorEvidence,
+      driveOptions: runtime.driveOptions,
+    });
+  }
   process.stdout.write(JSON.stringify(evidence) + '\n');
   await bootstrap.cleanup();
   process.exit(evidence.verdict === 'pass' ? 0 : 1);

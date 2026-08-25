@@ -59,8 +59,8 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
   // exact pins the 2026-08-22 operator review restored — do NOT shrink them:
   // landing new scenarios may only MOVE tokens (pending→required) or ADD
   // tokens, never delete.
-  assert.equal(universe.totals.universeTokens, 178,
-    'U restored + split: 6 restored tokens (3 delivery landed, 2 development landed, 1 delivery restart) + the D2 bundle split into dependency-order and concurrency-cap (-1 +2) + 2 CC-GAP-8 terminal-accounting tokens (unknown, human-required) declared pending');
+  assert.equal(universe.totals.universeTokens, 181,
+    'U restored + split + W2: 6 restored tokens (3 delivery landed, 2 development landed, 1 delivery restart) + the D2 bundle split (-1 +2) + 2 CC-GAP-8 terminal-accounting tokens + 3 W2 production-scale satisfiability tokens (SAT decided, cycle-UNSAT typed witness, SRS-identity UNSAT terminal)');
   for (const w of universe.perWorkshop) {
     // every required token must be declared by a scenario — else landing
     // claims are lies
@@ -76,15 +76,28 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
 });
 
 test('SPINE means an honest pending ledger — the exact global uncovered set is ratcheted', () => {
-  assert.equal(universe.totals.pendingTotal, 21,
-    '21 pending: development 19 (incl. the STRONG cap invariant and the 2 CC-GAP-8 terminal-accounting tokens, honestly undemonstrated) + delivery 2');
-  assert.equal(universe.globalUncovered.length, 21);
+  // W2 (2026-08-25): the D2–D10 corpus + restart proof + feedback pair +
+  // production-sized satisfiability scenarios landed — development's pending
+  // ledger shrank 19 → 6 (each residue carrying its precise reason in the
+  // pack source). The ratchet may only shrink by landing demonstrations.
+  assert.equal(universe.totals.pendingTotal, 8,
+    '8 pending: development 6 (strong cap, bind stale-hash, the 2 CC-GAP-8 '
+    + 'terminal-accounting tokens, 2 D10 continuation/replan — all honestly '
+    + 'undemonstrable in the current harness) + delivery 2');
+  assert.equal(universe.globalUncovered.length, 8);
   const dev = universe.perWorkshop.find(w => w.workshop === 'development');
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
-  assert.equal(dev.pendingSize, 19,
-    'D2 sibling-isolation, D3 claim-monotonicity, D4–D10, restarts, feedback + the desk-replay seam + the 2 CC-GAP-8 terminal-accounting tokens');
-  assert.equal(dev.requiredUniverseSize, 18,
-    'landed: D2 order, D2 cap, D2 fanin, D3 impl-scope, contract-partition packaging-invariant — moved to required, still in U');
+  assert.equal(dev.pendingSize, 6,
+    'the six honest residues: strong cap (structurally unreachable in the '
+    + 'in-process lane), bind stale-hash (cross-lifecycle continuation seam), '
+    + 'terminal-accounting unknown + human-required (substrate/human-gate '
+    + 'seams not hosted by a lawful base-module drive), D10 continuation '
+    + '+ replan (engine-CLI redevelop entry)');
+  assert.equal(dev.requiredUniverseSize, 34,
+    'landed W2: D2 sibling-isolation, D3 claim-monotonicity, D4 review/git-effect'
+    + ' x2, D5 freeze, D6 readiness-mismatch, D8 evidence-pins + upstream-defect,'
+    + ' D9 blocked/failed, restart x2, feedback — plus the 3 new '
+    + 'production-scale satisfiability tokens');
   assert.equal(dl.pendingSize, 2,
     'K4 crash-after-effect + restart:delivery:idempotent-settlement '
     + '(BLOCKED_BY restart:development:git-change-desk-replay — an upstream '
@@ -102,7 +115,9 @@ test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
 });
 
 test('universe totals are ratcheted', () => {
-  assert.equal(universe.totals.universeTokens, 178);
+  // 178 → 181 (W2): the three production-sized task-graph satisfiability
+  // tokens landed as demonstrated required items; nothing left U.
+  assert.equal(universe.totals.universeTokens, 181);
   assert.equal(universe.totals.platformFaultEdges, 8,
     'K4-owned platform fault edges (1 discovery + 5 formalization + 2 development)');
 });
@@ -112,5 +127,5 @@ test('report renders the honest table', () => {
   assert.match(text, /\| discovery \| CLOSED \|/);
   assert.match(text, /\| development \| SPINE \|/);
   assert.match(text, /\| delivery \| SPINE \|/);
-  assert.match(text, /global uncovered: 21/);
+  assert.match(text, /global uncovered: 8/);
 });

@@ -31,6 +31,7 @@ import {
 } from '../process-modules/application/workshop-capability-manifest.js';
 import { SqliteWorkplaceProductionRevisionRepository } from '../infrastructure/workplace/sqlite-workplace-production-revision-repository.js';
 import { TransitionObligationIntegrator } from '../process-modules/application/transition-obligation-integrator.js';
+import { drainAnonymousWorkOnProcessSettlement } from '../process-modules/infrastructure/workplace-settlement-drain.js';
 import {
   TransitionObligationReconciler,
   type TransitionObligationHandler,
@@ -812,6 +813,12 @@ export function createProductLifecycleRuntime(
     workplaceProductPort,
     adoptedNodeResults: new SqliteResumeDirectiveRepository(db),
     transitionObligations: obligationIntegrator,
+    // REG-28 kanban-drain-at-terminal: the settled run's board may hold no
+    // anonymous todo/queued card. Wired into EVERY module executor; runs
+    // inside the settlement transaction.
+    settleDrain: (processRunId, outcome) => {
+      drainAnonymousWorkOnProcessSettlement(db, { processRunId, outcome });
+    },
 
     onWorkplaceVerified: (processRunId, repairNodeId) => {
       const generationKey =

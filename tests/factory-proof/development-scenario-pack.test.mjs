@@ -52,7 +52,9 @@ test('every scenario maps to a runtime case with handlers and oracles', () => {
     const runtime = buildDevelopmentRuntimeCase(scenario.id);
     assert.equal(runtime.scenario.id, scenario.id);
     assert.ok(runtime.handlers && Object.keys(runtime.handlers).length > 0);
-    assert.ok(runtime.oracles.length > 0);
+    // Multi-phase proofs (restart) run through their dedicated proof runner
+    // and carry their oracles there — a specialDrive runtime case has none.
+    assert.ok(runtime.oracles.length > 0 || runtime.specialDrive !== undefined);
     assert.ok(runtime.driveOptions.maxCycles > 0);
   }
   assert.throws(() => buildDevelopmentRuntimeCase('development/nonexistent'),
@@ -60,8 +62,13 @@ test('every scenario maps to a runtime case with handlers and oracles', () => {
 });
 
 test('honest tranche boundary: pending universe and K4 edges declared, closure NOT claimed', () => {
-  assert.ok(DEVELOPMENT_PENDING_UNIVERSE.length >= 15,
-    'the D2–D10 pending universe must stay explicit');
+  // W2 (2026-08-25): the D2–D10 corpus, the feedback pair, the restart
+  // proof and the production-sized satisfiability scenarios LANDED — the
+  // pending universe is now exactly the six honestly-undemonstrable tokens
+  // (each carrying its precise reason in the pack source). It may only
+  // SHRINK by landing a demonstration, never by deletion.
+  assert.ok(DEVELOPMENT_PENDING_UNIVERSE.length >= 6,
+    'the honest residue must stay explicit');
   assert.ok(DEVELOPMENT_PENDING_UNIVERSE.every(item => /^(D\d+|restart|feedback):/.test(item)));
   assert.ok(DEVELOPMENT_PLATFORM_FAULT_EDGES.length >= 2);
   assert.ok(DEVELOPMENT_PLATFORM_FAULT_EDGES.every(item => item.startsWith('K4:')));

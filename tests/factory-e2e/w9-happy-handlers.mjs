@@ -206,13 +206,40 @@ function writeRepoFile(repoPath, filePath, content) {
 // authored against. Coverage ids flow from the brief's accepted entries.
 // ---------------------------------------------------------------------------
 
-function constraintRegisterOf(meta) {
+function constraintRegisterOf(meta, db) {
+  // CERTIFICATE-FIRST (the 2026-08-24 canonical port made the settlement
+  // register lifecycle-pinned: Discovery freezes the register with the
+  // pinned lifecycle's injection tables, and the formalization A1 gate
+  // diffs the brief's dispositions against THAT certificate-frozen
+  // register — never against a worker-side rebuild). The scripted author
+  // reads the exact authority a real worker reads back: the discovery
+  // certificate payload the case pins. Rebuilding from the local payload
+  // projection (the pre-port shape below) hardcodes the BUILD lifecycle's
+  // injection table and typed-fails every DELIVERY-shaped drive.
   const formalizationCase = findObject(
     meta?.process_node_input ?? meta,
     value => value.schemaVersion === 'factory.formalization-case.v1',
   );
-  if (!formalizationCase) return null;
-  const payload = formalizationCase.discoveryProposalPayload ?? {};
+  if (formalizationCase && db) {
+    const ref = String(formalizationCase.discoveryCertificateRef ?? '');
+    const match = /^certificate:(\d+)$/.exec(ref);
+    if (match) {
+      try {
+        const row = db.prepare(
+          'SELECT certificate_payload FROM factory_process_outcome_certificates WHERE id=?',
+        ).get(Number(match[1]));
+        const payload = row ? JSON.parse(String(row.certificate_payload)) : null;
+        const register = payload?.constraintRegister;
+        if (register && Array.isArray(register.constraints)
+          && typeof register.registerDigest === 'string') {
+          return register;
+        }
+      } catch {
+        // fall through to the local rebuild (legacy registerless corpus)
+      }
+    }
+  }
+  const payload = formalizationCase?.discoveryProposalPayload ?? {};
   return buildOrderConstraintRegisterV2({
     drafts: payload.order_constraints,
     unknowns: payload.unknowns,
@@ -327,7 +354,8 @@ function formalizationProduct({ handlers, assignment, meta, context, db }) {
   };
   // ADR-090 (CC-IC-2): dispose every register entry in the strict v2 grammar
   // and pin the register digest the dispositions were authored against.
-  const constraintDispositions = constraintDispositionsOf(constraintRegisterOf(meta));
+  const constraintDispositions = constraintDispositionsOf(
+    constraintRegisterOf(meta, db));
   writeRepoFile(repoPath, 'docs/formalization/BRIEF-1.md', '# Product Brief\n');
   const brief = handlers.artifact_create({
     project_id: projectId, epic_id: epicId, type: 'brief', code: 'BRIEF-1',
@@ -605,7 +633,6 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
   if (!repo) throw new Error('DevelopmentCase has no repository');
   const criteria = developmentCase.acceptanceCriteria || [];
   const implementationCriteria = criteria.filter(ac => ac.implementationRequired);
-  const criterionId = ac => ac.artifactId;
   const criterionKeyOf = ac => `${ac.artifactId}:${ac.code ?? ''}`;
   // Item keys are per-ATOMIC-criterion: several criteria may share one
   // provenance artifact, and keys derived from artifactId would collide.
@@ -657,11 +684,15 @@ export function makeDevelopmentPlanHandler({ parallelBurst = 0 } = {}) {
       : [`impl-${itemCode(implementationCriteria[index - 1])}`],
     // Cover the requiredChangeScopes ('package.json', 'tests/') that
     // assembleProductLifecycleInput mandates for bootstrap material, plus the
-    // item's own source file. The change scope MUST match the file path the
-    // implement handler writes (src/w9/<workItemKey>.ts) so the implementation
-    // scope check sees the changed path within the frozen authority. The
-    // dependency chain makes the shared scope overlap safe.
-    changeScopes: [`src/w9/impl-${criterionId(ac)}.ts`, 'package.json', 'tests/'],
+    // item's own source file. The change scope path MUST be derived from the
+    // SAME per-atomic-criterion key the implement handler writes
+    // (src/w9/<workItemKey>.ts, where workItemKey = impl-${itemCode(ac)} —
+    // code-based since f13181e0) so the implementation scope check sees the
+    // changed path within the frozen authority. ArtifactId-derived paths
+    // (impl-${criterionId(ac)}.ts) name a DIFFERENT item's file and make
+    // every first attempt a scope rejection riding the widening ledger.
+    // The dependency chain makes the shared scope overlap safe.
+    changeScopes: [`src/w9/impl-${itemCode(ac)}.ts`, 'package.json', 'tests/'],
     required: true,
     criticality: ac.criticality || 'blocker',
   }));
