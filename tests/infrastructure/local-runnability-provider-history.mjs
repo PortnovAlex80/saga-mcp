@@ -64,9 +64,10 @@ export const PROVIDER_HISTORY = [
   // typed unknown converts on the operator's persisted resolution for the
   // same workplace + candidate bytes). Digest computed by the same canonical
   // rule over the 1.16.0 digest object; the introducing commit hash is
-  // recorded by the follow-up commit that lands this entry (the vector is
-  // append-only and never regenerated from production).
-  { version: '1.16.0', introducedBy: '0000000000000000000000000000000000000000', digest: 'aa5ad10b7402f266b22e96f4eb3a31e90dc4d4206f59deb6972dc9e1a25b72dd' },
+  // recorded by the landing commit (this entry was amended by its immediate
+  // follow-up to pin the real hash; the vector is append-only and never
+  // regenerated from production).
+  { version: '1.16.0', introducedBy: 'c62c1f4e5ca420c8eb36ccd99ea64c5bf1a6d199', digest: 'aa5ad10b7402f266b22e96f4eb3a31e90dc4d4206f59deb6972dc9e1a25b72dd' },
 ];
 
 /** The CURRENT entry (last) of the history vector. */
