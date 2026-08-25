@@ -112,9 +112,17 @@ const enterHumanWaitGuard: CommandGuard = (_input, _head, ctx) => {
 };
 
 const resolveHumanResponseGuard: CommandGuard = (_input, _head, ctx) => {
-  const pending = ctx.pendingWaits.some((waitRecord) => waitRecord.kind === 'TypedWait:human-input' && waitRecord.state === 'pending');
+  // D12: the operator disposition command discharges EITHER wait kind. The
+  // frozen WAITS registry declares workplace.resolveHumanResponse as the wake
+  // source of BOTH TypedWait:human-input and TypedWait:effect-uncertainty
+  // ("operator resolution command, never an automatic duplicate of a
+  // non-idempotent external send/effect"). WP-07/WP-08/WP-13B all hit the
+  // missing uncertainty arm (2026-08-26 convergence to the frozen universe).
+  const pending = ctx.pendingWaits.some((waitRecord) =>
+    (waitRecord.kind === 'TypedWait:human-input' || waitRecord.kind === 'TypedWait:effect-uncertainty')
+    && waitRecord.state === 'pending');
   if (!pending) {
-    return refuse('ILLEGAL_TRANSITION', 'a pending TypedWait:human-input is required before a human response may resolve');
+    return refuse('ILLEGAL_TRANSITION', 'a pending TypedWait:human-input or TypedWait:effect-uncertainty is required before a human response may resolve (D12 operator disposition)');
   }
   return { requiredEvidenceKinds: [] };
 };
@@ -272,7 +280,7 @@ export const WorkplaceReducer: AggregateReducer = {
     { command: 'workplace.widenAuthorityScope', fromStatuses: ['repair-wait-entered'], toStatus: 'authority-scope-widened', terminal: false, applies: (input) => input.terminalOutcome === undefined },
     { command: 'workplace.widenAuthorityScope', fromStatuses: ['repair-wait-entered'], toStatus: 'authority-scope-widened', terminal: false, applies: (input) => input.terminalOutcome === 'truthful-failure', obligations: [] },
     { command: 'workplace.enterHumanWait', fromStatuses: ['author-gate-decided', 'final-gate-decided', 'effect-settled'], toStatus: 'human-wait-entered', terminal: false },
-    { command: 'workplace.resolveHumanResponse', fromStatuses: ['human-wait-entered', 'effect-human-waited'], toStatus: 'human-response-resolved', terminal: false },
+    { command: 'workplace.resolveHumanResponse', fromStatuses: ['human-wait-entered', 'effect-human-waited', 'effect-uncertainty-waited'], toStatus: 'human-response-resolved', terminal: false },
     { command: 'workplace.settleEffect', fromStatuses: ['final-gate-decided', 'human-response-resolved'], toStatus: 'effect-settled', terminal: false, applies: (input) => input.effectOutcome === 'success' || input.effectOutcome === 'already-applied' || input.effectOutcome === 'policy-terminal' || input.effectOutcome === 'repair' },
     { command: 'workplace.settleEffect', fromStatuses: ['final-gate-decided', 'human-response-resolved'], toStatus: 'effect-retryable', terminal: false, applies: (input) => input.effectOutcome === 'retryable' },
     { command: 'workplace.settleEffect', fromStatuses: ['final-gate-decided', 'human-response-resolved'], toStatus: 'effect-uncertainty-waited', terminal: false, applies: (input) => input.effectOutcome === 'unknown' },

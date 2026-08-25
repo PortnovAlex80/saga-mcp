@@ -112,19 +112,27 @@ test('D12 effect uncertainty: an automatic wake is refused; only an operator dis
     assert.equal(automatic.refusal.reason, 'WAIT_WITHOUT_WAKE_SOURCE');
     assert.match(automatic.refusal.detail, /D12/, 'the refusal cites the frozen decision');
 
-    // With an operator disposition receipt the guard passes and the wake
-    // reaches the frozen command boundary. The frozen universe has no legal
-    // resolveHumanResponse edge from effect-uncertainty-waited yet (D12's
-    // disposition command shape was deferred by EK-1), so the typed
-    // refusal below is the protocol boundary - never a silent duplicate.
+    // With an operator disposition receipt the wake commits through the
+    // frozen command boundary (D12 convergence, 2026-08-26: the reducer edge
+    // from effect-uncertainty-waited + the guard's uncertainty arm now match
+    // the WAITS registry, which always declared resolveHumanResponse as this
+    // wait's wake source). The disposition discharges the wait EXACTLY ONCE;
+    // the re-settle after the wake is the legal D2 ladder, never a duplicate
+    // send (the transport's SEND_UNCERTAIN_DUPLICATE_BLOCKED fence owns that).
     const attempted = waits.wakeByCommand(session, pending[0].rowId, {
       command: 'workplace.resolveHumanResponse',
       idempotencyKey: 'wait:uncertain:operator',
       operatorDispositionRef: 'operator-disposition:receipt:1',
     });
-    assert.equal(attempted.status, 'refused');
-    assert.equal(attempted.refusal.reason, 'ILLEGAL_TRANSITION');
-    assert.equal(waits.pendingWaits(session).length, 1, 'nothing discharged, nothing duplicated');
+    assert.equal(attempted.status, 'discharged');
+    assert.equal(waits.pendingWaits(session).length, 0, 'the uncertainty wait discharged exactly once, nothing duplicated');
+    // The same disposition replayed never discharges twice.
+    const replay = waits.wakeByCommand(session, pending[0].rowId, {
+      command: 'workplace.resolveHumanResponse',
+      idempotencyKey: 'wait:uncertain:operator',
+      operatorDispositionRef: 'operator-disposition:receipt:1',
+    });
+    assert.notEqual(replay.status, 'discharged', 'a replayed disposition never discharges twice');
   } finally {
     session.close();
   }
