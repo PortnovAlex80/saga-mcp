@@ -189,3 +189,38 @@ jobs:
         # schema+manifest and prompt-budget profile; the array-replacer bug
         # that emptied the digest binding is regression-guarded here).
         run: node tools/run-acceptance-matrix.mjs --group ek-admission
+
+      # ── WP-13C / EK-9 (2026-08-26): removal guards, mutation coverage and
+      # the elite-evidence-kit determinism smoke — all BLOCKING. Exact-file
+      # matrix groups (GAP-8 hosting pattern); G4d derives them from the
+      # machine-readable matrix export.
+      - name: Matrix — EK removal guards (WP-13C, pre-staging WP-12)
+        # RG1 §H/§I manifest cross-references exist today; RG2 the §A table
+        # inventory is creatable from production SQL; RG3 the WP-08
+        # EK8-DELETION-SET is cross-checked against the manifest (pinned
+        # findings, never silent edits); RG4 the legacy-zero tool wiring.
+        run: node tools/run-acceptance-matrix.mjs --group ek-removal-guard
+
+      - name: EK legacy-zero laws (pre-cutover --check report)
+        # The five legacy-zero laws (every deletion-manifest entry absent;
+        # production imports resolve only to the new runtime; forbidden old
+        # table names absent from production SQL; no migration/adoption/
+        # compatibility fallback; no workshop-owned scheduler/state DDL).
+        # --check honestly reports the pre-cutover counts and exits 0 today;
+        # WP-12 (the hard cutover) flips THIS step to --strict, from which
+        # any remaining legacy reference is a red build.
+        run: node tools/ek-legacy-zero.mjs --check
+
+      - name: Matrix — EK mutation coverage (kernel kill claims)
+        # The central mutation registry (tools/ek-mutation-coverage.mjs):
+        # every declared RED/GREEN kernel demonstration is applied as a real
+        # source patch in a temp workspace and must flip its suite red
+        # (baseline green -> patched red; zero survivors, zero anchor rot).
+        run: node tools/run-acceptance-matrix.mjs --group ek-mutation-coverage
+
+      - name: Matrix — EK elite-evidence-kit determinism smoke
+        # The extractor runs twice against the committed synthetic fixture
+        # (tests/infrastructure/ek-fixtures/) and must produce byte-identical
+        # kits without touching the source — CI never points at the
+        # D:/Development elite run roots.
+        run: node tools/run-acceptance-matrix.mjs --group ek-evidence-kit

@@ -491,6 +491,31 @@ const GROUPS = {
     globs: ['tests/infrastructure/ek-admission-validator.test.mjs'],
     note: 'EK-1 admission-spec validator wrapper — validate:ek-admission-specs blocking in the matrix',
   },
+  // WP-13C / EK-9 (2026-08-26): REMOVAL GUARDS pre-staging WP-12's hard
+  // cutover — blocking NOW, while nothing is deleted yet. Exact files on
+  // purpose (GAP-8 hosting pattern): the hosted guard surface cannot
+  // silently widen. G4d derives these groups from the machine-readable
+  // export, so de-hosting any of them fails matrix-coverage.
+  'ek-removal-guard': {
+    globs: ['tests/infrastructure/ek-removal-guard.test.mjs'],
+    note: 'WP-13C removal guards — manifest §H/§I existence, §A table inventory reality, EK8-DELETION-SET cross-check (pinned findings), legacy-zero --check/--strict wiring (WP-12 flips CI to --strict)',
+  },
+  // WP-13C / EK-9: the kernel MUTATION-COVERAGE harness (central registry in
+  // tools/ek-mutation-coverage.mjs) hosted blocking — every registered
+  // RED/GREEN demonstration must flip its suite red when applied as a real
+  // source patch (baseline green -> patched red; zero survivors, zero
+  // anchor rot).
+  'ek-mutation-coverage': {
+    globs: ['tests/infrastructure/ek-mutation-coverage.test.mjs'],
+    note: 'WP-13C mutation coverage — the declared kernel mutation demonstrations are real kills (model/application/development suites)',
+  },
+  // WP-13C / EK-9: the elite-evidence-kit extractor DETERMINISM SMOKE against
+  // the committed synthetic fixture (tests/infrastructure/ek-fixtures/) — CI
+  // never touches the D:/Development elite sources.
+  'ek-evidence-kit': {
+    globs: ['tests/infrastructure/ek-evidence-kit-determinism.test.mjs'],
+    note: 'WP-13C elite-evidence-kit determinism — two extractions byte-identical on the committed fixture + read-only source contract',
+  },
   // ADR-096 gate item 2 (W3, 2026-08-25): the K4 crash/fault edges are
   // BLOCKING. The four ADR-048 worker-boundary crash suites (exit before
   // product submission / exit after submission before worker_done / accepted
@@ -625,39 +650,43 @@ const QUARANTINE = [
     reason: 'real command/process execution (npm/node on a fixture); cold-start timing produces outcome=undefined ~1/4 runs (e.g. LR-06 "error receipt not replayed" re-run path). LR-01..06 semantics are validated in isolation; the file is non-deterministic at the matrix level. served-process-runner.test.mjs is also real-process and kept out of the blocking matrix for the same reason. Stabilize the cold-start race (or split the deterministic replay tests out) to re-admit.' },
 ];
 
-// --- glob expansion (single-level '*', no deps) -----------------------------
+// --- glob expansion (single-level '*', recursive '**', no deps) --------------
+// WP-13C fix (2026-08-26): a '**' segment now matches ZERO OR MORE directory
+// levels (the conventional meaning). Before, '**' behaved like '*' (one
+// level), so the workflow-kernel group glob — whose declared intent is "NO
+// kernel test file can ever be an orphan (G2p)" — silently missed deeper
+// files (the WP-08 simple-server fixture's own unit.test.mjs was a G2p
+// orphan that failed matrix-coverage at the base commit). Only the
+// workflow-kernel group uses '**' today.
 function expandGlob(pattern) {
   const parts = pattern.split('/');
-  let current = [root];
-  for (let i = 0; i < parts.length; i++) {
+  function expand(dirs, i) {
+    if (i === parts.length) return dirs;
     const seg = parts[i];
     const isLast = i === parts.length - 1;
     if (seg === '**') {
-      // Globstar: zero or more directory levels. The naive single-level
-      // reading silently dropped deeper suites — the merged
-      // tests/workflow-kernel/workshops/<name>/** files were unhosted until
-      // matrix-coverage caught it (2026-08-26). Replace the frontier with
-      // the full directory closure (each dir itself included) and let the
-      // tail segments match inside every level.
-      const closure = [];
-      const walk = (dir) => {
-        closure.push(dir);
+      // zero or more directory levels: pass the current dirs through AND add
+      // every descendant directory.
+      const all = [...dirs];
+      const stack = [...dirs];
+      while (stack.length) {
+        const d = stack.pop();
         let entries;
-        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        try { entries = readdirSync(d); } catch { continue; }
         for (const entry of entries) {
-          if (entry.isDirectory()) walk(path.join(dir, entry.name));
+          const p = path.join(d, entry);
+          try {
+            if (statSync(p).isDirectory()) { all.push(p); stack.push(p); }
+          } catch { /* skip */ }
         }
-      };
-      for (const dir of current) walk(dir);
-      current = closure;
-      if (isLast) return current.sort();
-      continue;
+      }
+      return expand(all, i + 1);
     }
     const re = seg.includes('*')
       ? new RegExp('^' + seg.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$')
       : null;
     const next = [];
-    for (const dir of current) {
+    for (const dir of dirs) {
       let entries;
       try { entries = readdirSync(dir); } catch { continue; }
       for (const entry of entries) {
@@ -670,9 +699,9 @@ function expandGlob(pattern) {
         }
       }
     }
-    current = next;
+    return expand(next, i + 1);
   }
-  return current.sort();
+  return expand([root], 0).sort();
 }
 
 const toPosix = p => path.relative(root, p).split(path.sep).join('/');

@@ -43,6 +43,8 @@ db.sqlite
 db.sqlite-*
 *.sqlite
 *.sqlite-*
+# WP-13C: the committed elite-evidence-kit determinism fixture (CI smoke source)
+!tests/infrastructure/ek-fixtures/elite-smoke/factory.sqlite
 saga-launch-ref.txt
 sim-workspace/
 

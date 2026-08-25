@@ -1,0 +1,8 @@
+{"kind":"execution.reserved","execution_id":"exec-0001","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"phase":"contribute","executor_kind":"opencode"}}
+{"kind":"worker.done","execution_id":"exec-0001","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"verdict":"done"}}
+{"kind":"gate.created","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"gate_run_ref":"gate-run-1","gate_phase":"final","check_plan_ref":"check-plan:task-graph-contract"}}
+{"kind":"gate.decision","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"decision_key":"decision-1","gate_run_ref":"gate-run-1","gate_phase":"final","verdict":"repair_required"}}
+{"kind":"obligation.created","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"obligation_key":"obligation:submitContribution:work-item-1"}}
+{"kind":"obligation.settled","workplace_ref":"workplace/run-1/development/production-cell-1/work-item-1","data":{"obligation_key":"obligation:submitContribution:work-item-1"}}
+{"kind":"engine.exit","data":{"code":1,"reason":"stage-failed","terminal_status":"failed"}}
+{"kind":"run.terminal","data":{"outcome":"failed","status":"failed","terminal_status":"failed"}}
