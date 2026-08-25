@@ -1,0 +1,263 @@
+{
+  "schemaVersion": "ek.role-contract-manifest.ek1.v1",
+  "workPackage": "WP-16",
+  "protocolBasis": {
+    "transitionUniverseRef": "git:ek1/graph-reconciliation@d41cebe0:docs/refactoring/event-kernel/reconciliation/transition-universe.json",
+    "protocolDecisionsRef": "git:saga4@33bf1976:docs/refactoring/event-kernel/PROTOCOL-DECISIONS-FROZEN.md",
+    "planRef": "git:21ba0816:docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#canonical-role-contract",
+    "authorityCensusRef": "git:ek1/wp01-census@eaa07093:docs/refactoring/event-kernel/AUTHORITY-CENSUS.md"
+  },
+  "roleUniverse": {
+    "protocolRoles": [
+      "author",
+      "reviewer"
+    ],
+    "semanticProfiles": [
+      "planner",
+      "implementer",
+      "reviewer",
+      "certifier"
+    ],
+    "actorBehaviors": [
+      "compliant",
+      "repairing",
+      "adversarial",
+      "failed"
+    ],
+    "dimensionalityLaw": "protocolRole x semanticProfile x actorBehavior are orthogonal; only the (workshop, cellKind, protocolRole, semanticProfile) tuple selects a binding; actor behaviors never select a binding; repair is a transition, not a role"
+  },
+  "workshops": [
+    "discovery",
+    "formalization",
+    "development",
+    "delivery",
+    "documentation"
+  ],
+  "planningCellWorkshops": [
+    "development"
+  ],
+  "fallbackPolicy": "none",
+  "forbiddenResolutionSources": [
+    "tasks.status",
+    "task.tags",
+    "tasks.execution_skill",
+    "tasks.review_skill",
+    "execution.status",
+    "assignment.skill (mutable)",
+    "tracker/board state",
+    "global skill roots",
+    "latest/chronology/maxId selection"
+  ],
+  "legacyResolutionDisposition": [
+    {
+      "site": "RR-1",
+      "disposition": "DELETE"
+    },
+    {
+      "site": "RR-2",
+      "disposition": "DELETE"
+    },
+    {
+      "site": "RR-3",
+      "disposition": "DELETE"
+    },
+    {
+      "site": "RR-4",
+      "disposition": "DELETE"
+    },
+    {
+      "site": "RR-5",
+      "disposition": "DELETE"
+    },
+    {
+      "site": "RR-6",
+      "disposition": "REWRITE"
+    },
+    {
+      "site": "RR-7",
+      "disposition": "REWRITE"
+    },
+    {
+      "site": "RR-8",
+      "disposition": "RETAIN-AND-MOVE"
+    },
+    {
+      "site": "RR-9",
+      "disposition": "REWRITE"
+    },
+    {
+      "site": "RR-10",
+      "disposition": "RETAIN-AND-MOVE"
+    },
+    {
+      "site": "RR-11",
+      "disposition": "RETAIN-AND-MOVE"
+    },
+    {
+      "site": "RR-12",
+      "disposition": "DELETE"
+    }
+  ],
+  "bindings": [
+    {
+      "launchKind": "discovery.implementation.author",
+      "bindingClass": "workplace",
+      "workshop": "discovery",
+      "cellKind": "implementation",
+      "protocolRole": "author",
+      "semanticProfile": "implementer",
+      "slot": {
+        "roleContractRef": "ek8:pending:discovery.implementation.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "discovery.implementation.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "discovery",
+      "cellKind": "implementation",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:discovery.implementation.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "formalization.implementation.author",
+      "bindingClass": "workplace",
+      "workshop": "formalization",
+      "cellKind": "implementation",
+      "protocolRole": "author",
+      "semanticProfile": "implementer",
+      "slot": {
+        "roleContractRef": "ek8:pending:formalization.implementation.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "formalization.implementation.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "formalization",
+      "cellKind": "implementation",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:formalization.implementation.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "development.planning.author",
+      "bindingClass": "workplace",
+      "workshop": "development",
+      "cellKind": "planning",
+      "protocolRole": "author",
+      "semanticProfile": "planner",
+      "slot": {
+        "roleContractRef": "ek8:pending:development.planning.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "development.planning.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "development",
+      "cellKind": "planning",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:development.planning.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "development.implementation.author",
+      "bindingClass": "workplace",
+      "workshop": "development",
+      "cellKind": "implementation",
+      "protocolRole": "author",
+      "semanticProfile": "implementer",
+      "slot": {
+        "roleContractRef": "ek8:pending:development.implementation.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "development.implementation.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "development",
+      "cellKind": "implementation",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:development.implementation.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "delivery.implementation.author",
+      "bindingClass": "workplace",
+      "workshop": "delivery",
+      "cellKind": "implementation",
+      "protocolRole": "author",
+      "semanticProfile": "implementer",
+      "slot": {
+        "roleContractRef": "ek8:pending:delivery.implementation.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "delivery.implementation.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "delivery",
+      "cellKind": "implementation",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:delivery.implementation.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "documentation.implementation.author",
+      "bindingClass": "workplace",
+      "workshop": "documentation",
+      "cellKind": "implementation",
+      "protocolRole": "author",
+      "semanticProfile": "implementer",
+      "slot": {
+        "roleContractRef": "ek8:pending:documentation.implementation.author",
+        "contractDigest": "pending-ek8"
+      }
+    },
+    {
+      "launchKind": "documentation.implementation.reviewer",
+      "bindingClass": "workplace",
+      "workshop": "documentation",
+      "cellKind": "implementation",
+      "protocolRole": "reviewer",
+      "semanticProfile": "reviewer",
+      "slot": {
+        "roleContractRef": "ek8:pending:documentation.implementation.reviewer",
+        "contractDigest": "pending-ek8"
+      }
+    }
+  ],
+  "operatorContracts": [
+    {
+      "launchKind": "lifecycle.certification.certifier",
+      "bindingClass": "lifecycleOperator",
+      "ownerAggregate": "LifecycleRun",
+      "ownedCommand": "lifecycleRun.verifyTerminalClaims",
+      "semanticProfile": "certifier",
+      "protocolRoleExemption": "D4: verifier is not an author/reviewer kernel role",
+      "operatorContractShapeRef": "#/$defs/CertifierOperatorContract",
+      "slot": {
+        "roleContractRef": "ek8:pending:lifecycle.certification.certifier",
+        "contractDigest": "pending-ek8"
+      }
+    }
+  ],
+  "manifestDigest": "b1ef94c26e0d4b371f8385fb9f17bc075e81368320a19be76ca954c23edda58b"
+}
