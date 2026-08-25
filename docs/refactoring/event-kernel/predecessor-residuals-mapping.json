@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "ek1.predecessor-residuals-mapping.v1",
+  "source": "docs/factory-run/qualification-adr096/COMPLETION-RECEIPT.md (the predecessor's classified residual list)",
+  "rule": "Every predecessor residual is bound to exactly one owning successor work package and one blocking EK-13 exit token. An unbound residual is a homeless requirement — the exact defect class this plan exists to prevent.",
+  "bindings": [
+    {
+      "residual": "development:D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable (strong form)",
+      "whyOpen": "requires the strict spawn channel; in-process scripted lane cannot observe peak==cap",
+      "owningWorkPackage": "WP-13B",
+      "successorObligation": "actor/fault harness with a real spawn channel proves peak-runnable == concurrency cap deterministically",
+      "ek13Token": "EK13:RESIDUAL:DEV-D2-STRONG-CAP"
+    },
+    {
+      "residual": "development:D7:bind:stale-readiness-hash-failed",
+      "whyOpen": "cross-lifecycle continuation seam (manifests between lifecycles)",
+      "owningWorkPackage": "WP-09",
+      "successorObligation": "continuation/ingress typed refusal of a stale readiness hash demonstrated in the new planning composition",
+      "ek13Token": "EK13:RESIDUAL:DEV-D7-STALE-READINESS"
+    },
+    {
+      "residual": "development:D8:verification:terminal-accounting-unknown",
+      "whyOpen": "ADR-089 diagnostic substrate seam not hosted by a lawful base-module drive",
+      "owningWorkPackage": "WP-13B",
+      "successorObligation": "fault-scheduler scenario produces the honest unknown terminal-accounting outcome",
+      "ek13Token": "EK13:RESIDUAL:DEV-D8-ACCOUNTING-UNKNOWN"
+    },
+    {
+      "residual": "development:D8:verification:terminal-accounting-human-required",
+      "whyOpen": "human-park accounting seam",
+      "owningWorkPackage": "WP-13B",
+      "successorObligation": "human-wait typed outcome carries its accounting evidence in the scenario corpus",
+      "ek13Token": "EK13:RESIDUAL:DEV-D8-ACCOUNTING-HUMAN"
+    },
+    {
+      "residual": "development:D10:continuation:managed-source-author-no-git-authority",
+      "whyOpen": "engine-CLI redevelop entry outside the fresh-harness lane",
+      "owningWorkPackage": "WP-09",
+      "successorObligation": "continuation ingress in the new kernel demonstrates managed-source author typing",
+      "ek13Token": "EK13:RESIDUAL:DEV-D10-CONTINUATION"
+    },
+    {
+      "residual": "development:D10:replan:superseded-tasks-not-claimable",
+      "whyOpen": "same engine-CLI lane",
+      "owningWorkPackage": "WP-09",
+      "successorObligation": "replan supersede drain in the new planning composition proves superseded work is unclaimable",
+      "ek13Token": "EK13:RESIDUAL:DEV-D10-REPLAN"
+    },
+    {
+      "residual": "delivery:K4:crash-after-effect-before-receipt",
+      "whyOpen": "crash-edge token pending in the predecessor universe",
+      "owningWorkPackage": "WP-13B",
+      "successorObligation": "fault schedule injects crash after external mutation before receipt; exactly-once proven",
+      "ek13Token": "EK13:RESIDUAL:DEL-K4-CRASH-AFTER-EFFECT"
+    },
+    {
+      "residual": "delivery:restart:delivery:idempotent-settlement",
+      "whyOpen": "was blocked by the development desk-replay upstream token (now unblocked)",
+      "owningWorkPackage": "WP-11L",
+      "successorObligation": "Delivery conversion demonstrates idempotent settlement on redrive",
+      "ek13Token": "EK13:RESIDUAL:DEL-RESTART-IDEMPOTENT"
+    },
+    {
+      "residual": "documentation:10 fault/recovery families (declared-not-driven)",
+      "whyOpen": "admission declared the spine; fault families pending",
+      "owningWorkPackage": "WP-13D",
+      "successorObligation": "scenario corpus covers the ten families (repair, changes-requested repair, feedback counterfactuals ×2, fence, duplicate-submit, bounded recovery, bundle-replay idempotency, negative transition, repair_required gate)",
+      "ek13Token": "EK13:RESIDUAL:DOC-FAULT-FAMILIES"
+    },
+    {
+      "residual": "nine low authority seams (ratchet-guarded; recorded in ADR-053-CLOSURE-MATRIX §residual seams)",
+      "whyOpen": "pre-seal or dormant paths, none post-seal authority selection",
+      "owningWorkPackage": "WP-12",
+      "successorObligation": "the deletion manifest already covers the deleted-runtime members; survivors are structurally impossible in the new kernel (no tasks table, sole-writer repos, no recency selection by law) — EK-9 structural mutations prove each",
+      "ek13Token": "EK13:RESIDUAL:AUTHORITY-SEAMS-STRUCTURALLY-CLOSED"
+    },
+    {
+      "residual": "CC-41 named fault scheduler + CC-42 deterministic minimization (kept refused per §13)",
+      "whyOpen": "conformance-closure program deferred them",
+      "owningWorkPackage": "WP-13A",
+      "successorObligation": "the workflow test engine's scenario contract IS the named fault scheduler + minimizer; blocking in EK-9",
+      "ek13Token": "EK13:RESIDUAL:CC41-42-SCHEDULER-MINIMIZER"
+    },
+    {
+      "residual": "CC-U2 warrant-oracle command authority (candidate-produced evidenceCommand)",
+      "whyOpen": "reserved ADR-093, direction A-prime, unimplemented",
+      "owningWorkPackage": "WP-17",
+      "successorObligation": "CanonicalRoleContract route policy makes candidate-produced declarations structurally incapable of selecting oracle commands (allowedCapabilityRefs/allowedToolRefs only from installed manifest); EK-12 preflight injects a candidate-authored command and proves refusal",
+      "ek13Token": "EK13:RESIDUAL:CC-U2-WARRANT-AUTHORITY"
+    },
+    {
+      "residual": "EK-12 transport proof: the OpenCode shim cannot prove per-turn budget (sees only initial stdin + postflight events)",
+      "whyOpen": "opaque CLI loop boundary",
+      "owningWorkPackage": "WP-18",
+      "successorObligation": "instrumented transport admitting the final serialized request immediately before each network send, or fail-closed refusal against the pinned interface",
+      "ek13Token": "EK13:RESIDUAL:TRANSPORT-PRESEND-PROOF"
+    }
+  ],
+  "unboundResiduals": []
+}

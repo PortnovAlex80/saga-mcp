@@ -20,12 +20,12 @@ tracker or the plan. One row per bounded work package.
 
 | Package | Bounded assignment | Depends on | Owner | Status | Commit | Verifier | Evidence | Residual |
 |---|---|---|---|---|---|---|---|---|
-| EK-0 | Predecessor gate + immutable baseline | predecessor | coordinator | IN PROGRESS | — | — | BASELINE.md (pending suite) | — |
+| EK-0 | Predecessor gate + immutable baseline | predecessor | coordinator | **DONE** | `23ef562d` | rerun proof (3 fails unreproducible) | BASELINE.md: 10/10 cmds, durations, classification | — |
 | WP-01 | Authority reader/writer census | EK-0 | subagent | **DONE** | `eaa07093` | validator PASS (committed tool) | 1802 SQL stmts / 124 tables / 524 writers / 1486 readers, zero unclassified; rebuild sha256 80883186… | file-level attribution; non-SQL surfaces qualitative |
 | WP-02 | Forward graph (inputs/commands only; PRIVATE until both frozen) | EK-0 | subagent | **DONE — frozen** | `1ccbf66d` | coordinator (reconciliation pending) | forward-graph.json sha256 a3800721…, 56 nodes / 132 edges / 10 gaps G1-G10 | names pending EK-1 freeze |
 | WP-03 | Reverse graph (terminal claims only; PRIVATE) | EK-0 | subagent | **DONE — frozen** | `6e029e08` | coordinator (reconciliation pending) | reverse-graph.json, 88 nodes / 112 edges / 28 proofs (23 closed, 5 gap-flagged) / 8 gaps G1-G8 | names pending EK-1 freeze |
 | WP-04 | Legacy + document deletion manifests | EK-0 | subagent | **DONE** | `681a82e7` | coordinator review pending | legacy: 127 tables + 572 src files (504 DELETE; purity-tested ADR-053 set) / docs: 439 entries (177/14/248), zero unclassified | family-level test split deferred to EK-8/9 |
-| WP-16 | Freeze + validate the three admission specs | WP-01..04 | 3 spec agents | **16b DONE** (394be77d: schema+manifest b1ef94c2, 4/4 mutations killed); **16c DONE** (1258cec7, 21/21 det., 3 RED); 16a RUNNING | pending | validate:ek-admission-specs + EK-ADMISSION-RECEIPT.json | package.json wiring = coordinator EK-1 exit |
+| WP-16 | Freeze + validate the three admission specs | WP-01..04 | 3 spec agents | **ALL THREE DONE** — 16a `5ac40951` (36 dims, det., fail-loudly); 16b `394be77d` (4/4 mut.); 16c `1258cec7` (21/21, 3 RED); unified validator `validate:ek-admission-specs` green+det., admissionContractDigest 5b1be70a… | | pending | validate:ek-admission-specs + EK-ADMISSION-RECEIPT.json | package.json wiring = coordinator EK-1 exit |
 | WP-05 | Pure kernel reducers + model explorer | EK-1, WP-16 | unassigned | NOT STARTED | — | — | src/workflow-kernel/domain/** + test:workflow-model | — |
 | WP-06 | Greenfield schema + repositories | WP-05 | unassigned | NOT STARTED | — | — | src/workflow-kernel/persistence/** | — |
 | WP-07 | Obligation consumer, waits, fault points | WP-06 | unassigned | NOT STARTED | — | — | src/workflow-kernel/application/** | — |
@@ -46,10 +46,17 @@ tracker or the plan. One row per bounded work package.
 | WP-14 | Canonical docs rewrite + deletion patch | EK-1 | unassigned | NOT STARTED | — | — | documentation paths | — |
 | WP-15 | Immutable scripted + real qualification | EK-10, WP-16..18 | unassigned | NOT STARTED | — | — | evidence only | — |
 
-## Baseline status (EK-0)
+## Status notes (2026-08-25, operator stop-gate review)
 
-Suite commands RUNNING (background, `/d/Development/ek0-baseline.log`);
-BASELINE.md records counts/durations when complete.
+- Reconciliation's 12 framed protocol decisions are **FROZEN** — see
+  `PROTOCOL-DECISIONS-FROZEN.md` (commit 33bf1976); the reconciliation doc's
+  "pending decisions" wording is historical narrative, superseded by the freeze.
+- Operator stop-gate before WP-05 (9 items) IN EXECUTION: unified validator
+  wired; independent verifier RUNNING; complexity-metric fixes (exact→max,
+  repository/bypass split) agent RUNNING; non-SQL census formalization agent
+  RUNNING; deletion-manifest validator+guard agent RUNNING; residuals mapping
+  (this commit); tracker synced (this commit); admission-vector contract
+  decided (generated output, gitignored, digest into the receipt).
 
 ## Observed prompt incidents (recorded per EK-0)
 
