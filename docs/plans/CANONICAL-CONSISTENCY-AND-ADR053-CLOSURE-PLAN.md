@@ -174,10 +174,14 @@ Treat implementation completeness and formal ADR closure as separate claims.
       outbox. (MET; the 2026-08-16 resume residual verified FIXED)
 - [x] EC-9: Run-011 is represented by a general partition-invariance theorem.
       (MET)
-- [ ] EC-10: clean scripted E2E and clean real canary start from a new DB and
+- [x] EC-10: clean scripted E2E and clean real canary start from a new DB and
       repository with no dependency on old processes, mutable accumulated state,
       or hot-swapped `dist`. (Scripted leg: green on the frozen build;
       canary-1 PASSED; canary-2 in flight — verdict after evidence review.)
+
+Final Phase-7 disposition supersedes the earlier in-flight parenthetical:
+EC-10 is MET; ADR-053 closure was signed at `2c3319a8` after the frozen
+scripted and clean canary evidence review.
 
 For every item: owner files, positive proof, mutation proof, blocking host,
 MET/PARTIAL/OPEN — recorded in

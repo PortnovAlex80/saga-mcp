@@ -1,7 +1,7 @@
 {
   "schemaVersion": "factory.proof.conformance-coverage.v1",
-  "generatedAt": "2026-08-25T01:11:11.201Z",
-  "mode": "harvest",
+  "generatedAt": "2026-08-25T21:32:16.280Z",
+  "mode": "committed-snapshot",
   "declared": {
     "universeTokens": 204,
     "pendingTotal": 18,
@@ -198,741 +198,577 @@
   "runs": [
     {
       "workshop": "discovery",
-      "scenario": "discovery/happy-go",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "discovery/happy-clarify",
       "verdict": "pass",
-      "bundleDigest": "ee7bea6c63d1d74ba8ae99b539ca0c1a73d12568c24dba0020358f9e14e69282",
-      "source": "harvest"
+      "bundleDigest": "ff0cc957c647712490a6731b2b45b3091d4c7ebd0365336d1ba000b1c4cbdb2d",
+      "evidenceFile": "discovery/discovery_happy-clarify.json"
     },
     {
       "workshop": "discovery",
-      "scenario": "discovery/happy-clarify",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "discovery/happy-go",
       "verdict": "pass",
-      "bundleDigest": "ff0cc957c647712490a6731b2b45b3091d4c7ebd0365336d1ba000b1c4cbdb2d",
-      "source": "harvest"
+      "bundleDigest": "ee7bea6c63d1d74ba8ae99b539ca0c1a73d12568c24dba0020358f9e14e69282",
+      "evidenceFile": "discovery/discovery_happy-go.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/happy-reject",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "b3c4fc89681c3d14cefdca7d2882bd3f221c198121628b7b6e8baa3f756c6197",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_happy-reject.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/proposal-deleted-outcome",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "3ac7e18e23586cac8c3502ab2b52dba8c88080a98bc0768fdaf63c6296cc76f8",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-missing-required-field",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "93edf89583e3dfeaca39db9a1ead1ef8ab86305be3658344dcc694053d32a212",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-wrong-proposal-hash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "bca9f27d30e81f5ce89c93d78b5f7cdb0a92043a5ca3dce710eef828b5d6f62a",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-invented-source-ref",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "e1f42adf2c580735c14f04118b75768181be3dd1894f84e8ad0c8b91a0063ba8",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-missing-dimension",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "a84494b20fd80d0d6697fb0f8e443531346fb9287c1304fc8951b30a499aa753",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-feedback-exact",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "d0165f6a69176eded5017cba50d49f524f3dc8bc4de8f4f6ca7f044e53cdd888",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-feedback-absent",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "91d2d533479513b36b3139681d8d306c58e26962e7bd1ed8baa8f3393805bbd9",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-feedback-stale",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "9435d80eaf6577d64e0fb4e27df2d420fe429c5a1b74037876eb81301298cf1c",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-feedback-corrupted",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "d74aac7f51133f5b3ffff8f98ce8010fabad70767ae43a46828dd7c79afdcaff",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-feedback-exact",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "316615188ab3bec3dca1eba699f2e410dcbbac786eb585897592107739d32c81",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-feedback-absent",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "049c578eabe5d814bb1e2d72d70d9135e9ca279cf78188823ea69ce80b540548",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-feedback-stale",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "72124d5cfd85610604f477360397b57b6bd9785edf5a04ad24e735f6fa04117b",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-feedback-corrupted",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "eeda9f3d720fd26fbc6df50d3335ec360c1bea21da59468c30505274405cdb18",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "00d4938a678b7023d16061dd912cd1d82c6fccd088b688ac7b5a641978380d00",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/proposal-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "38d01ed8dc56204f394da0b272068a280cc63cc8c528b18522b4965feb1b8ef1",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_proposal-deleted-outcome.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/proposal-duplicate-submit",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "720f63483f32671fc5d092e8159a5a93ae77b0a1b2c8e16eeaf977eac9c58c92",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_proposal-duplicate-submit.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-absent",
+      "verdict": "pass",
+      "bundleDigest": "91d2d533479513b36b3139681d8d306c58e26962e7bd1ed8baa8f3393805bbd9",
+      "evidenceFile": "discovery/discovery_proposal-feedback-absent.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-corrupted",
+      "verdict": "pass",
+      "bundleDigest": "d74aac7f51133f5b3ffff8f98ce8010fabad70767ae43a46828dd7c79afdcaff",
+      "evidenceFile": "discovery/discovery_proposal-feedback-corrupted.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-exact",
+      "verdict": "pass",
+      "bundleDigest": "d0165f6a69176eded5017cba50d49f524f3dc8bc4de8f4f6ca7f044e53cdd888",
+      "evidenceFile": "discovery/discovery_proposal-feedback-exact.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-feedback-stale",
+      "verdict": "pass",
+      "bundleDigest": "9435d80eaf6577d64e0fb4e27df2d420fe429c5a1b74037876eb81301298cf1c",
+      "evidenceFile": "discovery/discovery_proposal-feedback-stale.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/proposal-late-tool-call",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "9e08bfc66249cedb5641467fc40f8c4b5d5c3715c097d5408ebb719840661973",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_proposal-late-tool-call.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-missing-required-field",
+      "verdict": "pass",
+      "bundleDigest": "93edf89583e3dfeaca39db9a1ead1ef8ab86305be3658344dcc694053d32a212",
+      "evidenceFile": "discovery/discovery_proposal-missing-required-field.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/proposal-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "38d01ed8dc56204f394da0b272068a280cc63cc8c528b18522b4965feb1b8ef1",
+      "evidenceFile": "discovery/discovery_proposal-retry-exhaustion.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/proposal-stale-execution-fence",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "4ffa469996bdd13e63c5a00e043f8ad42007308c3af77a7141b26d924f1c4865",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_proposal-stale-execution-fence.json"
     },
     {
       "workshop": "discovery",
-      "scenario": "discovery/readiness-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "discovery/proposal-worker-crash",
       "verdict": "pass",
-      "bundleDigest": "7ff721fd96a4385554175b8d43547aed9a194167ee985b9ba66344e09eee3d7e",
-      "source": "harvest"
-    },
-    {
-      "workshop": "discovery",
-      "scenario": "discovery/readiness-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "22fc58822dc5148c9d5cc61b083493235fc0be19b03d684afe894dfb60ee810f",
-      "source": "harvest"
+      "bundleDigest": "00d4938a678b7023d16061dd912cd1d82c6fccd088b688ac7b5a641978380d00",
+      "evidenceFile": "discovery/discovery_proposal-worker-crash.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/readiness-duplicate-submit",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "9be9c3ada553056b9e9ce76cbbb4c102da58252e4de83c65a600b03323074b30",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_readiness-duplicate-submit.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-absent",
+      "verdict": "pass",
+      "bundleDigest": "049c578eabe5d814bb1e2d72d70d9135e9ca279cf78188823ea69ce80b540548",
+      "evidenceFile": "discovery/discovery_readiness-feedback-absent.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-corrupted",
+      "verdict": "pass",
+      "bundleDigest": "eeda9f3d720fd26fbc6df50d3335ec360c1bea21da59468c30505274405cdb18",
+      "evidenceFile": "discovery/discovery_readiness-feedback-corrupted.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-exact",
+      "verdict": "pass",
+      "bundleDigest": "316615188ab3bec3dca1eba699f2e410dcbbac786eb585897592107739d32c81",
+      "evidenceFile": "discovery/discovery_readiness-feedback-exact.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-feedback-stale",
+      "verdict": "pass",
+      "bundleDigest": "72124d5cfd85610604f477360397b57b6bd9785edf5a04ad24e735f6fa04117b",
+      "evidenceFile": "discovery/discovery_readiness-feedback-stale.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-invented-source-ref",
+      "verdict": "pass",
+      "bundleDigest": "e1f42adf2c580735c14f04118b75768181be3dd1894f84e8ad0c8b91a0063ba8",
+      "evidenceFile": "discovery/discovery_readiness-invented-source-ref.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/readiness-late-tool-call",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "7d03f22ae756cdee52dc18b70c55dcfd3cd9d3192aaf1410302ea3431b951703",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_readiness-late-tool-call.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-missing-dimension",
+      "verdict": "pass",
+      "bundleDigest": "a84494b20fd80d0d6697fb0f8e443531346fb9287c1304fc8951b30a499aa753",
+      "evidenceFile": "discovery/discovery_readiness-missing-dimension.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "22fc58822dc5148c9d5cc61b083493235fc0be19b03d684afe894dfb60ee810f",
+      "evidenceFile": "discovery/discovery_readiness-retry-exhaustion.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/readiness-stale-execution-fence",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "9766eae2871ad66a90ca2931a8c70bff16774f361c2e515bb10d9b5034513994",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_readiness-stale-execution-fence.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "7ff721fd96a4385554175b8d43547aed9a194167ee985b9ba66344e09eee3d7e",
+      "evidenceFile": "discovery/discovery_readiness-worker-crash.json"
+    },
+    {
+      "workshop": "discovery",
+      "scenario": "discovery/readiness-wrong-proposal-hash",
+      "verdict": "pass",
+      "bundleDigest": "bca9f27d30e81f5ce89c93d78b5f7cdb0a92043a5ca3dce710eef828b5d6f62a",
+      "evidenceFile": "discovery/discovery_readiness-wrong-proposal-hash.json"
     },
     {
       "workshop": "discovery",
       "scenario": "discovery/restart-idempotency",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "806e6d5aa61d1c788744b4a2ff815ad516e64108d7b6f9018f2b0bbfc5dda614",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/happy-formalized",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "2a65be60af03af72d5eef585f78667f7d8770ad279f42c69cdc9c0e6b80085a0",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/product-missing-brief-lineage-repair",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "ae6e16a1ca66e9273bae8eae1740be8de579e994ab151a72824bb4c2f2789c54",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/use-cases-missing-fr-coverage-repair",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "f9f5ed15113ea543865ad649b083558ab5f2d9e344f28730d27c118726f62d84",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/acceptance-missing-trace-repair",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "68be22e01877f253385cadfb2fe50ff78dacf250903302fa85c443e5cb5059c7",
-      "source": "harvest"
+      "evidenceFile": "discovery/discovery_restart-idempotency.json"
     },
     {
       "workshop": "formalization",
       "scenario": "formalization/acceptance-heading-mismatch-repair",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "382367ec0175de022c4246be7481856c96563aaab8a5b0e28d78466c8a599610",
-      "source": "harvest"
+      "evidenceFile": "formalization/formalization_acceptance-heading-mismatch-repair.json"
     },
     {
       "workshop": "formalization",
-      "scenario": "formalization/reconciliation-malformed-report-rejected",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "formalization/acceptance-missing-trace-repair",
       "verdict": "pass",
-      "bundleDigest": "c60d22109b27ef270d081e7b8a671904327bf5f3c592b8b2a12a661ff0a57d53",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/architecture-invalid-d2-repair",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "6b4a68f0292f8e2e9218e0665e650215e3ef509e097f558958bcb7ad38dd09c3",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/reviewer-foreign-subject",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "ac38244ba932c58621ceced46820f0b20787598a1790164b749406c1425b9640",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/reviewer-feedback-exact",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "fc6af50a23a92d3bb0db045211cdc356fe84f5cdc9c776e713def0b6afb7bb2e",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/reviewer-feedback-absent",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "441ac2b3a15da88fbe5fd39b2874cd793c11f6d75119c6c39ba543f6a253bde9",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/reviewer-feedback-stale",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "44bc6a725706f68153781982cfaa90cde06b933e67875cc4990b37fac11b3670",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/reviewer-feedback-corrupted",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "93d86cfda6f0803cef1bcddb5afba115429f742f3105e5ab48a8534b2bb3ca5f",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/product-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "d79362d95ffc559d620dc737d97fe4d9ed6eaabe409ce9493a84b65acbfdd69f",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/product-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "b5d238f4a3020be7257ab18fae5214fd1c6eb45cec77b07eaad701aac7994020",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/useCases-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "39116df34b609974405a1b10c6c2211d65904b8294d6218be1c312b3aa738b74",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/useCases-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "5094216c673d73f5710eed68436c68998d596d5704ae7d54fe83a1af2665d1b9",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/acceptance-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "a12837e98cd094a7e98152eb843bfdbc3071e2d4be7c0c865f80d91158605105",
-      "source": "harvest"
+      "bundleDigest": "68be22e01877f253385cadfb2fe50ff78dacf250903302fa85c443e5cb5059c7",
+      "evidenceFile": "formalization/formalization_acceptance-missing-trace-repair.json"
     },
     {
       "workshop": "formalization",
       "scenario": "formalization/acceptance-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "31efff135780d2252c4cd6e4c1d81280f72798cb8cb07edf8e4ac425f02e3c3d",
-      "source": "harvest"
+      "evidenceFile": "formalization/formalization_acceptance-retry-exhaustion.json"
     },
     {
       "workshop": "formalization",
-      "scenario": "formalization/reconciliation-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "formalization/acceptance-worker-crash",
       "verdict": "pass",
-      "bundleDigest": "dc956b7d9eeb3311e925f71230c4e8ead5c1d6d1a36dda6c619442fde3e614a4",
-      "source": "harvest"
+      "bundleDigest": "a12837e98cd094a7e98152eb843bfdbc3071e2d4be7c0c865f80d91158605105",
+      "evidenceFile": "formalization/formalization_acceptance-worker-crash.json"
     },
     {
       "workshop": "formalization",
-      "scenario": "formalization/reconciliation-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "formalization/architecture-invalid-d2-repair",
       "verdict": "pass",
-      "bundleDigest": "99e03b0f402d7d586e9167715f58fda91fb7782685055e508fa0450f299270fe",
-      "source": "harvest"
-    },
-    {
-      "workshop": "formalization",
-      "scenario": "formalization/architecture-worker-crash",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "8096e421c898065d86cb3f0af5216da27654e74d73e7e26c63c42694130faa9b",
-      "source": "harvest"
+      "bundleDigest": "6b4a68f0292f8e2e9218e0665e650215e3ef509e097f558958bcb7ad38dd09c3",
+      "evidenceFile": "formalization/formalization_architecture-invalid-d2-repair.json"
     },
     {
       "workshop": "formalization",
       "scenario": "formalization/architecture-retry-exhaustion",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "52b7ab3ecf779ef7eea45c37ddc37d6b8925678b3dffaa2b812d95a857f7daf8",
-      "source": "harvest"
+      "evidenceFile": "formalization/formalization_architecture-retry-exhaustion.json"
     },
     {
       "workshop": "formalization",
-      "scenario": "formalization/reconciliation-duplicate-submit",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "formalization/architecture-worker-crash",
       "verdict": "pass",
-      "bundleDigest": "9b3131cd7c1a6542fb61098666c171357de81e2dd31ab6acac8e2e6fbaa874ef",
-      "source": "harvest"
+      "bundleDigest": "8096e421c898065d86cb3f0af5216da27654e74d73e7e26c63c42694130faa9b",
+      "evidenceFile": "formalization/formalization_architecture-worker-crash.json"
     },
     {
       "workshop": "formalization",
-      "scenario": "formalization/reconciliation-late-tool-call",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "formalization/happy-formalized",
       "verdict": "pass",
-      "bundleDigest": "b916586ff2698ab78f7134255d3496409c3d690975f8fbe96442f6ec57748ea8",
-      "source": "harvest"
+      "bundleDigest": "2a65be60af03af72d5eef585f78667f7d8770ad279f42c69cdc9c0e6b80085a0",
+      "evidenceFile": "formalization/formalization_happy-formalized.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-missing-brief-lineage-repair",
+      "verdict": "pass",
+      "bundleDigest": "ae6e16a1ca66e9273bae8eae1740be8de579e994ab151a72824bb4c2f2789c54",
+      "evidenceFile": "formalization/formalization_product-missing-brief-lineage-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "b5d238f4a3020be7257ab18fae5214fd1c6eb45cec77b07eaad701aac7994020",
+      "evidenceFile": "formalization/formalization_product-retry-exhaustion.json"
     },
     {
       "workshop": "formalization",
       "scenario": "formalization/product-stale-execution-fence",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "23c0735db4d473b6e56af1c8a7059b1500330555c46170d9f71422362c5bf6a4",
-      "source": "harvest"
+      "evidenceFile": "formalization/formalization_product-stale-execution-fence.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/product-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "d79362d95ffc559d620dc737d97fe4d9ed6eaabe409ce9493a84b65acbfdd69f",
+      "evidenceFile": "formalization/formalization_product-worker-crash.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-duplicate-submit",
+      "verdict": "pass",
+      "bundleDigest": "9b3131cd7c1a6542fb61098666c171357de81e2dd31ab6acac8e2e6fbaa874ef",
+      "evidenceFile": "formalization/formalization_reconciliation-duplicate-submit.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-late-tool-call",
+      "verdict": "pass",
+      "bundleDigest": "b916586ff2698ab78f7134255d3496409c3d690975f8fbe96442f6ec57748ea8",
+      "evidenceFile": "formalization/formalization_reconciliation-late-tool-call.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-malformed-report-rejected",
+      "verdict": "pass",
+      "bundleDigest": "c60d22109b27ef270d081e7b8a671904327bf5f3c592b8b2a12a661ff0a57d53",
+      "evidenceFile": "formalization/formalization_reconciliation-malformed-report-rejected.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "99e03b0f402d7d586e9167715f58fda91fb7782685055e508fa0450f299270fe",
+      "evidenceFile": "formalization/formalization_reconciliation-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/reconciliation-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "dc956b7d9eeb3311e925f71230c4e8ead5c1d6d1a36dda6c619442fde3e614a4",
+      "evidenceFile": "formalization/formalization_reconciliation-worker-crash.json"
     },
     {
       "workshop": "formalization",
       "scenario": "formalization/restart-idempotency",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "f035e8cd6c6e7cf3a21348d531f96d6a17ac711f9ad361d3172cc15846b55608",
-      "source": "harvest"
+      "evidenceFile": "formalization/formalization_restart-idempotency.json"
     },
     {
-      "workshop": "development",
-      "scenario": "development/happy-verified",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-absent",
       "verdict": "pass",
-      "bundleDigest": "ce1aaa70ed68f5a667c7417cfad5e7662f2ca9f5457e571073cb41612f851fd4",
-      "source": "harvest"
+      "bundleDigest": "441ac2b3a15da88fbe5fd39b2874cd793c11f6d75119c6c39ba543f6a253bde9",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-absent.json"
     },
     {
-      "workshop": "development",
-      "scenario": "development/fanout-scheduling-order-capped",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-corrupted",
       "verdict": "pass",
-      "bundleDigest": "7b601ea8b6e03a6451348d07261dd0ed524c751a2048756a91076a15c2052f3f",
-      "source": "harvest"
+      "bundleDigest": "93d86cfda6f0803cef1bcddb5afba115429f742f3105e5ab48a8534b2bb3ca5f",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-corrupted.json"
     },
     {
-      "workshop": "development",
-      "scenario": "development/fanout-concurrency-cap-limits-parallel-runnable",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-exact",
       "verdict": "pass",
-      "bundleDigest": "132bf639309a3b8f803d78d03eba828997a7d211a0f6c15ae7d4ec4989ec3ec9",
-      "source": "harvest"
+      "bundleDigest": "fc6af50a23a92d3bb0db045211cdc356fe84f5cdc9c776e713def0b6afb7bb2e",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-exact.json"
     },
     {
-      "workshop": "development",
-      "scenario": "development/fanin-all-required-before-settlement",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-feedback-stale",
       "verdict": "pass",
-      "bundleDigest": "b24c66dfe13133867ee967d92c91db0690c4273dcf59d009bed9498462c6f510",
-      "source": "harvest"
+      "bundleDigest": "44bc6a725706f68153781982cfaa90cde06b933e67875cc4990b37fac11b3670",
+      "evidenceFile": "formalization/formalization_reviewer-feedback-stale.json"
     },
     {
-      "workshop": "development",
-      "scenario": "development/impl-scope-outside-rejected-repaired",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "formalization",
+      "scenario": "formalization/reviewer-foreign-subject",
       "verdict": "pass",
-      "bundleDigest": "d99818e52b3114187b4f1cbdea8019f875169a026bee748307318226daa603cc",
-      "source": "harvest"
+      "bundleDigest": "ac38244ba932c58621ceced46820f0b20787598a1790164b749406c1425b9640",
+      "evidenceFile": "formalization/formalization_reviewer-foreign-subject.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/use-cases-missing-fr-coverage-repair",
+      "verdict": "pass",
+      "bundleDigest": "f9f5ed15113ea543865ad649b083558ab5f2d9e344f28730d27c118726f62d84",
+      "evidenceFile": "formalization/formalization_use-cases-missing-fr-coverage-repair.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/useCases-retry-exhaustion",
+      "verdict": "pass",
+      "bundleDigest": "5094216c673d73f5710eed68436c68998d596d5704ae7d54fe83a1af2665d1b9",
+      "evidenceFile": "formalization/formalization_useCases-retry-exhaustion.json"
+    },
+    {
+      "workshop": "formalization",
+      "scenario": "formalization/useCases-worker-crash",
+      "verdict": "pass",
+      "bundleDigest": "39116df34b609974405a1b10c6c2211d65904b8294d6218be1c312b3aa738b74",
+      "evidenceFile": "formalization/formalization_useCases-worker-crash.json"
     },
     {
       "workshop": "development",
       "scenario": "development/acceptance-packaging-one-container",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "d88ae38cddb89965f96d405fd3b68c281727180cdaa3995805fb30f9441ee6a1",
-      "source": "harvest"
-    },
-    {
-      "workshop": "development",
-      "scenario": "development/impl-review-changes-same-workplace",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "62aa97131a585cca27b3028e0f1a55cb01eb46d2b76ba1d94b00efe408f816e4",
-      "source": "harvest"
-    },
-    {
-      "workshop": "development",
-      "scenario": "development/git-integration-after-final-acceptance-only",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "5c20051a8a63875e46ade8697c43600dbf97076197a6a287271abe8a053c88d0",
-      "source": "harvest"
+      "evidenceFile": "development/development_acceptance-packaging-one-container.json"
     },
     {
       "workshop": "development",
       "scenario": "development/claim-monotonicity-narrowing-rejected",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "2006330df8de84e4efa1cd0151b9665259e0c102621a799578bcafc3a2f31351",
-      "source": "harvest"
+      "evidenceFile": "development/development_claim-monotonicity-narrowing-rejected.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/readiness-source-mismatch-rejected",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/fanin-all-required-before-settlement",
       "verdict": "pass",
-      "bundleDigest": "b950e0b4e80eb557840ec6697839aae8400b9c2f40ebfe41d3c7b4815b6a5166",
-      "source": "harvest"
+      "bundleDigest": "b24c66dfe13133867ee967d92c91db0690c4273dcf59d009bed9498462c6f510",
+      "evidenceFile": "development/development_fanin-all-required-before-settlement.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/verification-evidence-pins-exact-candidate-hash",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/fanout-concurrency-cap-limits-parallel-runnable",
       "verdict": "pass",
-      "bundleDigest": "f8036ed167dae40f266398c678c9719c8a41fd64bb7b070e59017f3904eb0282",
-      "source": "harvest"
+      "bundleDigest": "132bf639309a3b8f803d78d03eba828997a7d211a0f6c15ae7d4ec4989ec3ec9",
+      "evidenceFile": "development/development_fanout-concurrency-cap-limits-parallel-runnable.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/local-readiness-failed-upstream-blocked",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/fanout-scheduling-order-capped",
       "verdict": "pass",
-      "bundleDigest": "25579d2ca4d48ed09659b11a307816e4658b5e87e08b722c1f03287f694119dc",
-      "source": "harvest"
+      "bundleDigest": "7b601ea8b6e03a6451348d07261dd0ed524c751a2048756a91076a15c2052f3f",
+      "evidenceFile": "development/development_fanout-scheduling-order-capped.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/planner-frozen-srs-unsat-failed",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/git-integration-after-final-acceptance-only",
       "verdict": "pass",
-      "bundleDigest": "3e57318e7b8bc5d080e8a3b3cb8cea2983feb3149c9facf86acc44dcd0e2ff1e",
-      "source": "harvest"
+      "bundleDigest": "5c20051a8a63875e46ade8697c43600dbf97076197a6a287271abe8a053c88d0",
+      "evidenceFile": "development/development_git-integration-after-final-acceptance-only.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/impl-feedback-exact",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/happy-verified",
       "verdict": "pass",
-      "bundleDigest": "0793aa9a5e042d3c2372d3890c7a55481f56dbec2829288134978bba59e9a695",
-      "source": "harvest"
+      "bundleDigest": "ce1aaa70ed68f5a667c7417cfad5e7662f2ca9f5457e571073cb41612f851fd4",
+      "evidenceFile": "development/development_happy-verified.json"
     },
     {
       "workshop": "development",
       "scenario": "development/impl-feedback-absent",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "8fc23ec44a131d4e2834ff9dff48c43fd8ae8e1b97f3d2d9d64a5b5b8817ac8b",
-      "source": "harvest"
+      "evidenceFile": "development/development_impl-feedback-absent.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/task-graph-production-scale-satisfiable",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/impl-feedback-exact",
       "verdict": "pass",
-      "bundleDigest": "da1fab805b19d5f917a9602febd778b66c9fe1962352d7c6b264076075f8e12c",
-      "source": "harvest"
+      "bundleDigest": "0793aa9a5e042d3c2372d3890c7a55481f56dbec2829288134978bba59e9a695",
+      "evidenceFile": "development/development_impl-feedback-exact.json"
     },
     {
       "workshop": "development",
-      "scenario": "development/task-graph-production-scale-cycle-unsat",
-      "exitStatus": 0,
-      "signal": null,
+      "scenario": "development/impl-review-changes-same-workplace",
       "verdict": "pass",
-      "bundleDigest": "cd61b3775e3cff1b27ce8e4f1486d3154fd26677c0c7fc97694675ec6053c1af",
-      "source": "harvest"
+      "bundleDigest": "62aa97131a585cca27b3028e0f1a55cb01eb46d2b76ba1d94b00efe408f816e4",
+      "evidenceFile": "development/development_impl-review-changes-same-workplace.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/impl-scope-outside-rejected-repaired",
+      "verdict": "pass",
+      "bundleDigest": "d99818e52b3114187b4f1cbdea8019f875169a026bee748307318226daa603cc",
+      "evidenceFile": "development/development_impl-scope-outside-rejected-repaired.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/local-readiness-failed-upstream-blocked",
+      "verdict": "pass",
+      "bundleDigest": "25579d2ca4d48ed09659b11a307816e4658b5e87e08b722c1f03287f694119dc",
+      "evidenceFile": "development/development_local-readiness-failed-upstream-blocked.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/planner-frozen-srs-unsat-failed",
+      "verdict": "pass",
+      "bundleDigest": "3e57318e7b8bc5d080e8a3b3cb8cea2983feb3149c9facf86acc44dcd0e2ff1e",
+      "evidenceFile": "development/development_planner-frozen-srs-unsat-failed.json"
+    },
+    {
+      "workshop": "development",
+      "scenario": "development/readiness-source-mismatch-rejected",
+      "verdict": "pass",
+      "bundleDigest": "b950e0b4e80eb557840ec6697839aae8400b9c2f40ebfe41d3c7b4815b6a5166",
+      "evidenceFile": "development/development_readiness-source-mismatch-rejected.json"
     },
     {
       "workshop": "development",
       "scenario": "development/restart-idempotency",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "fc774e74d5c63aeefe36da876d7dc483ee8052c1cdd06b66120f3e198ca71be1",
-      "source": "harvest"
+      "evidenceFile": "development/development_restart-idempotency.json"
     },
     {
-      "workshop": "delivery",
-      "scenario": "delivery/happy-released-authorized",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "development",
+      "scenario": "development/task-graph-production-scale-cycle-unsat",
       "verdict": "pass",
-      "bundleDigest": "537b21827e118fb038a5358454976ac9c789f3c1469e99f19b73cdc6c1fa653d",
-      "source": "harvest"
+      "bundleDigest": "cd61b3775e3cff1b27ce8e4f1486d3154fd26677c0c7fc97694675ec6053c1af",
+      "evidenceFile": "development/development_task-graph-production-scale-cycle-unsat.json"
     },
     {
-      "workshop": "delivery",
-      "scenario": "delivery/deferred-approval-required",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "development",
+      "scenario": "development/task-graph-production-scale-satisfiable",
       "verdict": "pass",
-      "bundleDigest": "8d6dacb47b532e0d8e240cbb5cb89f2f226cc417766acf450dba7fa370ece637",
-      "source": "harvest"
+      "bundleDigest": "da1fab805b19d5f917a9602febd778b66c9fe1962352d7c6b264076075f8e12c",
+      "evidenceFile": "development/development_task-graph-production-scale-satisfiable.json"
     },
     {
-      "workshop": "delivery",
-      "scenario": "delivery/denied-blocked",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "development",
+      "scenario": "development/verification-evidence-pins-exact-candidate-hash",
       "verdict": "pass",
-      "bundleDigest": "35cccca03ca7654f90cdd283c7cf48c9ae62bd0518ee18c2e217277fc23e8ed9",
-      "source": "harvest"
-    },
-    {
-      "workshop": "delivery",
-      "scenario": "delivery/pending-holds-publication",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "fa8dfa0e3374a0ad69c34915accd84be2647737184bb56a2e9b2301ff9fa3cbc",
-      "source": "harvest"
-    },
-    {
-      "workshop": "delivery",
-      "scenario": "delivery/observation-mismatch-blocked",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "c89122ea293ca708b66d9b4f7b6bf01d4bfdec9e6d59a48cf5b302cbab4c048d",
-      "source": "harvest"
-    },
-    {
-      "workshop": "delivery",
-      "scenario": "delivery/publication-unknown-fails-closed",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "8d838c0d42d1cec4d9c8cd4da7df104a5838d0bfabbaa7367bd67d5b1bc5bd86",
-      "source": "harvest"
-    },
-    {
-      "workshop": "delivery",
-      "scenario": "delivery/grant-policy-hash-mismatch-blocked",
-      "exitStatus": 0,
-      "signal": null,
-      "verdict": "pass",
-      "bundleDigest": "abce383c90cb12dac37ffafd2498bd79f71625516a434f693673c88f9924109c",
-      "source": "harvest"
+      "bundleDigest": "f8036ed167dae40f266398c678c9719c8a41fd64bb7b070e59017f3904eb0282",
+      "evidenceFile": "development/development_verification-evidence-pins-exact-candidate-hash.json"
     },
     {
       "workshop": "delivery",
       "scenario": "delivery/candidate-immutability-drift-fails-closed",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "6814c914e5cf996815790d5cdbe2354a9ee707a36c399b99f761494855aa74d0",
-      "source": "harvest"
+      "evidenceFile": "delivery/delivery_candidate-immutability-drift-fails-closed.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/deferred-approval-required",
+      "verdict": "pass",
+      "bundleDigest": "8d6dacb47b532e0d8e240cbb5cb89f2f226cc417766acf450dba7fa370ece637",
+      "evidenceFile": "delivery/delivery_deferred-approval-required.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/denied-blocked",
+      "verdict": "pass",
+      "bundleDigest": "35cccca03ca7654f90cdd283c7cf48c9ae62bd0518ee18c2e217277fc23e8ed9",
+      "evidenceFile": "delivery/delivery_denied-blocked.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/grant-policy-hash-mismatch-blocked",
+      "verdict": "pass",
+      "bundleDigest": "abce383c90cb12dac37ffafd2498bd79f71625516a434f693673c88f9924109c",
+      "evidenceFile": "delivery/delivery_grant-policy-hash-mismatch-blocked.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/happy-released-authorized",
+      "verdict": "pass",
+      "bundleDigest": "537b21827e118fb038a5358454976ac9c789f3c1469e99f19b73cdc6c1fa653d",
+      "evidenceFile": "delivery/delivery_happy-released-authorized.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/observation-mismatch-blocked",
+      "verdict": "pass",
+      "bundleDigest": "c89122ea293ca708b66d9b4f7b6bf01d4bfdec9e6d59a48cf5b302cbab4c048d",
+      "evidenceFile": "delivery/delivery_observation-mismatch-blocked.json"
     },
     {
       "workshop": "delivery",
       "scenario": "delivery/observe-before-retry-no-duplicate-effect",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "3f9b4401b314ed16c8a0f7caa43d971205a7a04b6d6acfeab29b937d318240a4",
-      "source": "harvest"
+      "evidenceFile": "delivery/delivery_observe-before-retry-no-duplicate-effect.json"
     },
     {
-      "workshop": "documentation",
-      "scenario": "documentation/missing-engine-blocked",
-      "exitStatus": 0,
-      "signal": null,
+      "workshop": "delivery",
+      "scenario": "delivery/pending-holds-publication",
       "verdict": "pass",
-      "bundleDigest": "ab34e54be30b4ce98ca24ed34b8c06ea0a4ac7360c071508fc2817d678f1beb2",
-      "source": "harvest"
+      "bundleDigest": "fa8dfa0e3374a0ad69c34915accd84be2647737184bb56a2e9b2301ff9fa3cbc",
+      "evidenceFile": "delivery/delivery_pending-holds-publication.json"
+    },
+    {
+      "workshop": "delivery",
+      "scenario": "delivery/publication-unknown-fails-closed",
+      "verdict": "pass",
+      "bundleDigest": "8d838c0d42d1cec4d9c8cd4da7df104a5838d0bfabbaa7367bd67d5b1bc5bd86",
+      "evidenceFile": "delivery/delivery_publication-unknown-fails-closed.json"
     },
     {
       "workshop": "documentation",
       "scenario": "documentation/happy-documented",
-      "exitStatus": 0,
-      "signal": null,
       "verdict": "pass",
       "bundleDigest": "f238e3578b5e12a97ae4fa818c971eb09e4105c4d46b2d1dc6f128b66c3e2f18",
-      "source": "harvest"
+      "evidenceFile": "documentation/documentation_happy-documented.json"
+    },
+    {
+      "workshop": "documentation",
+      "scenario": "documentation/missing-engine-blocked",
+      "verdict": "pass",
+      "bundleDigest": "ab34e54be30b4ce98ca24ed34b8c06ea0a4ac7360c071508fc2817d678f1beb2",
+      "evidenceFile": "documentation/documentation_missing-engine-blocked.json"
     }
   ],
   "specialMultiPhaseProofs": [
@@ -952,22 +788,7 @@
       "bundle": "pass"
     },
     {
-      "scenario": "formalization/product-retry-exhaustion",
-      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
-      "bundle": "pass"
-    },
-    {
-      "scenario": "formalization/useCases-retry-exhaustion",
-      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
-      "bundle": "pass"
-    },
-    {
       "scenario": "formalization/acceptance-retry-exhaustion",
-      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
-      "bundle": "pass"
-    },
-    {
-      "scenario": "formalization/reconciliation-retry-exhaustion",
       "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
       "bundle": "pass"
     },
@@ -977,7 +798,22 @@
       "bundle": "pass"
     },
     {
+      "scenario": "formalization/product-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/reconciliation-retry-exhaustion",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
       "scenario": "formalization/restart-idempotency",
+      "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
+      "bundle": "pass"
+    },
+    {
+      "scenario": "formalization/useCases-retry-exhaustion",
       "runner": "multi-phase proof runner (runDiscoveryRestartProof/runFormalizationRestartProof family)",
       "bundle": "pass"
     },
