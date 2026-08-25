@@ -49,7 +49,7 @@
     }
   },
   "schemaSnapshot": {
-    "tableCount": 91,
-    "digest": "15eb93aff1cf173daba8b9470dba8aca192be3a3a6e73b0b6f5a4b664fa92beb"
+    "digest": "fdc783473081efc28f7447c22995b54d5322e2488f781e66140202bbf6b287d4",
+    "tableCount": 92
   }
 }

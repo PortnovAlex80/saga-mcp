@@ -303,6 +303,20 @@ const BENIGN_NAME_DATA = [
   { file: 'src/process-modules/application/validate-process-module.ts', anchor: "'formalization',", why: 'STANDARD_MODULE_KINDS warning set — audit §6: legitimate soft set' },
   { file: 'src/process-modules/application/validate-process-module.ts', anchor: "'development',", why: 'STANDARD_MODULE_KINDS warning set — audit §6: legitimate soft set' },
   { file: 'src/process-modules/application/validate-process-module.ts', anchor: "'delivery',", why: 'STANDARD_MODULE_KINDS warning set — audit §6: legitimate soft set' },
+  // 2026-08-26 EK-wave admissions (deliberate, same commit as the merge that
+  // introduced them — the guard is a ratchet, not a wall):
+  // (a) WP-18 accountant: the counter-identity pin check is a fail-closed
+  //     identity comparison (TOKEN_COUNTER_MISMATCH), not a workshop/stage
+  //     branch — the P4a heuristic cannot tell constants apart.
+  { file: 'src/workflow-kernel/context-envelope/accountant.ts', anchor: 'pin.name === RUNNING_COUNTER_IDENTITY.name &&', why: 'counter-identity pin check (fail-closed TOKEN_COUNTER_MISMATCH) — identity comparison of the pinned token counter, not a workshop/stage branch' },
+  // (b) WP-05 lifecycle-run reducer: the four routeOutcome edges are the EK-1
+  //     frozen transition-universe DATA (obligation:enterStage.* pinned in
+  //     docs/refactoring/event-kernel/reconciliation/transition-universe.json);
+  //     the names ARE the register.
+  { file: 'src/workflow-kernel/domain/reducers/lifecycle-run.ts', anchor: "input.stageRoute === 'initial-discovery'", why: 'EK-1 frozen transition-universe data: routeOutcome edge over the frozen stage route (obligation:enterStage.initial-discovery)' },
+  { file: 'src/workflow-kernel/domain/reducers/lifecycle-run.ts', anchor: "input.stageRoute === 'solution-formalization'", why: 'EK-1 frozen transition-universe data: routeOutcome edge over the frozen stage route (obligation:enterStage.solution-formalization)' },
+  { file: 'src/workflow-kernel/domain/reducers/lifecycle-run.ts', anchor: "input.stageRoute === 'solution-development'", why: 'EK-1 frozen transition-universe data: routeOutcome edge over the frozen stage route (obligation:enterStage.solution-development)' },
+  { file: 'src/workflow-kernel/domain/reducers/lifecycle-run.ts', anchor: "input.stageRoute === 'delivery-release'", why: 'EK-1 frozen transition-universe data: routeOutcome edge over the frozen stage route (obligation:enterStage.delivery-release)' },
 ];
 
 const BLESSED_BEHAVIOURAL = [
@@ -338,7 +352,7 @@ const DRIFT_REPORTED = [
 
 // drift 16→15 at Phase 3.2 (ADR-095): the settlement-debug behavioural site
 // was deleted with the legacy Discovery query — see the note in DRIFT_REPORTED.
-const FROZEN_REGISTER_COUNTS = { benign: 4, blessed: 2, drift: 15 };
+const FROZEN_REGISTER_COUNTS = { benign: 9, blessed: 2, drift: 15 };
 
 test('the kernel branches on a workshop/stage name only inside the frozen registers', () => {
   const registers = [
