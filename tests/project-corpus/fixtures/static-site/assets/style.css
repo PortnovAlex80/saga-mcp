@@ -1,0 +1,12 @@
+/* static-site/assets/style.css - the corpus static product stylesheet. */
+#static-root {
+  max-width: 40rem;
+  margin: 2rem auto;
+  font-family: system-ui, sans-serif;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+}
+#static-root h1 {
+  font-size: 1.25rem;
+}

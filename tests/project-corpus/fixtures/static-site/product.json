@@ -1,0 +1,7 @@
+{
+  "kind": "corpus-product-fixture.v1",
+  "product": "static-site",
+  "description": "The corpus STATIC product: a browser entry, one asset and one stylesheet, fully materialized at build time. No server - the structure hook is the honest static analogue of the loopback.",
+  "surfaces": ["public/index.html", "public/app.js", "assets/style.css", "dist/build-manifest.json"],
+  "verification": "build + structure check + deterministic re-build"
+}

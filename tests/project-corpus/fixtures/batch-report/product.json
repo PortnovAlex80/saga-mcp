@@ -1,0 +1,7 @@
+{
+  "kind": "corpus-product-fixture.v1",
+  "product": "batch-report",
+  "description": "The corpus BATCH/SCHEDULED product: a deterministic periodic report over a frozen input window. No clock read, no randomness - two builds are byte-identical.",
+  "surfaces": ["dist/report.json", "dist/build-manifest.json"],
+  "verification": "build twice, digests must match (the scheduled product is replayable)"
+}
