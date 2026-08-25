@@ -62,6 +62,15 @@ function ensureDist() {
 // before execution. `concurrency: 1` reproduces the proven process-modules
 // runner sequencing where the suite needs strict ordering for determinism.
 const GROUPS = {
+  // EK greenfield kernel suites (merged 2026-08-24 waves): domain model,
+  // persistence, roles, engine, application (WP-07) and context envelope
+  // (WP-18). One directory glob so NO kernel test file can ever be an
+  // orphan (G2p) — the merges previously added files without hosting them
+  // here, failing matrix-coverage.
+  'workflow-kernel': {
+    globs: ['tests/workflow-kernel/**/*.test.mjs'],
+    note: 'EK event-projected kernel: model, persistence, roles, engine, application, context envelope',
+  },
   architecture: {
     globs: ['tests/architecture/*.test.mjs'],
     note: 'ADR-053 cutover gates, dependency-direction ratchet, conveyor boundaries',
@@ -121,6 +130,13 @@ const GROUPS = {
       'tests/infrastructure/local-runnability-toctou-reprobe.test.mjs',
       'tests/infrastructure/environment-identity.test.mjs',
       'tests/infrastructure/local-runnability-seam-compose.test.mjs',
+      // HUMAN-GATE-CONSOLE (2026-08-24): the 1.16.0 provider wake-source
+      // contract (unknown to passed/failed on the operator's persisted
+      // resolution, bytes guard, latest-row-wins) + the resolve/list/consult
+      // service contract. Exact files on purpose: same GAP-8 hosting
+      // pattern; the hosted surface cannot silently widen.
+      'tests/infrastructure/local-runnability-human-gate.test.mjs',
+      'tests/app/human-gate-resolution.test.mjs',
       // ADR-095 Phase-2A (blocker (b) resolution): the migration-conformance
       // suite was unhosted AND hard-pins legacy Discovery surfaces — the
       // dist imports of the dead discovery-settlement-repository.js /

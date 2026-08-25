@@ -60,6 +60,13 @@ export const PROVIDER_HISTORY = [
   // object in candidate-check-contracts.ts at the introducing commit
   // (verified against the built module of that commit's tree).
   { version: '1.15.0', introducedBy: 'd762ce528c4888a7b6f1e8159b60f5a67502a15e', digest: '982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8' },
+  // HUMAN-GATE-CONSOLE: 1.16.0 adds the humanGateResolutionPolicy field (a
+  // typed unknown converts on the operator's persisted resolution for the
+  // same workplace + candidate bytes). Digest computed by the same canonical
+  // rule over the 1.16.0 digest object; the introducing commit hash is
+  // recorded by the follow-up commit that lands this entry (the vector is
+  // append-only and never regenerated from production).
+  { version: '1.16.0', introducedBy: '0000000000000000000000000000000000000000', digest: 'aa5ad10b7402f266b22e96f4eb3a31e90dc4d4206f59deb6972dc9e1a25b72dd' },
 ];
 
 /** The CURRENT entry (last) of the history vector. */

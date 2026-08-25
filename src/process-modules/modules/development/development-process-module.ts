@@ -190,7 +190,11 @@ const READINESS_CERTIFICATION_PLAN = buildCheckPlan(
   // blocked / candidate-missing / local-readiness-failed — the
   // continuation-acceptable certificate that re-routes the producer defect
   // to the producing workshop.
-  'development.readiness-certification.final.v3',
+  // v4 — HUMAN-GATE-CONSOLE: the runnability provider bumps to 1.16.0 (a
+  // typed `unknown` converts on the operator's persisted human-gate
+  // resolution for the same workplace + candidate bytes). Plan version bump
+  // because the entry's pinned provider digest changed.
+  'development.readiness-certification.final.v4',
   [{
     providerId: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_ID,
     version: DEVELOPMENT_READINESS_MONOTONICITY_CHECK_PROVIDER_VERSION,

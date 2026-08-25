@@ -66,6 +66,10 @@ import {
   ageClass,
   ageText,
 } from './shared.mjs';
+import {
+  ensureHumanGateResolutionSchema,
+  listPendingHumanGateParks,
+} from '../dist/app/human-gate-resolution.js';
 
 // WORKER-NAMES-DESIGN: execution_id → factory callsign for board rendering.
 // One read-only query per render; guarded for a pre-migration DB (column not
@@ -84,6 +88,109 @@ function readWorkerDisplayNames() {
   } catch {
     return new Map();
   }
+}
+
+// HUMAN-GATE-CONSOLE (docs/architecture/HUMAN-GATE-CONSOLE.md): the explicit
+// "the factory asks a human" surface. A GATE_HUMAN_REQUIRED park and an open
+// worker question are both invisible in the old UI — the line just stops.
+// This projection lists them with the operator's decision buttons.
+function readHumanConsoleData(projectId) {
+  try {
+    return withDb(db => {
+      let gates = [];
+      let asks = [];
+      try {
+        ensureHumanGateResolutionSchema(db);
+        gates = listPendingHumanGateParks(db, projectId);
+      } catch { /* pre-schema factory DB: no gates surface */ }
+      try {
+        asks = db.prepare(`
+          SELECT hr.request_id, hr.task_id, hr.question, hr.resume_phase,
+                 hr.created_at AS asked_at, t.title AS task_title
+            FROM human_requests hr
+            JOIN tasks t ON t.id = hr.task_id
+            JOIN epics e ON e.id = t.epic_id
+           WHERE hr.state='open' AND e.project_id=?
+           ORDER BY hr.created_at DESC
+        `).all(projectId);
+      } catch { asks = []; }
+      return { gates, asks };
+    });
+  } catch {
+    return { gates: [], asks: [] };
+  }
+}
+
+let _humanGateResolutionModule = null;
+function humanGateResolutionModule() {
+  _humanGateResolutionModule ??= require('../dist/app/human-gate-resolution.js');
+  return _humanGateResolutionModule;
+}
+
+const HGC_CHECK_LABELS = {
+  passed: { glyph: '✓', cls: 'passed', text: '' },
+  failed: { glyph: '✗', cls: 'failed', text: '' },
+  unknown: { glyph: '?', cls: 'unknown', text: ' — машина не смогла проверить' },
+  error: { glyph: '✗', cls: 'failed', text: ' — ошибка проверки' },
+};
+
+function renderHumanGateConsole(projectId) {
+  const { gates, asks } = readHumanConsoleData(projectId);
+  if (gates.length === 0 && asks.length === 0) return '';
+  const gateCards = gates.map(g => {
+    const checks = (g.checks || []).map(c => {
+      const meta = HGC_CHECK_LABELS[c.outcome] ?? HGC_CHECK_LABELS.unknown;
+      return `<span class="hgc-check ${meta.cls}" title="${esc(c.providerId)}">${esc(c.providerId.split('.').pop())} ${meta.glyph}${esc(meta.text)}</span>`;
+    }).join('');
+    const repoHint = (g.repositoryPaths || []).length > 0
+      ? `<div class="hgc-hint">Посмотреть продукт: <code>${esc(g.repositoryPaths[0])}</code></div>`
+      : '';
+    const shortCell = g.productionCellId.replace(/^development-/, '');
+    return `
+      <div class="hgc-card" data-ref="${esc(g.workplaceRef)}">
+        <div class="hgc-head">
+          <b>${esc(shortCell)}</b>
+          <span class="hgc-meta">${esc(g.projectName ?? `run #${g.processRunId}`)}${g.epicName ? ' · ' + esc(g.epicName) : ''} · остановлено ${esc(ageText(g.parkedAt))} назад</span>
+        </div>
+        <div class="hgc-reason">${esc(g.parkMessage)}</div>
+        ${checks ? `<div class="hgc-checks">${checks}</div>` : ''}
+        ${repoHint}
+        <div class="hgc-actions">
+          <button type="button" class="hgc-accept">✅ Посмотрел — всё ок, принять</button>
+          <button type="button" class="hgc-reject">❌ Не ок — на доработку</button>
+        </div>
+        <div class="hgc-feedback" hidden>
+          <textarea rows="3" placeholder="Что не понравилось (обязательно): этот текст получит производящий цех"></textarea>
+          <button type="button" class="hgc-send-reject">Отправить на доработку</button>
+        </div>
+        <div class="hgc-status"></div>
+      </div>`;
+  }).join('');
+  const askCards = asks.map(a => `
+      <div class="hgc-card hgc-ask" data-request="${esc(a.request_id)}">
+        <div class="hgc-head">
+          <b>Вопрос воркера</b>
+          <span class="hgc-meta">${esc(a.task_title ?? `task #${a.task_id}`)} · ${esc(ageText(a.asked_at))} назад</span>
+        </div>
+        <div class="hgc-reason">${esc(a.question)}</div>
+        <div class="hgc-feedback">
+          <textarea rows="2" placeholder="Ответ оператора — его прочитает следующий воркер"></textarea>
+          <button type="button" class="hgc-send-answer">Ответить</button>
+        </div>
+        <div class="hgc-status"></div>
+      </div>`).join('');
+  return `
+      <div class="human-console" id="human-console">
+        <div class="human-console-head">
+          <span class="human-console-icon">🧑‍🏭</span>
+          <div>
+            <div class="human-console-title">ЗАВОД ПРОСИТ ЧЕЛОВЕКА${gates.length ? ` — гейтов: ${gates.length}` : ''}${asks.length ? ` · вопросов воркеров: ${asks.length}` : ''}</div>
+            <div class="human-console-sub">Линия остановлена честной границей: машина не решила сама и ждёт вашего ответа. Без него завод стоит.</div>
+          </div>
+        </div>
+        ${gateCards}
+        ${askCards}
+      </div>`;
 }
 
 // CC-GAP-10 (rendering-only): the durable author/reviewer projection identity
@@ -193,8 +300,40 @@ export function createBoardRenderApi({
       ? `<div class="flash flash-${flash.kind}">${esc(flash.text)}</div>`
       : '';
 
+    // HUMAN-GATE-CONSOLE: global visibility — a parked gate in ANY project
+    // must be visible from the root page, with a direct jump to that board.
+    let humanBanner = '';
+    try {
+      const gates = withDb(db => {
+        try {
+          ensureHumanGateResolutionSchema(db);
+          return listPendingHumanGateParks(db);
+        } catch { return []; }
+      });
+      if (gates.length > 0) {
+        const byProject = new Map();
+        for (const g of gates) {
+          const key = g.projectId ?? 0;
+          if (!byProject.has(key)) byProject.set(key, { name: g.projectName ?? `run #${g.processRunId}`, n: 0 });
+          byProject.get(key).n += 1;
+        }
+        const chips = [...byProject.entries()].map(([pid, info]) =>
+          `<a class="chip" style="border-color:#e74c3c;color:#ff7b72" href="?project=${pid}">${esc(info.name)} — ${info.n}</a>`).join(' ');
+        humanBanner = `<div class="human-console" style="margin:14px 20px 0">
+          <div class="human-console-head">
+            <span class="human-console-icon">🧑‍🏭</span>
+            <div>
+              <div class="human-console-title">ЗАВОД ПРОСИТ ЧЕЛОВЕКА — гейтов ждут решения: ${gates.length}</div>
+              <div class="human-console-sub">Откройте проект и ответьте на гейт: ✅ всё ок / ❌ не ок + что не понравилось.${' '}${chips}</div>
+            </div>
+          </div>
+        </div>`;
+      }
+    } catch { /* console projection is best-effort on the index */ }
+
     return page('Все проекты', `
       ${flashHtml}
+      ${humanBanner}
       <div class="summary">
         <div class="sum-item"><b>${totalProj}</b><span>проектов</span></div>
         <div class="sum-item"><b>${totalTasks}</b><span>всего задач</span></div>
@@ -495,6 +634,7 @@ export function createBoardRenderApi({
     }).join('');
 
     return page(proj.name, `${header}
+      ${renderHumanGateConsole(projectId)}
       <div class="board-pipeline">
         <div class="bp-title">Pipeline</div>
         <div id="pipeline-stages" class="pipeline-bar"><span class="worker-empty">выбери эпик</span></div>
@@ -536,6 +676,65 @@ export function createBoardRenderApi({
       <div class="board">${columnsHtml}</div>
       <script>
       window.__sagaEpicId = ${controlEpic?.id || 'null'};
+      // HUMAN-GATE-CONSOLE: answer the factory's human boundary inline.
+      (function() {
+        const console_ = document.getElementById('human-console');
+        if (!console_) return;
+        const setBusy = (card, busy) => card.querySelectorAll('button').forEach(b => b.disabled = busy);
+        const showStatus = (card, text, ok) => {
+          const el = card.querySelector('.hgc-status');
+          if (el) { el.textContent = text; el.style.color = ok ? '#3fb950' : '#f85149'; }
+        };
+        async function resolveGate(card, decision, feedback) {
+          setBusy(card, true);
+          showStatus(card, 'отправляю решение…', true);
+          try {
+            const r = await fetch('/api/human-gates/resolve', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workplace_ref: card.dataset.ref, decision, feedback: feedback || undefined }),
+            });
+            const d = await r.json();
+            if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+            showStatus(card, 'Решение записано. Завод продолжает работу — страница перезагрузится…', true);
+            setTimeout(() => location.reload(), 1500);
+          } catch (e) {
+            showStatus(card, 'Ошибка: ' + e.message, false);
+            setBusy(card, false);
+          }
+        }
+        console_.querySelectorAll('.hgc-card[data-ref]').forEach(card => {
+          card.querySelector('.hgc-accept')?.addEventListener('click', () => resolveGate(card, 'accept', ''));
+          card.querySelector('.hgc-reject')?.addEventListener('click', () => {
+            card.querySelector('.hgc-feedback').hidden = false;
+            card.querySelector('.hgc-feedback textarea').focus();
+          });
+          card.querySelector('.hgc-send-reject')?.addEventListener('click', () => {
+            const fb = card.querySelector('.hgc-feedback textarea').value.trim();
+            if (!fb) { showStatus(card, 'При отказе обязательно напишите, что не понравилось.', false); return; }
+            resolveGate(card, 'reject', fb);
+          });
+        });
+        console_.querySelectorAll('.hgc-card[data-request]').forEach(card => {
+          card.querySelector('.hgc-send-answer')?.addEventListener('click', async () => {
+            const answer = card.querySelector('textarea').value.trim();
+            if (!answer) { showStatus(card, 'Пустой ответ не записывается.', false); return; }
+            setBusy(card, true);
+            try {
+              const r = await fetch('/api/human-requests/answer', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: card.dataset.request, answer }),
+              });
+              const d = await r.json();
+              if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+              showStatus(card, 'Ответ записан. Перезагрузка…', true);
+              setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+              showStatus(card, 'Ошибка: ' + e.message, false);
+              setBusy(card, false);
+            }
+          });
+        });
+      })();
       let activeFilter = '__all__';
       let activeRepo = '__all__';
       let activeStage = '__all__';
@@ -1750,6 +1949,40 @@ export function createBoardRenderApi({
       .prow:hover .row-btn{opacity:.85}
       .row-btn:hover{opacity:1!important;background:rgba(255,255,255,.08)}
       .delete-btn:hover{background:rgba(231,76,60,.18)}
+      /* HUMAN-GATE-CONSOLE: the explicit "the factory asks a human" strip.
+         Unmissable by design — red pulsing border, full width, above the
+         pipeline. Elite-2 lesson: an honest human boundary no one can SEE
+         is a dead factory. */
+      .human-console{margin:14px 16px 0;background:#1c1214;border:2px solid #e74c3c;border-radius:10px;padding:14px 16px;animation:human-console-pulse 2.4s infinite}
+      @keyframes human-console-pulse{0%,100%{box-shadow:0 0 0 1px #e74c3c,0 0 10px rgba(231,76,60,.35)}50%{box-shadow:0 0 0 2px #e74c3c,0 0 22px rgba(231,76,60,.65)}}
+      .human-console-head{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+      .human-console-icon{font-size:26px;line-height:1}
+      .human-console-title{font-weight:800;font-size:16px;color:#ff7b72;letter-spacing:.3px}
+      .human-console-sub{font-size:12px;color:#8b949e;margin-top:2px}
+      .hgc-card{background:#0d1117;border:1px solid #6e2c33;border-radius:8px;padding:12px;margin-top:10px}
+      .hgc-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+      .hgc-head b{color:#e6edf3;font-size:13px}
+      .hgc-meta{font-size:11px;color:#8b949e}
+      .hgc-reason{font-size:12px;color:#c9d1d9;margin-top:8px;line-height:1.5;word-break:break-word}
+      .hgc-checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+      .hgc-check{font-size:10px;padding:2px 7px;border-radius:8px;border:1px solid #30363d;background:#21262d;color:#8b949e}
+      .hgc-check.passed{color:#3fb950;border-color:#238636}
+      .hgc-check.failed{color:#f85149;border-color:#da3633}
+      .hgc-check.unknown{color:#d29922;border-color:#9e6a03}
+      .hgc-hint{font-size:11px;color:#8b949e;margin-top:8px}
+      .hgc-hint code{color:#58a6ff;font-family:ui-monospace,Consolas,monospace}
+      .hgc-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+      .hgc-accept{background:#238636;color:#fff;border:1px solid #2ea043;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer}
+      .hgc-accept:hover{background:#2ea043}
+      .hgc-reject{background:#6e2c2c;color:#ffb0ad;border:1px solid #e74c3c;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer}
+      .hgc-reject:hover{background:#8c3232}
+      .hgc-accept:disabled,.hgc-reject:disabled,.hgc-send-reject:disabled,.hgc-send-answer:disabled{opacity:.5;cursor:wait}
+      .hgc-feedback{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+      .hgc-feedback textarea{width:100%;background:#161b22;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:10px;font-size:12px;resize:vertical}
+      .hgc-send-reject,.hgc-send-answer{align-self:flex-start;background:#b62324;color:#fff;border:1px solid #da3633;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer}
+      .hgc-send-reject:hover,.hgc-send-answer:hover{background:#da3633}
+      .hgc-status{font-size:12px;margin-top:8px;min-height:1em}
+      .human-console-empty-note{font-size:11px;color:#8b949e;margin-top:6px}
       .pstats{flex:1}
       .pdot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
       .pname{flex:1;font-weight:600;font-size:14px}

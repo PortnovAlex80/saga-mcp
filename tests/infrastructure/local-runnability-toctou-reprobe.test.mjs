@@ -1085,27 +1085,27 @@ test('BLOCKING MUTATION (e): ENOENT CLI-missing stays LOCAL_RUNNABILITY_COMPOSE_
 });
 
 // ---------------------------------------------------------------------------
-// BLOCKING MUTATION (f) — version/digest fence at 1.15.0: provider version,
+// BLOCKING MUTATION (f) — version/digest fence at 1.16.0: provider version,
 // trusted_providers migration on the exact version→digest pair of every
 // recorded baseline (1.1.0 … 1.14.0; a forged basis on a known version is
 // drift), foreign-digest receipt rejection, unmigrated trust row rejection,
 // and the obligation compiler pin
-// factory.local-runnability.v1 @ 1.15.0. The ADR-091 fence property is
+// factory.local-runnability.v1 @ 1.16.0. The ADR-091 fence property is
 // unchanged: every deliberate bump moves the pin, the baseline, and the
-// obligation norm in the SAME change (moved 1.14.0 → 1.15.0 by the
-// CC-GAP-7 warrant-execution landing).
+// obligation norm in the SAME change (moved 1.15.0 → 1.16.0 by the
+// HUMAN-GATE-CONSOLE landing).
 // ---------------------------------------------------------------------------
 
-test('BLOCKING MUTATION (f): the provider presents 1.15.0 with the digest fence intact', async () => {
-  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.15.0',
-    'the current landing (CC-GAP-7 warrant execution through package-declared oracle adapters) pins the provider at 1.15.0');
+test('BLOCKING MUTATION (f): the provider presents 1.16.0 with the digest fence intact', async () => {
+  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.16.0',
+    'the current landing (HUMAN-GATE-CONSOLE operator resolution wake source) pins the provider at 1.16.0');
   const db = new Database(':memory:');
   db.pragma('foreign_keys = OFF');
   db.exec(SCHEMA_SQL);
   try {
     const candidateSets = { read: () => null };
     const provider = createLocalRunnabilityCheckProvider({ db, candidateSets });
-    assert.equal(provider.version, '1.15.0');
+    assert.equal(provider.version, '1.16.0');
     assert.equal(provider.providerDigest, LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST);
     assert.equal(provider.providerId, 'factory.local-runnability.v1');
   } finally {
@@ -1157,10 +1157,10 @@ function migrateFromBaseline(baseline, trustBasis) {
 
 test('BLOCKING MUTATION (f): the trusted_providers migration requires the EXACT version→built-in-digest pair — authentic 1.12.0/1.13.0/1.14.0 (and the older lineage) migrate, a FORGED basis on a known version is drift, never laundered', () => {
   // AUTHENTIC rows — the exact digest each shipped version presented:
-  for (const baseline of ['1.1.0', '1.11.0', '1.12.0', '1.13.0', '1.14.0']) {
+  for (const baseline of ['1.1.0', '1.11.0', '1.12.0', '1.13.0', '1.14.0', '1.15.0']) {
     const row = migrateFromBaseline(baseline, `built-in:${AUTHENTIC_BASELINES[baseline]}`);
-    assert.equal(row.version, '1.15.0',
-      `the authentic ${baseline} row migrates → 1.15.0 in place`);
+    assert.equal(row.version, '1.16.0',
+      `the authentic ${baseline} row migrates → 1.16.0 in place`);
     assert.equal(row.trust_basis, `built-in:${LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST}`,
       'the trust basis is the CURRENT provider digest — the digest fence stands');
     assert.equal(row.status, 'active');
@@ -1266,14 +1266,14 @@ test('BLOCKING MUTATION (f): a receipt from a foreign provider digest is rejecte
   }
 });
 
-test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnability.v1 @ 1.15.0 (norm and manifest move together)', async () => {
+test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnability.v1 @ 1.16.0 (norm and manifest move together)', async () => {
   const contract = ACCEPTANCE_OBLIGATION_CONTRACTS
     .find(entry => entry.obligationId === 'factory.local-runnability');
   assert.ok(contract, 'the factory.local-runnability obligation exists');
-  assert.equal(contract.version, '1.15.0', 'the obligation pin is 1.15.0');
+  assert.equal(contract.version, '1.16.0', 'the obligation pin is 1.16.0');
   assert.equal(contract.expectedProtection.logicalId, 'factory.local-runnability.v1');
-  assert.equal(contract.expectedProtection.version, '1.15.0',
-    'the expected protection pins the installed provider at 1.15.0');
+  assert.equal(contract.expectedProtection.version, '1.16.0',
+    'the expected protection pins the installed provider at 1.16.0');
   assert.match(contract.protectedProperty, /mechanical daemon re-probe/u,
     'the protected property states the ADR-091 contract');
   // The compiler reconciles the norm against the INSTALLED protection
@@ -1281,10 +1281,10 @@ test('BLOCKING MUTATION (f): the obligation compiler pins factory.local-runnabil
   // PROTECTION_VERSION_DIVERGENCE — the atomic-bump guard.
   const installed = await readInstalledProtections();
   assert.doesNotThrow(() => assertProtectionSetEquality(ACCEPTANCE_OBLIGATION_CONTRACTS, installed),
-    'the obligation pin and the installed 1.15.0 provider move in the SAME change');
+    'the obligation pin and the installed 1.16.0 provider move in the SAME change');
   const installedRunnability = installed.find(
     protection => protection.kind === 'check-provider'
       && protection.logicalId === 'factory.local-runnability.v1',
   );
-  assert.equal(installedRunnability.version, '1.15.0');
+  assert.equal(installedRunnability.version, '1.16.0');
 });

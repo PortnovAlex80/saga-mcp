@@ -38,6 +38,7 @@ import { createEngineSupervisor } from './engine-supervisor.mjs';
 import { createLifecycleEndpointsApi } from './lifecycle-endpoints.mjs';
 import { createArtifactRenderApi } from './artifact-render.mjs';
 import { createBoardRenderApi } from './board-render.mjs';
+import { createHumanGateEndpointsApi } from './human-gate-endpoints.mjs';
 import { createSagaControlApplication } from '../dist/app/composition-root.js';
 import { loadSagaRuntimeConfig } from '../dist/runtime/saga-runtime-config.js';
 const __filename = fileURLToPath(import.meta.url);
@@ -325,6 +326,14 @@ boardApi.setRenderMarkdown(artifactApi.renderMarkdown);
 // handleEngineConcurrency / handleEngineStatus / handleEngineRestart all live in
 // ./lifecycle-endpoints.mjs now (exposed via lifecycleApi above).
 
+// HUMAN-GATE-CONSOLE: the operator answer surface for human_required gate
+// parks (accept / reject + feedback) and open worker questions.
+const humanGateApi = createHumanGateEndpointsApi({
+  withDb,
+  withDbWrite,
+  respondJson,
+  readJsonRequest,
+});
 
 // --- роутинг ---
 const server = http.createServer((req, res) => {
@@ -395,6 +404,19 @@ const server = http.createServer((req, res) => {
   // STAGE-23 one-entry law: the ONLY writer of the worker rate limit.
   if (req.method === 'POST' && url.pathname === '/api/engine/concurrency') {
     return modelApi.handleEngineConcurrencySet(req, res);
+  }
+  // HUMAN-GATE-CONSOLE: the factory asking a human is a first-class surface.
+  if (req.method === 'GET' && url.pathname === '/api/human-gates') {
+    return humanGateApi.handleHumanGatesList(req, res, url);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/human-gates/resolve') {
+    return humanGateApi.handleHumanGateResolve(req, res);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/human-requests') {
+    return humanGateApi.handleHumanRequestsList(req, res, url);
+  }
+  if (req.method === 'POST' && url.pathname === '/api/human-requests/answer') {
+    return humanGateApi.handleHumanRequestAnswer(req, res);
   }
 
   if (url.pathname === '/api/heartbeat') {

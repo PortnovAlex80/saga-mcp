@@ -110,7 +110,13 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_ID =
 // (ADR-083 §6: consume and receipt-bind, never authorize — the adapter
 // never authorizes environment identity) — the digest bump re-checks every
 // prior receipt exactly once (by design).
-export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.15.0';
+// 1.16 (HUMAN-GATE-CONSOLE): the operator's answer to a human_required park
+// is a wake source for this provider's typed `unknown`. A persisted
+// accept/reject resolution for the SAME workplace and the SAME candidate
+// bytes (subject binding guard) converts the unknown into passed/failed as
+// check evidence citing the resolution — never a forged receipt, never a
+// conversion for different bytes. All other outcomes unchanged.
+export const LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION = '1.16.0';
 export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
   providerId: LOCAL_RUNNABILITY_CHECK_PROVIDER_ID,
   version: LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION,
@@ -122,6 +128,8 @@ export const LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST = sha256Hex({
     'declared-compose-config-validated-always-bounded-up-wait-then-down-fail-closed',
   seamIssuePolicy:
     'failures-emit-typed-content-addressed-seam-repair-issues-with-owner-localization-evidence',
+  humanGateResolutionPolicy:
+    'a-typed-unknown-consults-the-append-only-factory_human_gate_resolutions-for-the-same-workplace-and-provider-and-converts-only-when-the-resolution-subject-binding-equals-the-current-candidate-bytes-binding-accept-converts-to-passed-reject-to-failed-with-the-operator-feedback-in-the-diagnostic-evidence-cites-human-gate-resolution-id-and-actor-the-original-unknown-diagnostic-is-retained-no-resolution-no-table-or-binding-mismatch-keeps-the-unknown-unchanged-fail-closed-v1',
   processTerminationPolicy:
     'linux-proc-zombie-aware-and-live-process-tree-fail-closed-v1',
   subjectPolicy: 'accepted-readiness-manifest-bound-to-exact-integrated-source-v1',

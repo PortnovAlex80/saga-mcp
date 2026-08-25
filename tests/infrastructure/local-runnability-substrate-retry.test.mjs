@@ -636,7 +636,7 @@ test('installed plan contract: runnability unknown routes human-required to comp
   assert.notEqual(blockedOutcome, failedOutcome);
   // Plan identity: the v3 bump is the honest identity/digest change for the
   // CC-GAP-9 routing contract.
-  assert.equal(CERTIFY_PLAN.checkPlanId, 'development.readiness-certification.final.v3');
+  assert.equal(CERTIFY_PLAN.checkPlanId, 'development.readiness-certification.final.v4');
 });
 
 test('BLOCKING MUTATION a: substrate-exhausted certification gate → human_required (complete-blocked), never failed (complete-failed)', { timeout: 120_000 }, async () => {

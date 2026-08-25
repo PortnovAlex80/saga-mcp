@@ -66,6 +66,8 @@ import {
   SUBSTRATE_PRECONDITION_DIAGNOSTIC,
   type SubstrateRetryAttempt,
 } from './substrate-retry.js';
+import { consultHumanGateResolution } from '../../app/human-gate-resolution.js';
+import { serializeWorkplaceRef } from '../../process-modules/domain/workplace/workplace-ref.js';
 import {
   augmentInstallCommand,
   deriveExecutionEnvironment,
@@ -234,6 +236,25 @@ export function createLocalRunnabilityCheckProvider(input: {
           })],
         };
       }
+      // 1.16 — HUMAN-GATE-CONSOLE wake source. A typed `unknown` (the machine
+      // could not prepare the declared environment / could not observe the
+      // product) is exactly the class the human_required park asks a person to
+      // answer. When the operator has RESOLVED the parked gate for these exact
+      // candidate bytes, the answer converts here — as check evidence with
+      // provenance (resolution id + actor + the original unknown diagnostic
+      // retained for audit), never as a forged receipt. No resolution / no
+      // table / binding mismatch → 1.15 behavior unchanged (fail-closed).
+      if (typeof check !== 'string' && check.outcome === 'unknown') {
+        const converted = convertUnknownWithHumanResolution(
+          input, subjectCandidateSetRef, subjectBindingRef,
+        );
+        if (converted) {
+          return {
+            outcome: converted.outcome,
+            evidenceRefs: [...check.evidenceRefs, subjectBindingRefOf(subject), ...converted.evidenceRefs],
+          };
+        }
+      }
       // D1 — bind the receipt to the candidate bytes it was produced against.
       // The binding rides every real (non-replayed) result so the next
       // round's persisted-receipt lookup can find it across manifest refs.
@@ -249,6 +270,47 @@ export function createLocalRunnabilityCheckProvider(input: {
 /** The D1 subject binding ref: local-readiness-subject:<hash>:<commit>:<tree>. */
 function subjectBindingRefOf(subject: CandidateSubject): string {
   return `local-readiness-subject:${subject.candidateHash}:${subject.commitSha}:${subject.treeHash}`;
+}
+
+/**
+ * 1.16 — consult the operator's human-gate resolution for this workplace and
+ * subject binding; convert the typed `unknown` into the operator's verdict.
+ * Returns null when no resolution applies (absent table/row, or the bytes
+ * guard does not match — the operator answered DIFFERENT candidate bytes).
+ */
+function convertUnknownWithHumanResolution(
+  input: { db: SqlDatabasePort; candidateSets: CandidateSetReaderPort },
+  subjectCandidateSetRef: string,
+  subjectBindingRef: string | null,
+): { outcome: 'passed' | 'failed'; evidenceRefs: string[] } | null {
+  let workplaceRef: string;
+  try {
+    const set = input.candidateSets.read(subjectCandidateSetRef);
+    if (!set) return null;
+    workplaceRef = serializeWorkplaceRef(set.workplaceRef);
+  } catch {
+    return null;
+  }
+  const resolution = consultHumanGateResolution(
+    input.db, workplaceRef, LOCAL_RUNNABILITY_CHECK_PROVIDER_ID, subjectBindingRef,
+  );
+  if (!resolution) return null;
+  const citation = encodeCheckDiagnostic({
+    code: resolution.resolution === 'accept'
+      ? 'human-gate-resolution-accept'
+      : 'human-gate-resolution-reject',
+    message: resolution.resolution === 'accept'
+      ? `operator ${resolution.actorId} ACCEPTED this exact candidate by direct human `
+        + `observation (human-gate-resolution #${resolution.id}); the machine could not `
+        + 'prepare the declared environment, so the human answered the gate'
+      : `operator ${resolution.actorId} REJECTED this exact candidate by direct human `
+        + `observation (human-gate-resolution #${resolution.id}) — feedback: `
+        + `${(resolution.feedback ?? '').slice(0, 600)}`,
+  });
+  return {
+    outcome: resolution.resolution === 'accept' ? 'passed' : 'failed',
+    evidenceRefs: [`human-gate-resolution:${resolution.id}`, citation],
+  };
 }
 
 /**
@@ -504,6 +566,11 @@ const TRUSTED_PROVIDER_BASELINES: Readonly<Record<string, string>> = Object.free
   '1.12.0': 'bd5063ca406b79d0c48bb34e69308dd223c5c14f7b03cc6e4c739709c9100a0a',
   '1.13.0': 'e15a26195edad20453cbd21c01e39e034512518526585e6171422d31fa9c7136',
   '1.14.0': '2e2388159929c58cb6894c92d3613d21181b660c6700e6f146b0276514b9e5f7',
+  // HUMAN-GATE-CONSOLE landing: 1.15.0's authentic lifetime digest (verified
+  // against the introducing commit d762ce52; reproduces via the canonical
+  // digest rule). A 1.15 trust row migrates in place to 1.16 only with this
+  // exact pair.
+  '1.15.0': '982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8',
 });
 
 export function ensureLocalRunnabilityProviderTrust(db: SqlDatabasePort): void {

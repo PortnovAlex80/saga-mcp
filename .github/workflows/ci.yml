@@ -162,6 +162,12 @@ jobs:
         # each fail closed.
         run: node tools/run-acceptance-matrix.mjs --group cc-proof-registry
 
+      - name: Matrix — EK workflow-kernel suites
+        # The EK greenfield kernel tests (model, persistence, roles, engine,
+        # application, context envelope) merged by the 2026-08-24 waves. One
+        # hosting group so no kernel test file can be an orphan (G2p).
+        run: node tools/run-acceptance-matrix.mjs --group workflow-kernel
+
       - name: Matrix — coverage & no-hidden-failure guard
         # CI-02 self-check (runs last): asserts the matrix covers every required
         # deterministic suite, quarantines the flaky / pre-existing-red files

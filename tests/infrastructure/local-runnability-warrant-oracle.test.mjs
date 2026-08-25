@@ -1141,7 +1141,7 @@ test('gate wiring: the certification plan still routes the runnability unknown h
 // Identity/version fence.
 // ---------------------------------------------------------------------------
 
-test('identity fence: the provider presents 1.15.0 (the honest CC-GAP-7 identity bump)', () => {
-  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.15.0');
+test('identity fence: the provider presents 1.16.0 (the honest HUMAN-GATE-CONSOLE identity bump)', () => {
+  assert.equal(LOCAL_RUNNABILITY_CHECK_PROVIDER_VERSION, '1.16.0');
   assert.match(LOCAL_RUNNABILITY_CHECK_PROVIDER_DIGEST, /^[a-f0-9]{64}$/u);
 });

@@ -1047,6 +1047,38 @@ CREATE TABLE IF NOT EXISTS factory_workplace_park_reasons (
 CREATE INDEX IF NOT EXISTS idx_factory_workplace_park_reasons_ref
   ON factory_workplace_park_reasons(workplace_ref);
 
+-- HUMAN-GATE-CONSOLE: the operator's answer to a GATE_HUMAN_REQUIRED park.
+-- Append-only (triggers below): one row per operator decision, bound to the
+-- exact park reason, the human_required GateDecision being answered, and the
+-- subject BYTES the operator looked at (subject_binding — the provider's
+-- conversion guard: an answer applies only to the exact candidate bytes the
+-- human inspected, never to a different/later candidate).
+CREATE TABLE IF NOT EXISTS factory_human_gate_resolutions (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  workplace_ref     TEXT NOT NULL REFERENCES factory_workplaces(workplace_ref) ON DELETE RESTRICT,
+  process_run_id    INTEGER NOT NULL,
+  park_reason_id    INTEGER NOT NULL,
+  gate_decision_key TEXT NOT NULL,
+  subject_binding   TEXT,
+  provider_id       TEXT NOT NULL,
+  resolution        TEXT NOT NULL CHECK (resolution IN ('accept','reject')),
+  feedback          TEXT,
+  actor_id          TEXT NOT NULL,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_factory_human_gate_resolutions_ref
+  ON factory_human_gate_resolutions(workplace_ref, provider_id);
+CREATE TRIGGER IF NOT EXISTS trg_human_gate_resolutions_no_update
+  BEFORE UPDATE ON factory_human_gate_resolutions
+BEGIN
+  SELECT RAISE(ABORT, 'factory_human_gate_resolutions is append-only');
+END;
+CREATE TRIGGER IF NOT EXISTS trg_human_gate_resolutions_no_delete
+  BEFORE DELETE ON factory_human_gate_resolutions
+BEGIN
+  SELECT RAISE(ABORT, 'factory_human_gate_resolutions is append-only');
+END;
+
 -- ---------------------------------------------------------------------------
 -- Operator SOFT-STOP protocol (schema v13).
 --
