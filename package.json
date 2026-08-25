@@ -62,6 +62,7 @@
     "validate:ek-admission-specs": "node tools/validate-ek-admission-specs.mjs",
     "validate:deletion-manifests": "node docs/refactoring/event-kernel/tools/validate-deletion-manifests.mjs",
     "test:workflow-model": "node --test \"tests/workflow-kernel/model/*.test.mjs\"",
+    "test:workflow-persistence": "tsc && node --test \"tests/workflow-kernel/persistence/*.test.mjs\"",
     "test:workflow-complexity": "node dist/workflow-kernel/domain/complexity-check.js"
   },
   "keywords": [

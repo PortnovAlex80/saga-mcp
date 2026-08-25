@@ -49,3 +49,21 @@ export function scanKernelSources() {
     authorityLiterals: [...authorityLiterals].sort(),
   };
 }
+
+/**
+ * Imports of the PURE package only (src/workflow-kernel/domain/**). The
+ * import-purity law binds the pure package: EK-3's sole-writer repositories
+ * live lawfully under src/workflow-kernel/persistence/** and are the only
+ * place where the SQLite driver may be imported (EK-2 exit criterion: "The
+ * pure package has no import from persistence, UI or workshop modules").
+ */
+export function scanDomainImports() {
+  const files = listKernelSourceFiles().filter((file) => file.startsWith(DOMAIN_SRC + path.sep));
+  const importPattern = /imports[^;]*froms+['"]([^'"]+)['"]/g;
+  const imports = new Set();
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    for (const match of source.matchAll(importPattern)) imports.add(match[1]);
+  }
+  return [...imports].sort();
+}
