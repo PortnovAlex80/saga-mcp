@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "ek1.frozen-inputs.v1",
+  "workPackage": "WP-16 (part 1 of 3) — complexity budget",
+  "policy": "Byte-copies of already-frozen EK-1 artifacts, carried read-only so measure-complexity.mjs is self-contained and deterministic on any checkout of this branch. NEVER edit these files. Every run of measure-complexity.mjs verifies the sha256 below and fails loudly on any mismatch. Canonical homes remain the original branches; if a canonical home ever diverges from a digest recorded here, that is an ABORT condition, not a sync task.",
+  "inputs": [
+    {
+      "file": "authority-census.json",
+      "artifact": "WP-01 authority reader/writer census (machine artifact)",
+      "sourceBranch": "ek1/wp01-census",
+      "sourceCommit": "eaa070938ae6f794a51d79e1c9f20016a26607e9",
+      "sha256": "8088318628f0fd0c03cec19e2846b5df569ba94e2d4ace0dc26fd4d7095b4810",
+      "canonicalPath": "docs/refactoring/event-kernel/authority-census.json",
+      "rebuildCommand": "node docs/refactoring/event-kernel/tools/census-builder.mjs",
+      "validateCommand": "node docs/refactoring/event-kernel/tools/validate-census.mjs"
+    },
+    {
+      "file": "transition-universe.json",
+      "artifact": "EK-1 unified transition universe (forward/reverse reconciliation output)",
+      "sourceBranch": "ek1/graph-reconciliation",
+      "sourceCommit": "d41cebe012158cabd41c279267c5459866e3111d",
+      "sha256": "6429c8b7aa474812df82cc053be114a097b6e3cc77c1a3b853d00b4c5297af84",
+      "canonicalPath": "docs/refactoring/event-kernel/reconciliation/transition-universe.json",
+      "validateCommand": "node docs/refactoring/event-kernel/reconciliation/validate-transition-universe.mjs"
+    },
+    {
+      "file": "PROTOCOL-DECISIONS-FROZEN.md",
+      "artifact": "EK-1 frozen protocol decisions D1-D12 (all adopted as recommended)",
+      "sourceBranch": "integration/event-kernel-ek",
+      "sourceCommit": "33bf197616806eb13d1fce5f6ba0f51dad591fe1",
+      "sha256": "1f2275c9737d400e343dbcf356eefa05c6890bf7c633399712ed81a63028fa51",
+      "canonicalPath": "docs/refactoring/event-kernel/PROTOCOL-DECISIONS-FROZEN.md"
+    }
+  ]
+}

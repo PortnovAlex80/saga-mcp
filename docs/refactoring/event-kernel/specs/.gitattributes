@@ -1,0 +1,7 @@
+# EK-1 admission specs: byte-exact preservation.
+# measure-complexity.mjs verifies sha256 digests of the frozen inputs and
+# records the budget's own digest in every emitted vector; any EOL conversion
+# on checkout would falsify those digests and break the two-run byte-identity
+# determinism proof. These files are committed LF and must check out LF on
+# every platform.
+* -text

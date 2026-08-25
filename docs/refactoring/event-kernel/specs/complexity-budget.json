@@ -1,0 +1,923 @@
+{
+  "schemaVersion": "ek1.complexity-budget.v1",
+  "workPackage": "WP-16 (part 1 of 3) — EK-1 successor admission specification: complexity budget",
+  "status": "FROZEN-CANDIDATE — becomes frozen with the WP-16 part 3 validator, mutation corpus and independent-verifier receipt (plan EK-1: 'Record all specification and verifier-receipt hashes in the execution tracker')",
+  "integrationBaseSha": "21ba0816e38ec1492b3acb4d21e7ccea49c6f5df",
+  "branch": "ek1/wp16-complexity-budget",
+  "authorRole": "WP-16 part 1 spec author (forbidden from later implementing WP-05/WP-17/WP-18)",
+  "law": [
+    "plan: Bounded successor complexity — 'EK-1 must freeze a machine-readable, conjunctive complexity envelope before EK-2 changes production code. A single weighted score, line-count target or prose claim is not an envelope: every dimension must pass independently.'",
+    "plan: Bounded successor complexity — 'A legacy baseline is diagnostic evidence, not an entitlement for the new kernel to be equally complex.'",
+    "plan: Bounded successor complexity — 'A newly discovered incident may add a minimized scenario. It may not add a state, relation, mutable owner, orchestration path or policy layer until an independent verifier approves a measured complexity delta before code is written.'",
+    "plan: Bounded successor complexity — 'EK-13 permits no active complexity waiver and no unmeasured dimension.'"
+  ],
+  "frozenInputs": {
+    "manifest": "frozen-inputs/FROZEN-INPUTS.json",
+    "census": {
+      "path": "frozen-inputs/authority-census.json",
+      "sha256": "8088318628f0fd0c03cec19e2846b5df569ba94e2d4ace0dc26fd4d7095b4810",
+      "source": "ek1/wp01-census @ eaa07093"
+    },
+    "universe": {
+      "path": "frozen-inputs/transition-universe.json",
+      "sha256": "6429c8b7aa474812df82cc053be114a097b6e3cc77c1a3b853d00b4c5297af84",
+      "source": "ek1/graph-reconciliation @ d41cebe0"
+    },
+    "protocolDecisions": {
+      "path": "frozen-inputs/PROTOCOL-DECISIONS-FROZEN.md",
+      "sha256": "1f2275c9737d400e343dbcf356eefa05c6890bf7c633399712ed81a63028fa51",
+      "source": "integration/event-kernel-ek @ 33bf1976"
+    }
+  },
+  "measurementDriver": "measure-complexity.mjs",
+  "determinismContract": {
+    "requirement": "plan EK-1: 'Run deterministic measurements twice on the same tree and require the same complexity vector' — byte-identical output, no clock, no randomness, sorted iteration, canonical JSON",
+    "proofCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out run1.json && node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out run2.json && cmp run1.json run2.json"
+  },
+  "conjunctiveEvaluation": "Every dimension passes independently (AND over all dimensions). target.kind: 'max' (measured <= value), 'exact' (measured === value), 'closed-set' (measured set equals value exactly), 'subset-of-frozen' (measured is a subset of the frozen allowed set), 'zero-after-phase' (measured === 0 once the named phase has landed). The predecessor baseline NEVER satisfies a successor target implicitly: on the predecessor tree the vector is diagnostic; on a tree containing src/workflow-kernel the targets are binding and measure-complexity.mjs --check exits nonzero on any violation or unmeasured dimension.",
+  "waivers": {
+    "active": 0,
+    "policy": "No waiver mechanism exists. Any change to any target reopens EK-1 per the plan and requires an independent-verifier-approved measured complexity delta BEFORE code is written."
+  },
+  "deltaPolicy": {
+    "addDimension": "Forbidden after freeze unless an independent verifier approves a measured complexity delta before code is written (plan EK-1). A newly discovered incident may add a minimized scenario, never a state, relation, mutable owner, orchestration path or policy layer.",
+    "widenTarget": "Reopens EK-1; invalidates downstream qualification evidence (plan EK-1 admission-specs).",
+    "shrinkTarget": "Permitted (tightening) without reopening EK-1, but must be recorded as a new budget revision with rationale and digest."
+  },
+  "hardTargets": {
+    "productionCompositions": 1,
+    "obligationConsumerProtocols": 1,
+    "roleBindingCompilationPaths": 1,
+    "cumulativeContextAccountants": 1,
+    "projectionAuthorityReads": 0,
+    "workshopOwnedSchedulers": 0,
+    "workshopNameKernelBranches": 0,
+    "temporaryDebtAfterEK8": 0,
+    "phaseCount": 14,
+    "topLevelPackageCount": 24
+  },
+  "executionStructure": {
+    "phases": "exactly the 14 named phases EK-0 through EK-13 of docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md",
+    "topLevelPackages": "exactly the 24 top-level work packages WP-01..WP-18 (with WP-11D/F/V/L and WP-13A/B/C/D) listed in the plan's work-package table; a coordinator may split a package into tracked subtasks under the same owner/dependencies but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision"
+  },
+  "groups": {
+    "authority": "who may read/write which fact (census-grounded)",
+    "protocol": "typed vocabulary kinds (universe-grounded)",
+    "composition": "runtime composition shapes (hard targets)",
+    "roles": "role-binding authority count",
+    "prompts": "prompt/context assembly and accounting",
+    "workshops": "workshop-name and workshop-owned scheduling leakage into the kernel",
+    "deps": "runtime dependency additions",
+    "debt": "temporary legacy/replacement debt",
+    "route": "executor route-policy shape",
+    "contract": "admission-contract schema shape (target-only until WP-16 part 2 schemas exist)",
+    "structure": "execution-structure caps (phases/packages)"
+  },
+  "dimensions": [
+    {
+      "id": "authority.mutableOwnerFanInFiles",
+      "group": "authority",
+      "title": "Mutable owners/reducers — maximum distinct production writer modules writing one mutable fact table",
+      "planMandate": "plan: Bounded successor complexity — 'mutable owners/reducers'; plan: One authority — 'A mutable fact is owned by exactly one aggregate repository'",
+      "baseline": {
+        "value": 25,
+        "unit": "distinct writer files on one table",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables[t].writers",
+        "citation": "AUTHORITY-CENSUS §3.3: 'The tasks table is the single largest authority defect: 64 writer statements across 26 files'; worst table = tasks (25 distinct writer files in the census enumeration)"
+      },
+      "target": {
+        "kind": "max",
+        "value": 1,
+        "enforcedFrom": "EK-3",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.mutableOwnerFanInFiles",
+      "rationale": "ADR-097 violation 6 ('second writers') is the systemic defect: no mutable fact today has a single writer module. The successor caps writer fan-in at exactly one repository per mutable aggregate; anything above 1 reintroduces the recoding-boundary treadmill ADR-053 diagnosed.",
+      "accountableWorkPackage": "WP-06"
+    },
+    {
+      "id": "authority.mutableOwnerAggregates",
+      "group": "authority",
+      "title": "Mutable owners/reducers — owner-aggregate kind count (exact frozen authority topology)",
+      "planMandate": "plan: Bounded successor complexity — 'mutable owners/reducers'; plan EK-1 exit — 'The target protocol and physical schema names are frozen'",
+      "baseline": {
+        "value": 16,
+        "unit": "fact families with mixed/disputed ownership over 124 accessed tables",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json factFamilies",
+        "citation": "AUTHORITY-CENSUS §4: 16 fact-family records; §1: 124 distinct tables with runtime access"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 13,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13",
+        "detail": "exactly 9 owner aggregates (FactoryRun, LifecycleRun, StageRun, ProcessRun, NodeRun, Workplace, ActivityAttempt, WorkItem, CognitionTransport) + 4 non-aggregate authorities (Planning, InstalledWorkshopManifest, + the two enumerated in transition-universe.json nonAggregateAuthorities)"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.mutableOwnerAggregates",
+      "rationale": "The authority topology is not a free variable: it was derived twice (forward WP-02, reverse WP-03), reconciled with zero silently accepted differences, and frozen. Adding an aggregate is a complexity delta that reopens EK-1.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "authority.authoritativeRelationKinds",
+      "group": "authority",
+      "title": "Authoritative relations — cross-owner durable handoff kinds (obligation + typed wait)",
+      "planMandate": "plan: Bounded successor complexity — 'authoritative relations'; plan: Definition of complete — 'Every cross-owner edge is an atomic event plus durable obligation'",
+      "baseline": {
+        "value": 1,
+        "unit": "generic cross-owner relation kinds",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables.factory_transition_obligations (family 'obligation', 4 tables)",
+        "citation": "AUTHORITY-CENSUS §3.5: 'The obligation ledger is real but narrow... The EK target generalizes this substrate to every cross-owner edge'"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 54,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13",
+        "detail": "exactly 49 obligation kinds + 5 TypedWait kinds per the frozen transition universe (with PROTOCOL-DECISIONS-FROZEN D1-D12 applied); the universe validator already proves two-way creation/consumption with zero orphans"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.authoritativeRelationKinds",
+      "rationale": "The predecessor has one narrow, generic handoff substrate covering only the EC-8 five-handoff path; every other cross-owner edge is implicit (shared tables, projections, recency reads). The successor makes the relation set explicit, finite and exactly the reconciled universe: 54 kinds, no more without an approved delta.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "authority.decisionReaderStatements",
+      "group": "authority",
+      "title": "Decision readers — direct-SQL decision reads outside the owning aggregate repository",
+      "planMandate": "plan: Bounded successor complexity — 'decision readers and writers'; plan: One authority — 'Only that repository may compare-and-set the aggregate revision'",
+      "baseline": {
+        "value": 1113,
+        "unit": "decision-path reader statements (all direct SQL)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables[t].readers kind=READ_DECISION",
+        "citation": "AUTHORITY-CENSUS §1: '1486 reader statements (1113 decision-path, 373 presentation)'; §2 classes: 829 AUTHORITATIVE / 376 DIAGNOSTIC / 281 DELETE"
+      },
+      "target": {
+        "kind": "max",
+        "value": 0,
+        "enforcedFrom": "EK-6",
+        "finalGate": "EK-13",
+        "detail": "zero decision reads that bypass the owning repository's read API; reads may still exist, but only through the one repository per aggregate"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.decisionReaderStatements",
+      "rationale": "Every one of the 1113 predecessor decision reads is a direct SQL statement outside any owning-repository contract; 281 of them select authority through channels the target model deletes. The successor re-expresses decision reads as owning-aggregate queries only.",
+      "accountableWorkPackage": "WP-06"
+    },
+    {
+      "id": "authority.projectionAuthorityReads",
+      "group": "authority",
+      "title": "Projection-authority reads — decision reads classified DELETE (projection/recency/status as authority)",
+      "planMandate": "plan: Bounded successor complexity hard target — 'zero projection-authority reads'; plan: Definition of complete — 'Kanban cards are disposable read models and are never read by the kernel'",
+      "baseline": {
+        "value": 281,
+        "unit": "DELETE-class decision reader statements",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables[t].readers kind=READ_DECISION authorityClass=DELETE",
+        "citation": "AUTHORITY-CENSUS §2/§3.4: 281 DELETE-class readers; 128 DELETE-class marker uses concentrated in workitem-task (73), execution-attempt (28), material (28)"
+      },
+      "target": {
+        "kind": "zero-after-phase",
+        "value": 0,
+        "enforcedFrom": "EK-7",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.projectionAuthorityReads",
+      "rationale": "This is the plan's named hard target. The predecessor's task-status scheduling, recency selection and MAX(id) adoption are exactly this class; deleting/rebuilding the Kanban projection must change no decision outcome.",
+      "accountableWorkPackage": "WP-12"
+    },
+    {
+      "id": "authority.decisionWriterStatements",
+      "group": "authority",
+      "title": "Decision writers — direct-SQL writes outside an owning typed command",
+      "planMandate": "plan: Bounded successor complexity — 'decision readers and writers'; plan: One authority — 'A projector, UI, worker, reconciler, watchdog or recovery tool may issue a command, never a direct write'",
+      "baseline": {
+        "value": 524,
+        "unit": "direct writer statements (390 src / 104 scripts / 30 tracker-view)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables[t].writers",
+        "citation": "AUTHORITY-CENSUS §1: 'writer statements enumerated + classified: 524'; dispositions 171 retain-and-move / 256 rewrite / 97 delete"
+      },
+      "target": {
+        "kind": "max",
+        "value": 0,
+        "enforcedFrom": "EK-6",
+        "finalGate": "EK-13",
+        "detail": "zero direct writes; every mutation is one of the 53 typed commands committed by the owning repository"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.decisionWriterStatements",
+      "rationale": "The restore-by-row-rewrite recovery surface (scripts/restore-from-checkpoint.mjs) and the four external factory_workplaces writers are the incident-generating class; the successor allows writes only through typed commands with idempotency keys, fences and expected revisions.",
+      "accountableWorkPackage": "WP-06"
+    },
+    {
+      "id": "protocol.commandKinds",
+      "group": "protocol",
+      "title": "Command kinds — typed command vocabulary of the successor kernel",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds'; plan EK-1 — 'The target protocol and physical schema names are frozen'",
+      "baseline": {
+        "value": 0,
+        "unit": "typed command kinds (predecessor has raw SQL writers, no typed command vocabulary)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/workflow-kernel (absent) vs frozen-inputs/transition-universe.json counts.commands",
+        "citation": "frozen universe counts: 53 commands incl. 1 transport (cognition.sendProviderRequest); RECONCILIATION §3"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 53,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.commandKinds",
+      "rationale": "Exact equality with the frozen universe: the WP-05 domain registry must enumerate exactly the 53 reconciled commands (per-aggregate: FactoryRun 7, LifecycleRun 6, StageRun 3, ProcessRun 5, NodeRun 8, WorkItem 1, Workplace 16, ActivityAttempt 6, CognitionTransport 1). More commands = unmeasured orchestration path; fewer = undeclared transition.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "protocol.eventKinds",
+      "group": "protocol",
+      "title": "Event kinds — WorkflowEvent vocabulary",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds'; plan: Definition of complete — 'Every cross-owner edge is an atomic event plus durable obligation'",
+      "baseline": {
+        "value": 0,
+        "unit": "typed event kinds (nearest predecessor analogue: the append-only command_receipts table)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/workflow-kernel (absent) vs frozen-inputs/transition-universe.json commands[].emitsEvents",
+        "citation": "frozen universe: 52 distinct WorkflowEvent kinds across 53 commands (the transport command cognition.sendProviderRequest emits none — R16 convention: each command's WorkflowEvent is a co-requisite fact of the same transaction)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 52,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.eventKinds",
+      "rationale": "Events are the atomic cross-owner handoff fact; their kind count is exactly the reconciled universe's emit set. A 53rd event kind would be an unmeasured new linearization point.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "protocol.obligationKinds",
+      "group": "protocol",
+      "title": "Obligation kinds — durable obligation vocabulary",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds'; plan: Definition of complete — 'Every nonterminal scope has a runnable obligation...'",
+      "baseline": {
+        "value": 1,
+        "unit": "generic obligation kind (single factory_transition_obligations row shape)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json obligation family (4 tables) vs frozen-inputs/transition-universe.json counts.obligations",
+        "citation": "AUTHORITY-CENSUS §3.5; RECONCILIATION §3: 49 obligation kinds (5 were decision-pending, all resolved by PROTOCOL-DECISIONS-FROZEN D1-D12)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 49,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.obligationKinds",
+      "rationale": "The write-time progress invariant is only checkable when the obligation vocabulary is closed: every nonterminal scope must map to one of these 49 kinds or a typed wait. The universe validator proves two-way creation/consumption with zero orphans at exactly this count.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "protocol.waitKinds",
+      "group": "protocol",
+      "title": "Wait kinds — TypedWait vocabulary with durable wake sources",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds'; plan: Definition of complete — 'a typed wait with a durable wake source'",
+      "baseline": {
+        "value": 0,
+        "unit": "typed wait kinds (predecessor recovery is table-based, not typed waits)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/workflow-kernel (absent) vs frozen-inputs/transition-universe.json counts.waits",
+        "citation": "RECONCILIATION §3: 5 TypedWait kinds (3 decision-pending, resolved by D3/D5/D12 as frozen)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 5,
+        "enforcedFrom": "EK-4",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.waitKinds",
+      "rationale": "Waits are the honest alternative to busy reconciliation loops. Five kinds cover human input, external availability, policy quota, readiness and disposition (per the frozen universe); each has a named durable wake source (D5: obligation-completion receipts).",
+      "accountableWorkPackage": "WP-07"
+    },
+    {
+      "id": "protocol.proofKinds",
+      "group": "protocol",
+      "title": "Proof kinds — terminal proof vocabulary",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds'; plan: Definition of complete — 'Terminalization has an exact proof; an empty queue is never a proof'",
+      "baseline": {
+        "value": 0,
+        "unit": "typed terminal proof kinds (predecessor terminality is status-string assignment: done|failed|cancelled)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/workflow-kernel (absent) vs frozen-inputs/transition-universe.json counts.proofs",
+        "citation": "RECONCILIATION §3: 28 terminal proofs (7 scopes x 4 kinds, post-D7 unreachable-scope set {cell, workplace, node}); the lossy done|failed|cancelled -> done projection map is census §3.1 ADR-097 violation 4"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 28,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.proofKinds",
+      "rationale": "Exact-proof terminalization is the anti-false-completion law. The frozen decision D7 deleted the run-scope unreachable proofs (4), pinning 28; any other count means either an undeclared terminal path or a lost one.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "protocol.evidenceKinds",
+      "group": "protocol",
+      "title": "Evidence kinds — typed evidence registry",
+      "planMandate": "plan: Bounded successor complexity — 'command/event/obligation/wait/proof kinds' (evidence is the fifth vocabulary of the durable-handoff grammar); plan EK-1 — 'Define exact input/output evidence refs... for every edge'",
+      "baseline": {
+        "value": 5,
+        "unit": "named accepted-material evidence fact kinds in the predecessor (WorkplaceProductionRevision, CandidateSet, GateDecision, EffectReceipt, CellFinalAcceptance)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "ADR-053 accepted-material chain as recorded in frozen-inputs/authority-census.json material/gate/effect/terminal-acceptance families vs frozen-inputs/transition-universe.json counts.evidenceKinds",
+        "citation": "AUTHORITY-CENSUS §4 material family (29 tables, 62 writers, 319 readers); RECONCILIATION §3: 67 evidence kinds (15 decision-pending, resolved by D1-D12)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 67,
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension protocol.evidenceKinds",
+      "rationale": "Evidence refs with digests are how the ADR-053 conservation law stays executable (D11: CellFinalAcceptance embeds acceptanceDigest). The registry is exactly the 67 reconciled kinds; an unregistered evidence kind is an unmeasured authority surface.",
+      "accountableWorkPackage": "WP-05"
+    },
+    {
+      "id": "composition.orchestrationEntrypoints",
+      "group": "composition",
+      "title": "Orchestration entrypoints — production composition roots",
+      "planMandate": "plan: Bounded successor complexity — 'orchestration entrypoints' and hard target — 'one production composition'",
+      "baseline": {
+        "value": 18,
+        "unit": "orchestration modules under src/app/ (factory-start, engine-start-adoption, engine-start-lifecycle-burial, product-lifecycle-runtime, continuation/redevelopment starters, operator-soft-stop, ...)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/app/*.ts",
+        "citation": "AUTHORITY-CENSUS §3.2/§3.4: adoption/resume/burial/soft-stop paths each own slices of orchestration; factory-start.ts resume selects run identity by MAX(id) joins"
+      },
+      "target": {
+        "kind": "max",
+        "value": 1,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "one production composition entrypoint assembling the kernel; test/bootstrap harnesses may construct the kernel explicitly at fresh temporary paths but are not production entrypoints (plan EK-3)"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension composition.orchestrationEntrypoints",
+      "rationale": "Eighteen partially-overlapping orchestration starters are why every incident grew a new path. One composition means one place where aggregates, the consumer, transport and adapters are wired — auditable by a single blocking test.",
+      "accountableWorkPackage": "WP-12"
+    },
+    {
+      "id": "composition.obligationConsumerImplementations",
+      "group": "composition",
+      "title": "Obligation-consumer implementations — distinct claim/complete surfaces for durable obligations",
+      "planMandate": "plan: Bounded successor complexity — 'obligation-consumer implementations' and hard target — 'one obligation-consumer protocol'",
+      "baseline": {
+        "value": 4,
+        "unit": "non-ledger obligation manipulation sites",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json tables.factory_transition_obligations readers/writers",
+        "citation": "readers outside the ledger: engine-start-lifecycle-burial.ts, sqlite-progress-reader.ts; plus writers operator-soft-stop.ts (release) and scripts/restore-from-checkpoint.mjs (DELETE of obligation rows)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 1,
+        "enforcedFrom": "EK-4",
+        "finalGate": "EK-13",
+        "detail": "one stateless, replaceable obligation consumer claiming by CAS lease + fence, completing obligations only in the transaction that commits the target result (plan EK-4)"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension composition.obligationConsumerImplementations",
+      "rationale": "A second consumer is a second scheduler with its own race semantics. The predecessor already deletes obligations from a restore script — proof that consumers multiplied exactly where incidents happened.",
+      "accountableWorkPackage": "WP-07"
+    },
+    {
+      "id": "roles.bindingAuthorities",
+      "group": "roles",
+      "title": "Role-binding authorities — distinct production role/skill selection chains",
+      "planMandate": "plan: Bounded successor complexity — 'role-binding authorities' and hard target — 'one role-binding compilation path'",
+      "baseline": {
+        "value": 12,
+        "unit": "role-resolution sites",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json roleResolutionSites",
+        "citation": "AUTHORITY-CENSUS §7.1: 12 records — 6 DELETE (skillForTask chain, role-from-status, tag fallbacks), 4 REWRITE, 2 RETAIN-AND-MOVE (resolveAgentLaunchSpec, ExecutionRouteResolver)"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 1,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "one role-binding compilation path: the WP-17 compiler resolves each protocol role + semantic profile to exactly one content-addressed CanonicalRoleContract; WorkIntent/ActivityAttempt pin ref+digest; no dispatcher, runner, prompt builder or tracker re-infers it"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension roles.bindingAuthorities",
+      "rationale": "Twelve selection chains, six of which read mutable task columns — the exact fallback class the CanonicalRoleContract law forbids. One compilation path with digest pinning makes role selection deterministic and replayable.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "prompts.assemblers",
+      "group": "prompts",
+      "title": "Prompt/context assemblers — distinct request-assembly sites",
+      "planMandate": "plan: Bounded successor complexity — 'prompt/context assemblers and accountants'",
+      "baseline": {
+        "value": 10,
+        "unit": "prompt/context assembly sites",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json promptAssemblySites",
+        "citation": "AUTHORITY-CENSUS §7.2: buildPrompt() (tracker-view/claude-runner.mjs:140-590) is THE initial prompt with ~12 layers; plus MCP config, spawn flags, hook context, episodic memory, workspace block, desk provisioning, tool catalog, recovery/authority blocks"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 1,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "one assembler producing the complete request (initial prompt + every context source) under the PromptBudgetProfile, emitting an immutable PromptAssemblyReceipt per provider request"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension prompts.assemblers",
+      "rationale": "Ten uncoordinated assembly sites are why the 436 KB planner request (Elite-3) was invisible until it failed. One assembler with one receipt makes every request accounted.",
+      "accountableWorkPackage": "WP-18"
+    },
+    {
+      "id": "prompts.cumulativeAccountants",
+      "group": "prompts",
+      "title": "Prompt/context accountants — cumulative session token accounting surfaces",
+      "planMandate": "plan: Bounded successor complexity — 'prompt/context assemblers and accountants' and hard target — 'one cumulative context accountant'; plan: Bounded prompt and context envelope — 'must account for the complete request... and must never depend on an environment variable to turn a safety invariant on'",
+      "baseline": {
+        "value": 0,
+        "unit": "cumulative accountants (SAGA_PROMPT_MAX_BYTES is an opt-in per-prompt byte cap where 0/unset means unlimited)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json promptAssemblySites PA-2",
+        "citation": "AUTHORITY-CENSUS §7.2 item 2: 'opt-in cap where 0/unset means unlimited (the EK-0-recorded baseline insufficiency)'"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 1,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "one cumulative context accountant admitting every launch; unset or zero budget is never interpreted as unlimited (plan Definition of complete)"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension prompts.cumulativeAccountants",
+      "rationale": "The predecessor accounts for neither the complete request nor the cumulative session; this is the measured absence the successor must close with exactly one accountant (never two, which would double-count or race).",
+      "accountableWorkPackage": "WP-18"
+    },
+    {
+      "id": "prompts.staticPromptAssetMaxBytes",
+      "group": "prompts",
+      "title": "Static protocol/role prompt bytes — maximum single static prompt asset",
+      "planMandate": "plan: Bounded successor complexity — 'static protocol/role prompt bytes/tokens' (contract-shape dimension)",
+      "baseline": {
+        "value": 70219,
+        "unit": "bytes of the largest skills/*/SKILL.md in the repo (saga-kickstart)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan skills/*/SKILL.md",
+        "citation": "AUTHORITY-CENSUS §7.2: protocol and semantic skills are inlined verbatim into buildPrompt(); the largest current asset is 70,219 bytes of 506,773 total across 23 skills"
+      },
+      "target": {
+        "kind": "max",
+        "value": 32768,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "no static prompt asset (protocol skill, semantic/reviewer skill, or any mandatory-inline context block) exceeds 32,768 bytes; the PromptBudgetProfile's maxStaticTokens (WP-16 part 2) governs tokens, this cap governs the asset files"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension prompts.staticPromptAssetMaxBytes",
+      "rationale": "A static asset above 32 KiB is a cognition document, not an inline prompt; it must become a content-addressed reference with a bounded summary. The 70 KB baseline proves the failure mode exists today.",
+      "accountableWorkPackage": "WP-18"
+    },
+    {
+      "id": "prompts.staticPromptAssetTotalBytes",
+      "group": "prompts",
+      "title": "Static protocol/role prompt bytes — total static prompt assets per shipped contract set",
+      "planMandate": "plan: Bounded successor complexity — 'static protocol/role prompt bytes/tokens' (contract-shape dimension)",
+      "baseline": {
+        "value": 506773,
+        "unit": "total bytes across all 23 skills/*/SKILL.md",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan skills/*/SKILL.md",
+        "citation": "companion to prompts.staticPromptAssetMaxBytes; per-attempt inlining is a pinned subset, but the shipped universe is the measurable whole"
+      },
+      "target": {
+        "kind": "max",
+        "value": 65536,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "the static prompt assets referenced by one role contract (protocol + semantic/reviewer skill) total at most 65,536 bytes; additional cognition lives behind content-addressed references"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension prompts.staticPromptAssetTotalBytes",
+      "rationale": "Total static bytes is the denominator the accountant cannot shrink at runtime; capping it at the source prevents the prompt from becoming a mutable authority (plan: 'must not become a giant duplicated prompt').",
+      "accountableWorkPackage": "WP-18"
+    },
+    {
+      "id": "workshops.nameBranchLiterals",
+      "group": "workshops",
+      "title": "Workshop-name branches — workshop-name string literals in kernel-scope production code",
+      "planMandate": "plan: Bounded successor complexity — 'workshop-name branches' and hard target — 'zero workshop-owned schedulers or workshop-name kernel branches'; plan EK-2 mutation list — 'workshop-specific branch in the kernel'",
+      "baseline": {
+        "value": 62,
+        "unit": "quoted workshop-name literals (discovery|formalization|development|delivery|documentation) across 29 kernel-scope files (src/** excluding src/modules/**)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "deterministic tree scan (see measure-complexity.mjs scanWorkshopNameLiterals)",
+        "citation": "worst files: src/app/product-lifecycle-runtime.ts, src/process-modules/lifecycles/product-build-lifecycle.ts, src/schema.ts, src/shared/work-intent.ts, src/tools/tasks.ts, src/worker-names.ts; R17 names the same five workshop kinds"
+      },
+      "target": {
+        "kind": "zero-after-phase",
+        "value": 0,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "zero workshop-name literals in src/workflow-kernel/** and in every non-workshop adapter; workshop names may appear only inside installed workshop manifests and the workshop packages themselves"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension workshops.nameBranchLiterals",
+      "rationale": "A kernel that knows workshop names grows one branch per workshop per incident — the exact anti-gaming surface the plan's EK-2 mutation corpus must kill. Installed manifests carry semantics; the kernel carries none.",
+      "accountableWorkPackage": "WP-12"
+    },
+    {
+      "id": "workshops.ownedSchedulerImplementations",
+      "group": "workshops",
+      "title": "Workshop-owned schedulers — module-flow edges executed by workshop-owned flow logic",
+      "planMandate": "plan: Bounded successor complexity — hard target — 'zero workshop-owned schedulers'; plan: Definition of complete — 'Workshops supply semantics... They do not own queues, schedulers, retry engines or workflow tables'",
+      "baseline": {
+        "value": 27,
+        "unit": "installed module-flow edges (discovery/formalization/development/delivery/documentation node advances) executed through workshop-owned flow logic",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/transition-universe.json reconciliation R17",
+        "citation": "R17: 'Forward carries 27 module-flow edges...; module flows are installed process-module manifest content; the typed protocol edge is obligation:advanceProcessFlow' + generic-flow-executor.ts / kernel-handler-registry.ts in the census workshop-name file list"
+      },
+      "target": {
+        "kind": "zero-after-phase",
+        "value": 0,
+        "enforcedFrom": "EK-5",
+        "finalGate": "EK-13",
+        "detail": "zero scheduler implementations owned by workshop code: module flows execute only as kernel obligations; the semantic packages keep their effects/schemas/prompts/checks"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension workshops.ownedSchedulerImplementations",
+      "rationale": "R17 already re-typed the entire class: workshop-declared flows become one kernel-owned obligation kind. Any scheduler left in workshop code is a second orchestration authority.",
+      "accountableWorkPackage": "WP-07"
+    },
+    {
+      "id": "deps.runtimeDependencySet",
+      "group": "deps",
+      "title": "New runtime dependencies — production runtime dependency additions over the frozen predecessor set",
+      "planMandate": "plan: Bounded successor complexity — 'new runtime dependencies'; plan EK-2 — 'Keep the pure kernel independent of SQLite, UI, worker providers...'",
+      "baseline": {
+        "value": 5,
+        "unit": "runtime dependencies in package.json dependencies",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan package.json",
+        "citation": "@modelcontextprotocol/sdk, better-sqlite3, dejavu-fonts-ttf, pdfkit, zod — this exact sorted set is the frozen allowed maximum"
+      },
+      "target": {
+        "kind": "subset-of-frozen",
+        "value": [
+          "@modelcontextprotocol/sdk",
+          "better-sqlite3",
+          "dejavu-fonts-ttf",
+          "pdfkit",
+          "zod"
+        ],
+        "enforcedFrom": "EK-2",
+        "finalGate": "EK-13",
+        "detail": "the successor adds ZERO new runtime dependencies: the domain kernel is pure; persistence uses better-sqlite3; validation uses zod; MCP uses the existing sdk"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension deps.runtimeDependencySet",
+      "rationale": "Each new runtime dependency adds a supply-chain and behavioral surface the qualification runs must then cover; the refactor is a simplification, and a simplification that needs new deps has misframed a problem.",
+      "accountableWorkPackage": "WP-12"
+    },
+    {
+      "id": "debt.temporaryLegacySurfaces",
+      "group": "debt",
+      "title": "Temporary legacy/replacement debt — delete-classed legacy surfaces still reachable in production",
+      "planMandate": "plan: Bounded successor complexity — 'temporary legacy/replacement debt' and hard target — 'zero temporary legacy/replacement debt after EK-8'; plan: Legacy policy — 'No phase may exit with an old and a new production authority both reachable'",
+      "baseline": {
+        "value": 97,
+        "unit": "delete-disposition writer statements (plus 12-file frozen recency allowlist and the ratcheted sanctioned task-writer set as tracked debt subclasses)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json writer dispositions + predecessorInputs.frozenRecencyAllowlist + sanctionedTaskWriters",
+        "citation": "AUTHORITY-CENSUS §2: 'Writer dispositions across the tree: 171 retain-and-move / 256 rewrite / 97 delete'; §5: frozen recency allowlist (12 files, c33ee9e2), sanctioned task-writer set (ratchet whose existence is ADR-097 finding 7)"
+      },
+      "target": {
+        "kind": "zero-after-phase",
+        "value": 0,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "after the EK-8 hard cutover: zero reachable legacy production runtime, schema, compatibility adapter, migration helper, dual-read/dual-write flag or old-schema import path; enforced by the EK-8 legacy-zero ratchet"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension debt.temporaryLegacySurfaces",
+      "rationale": "During EK-2..EK-7 the legacy tree coexists by design, so this dimension is tracked, not zero; it must reach exactly zero in the same change that routes startup to the new schema (plan EK-3/EK-8), and EK-13 re-measures zero with no waiver.",
+      "accountableWorkPackage": "WP-12"
+    },
+    {
+      "id": "route.declarativeRuleCount",
+      "group": "route",
+      "title": "Route policy — declarative eligibility rule count",
+      "planMandate": "plan: Bounded successor complexity — route-policy dimension 'declarative rule count'; plan: Canonical role contract — 'It names a finite declarative eligibility table, never executable code or hooks'",
+      "baseline": {
+        "value": 0,
+        "unit": "declarative rules in factory-execution-routes.json (default-only policy; real selection lives in imperative code)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan factory-execution-routes.json + src/application/routing/execution-route-resolver.ts",
+        "citation": "policy file: { version: 1, default: claude-cli, routes: [] } — the resolver itself implements 53 imperative branch sites (see route.imperativeBranchSites)"
+      },
+      "target": {
+        "kind": "max",
+        "value": 32,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "at most 32 declarative rules in the one pinned executorRoutePolicy content-addressed table, evaluated exactly once at ActivityAttempt creation"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension route.declarativeRuleCount",
+      "rationale": "The eligibility table must stay finite and reviewable in one screen; 32 rules is already more route variance than 2 protocol roles x 4 semantic profiles x a handful of providers could ever justify.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "route.conditionKeyUniverse",
+      "group": "route",
+      "title": "Route policy — condition-key universe (closed set)",
+      "planMandate": "plan: Bounded successor complexity — route-policy dimension 'condition-key universe'; plan: Canonical role contract — 'contains no task/status/workshop inference'",
+      "baseline": {
+        "value": [
+          "cell",
+          "executionProfile",
+          "module",
+          "role"
+        ],
+        "unit": "condition keys implemented by the resolver's RouteRule.match (sorted)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/application/routing/execution-route-resolver.ts RouteRule interface",
+        "citation": "plus forbidden inference sources feeding the wider chain (census §7.1): tasks.status, tasks.tags, tasks.execution_skill, tasks.review_skill — role is re-derived from mutable task state in 6 of 12 role-resolution sites"
+      },
+      "target": {
+        "kind": "closed-set",
+        "value": [
+          "protocolRole",
+          "semanticProfile"
+        ],
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "the successor route policy keys ONLY on protocolRole (author|reviewer) and semanticProfile (planner|implementer|reviewer|certifier); any other condition key — task, status, tags, skill column, workshop name, execution status, tracker state — is a mutation that must turn the checker red"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension route.conditionKeyUniverse",
+      "rationale": "Every removed key is a closed inference channel: the predecessor derived roles from task status and workshop modules; the successor's two keys come from the pinned CanonicalRoleContract only.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "route.imperativeBranchSites",
+      "group": "route",
+      "title": "Route policy — imperative branch sites in route resolution",
+      "planMandate": "plan: Bounded successor complexity — route-policy dimension 'branch count'",
+      "baseline": {
+        "value": 53,
+        "unit": "if-sites + ternary-sites in execution-route-resolver.ts (28 if + 25 ternary)",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan src/application/routing/execution-route-resolver.ts",
+        "citation": "on top of this, execution-profile-resolver.ts hard-imports the module catalog and matches task_kind imperatively (census §7.1 RR-5)"
+      },
+      "target": {
+        "kind": "max",
+        "value": 0,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "route resolution contains zero imperative branches: pure table lookup + one default; retry/limit/dispatcher paths may not reselect the route (a route change is a typed new attempt)"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension route.imperativeBranchSites",
+      "rationale": "Branches in the resolver are implicit fallbacks — exactly what the plan forbids ('no fallback to task status/tags... or global skill roots'). A branchless lookup cannot grow an incident-specific case.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "route.serializedPolicyBytes",
+      "group": "route",
+      "title": "Route policy — serialized bytes of the pinned policy artifact",
+      "planMandate": "plan: Bounded successor complexity — route-policy dimension 'serialized bytes'",
+      "baseline": {
+        "value": 105,
+        "unit": "bytes of factory-execution-routes.json",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "tree scan factory-execution-routes.json",
+        "citation": "current artifact is default-only; the successor artifact is the content-addressed executorRoutePolicyRef table with digest"
+      },
+      "target": {
+        "kind": "max",
+        "value": 16384,
+        "enforcedFrom": "EK-8",
+        "finalGate": "EK-13",
+        "detail": "the serialized pinned policy artifact is at most 16,384 bytes — reviewable in one read, diffable in one review"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension route.serializedPolicyBytes",
+      "rationale": "A byte cap is the only durable defense against the policy silently accreting rules-and-exceptions until it is a scheduler; 16 KiB bounds it to a genuinely declarative table.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "contract.roleContractFieldCount",
+      "group": "contract",
+      "title": "Contract shape — CanonicalRoleContract field count (exact)",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'field count'; plan: Canonical role contract structure block",
+      "baseline": {
+        "value": 0,
+        "unit": "the predecessor has no CanonicalRoleContract; the binding is fragmented across the 12 census role-resolution sites",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json roleResolutionSites (12 fragmented sites, nearest analogues: resolveAgentLaunchSpec role block, ExecutionRouteResolver)",
+        "citation": "AUTHORITY-CENSUS §7.1 RR-6/RR-7 are the retain-and-move seeds"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 16,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "exactly the 16 named fields of the plan's CanonicalRoleContract block (schemaVersion, roleContractRef, protocolRole, semanticProfileRef, protocolSkillRef+digest, semanticSkillRef+digest, executorRoutePolicyRef+digest, allowedCapabilityRefs, allowedToolRefs, inputProductContracts, outputProductContracts, evidenceObligations, completionCommandSchemaRef+digest, trackerProjectionProfileRef+digest, promptBudgetProfileRef+digest, contractDigest) — 22 physical properties once '+digest' companions are expanded. Adding a field reopens EK-1 (plan: 'Adding a field or reference kind reopens EK-1')"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.roleContractFieldCount",
+      "rationale": "The field list is the admission boundary between contract and prompt-blob: sixteen named fields, each content-addressed, no free-form surface. More fields = a new mutable authority.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "contract.promptBudgetProfileFieldCount",
+      "group": "contract",
+      "title": "Contract shape — PromptBudgetProfile field count (exact)",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'field count'; plan: Bounded prompt and context envelope block",
+      "baseline": {
+        "value": 1,
+        "unit": "one env-var byte cap (SAGA_PROMPT_MAX_BYTES), 0/unset = unlimited",
+        "measuredOn": "predecessor tree @ 21ba0816",
+        "source": "frozen-inputs/authority-census.json promptAssemblySites PA-2",
+        "citation": "AUTHORITY-CENSUS §7.2 item 2 — 'the EK-0-recorded baseline insufficiency'"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 14,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "exactly the 14 named entries of the plan's PromptBudgetProfile block (providerModelLimitTableRef+digest, providerContextLimitTokens, tokenCounterRef+digest+version, maxProviderRequests, maxStaticTokens, maxDynamicTokens, maxRecoveryTokens, maxToolResultTokens, maxTotalInputTokens, maxCumulativeSessionInputTokens, reservedOutputTokens, providerOverheadReserveTokens, safetyMarginTokens, maxPromptBytes) — 17 physical properties expanded"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.promptBudgetProfileFieldCount",
+      "rationale": "The envelope is complete only when all fourteen limit classes exist as positive finite values; a missing field is an unaccounted context class, an extra field is scope creep into the budget authority.",
+      "accountableWorkPackage": "WP-18"
+    },
+    {
+      "id": "contract.schemaAlternatives",
+      "group": "contract",
+      "title": "Contract shape — schema alternatives (oneOf/anyOf) in the frozen admission schemas",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'schema alternatives'",
+      "baseline": {
+        "value": null,
+        "unit": "no admission schemas exist on the predecessor tree (target-only dimension)",
+        "measuredOn": "n/a before WP-16 part 2",
+        "source": "tree scan docs/refactoring/event-kernel/specs/*.schema.json (absent)",
+        "citation": "schemas are authored by WP-16 part 2 (role contract + prompt budget profile) and implemented by WP-17/WP-18"
+      },
+      "target": {
+        "kind": "max",
+        "value": 0,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "zero oneOf/anyOf constructs in canonical-role-contract.schema.json and prompt-budget-profile.schema.json: every record has one shape; variation belongs in the closed reference kinds, not in structural alternatives"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.schemaAlternatives",
+      "rationale": "Alternatives are conditional parsing, and conditional parsing is where 'which authority did you mean' hides. The mutation corpus must prove an added alternative is red.",
+      "accountableWorkPackage": "WP-16"
+    },
+    {
+      "id": "contract.maxReferenceFanOut",
+      "group": "contract",
+      "title": "Contract shape — maximum reference fan-out (refs per array and reference-valued fields per record)",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'reference fan-out'",
+      "baseline": {
+        "value": null,
+        "unit": "no admission schemas exist on the predecessor tree (target-only dimension)",
+        "measuredOn": "n/a before WP-16 part 2",
+        "source": "tree scan docs/refactoring/event-kernel/specs/*.schema.json (absent)",
+        "citation": "predecessor analogue for scale: the material family touches 29 tables from one chain (census §4) — unbounded fan-out is the documented failure shape"
+      },
+      "target": {
+        "kind": "max",
+        "value": 16,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "every reference array in the admission schemas carries maxItems <= 16 (allowedCapabilityRefs, allowedToolRefs, inputProductContracts, outputProductContracts, evidenceObligations) and each record holds at most 16 reference-valued fields"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.maxReferenceFanOut",
+      "rationale": "Fan-out is combinatorial review cost: 16 refs per array keeps every contract reviewable while exceeding any legitimate 2-role x 4-profile need.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "contract.maxNestingDepth",
+      "group": "contract",
+      "title": "Contract shape — maximum schema nesting depth",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'maximum depth'",
+      "baseline": {
+        "value": null,
+        "unit": "no admission schemas exist on the predecessor tree (target-only dimension)",
+        "measuredOn": "n/a before WP-16 part 2",
+        "source": "tree scan docs/refactoring/event-kernel/specs/*.schema.json (absent)",
+        "citation": "predecessor contrast: buildPrompt composes ~12 unbounded layers with no schema at all (census §7.2 PA-1)"
+      },
+      "target": {
+        "kind": "max",
+        "value": 3,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "admission schemas nest at most 3 levels deep (record -> field group -> ref/digest pair); anything deeper is policy hiding inside structure"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.maxNestingDepth",
+      "rationale": "Depth is where inline transition policy smuggles itself past review (plan: 'no... inline transition policy'); three levels cover contract -> refs -> digests and nothing else.",
+      "accountableWorkPackage": "WP-16"
+    },
+    {
+      "id": "contract.policyReferenceKinds",
+      "group": "contract",
+      "title": "Contract shape — policy-reference kinds (closed universe of reference suffixes)",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'policy-reference kinds'; plan: Canonical role contract — 'The role contract binds content-addressed references'",
+      "baseline": {
+        "value": null,
+        "unit": "no admission schemas exist on the predecessor tree (target-only dimension)",
+        "measuredOn": "n/a before WP-16 part 2",
+        "source": "tree scan docs/refactoring/event-kernel/specs/*.schema.json (absent)",
+        "citation": "the closed set is frozen NOW by this budget from the plan's two contract blocks"
+      },
+      "target": {
+        "kind": "closed-set",
+        "value": [
+          "completionCommandSchemaRef",
+          "executorRoutePolicyRef",
+          "providerModelLimitTableRef",
+          "promptBudgetProfileRef",
+          "protocolSkillRef",
+          "roleContractRef",
+          "semanticProfileRef",
+          "semanticSkillRef",
+          "tokenCounterRef",
+          "trackerProjectionProfileRef"
+        ],
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "exactly these 10 reference kinds across the two admission schemas; adding a reference kind reopens EK-1 (plan: 'Adding a field or reference kind reopens EK-1')"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.policyReferenceKinds",
+      "rationale": "A closed reference universe makes every indirection auditable: ten kinds, each naming an installed content-addressed authority; an eleventh kind is a new authority channel.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "contract.arbitraryMetadataFields",
+      "group": "contract",
+      "title": "Contract shape — arbitrary metadata/extension fields",
+      "planMandate": "plan: Bounded successor complexity — contract-shape dimension 'arbitrary metadata/extension fields'; plan: Canonical role contract — 'contains no free-form metadata, extension bag, inline transition policy or executable policy blob'",
+      "baseline": {
+        "value": null,
+        "unit": "no admission schemas exist on the predecessor tree (target-only dimension)",
+        "measuredOn": "n/a before WP-16 part 2",
+        "source": "tree scan docs/refactoring/event-kernel/specs/*.schema.json (absent)",
+        "citation": "predecessor contrast: episodic task memory materializes attempt_count/previous_failures onto the mutable card (census §7.2 PA-6) — the metadata-bag failure mode"
+      },
+      "target": {
+        "kind": "max",
+        "value": 0,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "zero fields matching metadata/extension/extra/custom/x-* and additionalProperties is false (or a closed object) everywhere in the admission schemas"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.arbitraryMetadataFields",
+      "rationale": "A metadata bag is an unmeasured dimension by construction: anything can hide in it. Zero is the only safe cap.",
+      "accountableWorkPackage": "WP-17"
+    },
+    {
+      "id": "structure.phaseCount",
+      "group": "structure",
+      "title": "Execution structure — phase count (exact)",
+      "planMandate": "plan: Bounded successor complexity — 'The execution structure is capped at the 14 named phases EK-0 through EK-13'",
+      "baseline": {
+        "value": 14,
+        "unit": "phases declared in the plan document",
+        "measuredOn": "plan document @ 21ba0816",
+        "source": "tree scan docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md '^## Phase EK-'",
+        "citation": "EK-0 through EK-13"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 14,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "the plan may not grow a 15th phase; re-scoping merges or replaces an existing phase and reopens the admission decision"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension structure.phaseCount",
+      "rationale": "Phase count is schedule-shaped complexity: hidden phases are untracked authority. The measurement reads the governing plan document itself, so adding a phase turns the checker red.",
+      "accountableWorkPackage": "WP-16"
+    },
+    {
+      "id": "structure.topLevelPackageCount",
+      "group": "structure",
+      "title": "Execution structure — top-level work-package count (exact)",
+      "planMandate": "plan: Bounded successor complexity — 'and the 24 top-level work packages listed below. A coordinator may split a package into tracked subtasks under the same owner/dependencies, but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision'",
+      "baseline": {
+        "value": 24,
+        "unit": "top-level packages in the plan's work-package table",
+        "measuredOn": "plan document @ 21ba0816",
+        "source": "tree scan docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md '^| WP-'",
+        "citation": "WP-01..WP-10, WP-11D/F/V/L, WP-12, WP-13A/B/C/D, WP-14..WP-18"
+      },
+      "target": {
+        "kind": "exact",
+        "value": 24,
+        "enforcedFrom": "EK-1",
+        "finalGate": "EK-13",
+        "detail": "tracked subtasks under an existing owner are legal; a 25th top-level package is a structural complexity delta requiring package replacement/merge plus reopened admission"
+      },
+      "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension structure.topLevelPackageCount",
+      "rationale": "Work packages are ownership boundaries; adding one without removing another is authority sprawl. The measurement parses the plan table, so the cap is enforced against the actual document.",
+      "accountableWorkPackage": "WP-16"
+    }
+  ]
+}
