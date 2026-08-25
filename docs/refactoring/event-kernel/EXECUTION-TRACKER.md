@@ -21,7 +21,7 @@ tracker or the plan. One row per bounded work package.
 | Package | Bounded assignment | Depends on | Owner | Status | Commit | Verifier | Evidence | Residual |
 |---|---|---|---|---|---|---|---|---|
 | EK-0 | Predecessor gate + immutable baseline | predecessor | coordinator | IN PROGRESS | — | — | BASELINE.md (pending suite) | — |
-| WP-01 | Authority reader/writer census | EK-0 | unassigned | NOT STARTED | — | — | authority-census.json + AUTHORITY-CENSUS.md | — |
+| WP-01 | Authority reader/writer census | EK-0 | subagent | **DONE** | `eaa07093` | validator PASS (committed tool) | 1802 SQL stmts / 124 tables / 524 writers / 1486 readers, zero unclassified; rebuild sha256 80883186… | file-level attribution; non-SQL surfaces qualitative |
 | WP-02 | Forward graph (inputs/commands only; PRIVATE until both frozen) | EK-0 | subagent | **DONE — frozen** | `1ccbf66d` | coordinator (reconciliation pending) | forward-graph.json sha256 a3800721…, 56 nodes / 132 edges / 10 gaps G1-G10 | names pending EK-1 freeze |
 | WP-03 | Reverse graph (terminal claims only; PRIVATE) | EK-0 | subagent | **DONE — frozen** | `6e029e08` | coordinator (reconciliation pending) | reverse-graph.json, 88 nodes / 112 edges / 28 proofs (23 closed, 5 gap-flagged) / 8 gaps G1-G8 | names pending EK-1 freeze |
 | WP-04 | Legacy + document deletion manifests | EK-0 | unassigned | NOT STARTED | — | — | LEGACY-DELETION-MANIFEST.md, DOCUMENT-DELETION-MANIFEST.md | — |
