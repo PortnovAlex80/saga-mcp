@@ -1,0 +1,958 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-1"
+            ]
+          },
+          "message": "AC artifact AC-1 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 14. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-1",
+          "severity": "error",
+          "subjectRef": "artifact:14"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-2"
+            ]
+          },
+          "message": "AC artifact AC-2 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 15. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-2",
+          "severity": "error",
+          "subjectRef": "artifact:15"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-3"
+            ]
+          },
+          "message": "AC artifact AC-3 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 16. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-3",
+          "severity": "error",
+          "subjectRef": "artifact:16"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-4"
+            ]
+          },
+          "message": "AC artifact AC-4 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 17. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-4",
+          "severity": "error",
+          "subjectRef": "artifact:17"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-5"
+            ]
+          },
+          "message": "AC artifact AC-5 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 18. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-5",
+          "severity": "error",
+          "subjectRef": "artifact:18"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-6"
+            ]
+          },
+          "message": "AC artifact AC-6 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 19. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-6",
+          "severity": "error",
+          "subjectRef": "artifact:19"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-7"
+            ]
+          },
+          "message": "AC artifact AC-7 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 20. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-7",
+          "severity": "error",
+          "subjectRef": "artifact:20"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-8"
+            ]
+          },
+          "message": "AC artifact AC-8 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 21. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-8",
+          "severity": "error",
+          "subjectRef": "artifact:21"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-9"
+            ]
+          },
+          "message": "AC artifact AC-9 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 22. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-9",
+          "severity": "error",
+          "subjectRef": "artifact:22"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-10"
+            ]
+          },
+          "message": "AC artifact AC-10 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 23. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-10",
+          "severity": "error",
+          "subjectRef": "artifact:23"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-11"
+            ]
+          },
+          "message": "AC artifact AC-11 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 24. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-11",
+          "severity": "error",
+          "subjectRef": "artifact:24"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-12"
+            ]
+          },
+          "message": "AC artifact AC-12 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 25. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-12",
+          "severity": "error",
+          "subjectRef": "artifact:25"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-13"
+            ]
+          },
+          "message": "AC artifact AC-13 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 26. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-13",
+          "severity": "error",
+          "subjectRef": "artifact:26"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-14"
+            ]
+          },
+          "message": "AC artifact AC-14 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 27. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-14",
+          "severity": "error",
+          "subjectRef": "artifact:27"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_AC_HEADING_UNRESOLVED:heading",
+          "evidenceRefs": [
+            "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "heading",
+            "requiredTargetTypes": [
+              "AC-15"
+            ]
+          },
+          "message": "AC artifact AC-15 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 28. Ensure the artifact file is committed with the registered content hash before worker_done.",
+          "path": "AC-15",
+          "severity": "error",
+          "subjectRef": "artifact:28"
+        }
+      ],
+      "policyId": "submission-validation:formalization.acceptance-contract.v1",
+      "reasonCode": "FORMALIZATION_AC_HEADING_UNRESOLVED",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:14",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:15",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:16",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:17",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:18",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:19",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:20",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:21",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:22",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:23",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:24",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:25",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:26",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:27",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:28",
+          "schema": "AC"
+        }
+      ],
+      "summary": "Submission preflight formalization.acceptance-contract.v1@1.2.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "AC-1",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 14,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-1",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-2",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 15,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-2",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-3",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 16,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-3",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-4",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 17,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-5",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 18,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-6",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 19,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-7",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 20,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-8",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 21,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-9",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 22,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-10",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 23,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-11",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 24,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-12",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 25,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-12",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-13",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 26,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-13",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-14",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 27,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-14",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-15",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 28,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      }
+    ],
+    "observedSetDigest": "5814fd0e347cfa9fee71af9468fa1190734f01566d319a59ab3315ee90123399",
+    "origin": {
+      "executionId": "worker-execution:e96f5bc6-a35a-44b0-8dbb-1728d2fb9673",
+      "inputSnapshotHash": "9db998bbda9f761b595b270b03eba6f649dee82ab3b43108691fc2ee6f816755",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-acceptance-contract",
+      "processRunId": 2,
+      "taskId": 7,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+    },
+    "rejectionDigest": "8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63",
+    "rejectionRef": "submission-validation-rejection:8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.acceptance-contract.v1",
+      "version": "1.2.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "AC-1",
+      "artifactId": 14,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-1 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 14. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-1"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-2",
+      "artifactId": 15,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-2 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 15. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-2"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-3",
+      "artifactId": 16,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-3 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 16. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-3"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-4",
+      "artifactId": 17,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-4 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 17. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-4"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-5",
+      "artifactId": 18,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-5 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 18. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-5"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-6",
+      "artifactId": 19,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-6 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 19. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-6"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-7",
+      "artifactId": 20,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-7 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 20. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-7"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-8",
+      "artifactId": 21,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-8 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 21. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-8"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-9",
+      "artifactId": 22,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-9 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 22. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-9"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-10",
+      "artifactId": 23,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-10 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 23. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-10"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-11",
+      "artifactId": 24,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-11 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 24. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-11"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-12",
+      "artifactId": 25,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-12 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 25. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-12"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-13",
+      "artifactId": 26,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-13 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 26. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-13"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-14",
+      "artifactId": 27,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-14 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 27. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-14"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-15",
+      "artifactId": 28,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "AC artifact AC-15 content could not be read for the heading-resolution check: FORMALIZATION_ARTIFACT_CONTENT_DRIFT: 28. Ensure the artifact file is committed with the registered content hash before worker_done.",
+      "missing": {
+        "minimum": 1,
+        "relation": "heading",
+        "requiredTargetTypes": [
+          "AC-15"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-acceptance-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "AC-1",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 14,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-1",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-2",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 15,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-2",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-3",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 16,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-3",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-4",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 17,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-5",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 18,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-6",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 19,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-7",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 20,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-8",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 21,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-9",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 22,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-10",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 23,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-11",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 24,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-12",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 25,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-12",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-13",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 26,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-13",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-14",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 27,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-14",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-15",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 28,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_AC_HEADING_UNRESOLVED",
+  "rejectionDigest": "8e56689910458130b19430379b3d96f17fdab0353cb8754593d73fc5c5158c63",
+  "task": "formalization.acceptance#1",
+  "validatorId": "formalization.acceptance-contract.v1",
+  "validatorVersion": "1.2.0",
+  "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

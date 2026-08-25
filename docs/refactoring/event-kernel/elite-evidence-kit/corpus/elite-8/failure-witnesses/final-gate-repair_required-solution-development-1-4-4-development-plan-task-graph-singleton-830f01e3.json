@@ -1,0 +1,32 @@
+{
+  "decision": {
+    "checkPlan": "development.plan-task-graph.final",
+    "phase": "final",
+    "repairTargetRole": "author",
+    "verdict": "repair_required"
+  },
+  "failedChecks": [
+    {
+      "diagnostics": [
+        {
+          "code": "implementation-scope-overlap",
+          "digest": "a622b11f8cf5b1192061e34b3fcdf4696cc55647b2d0100d2aae809f8ffb75a0",
+          "message": "1 same-repository implementation item pair(s) overlap without a dependency order — add a dependency path in ONE direction for each computed pair: 'infrastructure' <-> 'presentation' (overlapping scopes: left [tests/], right [tests/unit/rendering/])",
+          "subjectRef": "candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/6b67d5630ee556a49c3b4d387e07e5ec805a4121f313262bdc1700d0559174df/author"
+        },
+        {
+          "code": "srs-module-uncovered",
+          "digest": "d2749e7b7d1329914deecd7063a8dc237ad3611749b4047e416ffaae8a8bce6f",
+          "message": "SRS §2.2 module 'server-core' declares file(s) [routes.js] that no implementation item's changeScopes cover; SRS §2.2 module 'game-engine' declares file(s) [GameEngine.js, GameState.js] that no implementation item's changeScopes cover; SRS §2.2 module 'universe-model' declares file(s) [Universe.js, System.js, Station.js] that no implementation item's changeScopes cover; SRS §2.2 module 'player-model' declares file(s) [Player.js, Ship.js, Cargo.js] that no implementation item's changeScopes cover; SRS §2.2 module 'trading-system' declares file(s) [Market.js, Commodity.js] that no implementation item's changeScopes cover; SRS §2.2 module 'navigation-system' declares file(s) [Navigation.js, JumpSystem.js] that no implementation item's changeScopes cover; SRS §2.2 module 'combat-system' declares file(s) [Combat.js, CombatAI.js, Weapon.js] that no implementation item's changeScopes cover; SRS §2.2 module 'upgrade-system' declares file(s) [UpgradeSystem.js, Module.js] that no implementation item's changeScopes cover; SRS §2.2 module 'save-load-system' declares file(s) [SaveLoad.js, SaveFormat.js] that no implementation item's changeScopes cover; SRS §2.2 module 'progression-system' declares file(s) [Progression.js, RatingSystem.js] that no implementation item's changeScopes cover; SRS §2.2 module 'rendering-system' declares file(s) [Renderer.js, CanvasRenderer.js, Effects.js] that no implementation item's changeScopes cover; SRS §2.2 module 'ui-controller' declares file(s) [UIController.js, ScreenManager.js] that no implementation item's changeScopes cover; declared changeScopes [package.json, public/, server.js, src/core/EventBus.js, src/core/GameEngine.js, src/core/GameState.js, src/models/Cargo.js, src/models/Commodity.js, src/models/Market.js, src/models/Player.js, src/models/Ship.js, src/models/Station.js, src/models/System.js, src/models/Universe.js, src/rendering/CanvasRenderer.js, src/rendering/Effects.js, src/rendering/Renderer.js, src/rendering/UI.js, src/server/healthz.js, src/server/routes.js, src/server/server.js, src/systems/CombatAI.js, src/systems/CombatSystem.js, src/systems/JumpSystem.js, src/systems/Module.js, src/systems/NavigationSystem.js, src/systems/ProgressionSystem.js, src/systems/RatingSystem.js, src/systems/SaveFormat.js, src/systems/SaveLoadSystem.js, src/systems/TradingSystem.js, src/systems/UpgradeSystem.js, src/systems/Weapon.js, src/ui/InputHandler.js, src/ui/ScreenManager.js, src/ui/UIController.js, src/utils/, tests/, tests/integration/combat-flow.test.js, tests/integration/save-load.test.js, tests/integration/trading-flow.test.js, tests/property/fuel-invariants.test.js, tests/property/trading-invariants.test.js, tests/smoke/, tests/unit/rendering/]. Every SRS §2.2 module file must lie inside at least one implementation item's changeScopes.",
+          "subjectRef": "candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/6b67d5630ee556a49c3b4d387e07e5ec805a4121f313262bdc1700d0559174df/author"
+        }
+      ],
+      "outcome": "failed",
+      "provider": "development.task-graph-contract.v1",
+      "providerVersion": "1.2.0"
+    }
+  ],
+  "kind": "gate-refusal",
+  "note": "Minimal fragment: the failing check receipts (with decoded diagnostics), the gate decision they produced, and the workplace they refused. Reproduces the observed defect/refusal.",
+  "workplace": "solution-development@1.4.4/development-plan-task-graph/singleton"
+}

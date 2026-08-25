@@ -1,0 +1,96 @@
+{
+  "contentDigest": "7fe9f44cc8e65c22f76181de4301760b483a0e89d10675420c046b1dfd672902",
+  "payload": {
+    "findings": [
+      {
+        "message": "UNRESOLVED FROM ROUND 1: AC-1 (Game Initialization) document claims derivation from 'FR-1: Game Initialization' but trace shows derivation from general 'FR' artifact (ID 3) without specific FR-1 section mapping. Document 'Derived From' sections do not match trace graph specificity.",
+        "severity": "error",
+        "subjectRef": "AC-1"
+      },
+      {
+        "message": "UNRESOLVED FROM ROUND 1: AC-2 (Hyperspace Jump Execution) document claims derivation from 'UC-2: Navigate Between Star Systems' but trace shows derivation from UC-7 (Load Game State). Document also claims 'FR-2: Space System Navigation' and 'RULE-2: Fuel Consumption for Hyperspace Jumps' but traces show general 'FR' and 'RULE' artifacts without specific section mapping.",
+        "severity": "error",
+        "subjectRef": "AC-2"
+      },
+      {
+        "message": "UNRESOLVED FROM ROUND 1: AC-3 (Commodity Purchase with Validation) document claims derivation from 'UC-3: Trade Commodities at Station' but trace shows derivation from UC-8 (View Elite Rating). Document 'Derived From' sections do not match trace graph.",
+        "severity": "error",
+        "subjectRef": "AC-3"
+      },
+      {
+        "message": "UNRESOLVED FROM ROUND 1: AC-4 (Commodity Sale with Validation) document claims derivation from 'UC-3: Trade Commodities at Station' but trace shows derivation from UC-8 (View Elite Rating). Document 'Derived From' sections do not match trace graph.",
+        "severity": "error",
+        "subjectRef": "AC-4"
+      },
+      {
+        "message": "NEW FINDING: AC-5 (Combat Victory) document claims derivation from 'FR-4: Ship Combat System' and 'RULE-4: Combat Encounter Probability' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-4 and RULE-4 section mapping. Document claims UC-4, trace shows UC-4 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-5"
+      },
+      {
+        "message": "NEW FINDING: AC-6 (Combat Defeat) document claims derivation from 'FR-4: Ship Combat System' but trace shows general 'FR' artifact (ID 3) without specific FR-4 section mapping. Document claims UC-4, trace shows UC-4 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-6"
+      },
+      {
+        "message": "NEW FINDING: AC-7 (Successful Combat Flee) document claims derivation from 'FR-4: Ship Combat System' and 'RULE-4: Combat Encounter Probability' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-4 and RULE-4 section mapping. Document claims UC-4, trace shows UC-4 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-7"
+      },
+      {
+        "message": "NEW FINDING: AC-8 (Ship Upgrade Purchase) document claims derivation from 'FR-5: Ship Upgrade System' and 'RULE-5: Ship Upgrade Progression' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-5 and RULE-5 section mapping. Document claims UC-5, trace shows UC-5 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-8"
+      },
+      {
+        "message": "NEW FINDING: AC-9 (Game State Save) document claims derivation from 'FR-6: Save/Load Game State' and 'RULE-7: Save State Integrity' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-6 and RULE-7 section mapping. Document claims UC-6, trace shows UC-6 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-9"
+      },
+      {
+        "message": "NEW FINDING: AC-10 (Game State Load) document claims derivation from 'FR-6: Save/Load Game State' and 'RULE-7: Save State Integrity' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-6 and RULE-7 section mapping. Document claims UC-7, trace shows UC-7 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-10"
+      },
+      {
+        "message": "NEW FINDING: AC-11 (Elite Rating Display) document claims derivation from 'FR-7: Elite Rating Progression' and 'RULE-6: Elite Rating Calculation' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-7 and RULE-6 section mapping. Document claims UC-8, trace shows UC-8 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-11"
+      },
+      {
+        "message": "NEW FINDING: AC-12 (Commodity Price Display) document claims derivation from 'FR-3: Commodity Trading System' and 'RULE-3: Commodity Price Variability' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-3 and RULE-3 section mapping. Document claims UC-3, trace shows UC-3 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-12"
+      },
+      {
+        "message": "NEW FINDING: AC-13 (Pirate Encounter Trigger) document claims derivation from 'FR-2: Space System Navigation' and 'RULE-4: Combat Encounter Probability' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-2 and RULE-4 section mapping. Document claims UC-2, trace shows UC-2 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-13"
+      },
+      {
+        "message": "NEW FINDING: AC-14 (Cargo Capacity Enforcement) document claims derivation from 'FR-3: Commodity Trading System' and 'RULE-1: Cargo Capacity Constraints' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-3 and RULE-1 section mapping. Document claims UC-3, trace shows UC-3 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-14"
+      },
+      {
+        "message": "NEW FINDING: AC-15 (Fuel Tank Upgrade Impact) document claims derivation from 'FR-5: Ship Upgrade System' and 'RULE-2: Fuel Consumption for Hyperspace Jumps' but traces show general 'FR' and 'RULE' artifacts (IDs 3 and 5) without specific FR-5 and RULE-2 section mapping. Document claims UC-5, trace shows UC-5 (UC matches).",
+        "severity": "error",
+        "subjectRef": "AC-15"
+      },
+      {
+        "message": "SYSTEMATIC ISSUE: The acceptance criteria document's 'Derived From' sections and traceability matrix (lines 18-671) claim specific FR and RULE section derivations (e.g., 'FR-1: Game Initialization', 'RULE-2: Fuel Consumption for Hyperspace Jumps') but the actual MCP trace graph only contains links to general 'FR' and 'RULE' artifacts (IDs 3 and 5) without section-level specificity. All 15 AC artifacts have this traceability inconsistency.",
+        "severity": "error",
+        "subjectRef": "03-acceptance-criteria.md"
+      },
+      {
+        "message": "SYSTEMATIC ISSUE FROM ROUND 1 NOT RESOLVED: AC-2, AC-3, and AC-4 still have incorrect UC derivations. AC-2 claims UC-2 but traces to UC-7. AC-3 claims UC-3 but traces to UC-8. AC-4 claims UC-3 but traces to UC-8. The author has not corrected these fundamental traceability errors from the prior rejection.",
+        "severity": "error",
+        "subjectRef": "03-acceptance-criteria.md"
+      }
+    ],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/9b7f5f87a72a5e474864b5ff1a06a1bb7ed0f97ebf671115e8409852e9665772/author",
+    "verdict": "changes_requested"
+  },
+  "payloadHash": "7fe9f44cc8e65c22f76181de4301760b483a0e89d10675420c046b1dfd672902",
+  "schemaId": "factory.review-verdict.v1"
+}

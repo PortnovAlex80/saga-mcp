@@ -1,0 +1,10 @@
+{
+  "contentDigest": "78391f40048113534e716c0a510a7c918ad72acecf8cc4212e5b3f8048eb5a2a",
+  "payload": {
+    "findings": [],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/a902551ef845254e2e60ac15bfd2aa282d31ee198985886e6d539621d71d3ca0/author",
+    "verdict": "approved"
+  },
+  "payloadHash": "78391f40048113534e716c0a510a7c918ad72acecf8cc4212e5b3f8048eb5a2a",
+  "schemaId": "factory.review-verdict.v1"
+}

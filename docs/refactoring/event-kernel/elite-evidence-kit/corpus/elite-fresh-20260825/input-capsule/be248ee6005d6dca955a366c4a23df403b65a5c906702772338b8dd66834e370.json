@@ -1,0 +1,31 @@
+{
+  "contentDigest": "05c48d4250e30ace7154af95a41095c84552fab5b2813852f0cd81194df12867",
+  "payload": {
+    "schemaVersion": "factory.development-readiness-manifest.v1",
+    "sourceCandidate": {
+      "hash": "6f98e3181f70e02605811aae32cdeb317f8290bc30aa110492c0a823633c7a5e",
+      "ref": "development-integrated-source:3:6f98e3181f70e02605811aae32cdeb317f8290bc30aa110492c0a823633c7a5e",
+      "schema": "factory.integrated-source-candidate.v1"
+    },
+    "targets": [
+      {
+        "key": "primary",
+        "readiness": {
+          "commands": {
+            "installCommand": "npm install",
+            "testCommand": "npx vitest run"
+          },
+          "kind": "served",
+          "serve": {
+            "environment": {
+              "PORT": "${PORT}"
+            },
+            "startCommand": "npx tsx server/index.ts"
+          }
+        }
+      }
+    ]
+  },
+  "payloadHash": "05c48d4250e30ace7154af95a41095c84552fab5b2813852f0cd81194df12867",
+  "schemaId": "factory.development-readiness-manifest.v1"
+}

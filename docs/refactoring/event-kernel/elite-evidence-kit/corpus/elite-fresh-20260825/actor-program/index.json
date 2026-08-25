@@ -1,0 +1,173 @@
+{
+  "capsules": [
+    {
+      "digest": "074fcb0702f3c68cc8f074ed60ec6ca64950ce673f6b749653775f215fab7b3a",
+      "file": "actor-program/074fcb0702f3c68cc8f074ed60ec6ca64950ce673f6b749653775f215fab7b3a.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "0b5c82d878deb4351088f80921e958b62ad50deb7c7ceb8156017efd912bf411",
+      "file": "actor-program/0b5c82d878deb4351088f80921e958b62ad50deb7c7ceb8156017efd912bf411.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "1060a10d71957b1e49d8b9944e11ed792781aaa08d3a1b480c042414d296fc0b",
+      "file": "actor-program/1060a10d71957b1e49d8b9944e11ed792781aaa08d3a1b480c042414d296fc0b.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_UNCOVERED on define-acceptance-contract"
+    },
+    {
+      "digest": "1a97136c01dd532975d886eb1437e257ac00c3acef047cecdb0d41dd862ce68b",
+      "file": "actor-program/1a97136c01dd532975d886eb1437e257ac00c3acef047cecdb0d41dd862ce68b.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "20275df89f9887f2ae038b21f436c9a8a42992bec11401996c8d104770f55be9",
+      "file": "actor-program/20275df89f9887f2ae038b21f436c9a8a42992bec11401996c8d104770f55be9.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "221f7b186a95afe298b6bc60d389c89e670a8c46e9fe0cafc1dd1650ff59bba4",
+      "file": "actor-program/221f7b186a95afe298b6bc60d389c89e670a8c46e9fe0cafc1dd1650ff59bba4.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "2637edbdf0ede1675a376305c571b8ea4cf5da9e2f3a613ceeeed797bbae090e",
+      "file": "actor-program/2637edbdf0ede1675a376305c571b8ea4cf5da9e2f3a613ceeeed797bbae090e.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "26a4a8c09383201660a6c75e7b540c335519b687d2c5dbf96817251cf1208f80",
+      "file": "actor-program/26a4a8c09383201660a6c75e7b540c335519b687d2c5dbf96817251cf1208f80.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID on define-product-contract"
+    },
+    {
+      "digest": "397636fcf1b6195a3d70f7f73a73ec71abca131df641410ae40ef72baab5c447",
+      "file": "actor-program/397636fcf1b6195a3d70f7f73a73ec71abca131df641410ae40ef72baab5c447.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "5aa8c79dda90387db28a9cc370f63c17a9669097f54ea953b83b63220876e88e",
+      "file": "actor-program/5aa8c79dda90387db28a9cc370f63c17a9669097f54ea953b83b63220876e88e.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "62081397e4883bbc6a55fc612a6d68b0d187caceeb7880a625f3d0ae22f903d7",
+      "file": "actor-program/62081397e4883bbc6a55fc612a6d68b0d187caceeb7880a625f3d0ae22f903d7.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "68c508277bcea40ad4072925dcaf58c2ee7cf50c4ad2d102b4eb61bfbacfedfe",
+      "file": "actor-program/68c508277bcea40ad4072925dcaf58c2ee7cf50c4ad2d102b4eb61bfbacfedfe.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "697d3fba74652ef6e3f70a8f4e9de3cea40d772bbbfd8bdd2a968bb8f7449bc1",
+      "file": "actor-program/697d3fba74652ef6e3f70a8f4e9de3cea40d772bbbfd8bdd2a968bb8f7449bc1.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "711c9c01359a2727946204347a90903c5f47def5da486581ad9e851474dd1e91",
+      "file": "actor-program/711c9c01359a2727946204347a90903c5f47def5da486581ad9e851474dd1e91.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "74fef7ae1261663cdba5fc55b7631dfa9cc57c3697c39eea9d9ada98f43599bf",
+      "file": "actor-program/74fef7ae1261663cdba5fc55b7631dfa9cc57c3697c39eea9d9ada98f43599bf.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID on define-product-contract"
+    },
+    {
+      "digest": "7879938bc23f1ec03402712c39583035b4b56b9beb4321d7bd87f538be82d7ee",
+      "file": "actor-program/7879938bc23f1ec03402712c39583035b4b56b9beb4321d7bd87f538be82d7ee.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "8746f957bc410e0378b3f45b0489b67c4690e9750a907b344e516f1f34ba18ec",
+      "file": "actor-program/8746f957bc410e0378b3f45b0489b67c4690e9750a907b344e516f1f34ba18ec.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "9bf88cb32b6974e697845bfcb906a08408636e058ce35b55d05d40d4242745a5",
+      "file": "actor-program/9bf88cb32b6974e697845bfcb906a08408636e058ce35b55d05d40d4242745a5.json",
+      "role": "worker-executions",
+      "summary": "33 executions"
+    },
+    {
+      "digest": "a13348e1f0933885518a13e1df44fe7080d86a7ceea0015bf4c2be89dfe8c3a7",
+      "file": "actor-program/a13348e1f0933885518a13e1df44fe7080d86a7ceea0015bf4c2be89dfe8c3a7.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "a7e32aeedeb47f72842a66d1fb86e4ef09ae31b5d2120c1915824bd73517d3c1",
+      "file": "actor-program/a7e32aeedeb47f72842a66d1fb86e4ef09ae31b5d2120c1915824bd73517d3c1.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "b053dfc848aa51024228bedbea2f5ebfc3de11c322dc87d597cbc020ccbf1cb6",
+      "file": "actor-program/b053dfc848aa51024228bedbea2f5ebfc3de11c322dc87d597cbc020ccbf1cb6.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "b7ed2254ad0f5fd2e06e26d6dc401fe59ce02cd1406cfb66e2a974ab31885824",
+      "file": "actor-program/b7ed2254ad0f5fd2e06e26d6dc401fe59ce02cd1406cfb66e2a974ab31885824.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "bb76d1b93105f988061a24a593ff71fe587fb82c05a0c4cd74a903eab185cec3",
+      "file": "actor-program/bb76d1b93105f988061a24a593ff71fe587fb82c05a0c4cd74a903eab185cec3.json",
+      "role": "command-receipts",
+      "summary": "34 commands"
+    },
+    {
+      "digest": "bebbd511e7b532132e48a5fd4e09303aa6f1816e4a4e15fe4c121bc0330146c5",
+      "file": "actor-program/bebbd511e7b532132e48a5fd4e09303aa6f1816e4a4e15fe4c121bc0330146c5.json",
+      "role": "sealed-material/factory.development-review-verdict.v1",
+      "summary": "factory.development-review-verdict.v1"
+    },
+    {
+      "digest": "c0590d9df3b0ad6b172490be562ebf2f17c0ab4c9216dd064ab656dcef7372cb",
+      "file": "actor-program/c0590d9df3b0ad6b172490be562ebf2f17c0ab4c9216dd064ab656dcef7372cb.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "df014d5403df77828a146802c6e08d3a733014fffe77be1cedb895b14674e145",
+      "file": "actor-program/df014d5403df77828a146802c6e08d3a733014fffe77be1cedb895b14674e145.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "e32e2a21c89b2a6265f7ef2d613064b0e899e43bd9d9cc57d3ce6e6f3cc0fc7d",
+      "file": "actor-program/e32e2a21c89b2a6265f7ef2d613064b0e899e43bd9d9cc57d3ce6e6f3cc0fc7d.json",
+      "role": "sealed-material/factory.development-implementation-result.v1",
+      "summary": "factory.development-implementation-result.v1"
+    },
+    {
+      "digest": "ef058850bdd1630e77e93b53aa3f6cdb04b8e2c86c99ac0124a1af153cdfc2b4",
+      "file": "actor-program/ef058850bdd1630e77e93b53aa3f6cdb04b8e2c86c99ac0124a1af153cdfc2b4.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_UNDISPOSED on define-product-contract"
+    }
+  ],
+  "runId": "elite-fresh-20260825"
+}

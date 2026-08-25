@@ -1,0 +1,10 @@
+{
+  "contentDigest": "72f687906cb8b8118e8597a9aff60dde708babe865ad00d270c40e43346cd516",
+  "payload": {
+    "findings": [],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/3c82d56220e96082710450754dce6c4f257034c3746b6df16efb135ddcfee7d9/author",
+    "verdict": "approved"
+  },
+  "payloadHash": "72f687906cb8b8118e8597a9aff60dde708babe865ad00d270c40e43346cd516",
+  "schemaId": "factory.review-verdict.v1"
+}

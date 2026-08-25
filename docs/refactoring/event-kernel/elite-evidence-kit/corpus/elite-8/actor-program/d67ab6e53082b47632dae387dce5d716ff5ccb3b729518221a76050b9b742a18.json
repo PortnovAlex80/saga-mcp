@@ -1,0 +1,10 @@
+{
+  "contentDigest": "df0bab66b997e5c40ea3d15fd6198467b1f9db08752b1a15e90fe4462c5f61f8",
+  "payload": {
+    "findings": [],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/47dd91d9ef1316cf756cf6d1c769f1a1f50ea011ed7eec7152e6a1fd1e18793a/author",
+    "verdict": "approved"
+  },
+  "payloadHash": "df0bab66b997e5c40ea3d15fd6198467b1f9db08752b1a15e90fe4462c5f61f8",
+  "schemaId": "factory.review-verdict.v1"
+}

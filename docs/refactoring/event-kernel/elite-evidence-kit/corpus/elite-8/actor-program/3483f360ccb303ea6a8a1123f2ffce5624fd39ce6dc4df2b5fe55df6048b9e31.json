@@ -1,0 +1,985 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-001"
+            ]
+          },
+          "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-001",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-002"
+            ]
+          },
+          "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-002",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-003"
+            ]
+          },
+          "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-003",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-004"
+            ]
+          },
+          "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-004",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-005"
+            ]
+          },
+          "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-005",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-006"
+            ]
+          },
+          "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-006",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-007"
+            ]
+          },
+          "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-007",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [
+            {
+              "id": 8,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-4: derived_from requires FR|NFR",
+          "path": "AC-4",
+          "severity": "error",
+          "subjectRef": "artifact:17"
+        },
+        {
+          "actual": [
+            {
+              "id": 9,
+              "type": "UC"
+            },
+            {
+              "id": 6,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-5: derived_from requires FR|NFR",
+          "path": "AC-5",
+          "severity": "error",
+          "subjectRef": "artifact:18"
+        },
+        {
+          "actual": [
+            {
+              "id": 9,
+              "type": "UC"
+            },
+            {
+              "id": 6,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-6: derived_from requires FR|NFR",
+          "path": "AC-6",
+          "severity": "error",
+          "subjectRef": "artifact:19"
+        },
+        {
+          "actual": [
+            {
+              "id": 9,
+              "type": "UC"
+            },
+            {
+              "id": 6,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-7: derived_from requires FR|NFR",
+          "path": "AC-7",
+          "severity": "error",
+          "subjectRef": "artifact:20"
+        },
+        {
+          "actual": [
+            {
+              "id": 10,
+              "type": "UC"
+            },
+            {
+              "id": 7,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-8: derived_from requires FR|NFR",
+          "path": "AC-8",
+          "severity": "error",
+          "subjectRef": "artifact:21"
+        },
+        {
+          "actual": [
+            {
+              "id": 11,
+              "type": "UC"
+            },
+            {
+              "id": 7,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-9: derived_from requires FR|NFR",
+          "path": "AC-9",
+          "severity": "error",
+          "subjectRef": "artifact:22"
+        },
+        {
+          "actual": [
+            {
+              "id": 12,
+              "type": "UC"
+            },
+            {
+              "id": 7,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-10: derived_from requires FR|NFR",
+          "path": "AC-10",
+          "severity": "error",
+          "subjectRef": "artifact:23"
+        },
+        {
+          "actual": [
+            {
+              "id": 13,
+              "type": "UC"
+            },
+            {
+              "id": 7,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-11: derived_from requires FR|NFR",
+          "path": "AC-11",
+          "severity": "error",
+          "subjectRef": "artifact:24"
+        },
+        {
+          "actual": [
+            {
+              "id": 10,
+              "type": "UC"
+            },
+            {
+              "id": 7,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-15: derived_from requires FR|NFR",
+          "path": "AC-15",
+          "severity": "error",
+          "subjectRef": "artifact:28"
+        }
+      ],
+      "policyId": "submission-validation:formalization.acceptance-contract.v1",
+      "reasonCode": "FORMALIZATION_CONSTRAINT_UNCOVERED",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:17",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:18",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:19",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:20",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:21",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:22",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:23",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:24",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+          "kind": "artifact",
+          "ref": "artifact:28",
+          "schema": "AC"
+        }
+      ],
+      "summary": "Submission preflight formalization.acceptance-contract.v1@1.2.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "AC-4",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 17,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-5",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 18,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-6",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 19,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-7",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 20,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-8",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 21,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-9",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 22,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-10",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 23,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-11",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 24,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-15",
+        "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+        "id": 28,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      }
+    ],
+    "observedSetDigest": "160b8aefec93b8bca707c162ec7457f5f1742ca0c51c7ead0a5f38a744c5b98a",
+    "origin": {
+      "executionId": "worker-execution:e96f5bc6-a35a-44b0-8dbb-1728d2fb9673",
+      "inputSnapshotHash": "9db998bbda9f761b595b270b03eba6f649dee82ab3b43108691fc2ee6f816755",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-acceptance-contract",
+      "processRunId": 2,
+      "taskId": 7,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+    },
+    "rejectionDigest": "2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92",
+    "rejectionRef": "submission-validation-rejection:2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.acceptance-contract.v1",
+      "version": "1.2.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "ord-c-001",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-001"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-002",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-002"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-003",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-003"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-004",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-004"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-005",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-005"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-006",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-006"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-007",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-007"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-4",
+      "artifactId": 17,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 8,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-5",
+      "artifactId": 18,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 9,
+          "type": "UC"
+        },
+        {
+          "id": 6,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-6",
+      "artifactId": 19,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 9,
+          "type": "UC"
+        },
+        {
+          "id": 6,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-7",
+      "artifactId": 20,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 9,
+          "type": "UC"
+        },
+        {
+          "id": 6,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-8",
+      "artifactId": 21,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 10,
+          "type": "UC"
+        },
+        {
+          "id": 7,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-9",
+      "artifactId": 22,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 11,
+          "type": "UC"
+        },
+        {
+          "id": 7,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-10",
+      "artifactId": 23,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 12,
+          "type": "UC"
+        },
+        {
+          "id": 7,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-11",
+      "artifactId": 24,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 13,
+          "type": "UC"
+        },
+        {
+          "id": 7,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-15",
+      "artifactId": 28,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 10,
+          "type": "UC"
+        },
+        {
+          "id": 7,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-acceptance-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "AC-4",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 17,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-5",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 18,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-6",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 19,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-7",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 20,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-8",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 21,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-9",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 22,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-10",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 23,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-11",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 24,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-15",
+      "content_hash": "962c41c2ed795f26b221e048122845a8f95617a0c819dcc80abdd47233106fba",
+      "id": 28,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_CONSTRAINT_UNCOVERED",
+  "rejectionDigest": "2b4646f2dcd63c63d492d67774a56fc57f54920955513f47f516848d2889fa92",
+  "task": "formalization.acceptance#1",
+  "validatorId": "formalization.acceptance-contract.v1",
+  "validatorVersion": "1.2.0",
+  "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

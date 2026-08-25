@@ -1,0 +1,37 @@
+{
+  "contentDigest": "23e9f8232097d9d07a1a9c722811516a35408357cdf166104375ee415562117c",
+  "payload": {
+    "buildProducts": [],
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "9e489ed322b218b7c1150bf469988e78d57126e6",
+      "integrationBranch": "dev",
+      "name": "product",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "added",
+          "path": "src/upgrades.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/upgrades.test.ts"
+        }
+      ],
+      "commitSha": "862095271a04a76e3e6700cdd5fcbc33c6008a83",
+      "treeSha": "865c75c3df838466ae87ebd9fada507edddce9b1"
+    },
+    "source": {
+      "branch": "saga/task/21/execution/149874fb69979a5602db",
+      "commitSha": "862095271a04a76e3e6700cdd5fcbc33c6008a83",
+      "workItemKey": "impl-upgrades"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-upgrades"
+  },
+  "payloadHash": "23e9f8232097d9d07a1a9c722811516a35408357cdf166104375ee415562117c",
+  "schemaId": "factory.development-implementation-result.v1"
+}

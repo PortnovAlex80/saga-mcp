@@ -1,0 +1,28 @@
+{
+  "contentDigest": "2d1eda0f046d106c574a311ca746b5744da8b7ba322b1b143f9e49ca36f8a551",
+  "payload": {
+    "artifacts": [
+      {
+        "artifactId": 29,
+        "artifactStatus": "draft",
+        "artifactType": "SRS",
+        "contentHash": "e63d44e5ade55ed36733f88bf4a3c73dd88538ef37f6586000c149e83646054c"
+      }
+    ],
+    "expectedSchemaRef": "factory.formalization-architecture-bundle.v1",
+    "schemaVersion": "factory.workplace-production-snapshot.v3",
+    "traces": [
+      {
+        "linkType": "derived_from",
+        "sourceId": 29,
+        "targetId": 2,
+        "targetType": "artifact",
+        "traceHash": "53899186994eb6f62f0e3935dd4916fef3d1d35e30965a3a67383097e61ab1ac",
+        "traceId": 123
+      }
+    ],
+    "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+  },
+  "payloadHash": "2d1eda0f046d106c574a311ca746b5744da8b7ba322b1b143f9e49ca36f8a551",
+  "schemaId": "factory.formalization-architecture-bundle.v1"
+}

@@ -1,0 +1,118 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID:disposes_register",
+          "evidenceRefs": [
+            "submission-validation-rejection:236ba8c44e2f8e49c680eb2d28b6b6e9433f506f4dfd077b50fb0d891ff62f24"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "disposes_register",
+            "requiredTargetTypes": [
+              "constraint_dispositions"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_REGISTER_DIGEST_PIN_MISMATCH: dispositions were authored against register digest '67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f' but the case carries '29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd' — a disposition set carried across a registerDigest change (positional ord-c reuse) is red; re disposing against the current register is required",
+          "path": "constraint_dispositions",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        }
+      ],
+      "policyId": "submission-validation:formalization.product-contract.v1",
+      "reasonCode": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "7a3b3b60b6516a8e336a97589e9ea5b55bc300d4cfd6896260aa61442f44980a",
+          "kind": "artifact",
+          "ref": "artifact:1",
+          "schema": "brief"
+        }
+      ],
+      "summary": "Submission preflight formalization.product-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "brief",
+        "content_hash": "7a3b3b60b6516a8e336a97589e9ea5b55bc300d4cfd6896260aa61442f44980a",
+        "id": 1,
+        "path": "docs/requirements/REQ-001/01-brief.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "brief"
+      }
+    ],
+    "observedSetDigest": "b8b4f09914f082c075df18b8c5e7bf6c0e1faf7804d82e3933d82ebfffe4f051",
+    "origin": {
+      "executionId": "worker-execution:22340f92-68f8-415c-a5e7-1df769911a3f",
+      "inputSnapshotHash": "bdbd18851ae08b3544c9cb06297e5d2fecb06b9e5dd117153b62409b863c2d0f",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-product-contract",
+      "processRunId": 2,
+      "taskId": 3,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+    },
+    "rejectionDigest": "236ba8c44e2f8e49c680eb2d28b6b6e9433f506f4dfd077b50fb0d891ff62f24",
+    "rejectionRef": "submission-validation-rejection:236ba8c44e2f8e49c680eb2d28b6b6e9433f506f4dfd077b50fb0d891ff62f24",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.product-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "constraint_dispositions",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_REGISTER_DIGEST_PIN_MISMATCH: dispositions were authored against register digest '67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f' but the case carries '29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd' — a disposition set carried across a registerDigest change (positional ord-c reuse) is red; re disposing against the current register is required",
+      "missing": {
+        "minimum": 1,
+        "relation": "disposes_register",
+        "requiredTargetTypes": [
+          "constraint_dispositions"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-product-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "brief",
+      "content_hash": "7a3b3b60b6516a8e336a97589e9ea5b55bc300d4cfd6896260aa61442f44980a",
+      "id": 1,
+      "path": "docs/requirements/REQ-001/01-brief.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "brief"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID",
+  "rejectionDigest": "236ba8c44e2f8e49c680eb2d28b6b6e9433f506f4dfd077b50fb0d891ff62f24",
+  "task": "formalization.product#1",
+  "validatorId": "formalization.product-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-product-contract/singleton"
+}

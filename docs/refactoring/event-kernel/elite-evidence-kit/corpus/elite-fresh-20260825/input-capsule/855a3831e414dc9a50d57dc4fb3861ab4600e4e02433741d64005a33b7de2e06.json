@@ -1,0 +1,1328 @@
+{
+  "artifactTraces": [
+    {
+      "link_type": "derived_from",
+      "source_id": 2,
+      "target_id": 1,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 3,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 4,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 5,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 6,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 7,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 8,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 9,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 10,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 11,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 12,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 13,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 14,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 15,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 16,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 17,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 18,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 19,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 20,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 21,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 22,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 23,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 24,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 25,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 26,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 27,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 28,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 29,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 30,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 31,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 32,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 21,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 22,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 23,
+      "target_id": 5,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 24,
+      "target_id": 6,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 25,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 26,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 27,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 28,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 29,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 30,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 31,
+      "target_id": 11,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 32,
+      "target_id": 12,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 33,
+      "target_id": 21,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 33,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 34,
+      "target_id": 21,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 34,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 35,
+      "target_id": 22,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 35,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 36,
+      "target_id": 22,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 36,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 37,
+      "target_id": 22,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 37,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 38,
+      "target_id": 22,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 38,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 39,
+      "target_id": 23,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 39,
+      "target_id": 5,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 40,
+      "target_id": 23,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 40,
+      "target_id": 5,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 41,
+      "target_id": 24,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 42,
+      "target_id": 6,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 41,
+      "target_id": 6,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 42,
+      "target_id": 25,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 42,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 43,
+      "target_id": 25,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 43,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 44,
+      "target_id": 26,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 44,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 45,
+      "target_id": 27,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 45,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 46,
+      "target_id": 27,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 46,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 47,
+      "target_id": 28,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 47,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 48,
+      "target_id": 29,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 48,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 49,
+      "target_id": 30,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 49,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 50,
+      "target_id": 31,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 50,
+      "target_id": 11,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 51,
+      "target_id": 32,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 51,
+      "target_id": 12,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 52,
+      "target_id": 13,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 53,
+      "target_id": 14,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 54,
+      "target_id": 15,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 55,
+      "target_id": 16,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 56,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 41,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 42,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 43,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 44,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 33,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 34,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 50,
+      "target_id": 16,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 51,
+      "target_id": 16,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 47,
+      "target_id": 17,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 48,
+      "target_id": 17,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 49,
+      "target_id": 18,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 54,
+      "target_id": 18,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 37,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 38,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 39,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 40,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 45,
+      "target_id": 21,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 46,
+      "target_id": 21,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 37,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 38,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 33,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 34,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 45,
+      "target_id": 24,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 46,
+      "target_id": 24,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 39,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 40,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 49,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 54,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 41,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 42,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 43,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 44,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 47,
+      "target_id": 28,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 48,
+      "target_id": 28,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 50,
+      "target_id": 29,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 51,
+      "target_id": 29,
+      "target_type": "task"
+    }
+  ],
+  "artifacts": [
+    {
+      "code": "brief",
+      "contentHash": "5ad5d8c1d56bb00257753be258da3fea0b62dbcc2f6f80ed1a89f95ba9ed473d",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/01-brief.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-Fresh Space Trading Game Brief",
+      "type": "brief"
+    },
+    {
+      "code": "PRD",
+      "contentHash": "5882857c2be02038ce8df5aec7643a79a118928c2398398b01e19bcbcc34df27",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-prd.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-Fresh Space Trading Game PRD",
+      "type": "PRD"
+    },
+    {
+      "code": "FR-1",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Galaxy Map and Star Systems",
+      "type": "FR"
+    },
+    {
+      "code": "FR-2",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Trading Market",
+      "type": "FR"
+    },
+    {
+      "code": "FR-3",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Travel",
+      "type": "FR"
+    },
+    {
+      "code": "FR-4",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Pirate Encounters",
+      "type": "FR"
+    },
+    {
+      "code": "FR-5",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Ship-to-Ship Combat",
+      "type": "FR"
+    },
+    {
+      "code": "FR-6",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Ship Upgrades",
+      "type": "FR"
+    },
+    {
+      "code": "FR-7",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save and Load",
+      "type": "FR"
+    },
+    {
+      "code": "FR-8",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Server Health Endpoint",
+      "type": "FR"
+    },
+    {
+      "code": "FR-9",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Ship HUD",
+      "type": "FR"
+    },
+    {
+      "code": "FR-10",
+      "contentHash": "cbdc3aae122bb6d6a2de5f9e9fcb744b81b0e6e6d2684858bdedfd79fdb6d70a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md#FR-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite Rating Progression",
+      "type": "FR"
+    },
+    {
+      "code": "NFR-1",
+      "contentHash": "0057c5489fa8e435ec7e413ce094191c67dbb4a6942a2a871ecc0022745e43a5",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md#NFR-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Rendering Performance",
+      "type": "NFR"
+    },
+    {
+      "code": "NFR-2",
+      "contentHash": "0057c5489fa8e435ec7e413ce094191c67dbb4a6942a2a871ecc0022745e43a5",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md#NFR-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Offline Operation",
+      "type": "NFR"
+    },
+    {
+      "code": "NFR-3",
+      "contentHash": "0057c5489fa8e435ec7e413ce094191c67dbb4a6942a2a871ecc0022745e43a5",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md#NFR-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "One-Command Startup",
+      "type": "NFR"
+    },
+    {
+      "code": "NFR-4",
+      "contentHash": "0057c5489fa8e435ec7e413ce094191c67dbb4a6942a2a871ecc0022745e43a5",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md#NFR-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Language",
+      "type": "NFR"
+    },
+    {
+      "code": "RULE-1",
+      "contentHash": "111ef522c060011738ef58ad88fa81f15ad78eaaae4393939d9373d16fe8e557",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/05-rules.md#RULE-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Starting Conditions",
+      "type": "RULE"
+    },
+    {
+      "code": "RULE-2",
+      "contentHash": "111ef522c060011738ef58ad88fa81f15ad78eaaae4393939d9373d16fe8e557",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/05-rules.md#RULE-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Fuel Consumption Per Jump",
+      "type": "RULE"
+    },
+    {
+      "code": "RULE-3",
+      "contentHash": "111ef522c060011738ef58ad88fa81f15ad78eaaae4393939d9373d16fe8e557",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/05-rules.md#RULE-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Price Variation",
+      "type": "RULE"
+    },
+    {
+      "code": "RULE-4",
+      "contentHash": "111ef522c060011738ef58ad88fa81f15ad78eaaae4393939d9373d16fe8e557",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/05-rules.md#RULE-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite Rating",
+      "type": "RULE"
+    },
+    {
+      "code": "UC-1",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "View Galaxy Map",
+      "type": "UC"
+    },
+    {
+      "code": "UC-2",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Trade Commodities at Station",
+      "type": "UC"
+    },
+    {
+      "code": "UC-3",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Perform Hyperspace Jump",
+      "type": "UC"
+    },
+    {
+      "code": "UC-4",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Encounter Pirate During Jump",
+      "type": "UC"
+    },
+    {
+      "code": "UC-5",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Engage in Ship Combat",
+      "type": "UC"
+    },
+    {
+      "code": "UC-6",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Flee from Combat",
+      "type": "UC"
+    },
+    {
+      "code": "UC-7",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Purchase Ship Upgrades",
+      "type": "UC"
+    },
+    {
+      "code": "UC-8",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save Game State",
+      "type": "UC"
+    },
+    {
+      "code": "UC-9",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Load Saved Game",
+      "type": "UC"
+    },
+    {
+      "code": "UC-10",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Verify Server Health",
+      "type": "UC"
+    },
+    {
+      "code": "UC-11",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-11",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "View Ship Status on HUD",
+      "type": "UC"
+    },
+    {
+      "code": "UC-12",
+      "contentHash": "aaacc25a9cdbbce7cbe8a6c1b53038b8aa00bbf4d4a7f42dde97bb32580836a7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md#UC-12",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Progress Elite Rating",
+      "type": "UC"
+    },
+    {
+      "code": "AC-1",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Galaxy Map Displays Star Systems",
+      "type": "AC"
+    },
+    {
+      "code": "AC-2",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Select Destination from Galaxy Map",
+      "type": "AC"
+    },
+    {
+      "code": "AC-3",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Buy Commodity with Sufficient Funds",
+      "type": "AC"
+    },
+    {
+      "code": "AC-4",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Buy Commodity Rejected When Insufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-5",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Sell Commodity from Cargo",
+      "type": "AC"
+    },
+    {
+      "code": "AC-6",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Prices Differ Between Systems",
+      "type": "AC"
+    },
+    {
+      "code": "AC-7",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Jump Deducts Fuel and Moves Player",
+      "type": "AC"
+    },
+    {
+      "code": "AC-8",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Jump Rejected When Insufficient Fuel",
+      "type": "AC"
+    },
+    {
+      "code": "AC-9",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Pirate Encounter Triggered on Jump",
+      "type": "AC"
+    },
+    {
+      "code": "AC-10",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Combat Resolves When Pirate Destroyed",
+      "type": "AC"
+    },
+    {
+      "code": "AC-11",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-11",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Player Destruction Ends Game",
+      "type": "AC"
+    },
+    {
+      "code": "AC-12",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-12",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Flee from Combat",
+      "type": "AC"
+    },
+    {
+      "code": "AC-13",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-13",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Purchase Ship Upgrade with Sufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-14",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-14",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Upgrade Rejected When Insufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-15",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-15",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save Game Persists All State",
+      "type": "AC"
+    },
+    {
+      "code": "AC-16",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-16",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Load Game Restores State or Starts Fresh",
+      "type": "AC"
+    },
+    {
+      "code": "AC-17",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-17",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Server Health Endpoint Returns Healthy",
+      "type": "AC"
+    },
+    {
+      "code": "AC-18",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-18",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "HUD Displays Ship Status",
+      "type": "AC"
+    },
+    {
+      "code": "AC-19",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-19",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite Rating Progresses with Profit and Kills",
+      "type": "AC"
+    },
+    {
+      "code": "AC-20",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-20",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Renders at 60 FPS",
+      "type": "AC"
+    },
+    {
+      "code": "AC-21",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-21",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Operates Fully Offline",
+      "type": "AC"
+    },
+    {
+      "code": "AC-22",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-22",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Starts with One Command",
+      "type": "AC"
+    },
+    {
+      "code": "AC-23",
+      "contentHash": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md#AC-23",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "All User-Facing Text Is in English",
+      "type": "AC"
+    },
+    {
+      "code": "SRS",
+      "contentHash": "805ebbff4e2ccc7429102fc88b1ced7a88c97da048034e30592dea104b1c0cf6",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001-elite-fresh/07-srs.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-Fresh Space Trading Game SRS",
+      "type": "SRS"
+    }
+  ]
+}

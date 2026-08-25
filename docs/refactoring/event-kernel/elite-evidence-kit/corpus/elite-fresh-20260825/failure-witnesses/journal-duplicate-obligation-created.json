@@ -1,0 +1,254 @@
+{
+  "duplicates": [
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/1/product-discovery@4.0.0/discovery-proposal/singleton/9beebbd6cf6e0e59ed1dcf33577584a34d285e253d91c97e89f664e7a8550462/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:220dd1ad022002d2e6e4f344d23796b724e2eeb62342397e4d8b4c7575a4be77:run-effects"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/1/product-discovery@4.0.0/discovery-readiness/singleton/9270270da40a92f1968ee8e3b2e0a8cee29d5c6a0cf1974915fca4d3fa9aa12b/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:078537f1b06dc7a49a67053057c29a9a6834304d7f6aceb01a2f7c0b110afc07:run-effects"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "process-settled:process-run:1:route-lifecycle"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/6e5aae7ebf503dfe556c02a0898de50f4949dcd5ac24fe73d3910aa62cddb728/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/d6a38a59a37de1196db4542e62218be7eb6a2081a07ffa41f96c3d38032f1dd0/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/6e5aae7ebf503dfe556c02a0898de50f4949dcd5ac24fe73d3910aa62cddb728/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:b8e3268c462f7291f669e9f799f56954b5d1814cbf51cacff7f04eb93b13f534:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:c17395d16f2b58b04b30e0589ca3e2290be0be608ba816aee2d24deb08ae066b:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2aa75f76d20a0f80333f6db3786f85adec82ced35e476d8e3422f152a17cbc1a/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/e0f3ec7865c59cbde7c58d5b99278e345c8e6394f299df1d78c7812fbd90b3c2/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/2aa75f76d20a0f80333f6db3786f85adec82ced35e476d8e3422f152a17cbc1a/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:be5630120a2d1b2d19bbf68739cf55367478f2d3ae067ed4f1f96368f3904106:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:815539c4e9a782ca84c938c48a3c63714bde0eadf8682063c6218f08b12ff093:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/ef11d2b7e9f1d99c466b28d123eba4e10802e00ec7f60097173fa82bcf9b13b5/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/ba5b7d798ebd5f4b69c17fa577f1b1a7fb2d275907564acd1a691c8eee1fa847/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/ef11d2b7e9f1d99c466b28d123eba4e10802e00ec7f60097173fa82bcf9b13b5/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:0c738c3113f3f42487ed30bc30dcd3f51f8bc3707271f56fdd2ef78f93120564:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:6bf2c6c19e6b974f0c370824951206afb47ca60bb0efb88174844bc66035adbd:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/9595b6333178a02850ff82166cd07ef9bbae078d028f778a94c05ad320ab4d39/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/84dcfeeea425ccfe21d16c496722abd92beb056d23b046adcabee524fe86b745/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/9595b6333178a02850ff82166cd07ef9bbae078d028f778a94c05ad320ab4d39/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:3c74bca76d57a8d90737baccb8615d120934d18a2980f9418f9658f013fabad7:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:51f512b55d21f08b8ea50eee63d371df5517277e9f6a1f8d4aabbb001422c1b0:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/098d21396c8f5d6b071d350c644fe9490f5c7a42f2c4d04dda25ea4a2361c295/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/d4bad1bc72f6dca151bffd6a5b09e898de30ad4d5c3ed57fbbb8d8ed646d8273/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/098d21396c8f5d6b071d350c644fe9490f5c7a42f2c4d04dda25ea4a2361c295/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:2c8bb17f11cdd6d34abc39d8357bebc357ff924191866bdf5e917ce4392f315f:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:ca2e8788da7dbf9da68a6163a4cad12b75be0de442ac7160228a121bdbac0163:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "process-settled:process-run:2:route-lifecycle"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/23f366d3bfc9bbc43b2f111ca08e91a914321b6b5990f2b1e5b5edb8890c56af/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:533ad37aae3a6c4ff55393114a47dd928b8037b2dabaf89196c09323f14b8b2e:run-effects"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/65444935587bc11eb4139df1/0da4cd29429cce37ec590bcae2a52588569a1106937df0f03cdf156d4df848e3/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/65444935587bc11eb4139df1/0c336dadc897beda8bb3c0db5d35165e3d23df3feac8906e0ce0430c03a6cef5/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/65444935587bc11eb4139df1/0da4cd29429cce37ec590bcae2a52588569a1106937df0f03cdf156d4df848e3/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:6b0490ebf831fc0ccbea2918f7b60561931845b578cc3dba9bf4afb876d6b0be:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:c1cd87c9a2ae00d190f24af713473c40827325ab4fae419be4fc67c60cf6561a:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/47a05303d714cc5a3cc2a587/d838bc5fe0b9f1869a58ce3cd1483d109074bc63a6b646aca4a7fd6ac4a8b5b6/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/589e3e5022d693d6be13877e/eba9487ba69ade9cc8b72ebb8b6083df5b6e5b114172f3035c530b47d2383130/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/47a05303d714cc5a3cc2a587/68fc13dc6073b36b6859f2fb696e67dc9bcd09d432eff3b162fb5c184ed86b3c/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/47a05303d714cc5a3cc2a587/d838bc5fe0b9f1869a58ce3cd1483d109074bc63a6b646aca4a7fd6ac4a8b5b6/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:d8f1d456d7d0e9a6aed692ae1cdec5b5b60f20aca1e2c14fec434be6a523c45d:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:fcb2f7ad461971166b6dc53b4de2dcda715029c80dbac080e56a059bbdce863b:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/589e3e5022d693d6be13877e/93a1765d15f6d607d52dfcffd5a2a3131e8c3ba23546f1fe1f8d03fee0452b86/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/589e3e5022d693d6be13877e/eba9487ba69ade9cc8b72ebb8b6083df5b6e5b114172f3035c530b47d2383130/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:354f061860ebf4c37e724f5185b85cb05114f7c46898748cdb63925e64e417f8:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:809389c64f0b635d9ddda8a31486921ff3961c251a58cd044427e75db66a30f7:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/b62a31d1e17b827468cd253a/1ea490b2f9041e17d20ca3da18467e3f41f7a6688319d24219fcbca10d9bac2d/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/b62a31d1e17b827468cd253a/653a23ff1634ccc1183416e33f90d8f45f6aa47aeeb7ce6a801d039de53be99a/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/b62a31d1e17b827468cd253a/1ea490b2f9041e17d20ca3da18467e3f41f7a6688319d24219fcbca10d9bac2d/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:7cf32bdcc794be3521e4b82e25fb12b6b2b02b7da142685cc9e7b32a8c00c273:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:5b583f3566da1b9d1de185e21672bff44c80254a5189adb3bbfe43aa14d71e3e:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/fb94e2966c8af0aab4559544/33afd2fd6e380f6b1c932ca97e8759904809892b64c22e36c7ae16c5362b6ce1/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/ac8eef07ee342ff2a249b254/a18187740e183fa6e48bb233b410e06aaea9ffcafa3662cef2aa1315c76beb9f/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/f3b799615a7b13645189f6a6/bd88f560999d8bbc682780eb360e550c069f82e95d8c74de46d604108ab0ab29/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/ac8eef07ee342ff2a249b254/456d492431c609d598e91c3f797e5f835cbd29a45f0126a06a0f64e4f215a397/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/ac8eef07ee342ff2a249b254/a18187740e183fa6e48bb233b410e06aaea9ffcafa3662cef2aa1315c76beb9f/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:885762ed878adce232c701315ff13b17a3ae40528c5a9043c24d7ded573f3879:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:a564a54bb3b3a022087f1ba14de6583aff9e4e3a42ef8d3f0240b1254712f43d:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/f3b799615a7b13645189f6a6/30e83f05d2b0a819546ad0a384446382c149d4e1106d353dde08d9f8f7d36566/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/f3b799615a7b13645189f6a6/bd88f560999d8bbc682780eb360e550c069f82e95d8c74de46d604108ab0ab29/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:8cb52c4243defa8ff128e010b57c9ab50768ec56797ac5e3f7d91dee57fe2a46:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:3d4b9da7f7af07fade4ca6993c7db3b50fc0d5f22041e21a71a09b1261031531:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/fb94e2966c8af0aab4559544/66bda40083bea3c7bca89b521493ef866dd4d6155546b61b175fffb1a3a9aab0/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/fb94e2966c8af0aab4559544/33afd2fd6e380f6b1c932ca97e8759904809892b64c22e36c7ae16c5362b6ce1/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:d3da22110d702c7a3b28e57847a3512919ac5274f19ff116b801cc234071f945:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:258f5a6ae06b849b7dde41d2438dc3d4f3d09785a3f518735d390c90c68a3831:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/2bc06277c9f89bf43b6e0744/2790ca51fefed353458e3857e6bf08d085d38066b6c947de8eea5380ee02497d/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-implementation/2bc06277c9f89bf43b6e0744/4916d5f44d312a7571b1f8a4e84e68f7a6835e23e339bddd00792a6eab33489d/reviewer/candidate-set/3/solution-development@1.4.4/development-implementation/2bc06277c9f89bf43b6e0744/2790ca51fefed353458e3857e6bf08d085d38066b6c947de8eea5380ee02497d/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:a078b5b73f11dd89f8454e56732016c747dc42505fd7866f7dc78d85c7aaddcd:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:1153ad9e1db2489c5c660f545a9fd65c8eeb066b48206d07253a02bf227e09f9:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-readiness-certification/singleton/aa587b6c55657e32d82e73eada8f1ebaa49efbca4dcd7dfe806100e421b16e96/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "process-settled:process-run:3:route-lifecycle"
+    }
+  ],
+  "kind": "journal-noise-observation",
+  "note": "obligation.created emitted more than once for the same key (idempotent append re-emission across engine restarts). The DB holds a single row per key and exactly one settlement — no duplicate settlement, but trace comparators must dedupe created-events by key."
+}

@@ -1,0 +1,486 @@
+{
+  "attempt": 1,
+  "bindingHash": "1bded168e886e1ac4c6a2264c88971be055757cc7c0baac6e38a6e3845365dc5",
+  "bindingSnapshot": {
+    "displayName": "Solution Formalization",
+    "entryConditions": [
+      "Discovery certificate ref and hash exist"
+    ],
+    "exitConditions": [
+      "Formalization has a frozen content-addressed Solution Contract"
+    ],
+    "id": "solution-formalization",
+    "inputMapping": {
+      "discoveryCertificateHash": "$.stages.initial-discovery.certificate.hash",
+      "discoveryCertificateRef": "$.stages.initial-discovery.certificate.ref",
+      "discoveryEpicId": {
+        "runtime": "epicId"
+      },
+      "discoveryOutcome": "$.stages.initial-discovery.decision",
+      "discoveryProposalHash": "$.stages.initial-discovery.proposal.hash",
+      "discoveryProposalPayload": "$.stages.initial-discovery.proposalPayload",
+      "discoveryProposalRef": "$.stages.initial-discovery.proposal.ref",
+      "formalizationEpicId": {
+        "runtime": "epicId"
+      },
+      "initiatedBy": {
+        "runtime": "initiatedBy"
+      },
+      "initiativeSubject": "$.initiative.subject",
+      "schemaVersion": {
+        "literal": "factory.formalization-case.v1"
+      }
+    },
+    "moduleRef": {
+      "name": "solution-formalization",
+      "version": "1.0.0"
+    },
+    "outcomeRoutes": {
+      "failed": {
+        "status": "failed",
+        "type": "terminal"
+      },
+      "formalized": {
+        "stageId": "solution-development",
+        "type": "stage"
+      },
+      "inconsistent": {
+        "status": "formalization-inconsistent",
+        "type": "terminal"
+      }
+    },
+    "outputMapping": {
+      "authority": "$.processOutcome.authority",
+      "certificate.hash": "$.processOutcome.certificateHash",
+      "certificate.ref": "$.processOutcome.certificateRef",
+      "certificate.schema": "$.processOutcome.certificateSchema",
+      "decision": "$.processOutcome.code",
+      "solutionContract.hash": "$.processOutcome.outputHash",
+      "solutionContract.ref": "$.processOutcome.outputRef",
+      "solutionContract.schema": "$.processOutcome.outputSchema",
+      "solutionContractPayload": "$.processOutcome.outputPayload"
+    }
+  },
+  "inputHash": "bdbd18851ae08b3544c9cb06297e5d2fecb06b9e5dd117153b62409b863c2d0f",
+  "inputSchema": "factory.formalization-case.v1",
+  "inputSnapshot": {
+    "discoveryCertificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+    "discoveryCertificateRef": "certificate:1",
+    "discoveryEpicId": 1,
+    "discoveryOutcome": "go",
+    "discoveryProposalHash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+    "discoveryProposalPayload": {
+      "assumptions": [
+        "Node.js is available on the development machine",
+        "Chrome is the target browser and will be used for testing",
+        "The player has basic familiarity with space trading games",
+        "A 2020 laptop is a reasonable minimum hardware target for 60fps",
+        "WebSocket or similar real-time communication is not required (single-player)",
+        "Local filesystem access for save/load is acceptable"
+      ],
+      "candidate_scope": "The minimum useful product scope includes: a Node.js server that serves a single HTML/JS frontend; a canvas/WebGL rendering system with parallax starfield; at least 8 named star systems with stations; a commodity market with dynamic per-system pricing; hyperspace jump mechanics with fuel consumption and pirate encounter probability; ship-to-ship combat with player lasers vs enemy AI; ship upgrades (cargo capacity, laser, shields, fuel tank); save/load game state functionality; unit tests for core mechanics; a browser smoke test; and a /healthz endpoint on the server.",
+      "evidence_refs": [
+        "Task metadata: initiative.objective and initiative.subject fields from process_node_input",
+        "Task metadata: initiative.context specifying complexity 'XS' and type 'web-app'",
+        "Task metadata: initiative.constraints including deploymentExcluded, humanAcceptanceAfterLocalStart, localRunRequired"
+      ],
+      "observed_context": "The workspace is currently empty with no existing artifacts or notes. The initiative context specifies a complexity rating of 'XS' and type 'web-app'. The system will consist of a Node.js backend serving a single-page canvas/WebGL frontend with parallax starfield, hyperspace jump effects, station docking screens, ship HUD, commodity market with dynamic pricing, and arcade laser combat.",
+      "problem_statement": "The initiative aims to create a single-player space trading and combat game inspired by the classic Elite. The problem being addressed is the need for an engaging browser-based game that combines economic trading mechanics with arcade-style combat, running entirely locally without external dependencies.",
+      "rationale": "The initiative is well-scoped for an XS complexity web-app with clear functional and non-functional requirements. The gameplay mechanics are classic and well-understood, reducing design uncertainty. The technical stack (Node.js + canvas/WebGL) is mature and capable of delivering the required experience. The constraints are reasonable and aligned with the complexity rating. No blockers or fundamental feasibility concerns were identified.",
+      "recommended_outcome": "go",
+      "risks": [
+        "Technical risk: Achieving 60fps on 2020 laptop hardware with canvas/WebGL may require optimization",
+        "Technical risk: Combat AI balance may require extensive tuning for enjoyable gameplay",
+        "Adoption risk: The game may be too simple or complex for the target audience",
+        "Technical risk: Ensuring no external CDN dependencies while maintaining visual quality"
+      ],
+      "stakeholders_or_actors": [
+        "Player: Single user who starts docked at a station with 100 credits and a small cargo hold",
+        "Developer: Person who will implement and maintain the game codebase",
+        "Quality Assurance: Will validate unit tests, browser smoke tests, and /healthz endpoint"
+      ],
+      "unknowns": [
+        "Exact pricing algorithms for commodity market dynamics",
+        "Specific combat balance and enemy AI behavior parameters",
+        "Precise visual effects implementation details (particle systems, shaders)",
+        "Optimal canvas/WebGL rendering approach for the target hardware",
+        "Exact save/load format and storage mechanism (localStorage vs files)"
+      ]
+    },
+    "discoveryProposalRef": "product:factory.discovery-proposal.v1:67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+    "formalizationEpicId": 1,
+    "initiatedBy": "factory-start",
+    "initiativeSubject": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz.",
+    "schemaVersion": "factory.formalization-case.v1"
+  },
+  "mappedOutputSnapshot": {
+    "authority": "formalization_settlement_policy",
+    "certificate": {
+      "hash": "65f6ec50cb1893187ff97ff6f59d35fd5ed44ab0dbaa2514e8cc691866e01bbc",
+      "ref": "certificate:2",
+      "schema": "factory.solution-contract-certificate.generic.v1"
+    },
+    "decision": "formalized",
+    "solutionContract": {
+      "hash": "dd49f106779fc49eab7d2bb829cab1862866fe94583a158efa69151a90d74011",
+      "ref": "formalization-solution-contract:1",
+      "schema": "factory.solution-contract-certificate.v1"
+    },
+    "solutionContractPayload": {
+      "acceptanceCriteria": [
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 14,
+          "code": "AC-1",
+          "coveredConstraintIds": [
+            "ord-c-006",
+            "ord-c-007"
+          ],
+          "criterionHash": "17fe33f4e5d401f23b460a3614d5e98c825fb6598aff034a6b6e330755ed0ea2",
+          "criterionId": 14,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 15,
+          "code": "AC-2",
+          "coveredConstraintIds": [
+            "ord-c-003",
+            "ord-c-004"
+          ],
+          "criterionHash": "21b11938a0ba854725eb41f05e43265bcd812ecdc838712aac81be0d90e4c56a",
+          "criterionId": 15,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 16,
+          "code": "AC-3",
+          "coveredConstraintIds": [
+            "ord-c-001"
+          ],
+          "criterionHash": "e307012ec888ba95981f150abe4b11b5129153d82903cbb9b266f42f867538d1",
+          "criterionId": 16,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 17,
+          "code": "AC-4",
+          "criterionHash": "cd4c2a291b4da71d0d51fdccf522a687b9ce73615c3a69aa70bd803e275a2d7a",
+          "criterionId": 17,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 18,
+          "code": "AC-5",
+          "coveredConstraintIds": [
+            "ord-c-002",
+            "ord-c-004"
+          ],
+          "criterionHash": "f58922d82ffe69338e00d9b4b410aaffa15827f50eb92c7324de994e75920d33",
+          "criterionId": 18,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 19,
+          "code": "AC-6",
+          "criterionHash": "457c19f6731da089f4e86aa05418f9ecc709e31cae84f57bb3d101a436b78bfa",
+          "criterionId": 19,
+          "criticality": "degradable",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 20,
+          "code": "AC-7",
+          "criterionHash": "1563226751ba9e9fcda29bbaf87222c13475df8fb72c900aef4a8b8332568555",
+          "criterionId": 20,
+          "criticality": "degradable",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 21,
+          "code": "AC-8",
+          "criterionHash": "301c5218300ade433d3ea6e88533af2db324828a4b365cf05485267c9a355a7e",
+          "criterionId": 21,
+          "criticality": "degradable",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 22,
+          "code": "AC-9",
+          "coveredConstraintIds": [
+            "ord-c-005"
+          ],
+          "criterionHash": "b0dd302d18168130f23554527d690830375f7f95a92e9aac563c2e7a643d5c4e",
+          "criterionId": 22,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 23,
+          "code": "AC-10",
+          "criterionHash": "ea648d28b2b2c389b0521488c59003a5a8bc5fb56fc8d975e02e8e2fd003ba85",
+          "criterionId": 23,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 24,
+          "code": "AC-11",
+          "criterionHash": "0d7c49e33b03734bb5aaf53aa3cf0a466d393e701c2e61aa0a367b1fd95eff9f",
+          "criterionId": 24,
+          "criticality": "nice_to_have",
+          "implementationRequired": false
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 25,
+          "code": "AC-12",
+          "criterionHash": "7485ace698e71c026008312774b85678440999470382ad95a38db4fbac159533",
+          "criterionId": 25,
+          "criticality": "degradable",
+          "implementationRequired": false
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 26,
+          "code": "AC-13",
+          "criterionHash": "5f89d89e7945984bb63ee2b171e6912f75206f6742fb07e9ad7af50dd5428337",
+          "criterionId": 26,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 27,
+          "code": "AC-14",
+          "criterionHash": "edb753be638e31e3524c9c8f11674ddd577be1dac0061fc517dd5d548cd415af",
+          "criterionId": 27,
+          "criticality": "blocker",
+          "implementationRequired": true
+        },
+        {
+          "acceptedHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "artifactId": 28,
+          "code": "AC-15",
+          "criterionHash": "85a71c228caf711d245f9756af41aada58bd084980e36840d305af681bb8663b",
+          "criterionId": 28,
+          "criticality": "degradable",
+          "implementationRequired": true
+        }
+      ],
+      "artifactHashes": {
+        "2": "0c930f56c2b260f27785833bd35a75b6afb82321bc7ba26258d1118fc158cf36",
+        "3": "8ffbf8555ae58de58aa7037927eab9e30b9563d771f9656914855994d378add7",
+        "4": "07333cc67dd49205e3f7a518da54b95a2ca09ab1703be2bff137cbe61a66322d",
+        "5": "2c24e8f2c839aa56ae504dbc888afee6e63e311c3a5fd97669a78020c2203376",
+        "6": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "7": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "8": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "9": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "10": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "11": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "12": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "13": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+        "14": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "15": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "16": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "17": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "18": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "19": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "20": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "21": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "22": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "23": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "24": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "25": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "26": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "27": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "28": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "29": "e63d44e5ade55ed36733f88bf4a3c73dd88538ef37f6586000c149e83646054c"
+      },
+      "baselineSnapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13",
+      "baselineSnapshotRef": "formalization-baseline:1",
+      "bundle": {
+        "acArtifactIds": [
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28
+        ],
+        "acceptanceBaselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+        "bundleHash": "9388e74195779a6813d051859f5d2990485de80291ef08fd3712cc0092620b2c",
+        "formalizationEpicId": 1,
+        "frArtifactIds": [
+          3
+        ],
+        "nfrArtifactIds": [
+          4
+        ],
+        "prdArtifactId": 2,
+        "ruleArtifactIds": [
+          5
+        ],
+        "schemaVersion": "factory.solution-contract-certificate.v1",
+        "srsArtifactId": 29,
+        "ucArtifactIds": [
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ]
+      },
+      "constraintRegisterCoverage": {
+        "constraintRegisterDigest": "29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd",
+        "constraintRegisterRef": "constraint-register:29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd",
+        "entries": [
+          {
+            "class": "material",
+            "id": "ord-c-001"
+          },
+          {
+            "class": "material",
+            "id": "ord-c-002"
+          },
+          {
+            "class": "material",
+            "id": "ord-c-003"
+          },
+          {
+            "class": "material",
+            "id": "ord-c-004"
+          },
+          {
+            "class": "material",
+            "id": "ord-c-005"
+          },
+          {
+            "class": "execution",
+            "id": "ord-c-006"
+          },
+          {
+            "class": "execution",
+            "id": "ord-c-007"
+          }
+        ],
+        "waivedIds": []
+      },
+      "discoveryCertificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+      "discoveryCertificateRef": "certificate:1",
+      "formalizationCaseDigest": "6d142d28f7501b67c0d89bc0ad3b886dc8de9ffa48df8b3073c8a2800ef3134a",
+      "formalizationEpicId": 1,
+      "processRunId": 2,
+      "schemaVersion": "factory.solution-contract-certificate.v1",
+      "srs": {
+        "hash": "e63d44e5ade55ed36733f88bf4a3c73dd88538ef37f6586000c149e83646054c",
+        "ref": "artifact:29",
+        "schema": "factory.srs.v1"
+      },
+      "traceDigest": "7a5b66624ca1103e521577fa7a906b52639b7c0ea3f0eb62740f72d8abf4ca3b",
+      "traceIds": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117,
+        118,
+        119,
+        120,
+        121,
+        122,
+        123
+      ]
+    }
+  },
+  "moduleRefKey": "solution-formalization@1.0.0",
+  "ordinal": 2,
+  "resultSnapshot": {
+    "authority": "formalization_settlement_policy",
+    "certificate": {
+      "certificateHash": "65f6ec50cb1893187ff97ff6f59d35fd5ed44ab0dbaa2514e8cc691866e01bbc",
+      "certificateRef": "certificate:2",
+      "schema": "factory.solution-contract-certificate.generic.v1"
+    },
+    "certificateHash": "65f6ec50cb1893187ff97ff6f59d35fd5ed44ab0dbaa2514e8cc691866e01bbc",
+    "certificateRef": "certificate:2",
+    "certificateSchema": "factory.solution-contract-certificate.generic.v1",
+    "code": "formalized",
+    "outcome": "formalized",
+    "output": {
+      "artifactRef": "formalization-solution-contract:1",
+      "contentHash": "dd49f106779fc49eab7d2bb829cab1862866fe94583a158efa69151a90d74011",
+      "schema": "factory.solution-contract-certificate.v1"
+    },
+    "outputHash": "dd49f106779fc49eab7d2bb829cab1862866fe94583a158efa69151a90d74011",
+    "outputRef": "formalization-solution-contract:1",
+    "outputSchema": "factory.solution-contract-certificate.v1"
+  },
+  "stageId": "solution-formalization"
+}

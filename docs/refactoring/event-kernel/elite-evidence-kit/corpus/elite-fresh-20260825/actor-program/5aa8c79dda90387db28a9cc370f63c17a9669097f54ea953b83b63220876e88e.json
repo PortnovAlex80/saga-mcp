@@ -1,0 +1,44 @@
+{
+  "contentDigest": "110b31908f60e491e448263fbec5facf4643fd7e3273f7e177b23b37096a3b96",
+  "payload": {
+    "acceptance_criteria_reviewed": [
+      {
+        "artifact_id": 39,
+        "code": "AC-7",
+        "satisfied": true,
+        "title": "Hyperspace Jump Deducts Fuel and Moves Player"
+      },
+      {
+        "artifact_id": 40,
+        "code": "AC-8",
+        "satisfied": true,
+        "title": "Hyperspace Jump Rejected When Insufficient Fuel"
+      }
+    ],
+    "findings": [
+      "AC-7 satisfied: performHyperspaceJump correctly deducts fuel (fuel_after = fuel_before - jump_cost) and moves player to destination system. JumpResult immutably returns new state. destinationSystemId cleared after jump. [src/travel.ts, tests/travel.test.ts]",
+      "AC-7 property fuel_non_negative satisfied: fuel >= 0 invariant enforced by the AC-8 guard (fuel < cost rejects before deduction). [src/travel.ts]",
+      "AC-7 property fuel_deduction monotonicity satisfied: tests assert exact formula fuel_after = fuel_before - cost with independently calculated cost. [tests/travel.test.ts]",
+      "AC-8 satisfied: jump rejected with 'Insufficient fuel' message when fuel < cost. Player remains in current system, fuel unchanged. [src/travel.ts, tests/travel.test.ts]",
+      "AC-8 property fuel_guard satisfied: test explicitly sets fuel = cost - 1 and verifies jump_succeeds = false. [tests/travel.test.ts]",
+      "Change scope respected: only src/game-state.ts (fuel field addition), src/travel.ts (new), tests/travel.test.ts (new) modified. No unrelated scope expansion. [src/game-state.ts, src/travel.ts, tests/travel.test.ts]",
+      "Test seam matches real call path: tests import directly from source modules and exercise the same function signatures used in production. [tests/travel.test.ts]",
+      "Single reviewable commit on task-scoped branch. Tree SHA and commit SHA match the implementation product. Base commit matches task graph integration target."
+    ],
+    "process_run_id": 3,
+    "reviewed_source": {
+      "baseCommit": "3ef96b3597b5c4b5093f937eec54a57a0a6f29f8",
+      "branch": "saga/task/20/execution/68729f8a445bb2f01ca1",
+      "commitSha": "1d8bf938deea54f5580af707883426d35515df83",
+      "projectRepositoryId": 1,
+      "treeSha": "dc1511d952b0829434a4c1629ee72c00a9ad11aa"
+    },
+    "reviewer_execution_id": "worker-execution:4d811885-b688-4281-8708-88ea0b56f93d",
+    "reviewer_task_id": 25,
+    "subject_candidate_set_ref": "candidate-set/3/solution-development@1.4.4/development-implementation/b62a31d1e17b827468cd253a/1ea490b2f9041e17d20ca3da18467e3f41f7a6688319d24219fcbca10d9bac2d/author",
+    "verdict": "approved",
+    "work_item_key": "impl-travel"
+  },
+  "payloadHash": "110b31908f60e491e448263fbec5facf4643fd7e3273f7e177b23b37096a3b96",
+  "schemaId": "factory.development-review-verdict.v1"
+}

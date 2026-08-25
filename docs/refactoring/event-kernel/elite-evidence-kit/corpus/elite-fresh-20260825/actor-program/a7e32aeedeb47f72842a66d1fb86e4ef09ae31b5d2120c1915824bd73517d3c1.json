@@ -1,0 +1,74 @@
+{
+  "contentDigest": "5c90b048e7e0adc8e98778df7d0e2fa3abd453273cf0536797fac33e09215c48",
+  "payload": {
+    "acceptanceCriterionKeys": [
+      "33:AC-1",
+      "34:AC-2"
+    ],
+    "buildProducts": {
+      "testCommand": "npx vitest run"
+    },
+    "reasonCodes": [
+      "ac-covered:33:AC-1",
+      "ac-covered:34:AC-2"
+    ],
+    "repository": {
+      "baseCommit": "9e489ed322b218b7c1150bf469988e78d57126e6",
+      "integrationBranch": "dev",
+      "name": "elite-fresh",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "added",
+          "path": "package.json"
+        },
+        {
+          "change": "added",
+          "path": "public/index.html"
+        },
+        {
+          "change": "added",
+          "path": "src/galaxy.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/game-state.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/main.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/rendering.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/ui.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/galaxy.test.ts"
+        },
+        {
+          "change": "added",
+          "path": "tsconfig.json"
+        }
+      ],
+      "commitSha": "27418519098b0d9910ce53da0667c809e20f6703",
+      "treeSha": "f51372646602607735013500262f184e5528380c"
+    },
+    "source": {
+      "branch": "saga/task/15/execution/75cb8f0ad11a88c62922",
+      "commitSha": "27418519098b0d9910ce53da0667c809e20f6703",
+      "workItemKey": "impl-foundation-and-galaxy"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-foundation-and-galaxy"
+  },
+  "payloadHash": "5c90b048e7e0adc8e98778df7d0e2fa3abd453273cf0536797fac33e09215c48",
+  "schemaId": "factory.development-implementation-result.v1"
+}

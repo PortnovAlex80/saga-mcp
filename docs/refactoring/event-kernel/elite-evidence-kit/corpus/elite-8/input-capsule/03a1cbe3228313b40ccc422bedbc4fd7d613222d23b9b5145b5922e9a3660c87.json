@@ -1,0 +1,527 @@
+{
+  "contentDigest": "6458021a74ae16e15b000e412e2c4e3b5a861b227ff63677d6c4747140c44df9",
+  "payload": {
+    "implementationItems": [
+      {
+        "acceptanceCriterionKeys": [
+          "14:AC-1",
+          "27:AC-14"
+        ],
+        "changeScopes": [
+          "src/models/",
+          "tests/unit/models/",
+          "tests/property/",
+          "package.json",
+          "tests/"
+        ],
+        "coveredConstraintIds": [
+          "ord-c-006",
+          "ord-c-007"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "core-foundation",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [],
+        "changeScopes": [
+          "src/models/Universe.js",
+          "src/models/System.js",
+          "src/models/Station.js",
+          "src/core/GameState.js",
+          "tests/unit/models/"
+        ],
+        "coveredConstraintIds": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "core-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "universe-model",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [],
+        "changeScopes": [
+          "src/server/",
+          "src/core/GameEngine.js",
+          "src/core/EventBus.js",
+          "tests/smoke/",
+          "tests/integration/"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "universe-model"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "game-server",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "16:AC-3",
+          "17:AC-4"
+        ],
+        "changeScopes": [
+          "src/systems/TradingSystem.js",
+          "src/models/Cargo.js",
+          "tests/unit/systems/TradingSystem.test.js",
+          "tests/integration/trading-flow.test.js",
+          "tests/property/trading-invariants.test.js"
+        ],
+        "coveredConstraintIds": [
+          "ord-c-001",
+          "ord-c-002",
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "core-foundation",
+          "universe-model"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "trading-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "18:AC-5",
+          "19:AC-6",
+          "20:AC-7"
+        ],
+        "changeScopes": [
+          "src/systems/CombatSystem.js",
+          "src/systems/CombatAI.js",
+          "src/systems/Weapon.js",
+          "src/models/Ship.js",
+          "tests/unit/systems/CombatSystem.test.js",
+          "tests/integration/combat-flow.test.js"
+        ],
+        "coveredConstraintIds": [
+          "ord-c-002",
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "core-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "combat-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "21:AC-8",
+          "28:AC-15"
+        ],
+        "changeScopes": [
+          "src/systems/UpgradeSystem.js",
+          "src/systems/Module.js",
+          "tests/unit/systems/UpgradeSystem.test.js",
+          "tests/property/"
+        ],
+        "criticality": "degradable",
+        "dependsOnKeys": [
+          "core-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "upgrade-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "24:AC-11",
+          "25:AC-12"
+        ],
+        "changeScopes": [
+          "src/systems/ProgressionSystem.js",
+          "src/systems/RatingSystem.js",
+          "tests/unit/systems/ProgressionSystem.test.js"
+        ],
+        "criticality": "degradable",
+        "dependsOnKeys": [
+          "trading-system",
+          "combat-system"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "progression-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "15:AC-2",
+          "26:AC-13"
+        ],
+        "changeScopes": [
+          "src/systems/NavigationSystem.js",
+          "src/systems/JumpSystem.js",
+          "tests/unit/systems/NavigationSystem.test.js",
+          "tests/integration/",
+          "tests/property/fuel-invariants.test.js"
+        ],
+        "coveredConstraintIds": [
+          "ord-c-003",
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "universe-model"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "navigation-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "22:AC-9",
+          "23:AC-10"
+        ],
+        "changeScopes": [
+          "src/systems/SaveLoadSystem.js",
+          "src/systems/SaveFormat.js",
+          "tests/integration/save-load.test.js"
+        ],
+        "coveredConstraintIds": [
+          "ord-c-005"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "core-foundation",
+          "universe-model",
+          "progression-system"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "save-load-system",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      },
+      {
+        "acceptanceCriterionKeys": [],
+        "changeScopes": [
+          "src/rendering/",
+          "src/ui/",
+          "public/",
+          "tests/unit/rendering/"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "game-server",
+          "trading-system",
+          "combat-system",
+          "progression-system"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "rendering-ui",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation.feature"
+      }
+    ],
+    "integrationTargets": [
+      {
+        "expectedBaseCommit": "b6db0253e96a787e786d500d3696d8128836ef8e",
+        "projectRepositoryId": 1,
+        "sourceWorkItemKeys": [
+          "core-foundation",
+          "universe-model",
+          "game-server",
+          "trading-system",
+          "combat-system",
+          "upgrade-system",
+          "progression-system",
+          "navigation-system",
+          "save-load-system",
+          "rendering-ui"
+        ],
+        "targetBranch": "dev"
+      }
+    ],
+    "schemaVersion": "factory.development-task-graph-proposal.v1",
+    "verificationItems": [
+      {
+        "acceptanceCriterionKeys": [
+          "14:AC-1"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-006",
+          "ord-c-007"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-1",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "15:AC-2"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-003",
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-2",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "16:AC-3"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-001"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-3",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "17:AC-4"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-4",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "18:AC-5"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-002",
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-5",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "19:AC-6"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-6",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "20:AC-7"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-7",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "21:AC-8"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-8",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "22:AC-9"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-005"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-9",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "23:AC-10"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-10",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "24:AC-11"
+        ],
+        "changeScopes": [],
+        "criticality": "nice_to_have",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-11",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "25:AC-12"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-12",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "26:AC-13"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-13",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "27:AC-14"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-14",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "28:AC-15"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-15",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      }
+    ]
+  },
+  "payloadHash": "6458021a74ae16e15b000e412e2c4e3b5a861b227ff63677d6c4747140c44df9",
+  "schemaId": "factory.development-task-graph-proposal.v1"
+}

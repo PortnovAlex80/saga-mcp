@@ -1,0 +1,22 @@
+{
+  "claims": [
+    {
+      "actual": "failed",
+      "claim": "terminalStatus",
+      "expected": "failed",
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-8 (negative scenario)"
+    },
+    {
+      "actual": "development-plan-task-graph",
+      "claim": "failurePointCell",
+      "expected": "development-plan-task-graph",
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-8 (negative scenario)"
+    }
+  ],
+  "kind": "spec-vs-data",
+  "mismatches": [],
+  "note": "Claims from the SPEC scenario profile checked against the extracted data. The DATA wins in expected-trace.json; any mismatch is recorded here.",
+  "scenario": "negative"
+}

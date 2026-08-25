@@ -1,0 +1,270 @@
+{
+  "authority": "discovery-settlement-policy",
+  "certificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+  "certificatePayload": {
+    "constraintRegister": {
+      "constraints": [
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-001",
+          "kind": "open-question",
+          "text": "Exact pricing algorithms for commodity market dynamics"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-002",
+          "kind": "open-question",
+          "text": "Specific combat balance and enemy AI behavior parameters"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-003",
+          "kind": "open-question",
+          "text": "Precise visual effects implementation details (particle systems, shaders)"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-004",
+          "kind": "open-question",
+          "text": "Optimal canvas/WebGL rendering approach for the target hardware"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-005",
+          "kind": "open-question",
+          "text": "Exact save/load format and storage mechanism (localStorage vs files)"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "lifecycle.classification.runnable-local",
+          "id": "ord-c-006",
+          "kind": "synthesis",
+          "lifecycleSynthesis": {
+            "classification": "runnable-local",
+            "injectionTableRef": "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+          },
+          "text": "the delivered product is synthesized and assembled as one whole that is runnable locally"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "lifecycle.classification.runnable-local",
+          "id": "ord-c-007",
+          "kind": "ordered-smoke",
+          "lifecycleSynthesis": {
+            "classification": "runnable-local",
+            "injectionTableRef": "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+          },
+          "text": "an ordered smoke test performs the install step, then the start step, then reaches the running product"
+        }
+      ],
+      "registerDigest": "29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd",
+      "schemaVersion": "factory.order-constraint-register.v2"
+    },
+    "decision": "go",
+    "inputHash": "8a2bbe6ca85beff72e829f2e9373e24549338f45220e9abe887dfe0d8e515548",
+    "lifecycleBinding": {
+      "definitionHash": "6de4213d6250c7eeb8eb3055d433732cf1657bc1c6ebd175274f8010e854148a",
+      "injectionTableRefs": [
+        "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+      ],
+      "lifecycleRunId": 1,
+      "terminalClassifications": [
+        "failed",
+        "failed",
+        "formalization-inconsistent",
+        "development-blocked",
+        "failed",
+        "runnable-local"
+      ]
+    },
+    "payload": {
+      "policyHash": "a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402",
+      "policyVersion": "factory.discovery-settlement-policy.v1",
+      "processInputHash": "42bbc8b4d862a32895aa8dd37d9df8da37c27cf571b7aebf24e0912c6ae52c5a",
+      "proposalProductRef": {
+        "digest": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+        "ref": "managed-node-submission:1",
+        "schemaId": "factory.discovery-proposal.v1"
+      },
+      "readinessProductRef": {
+        "digest": "664284077b3f25fc318f3eac51e6705f5a44ed38bb8208ea08f5cc4eebc371d5",
+        "ref": "managed-node-submission:2",
+        "schemaId": "factory.discovery-readiness-assessment.v2"
+      },
+      "settlementInput": {
+        "captured_at": "2026-08-23 15:15:57",
+        "epic_id": 1,
+        "policy": {
+          "content_hash": "a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402",
+          "version": "factory.discovery-settlement-policy.v1"
+        },
+        "proposal": {
+          "content_hash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+          "id": 1,
+          "normalization_proposal_id": null,
+          "payload": {
+            "assumptions": [
+              "Node.js is available on the development machine",
+              "Chrome is the target browser and will be used for testing",
+              "The player has basic familiarity with space trading games",
+              "A 2020 laptop is a reasonable minimum hardware target for 60fps",
+              "WebSocket or similar real-time communication is not required (single-player)",
+              "Local filesystem access for save/load is acceptable"
+            ],
+            "candidate_scope": "The minimum useful product scope includes: a Node.js server that serves a single HTML/JS frontend; a canvas/WebGL rendering system with parallax starfield; at least 8 named star systems with stations; a commodity market with dynamic per-system pricing; hyperspace jump mechanics with fuel consumption and pirate encounter probability; ship-to-ship combat with player lasers vs enemy AI; ship upgrades (cargo capacity, laser, shields, fuel tank); save/load game state functionality; unit tests for core mechanics; a browser smoke test; and a /healthz endpoint on the server.",
+            "evidence_refs": [
+              "Task metadata: initiative.objective and initiative.subject fields from process_node_input",
+              "Task metadata: initiative.context specifying complexity 'XS' and type 'web-app'",
+              "Task metadata: initiative.constraints including deploymentExcluded, humanAcceptanceAfterLocalStart, localRunRequired"
+            ],
+            "observed_context": "The workspace is currently empty with no existing artifacts or notes. The initiative context specifies a complexity rating of 'XS' and type 'web-app'. The system will consist of a Node.js backend serving a single-page canvas/WebGL frontend with parallax starfield, hyperspace jump effects, station docking screens, ship HUD, commodity market with dynamic pricing, and arcade laser combat.",
+            "problem_statement": "The initiative aims to create a single-player space trading and combat game inspired by the classic Elite. The problem being addressed is the need for an engaging browser-based game that combines economic trading mechanics with arcade-style combat, running entirely locally without external dependencies.",
+            "rationale": "The initiative is well-scoped for an XS complexity web-app with clear functional and non-functional requirements. The gameplay mechanics are classic and well-understood, reducing design uncertainty. The technical stack (Node.js + canvas/WebGL) is mature and capable of delivering the required experience. The constraints are reasonable and aligned with the complexity rating. No blockers or fundamental feasibility concerns were identified.",
+            "recommended_outcome": "go",
+            "risks": [
+              "Technical risk: Achieving 60fps on 2020 laptop hardware with canvas/WebGL may require optimization",
+              "Technical risk: Combat AI balance may require extensive tuning for enjoyable gameplay",
+              "Adoption risk: The game may be too simple or complex for the target audience",
+              "Technical risk: Ensuring no external CDN dependencies while maintaining visual quality"
+            ],
+            "stakeholders_or_actors": [
+              "Player: Single user who starts docked at a station with 100 credits and a small cargo hold",
+              "Developer: Person who will implement and maintain the game codebase",
+              "Quality Assurance: Will validate unit tests, browser smoke tests, and /healthz endpoint"
+            ],
+            "unknowns": [
+              "Exact pricing algorithms for commodity market dynamics",
+              "Specific combat balance and enemy AI behavior parameters",
+              "Precise visual effects implementation details (particle systems, shaders)",
+              "Optimal canvas/WebGL rendering approach for the target hardware",
+              "Exact save/load format and storage mechanism (localStorage vs files)"
+            ]
+          },
+          "source_intent_id": 1,
+          "source_submission_id": 1
+        },
+        "readiness": {
+          "assessment_id": 2,
+          "content_hash": "664284077b3f25fc318f3eac51e6705f5a44ed38bb8208ea08f5cc4eebc371d5",
+          "payload": {
+            "blocking_gaps": [],
+            "confidence": 0.85,
+            "dimension_assessments": {
+              "assumption_visibility": {
+                "rationale": "Six explicit assumptions are documented covering development environment, target browser, player familiarity, hardware targets, communication requirements, and local filesystem access.",
+                "source_refs": [
+                  "$.assumptions"
+                ],
+                "status": "sufficient"
+              },
+              "evidence_grounding": {
+                "rationale": "Three evidence references are provided linking to task metadata including initiative objectives, context specifying complexity XS and web-app type, and constraints around deployment and local execution requirements.",
+                "source_refs": [
+                  "$.evidence_refs"
+                ],
+                "status": "sufficient"
+              },
+              "problem_clarity": {
+                "rationale": "The problem statement clearly articulates the objective to create a single-player space trading and combat game inspired by classic Elite, addressing the need for an engaging browser-based game combining economic mechanics with arcade combat.",
+                "source_refs": [
+                  "$.problem_statement"
+                ],
+                "status": "sufficient"
+              },
+              "risk_visibility": {
+                "rationale": "Four risks are clearly categorized (Technical and Adoption) with specific concerns about performance, AI balance, audience fit, and dependency management.",
+                "source_refs": [
+                  "$.risks"
+                ],
+                "status": "sufficient"
+              },
+              "scope_boundedness": {
+                "rationale": "The candidate scope defines a minimum useful product with specific deliverables including Node.js server, canvas/WebGL rendering, star systems, commodity market, hyperspace mechanics, combat system, ship upgrades, save/load functionality, unit tests, and health endpoint.",
+                "source_refs": [
+                  "$.candidate_scope"
+                ],
+                "status": "sufficient"
+              },
+              "stakeholder_coverage": {
+                "rationale": "Three key stakeholders are identified with clear roles: Player (end user), Developer (implementation and maintenance), and Quality Assurance (validation of tests and endpoints).",
+                "source_refs": [
+                  "$.stakeholders_or_actors"
+                ],
+                "status": "sufficient"
+              },
+              "unknowns_manageability": {
+                "rationale": "Five specific unknowns are identified covering pricing algorithms, combat balance, visual effects, rendering optimization, and save/load mechanisms. These are technical implementation details that can be resolved during development.",
+                "source_refs": [
+                  "$.unknowns"
+                ],
+                "status": "sufficient"
+              }
+            },
+            "non_blocking_gaps": [
+              {
+                "code": "NBGAP-001",
+                "description": "Pricing algorithms for commodity market dynamics require specification during development",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-002",
+                "description": "Combat balance parameters and enemy AI behavior need iterative tuning",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-003",
+                "description": "Visual effects implementation details (particle systems, shaders) to be determined",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-004",
+                "description": "Optimal canvas/WebGL rendering approach for target hardware requires performance testing",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-005",
+                "description": "Save/load format and storage mechanism (localStorage vs files) needs architectural decision",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              }
+            ],
+            "overall_readiness": "ready",
+            "proposal_content_hash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+            "rationale": "The proposal demonstrates comprehensive coverage across all seven readiness dimensions with clear problem articulation, well-defined scope, identified stakeholders, explicit assumptions, manageable unknowns, visible risks, and grounded evidence. The XS complexity rating is appropriate for the scoped web application. All dimensions are sufficient with no blocking gaps. The five non-blocking gaps are standard technical implementation details to be resolved during development.",
+            "recommended_next_action": "proceed_to_settlement"
+          },
+          "status": "accepted_by_kernel"
+        },
+        "schema_version": "factory.discovery-settlement-input.v1"
+      },
+      "settlementInputHash": "8a2bbe6ca85beff72e829f2e9373e24549338f45220e9abe887dfe0d8e515548"
+    },
+    "rationale": "Proposal is ready, grounded, and confident enough to proceed",
+    "reasonCodes": [
+      "GO_READY_AND_GROUNDED"
+    ],
+    "schemaVersion": "factory.discovery-outcome-certificate.v1"
+  },
+  "decision": "go",
+  "inputHash": "8a2bbe6ca85beff72e829f2e9373e24549338f45220e9abe887dfe0d8e515548",
+  "moduleRefKey": "product-discovery@3.0.2",
+  "rationale": "Proposal is ready, grounded, and confident enough to proceed",
+  "reasonCodes": [
+    "GO_READY_AND_GROUNDED"
+  ],
+  "schemaVersion": "factory.discovery-outcome-certificate.v1"
+}

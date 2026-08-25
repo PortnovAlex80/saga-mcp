@@ -1,0 +1,47 @@
+{
+  "anomalies": [
+    {
+      "evidence": [],
+      "exec": "exec#14",
+      "state": "lost",
+      "task": "development.code#2"
+    },
+    {
+      "evidence": [],
+      "exec": "exec#17",
+      "state": "lost",
+      "task": "development.code#8"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "action": "terminated",
+            "reason": "stuck past cancel grace — terminated after verified PID identity",
+            "released": true,
+            "task_id": 26
+          },
+          "kind": "supervision.reaped"
+        },
+        {
+          "data": {
+            "display_name": "Anvil",
+            "duration_ms": 1196213,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 26,
+            "worker_done_received": false,
+            "worker_id": "worker:99d445a1-0a5f-4184-94ca-0d0ffc5c46d9"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#27",
+      "state": "terminated",
+      "task": "development.code.review#5"
+    }
+  ],
+  "kind": "supervision-observation",
+  "note": "Lost/terminated executions with their supervision evidence. Not a defect by itself: INV-07 requires (and checks) that they produced no completion products and were reaped/recovered openly."
+}

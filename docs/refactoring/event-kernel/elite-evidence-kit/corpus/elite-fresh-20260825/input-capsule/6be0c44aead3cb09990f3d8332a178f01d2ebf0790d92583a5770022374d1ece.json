@@ -1,0 +1,60 @@
+{
+  "providers": [
+    {
+      "category": "deterministic_evidence",
+      "determinism": "partial",
+      "name": "saga-real-model-worker",
+      "scope": "factory-smoke",
+      "trustBasis": "real factory execution",
+      "version": "1.0.0"
+    },
+    {
+      "category": "deterministic_evidence",
+      "determinism": "full",
+      "name": "development.verification-product-contract.v2",
+      "scope": "verification-lineage",
+      "trustBasis": "built-in:9e951c54614fb34e29a8c06b9f87f02b8db8aafa2da7079c0e270f8516fe5360",
+      "version": "2.0.0"
+    },
+    {
+      "category": "deterministic_evidence",
+      "determinism": "full",
+      "name": "development.readiness-profile-monotonicity.v1",
+      "scope": "readiness-monotonicity",
+      "trustBasis": "built-in:0d864fb57842491e066704dc331d17fede25f6cbc7d0213eac28e821ad2ddf25",
+      "version": "1.0.0"
+    },
+    {
+      "category": "deterministic_evidence",
+      "determinism": "full",
+      "name": "factory.local-runnability.v1",
+      "scope": "local-runnability",
+      "trustBasis": "built-in:982d4cd392a2c490b061004466f71ad3fd90c037f19debb772ad7e28ebf3bda8",
+      "version": "1.15.0"
+    },
+    {
+      "category": "deterministic_evidence",
+      "determinism": "full",
+      "name": "factory.accessible-counter-sandbox-check.v1",
+      "scope": "verification-only-continuation",
+      "trustBasis": "versioned built-in provider installation",
+      "version": "1.0.0"
+    },
+    {
+      "category": "authorized_decision",
+      "determinism": "none",
+      "name": "factory.authorized-verification-observer.v1",
+      "scope": "verification-only-continuation",
+      "trustBasis": "versioned built-in provider installation",
+      "version": "1.0.0"
+    },
+    {
+      "category": "deterministic_evidence",
+      "determinism": "full",
+      "name": "factory.documentation-completeness.v1",
+      "scope": "documentation-lineage",
+      "trustBasis": "built-in:460d9efbbb2deeebb43e53c96c113bc8577dfb6ddfef066b0bbd386d8465348d",
+      "version": "1.0.0"
+    }
+  ]
+}

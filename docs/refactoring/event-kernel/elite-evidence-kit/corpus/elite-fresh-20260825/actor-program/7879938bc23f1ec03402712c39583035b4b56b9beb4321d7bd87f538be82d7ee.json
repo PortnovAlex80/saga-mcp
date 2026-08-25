@@ -1,0 +1,40 @@
+{
+  "contentDigest": "dc0301e48d2191dd68e0dec5c2733a175c2878849eadecd1ef154a35669b5e20",
+  "payload": {
+    "buildProducts": [],
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "3ef96b3597b5c4b5093f937eec54a57a0a6f29f8",
+      "integrationBranch": "dev",
+      "name": "product",
+      "projectRepositoryId": 1
+    },
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "modified",
+          "path": "src/game-state.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/travel.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/travel.test.ts"
+        }
+      ],
+      "commitSha": "1d8bf938deea54f5580af707883426d35515df83",
+      "treeSha": "dc1511d952b0829434a4c1629ee72c00a9ad11aa"
+    },
+    "source": {
+      "branch": "saga/task/20/execution/68729f8a445bb2f01ca1",
+      "commitSha": "1d8bf938deea54f5580af707883426d35515df83",
+      "workItemKey": "impl-travel"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-travel"
+  },
+  "payloadHash": "dc0301e48d2191dd68e0dec5c2733a175c2878849eadecd1ef154a35669b5e20",
+  "schemaId": "factory.development-implementation-result.v1"
+}

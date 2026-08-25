@@ -1,0 +1,130 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [
+            {
+              "id": 29,
+              "type": "content_hash"
+            }
+          ],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:file-hash-match",
+          "evidenceRefs": [
+            "submission-validation-rejection:d4b535900ebc9faa3f8f3155a8f4dd2593203a9933dbc4cfa3554e1717fcf73f"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "file-hash-match",
+            "requiredTargetTypes": [
+              "sha256=b78b88039795c059"
+            ]
+          },
+          "message": "29: file-hash-match requires sha256=b78b88039795c059",
+          "path": null,
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        }
+      ],
+      "policyId": "submission-validation:formalization.srs-contract.v1",
+      "reasonCode": "FORMALIZATION_SRS_INCOMPLETE",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "b78b88039795c059e93e605e87f4fd6f2a745fa50d31ba430d876bbc9a735b23",
+          "kind": "artifact",
+          "ref": "artifact:29",
+          "schema": "SRS"
+        }
+      ],
+      "summary": "Submission preflight formalization.srs-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "SRS",
+        "content_hash": "b78b88039795c059e93e605e87f4fd6f2a745fa50d31ba430d876bbc9a735b23",
+        "id": 29,
+        "path": "docs/requirements/REQ-001/06-SRS.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "SRS"
+      }
+    ],
+    "observedSetDigest": "0ee7a7e0540746cdec04bcd10324013eb82270c3b39ba86095755a9c4734797f",
+    "origin": {
+      "executionId": "worker-execution:3df74cfa-89ab-4c4d-ba75-33eb02b55c96",
+      "inputSnapshotHash": "8eaaea70788651e639b2c811abb7228e2965449965453d13c2c76709d9174875",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-architecture-contract",
+      "processRunId": 2,
+      "taskId": 14,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+    },
+    "rejectionDigest": "d4b535900ebc9faa3f8f3155a8f4dd2593203a9933dbc4cfa3554e1717fcf73f",
+    "rejectionRef": "submission-validation-rejection:d4b535900ebc9faa3f8f3155a8f4dd2593203a9933dbc4cfa3554e1717fcf73f",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": {
+        "digest": "4ebcd19cb53a7ffc000456e0196e2eef006123317d42eaad1754ffc6e21c23c7",
+        "version": "2.2"
+      },
+      "id": "formalization.srs-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": null,
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [
+        {
+          "id": 29,
+          "type": "content_hash"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "file-hash-match",
+        "requiredTargetTypes": [
+          "sha256=b78b88039795c059"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-architecture-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "SRS",
+      "content_hash": "b78b88039795c059e93e605e87f4fd6f2a745fa50d31ba430d876bbc9a735b23",
+      "id": 29,
+      "path": "docs/requirements/REQ-001/06-SRS.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "SRS"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_SRS_INCOMPLETE",
+  "rejectionDigest": "d4b535900ebc9faa3f8f3155a8f4dd2593203a9933dbc4cfa3554e1717fcf73f",
+  "task": "formalization.architecture#1",
+  "validatorId": "formalization.srs-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+}

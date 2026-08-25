@@ -1,0 +1,44 @@
+{
+  "contentDigest": "824a801cde4e1cad01d8548049e9e70185179b89086db4180e25d8d1c14f0919",
+  "payload": {
+    "buildProducts": {
+      "testCommand": "npx vitest run tests/save-load.test.ts",
+      "testsPassed": 8
+    },
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "354a817a23e1b8da4857d25cc5194e34e08012b9",
+      "integrationBranch": "dev",
+      "name": "product",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "changeType": "modified",
+          "path": "src/game-state.ts"
+        },
+        {
+          "changeType": "added",
+          "path": "src/save-load.ts"
+        },
+        {
+          "changeType": "added",
+          "path": "tests/save-load.test.ts"
+        }
+      ],
+      "commitSha": "33d967d17ef7a75f12c430b3abc89acca03ef032",
+      "treeSha": "2b2df31b4593b06b3c6131fc3b4b8ef6931c8b84"
+    },
+    "source": {
+      "branch": "saga/task/17/execution/36dfe3d1c6f2b8427b78",
+      "commitSha": "33d967d17ef7a75f12c430b3abc89acca03ef032",
+      "workItemKey": "impl-save-load"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-save-load"
+  },
+  "payloadHash": "824a801cde4e1cad01d8548049e9e70185179b89086db4180e25d8d1c14f0919",
+  "schemaId": "factory.development-implementation-result.v1"
+}

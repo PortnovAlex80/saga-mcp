@@ -1,0 +1,5 @@
+{
+  "contentSha256": "0057c5489fa8e435ec7e413ce094191c67dbb4a6942a2a871ecc0022745e43a5",
+  "path": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md",
+  "text": "# Non-Functional Requirements\n\n## NFR-1: Rendering Performance\n\nStatus: draft\n\nThe game shall render at 60 frames per second on a 2020 laptop in Google Chrome during standard gameplay (navigation, trading, combat).\n\n## NFR-2: Offline Operation\n\nStatus: draft\n\nThe game shall operate fully offline with no external CDN dependencies. All assets, scripts, and styles shall be served locally.\n\n## NFR-3: One-Command Startup\n\nStatus: draft\n\nThe game shall start immediately after `npm install && npm start` with no manual build steps, configuration, or additional commands required.\n\n## NFR-4: Language\n\nStatus: draft\n\nAll user-facing text in the game shall be in English."
+}

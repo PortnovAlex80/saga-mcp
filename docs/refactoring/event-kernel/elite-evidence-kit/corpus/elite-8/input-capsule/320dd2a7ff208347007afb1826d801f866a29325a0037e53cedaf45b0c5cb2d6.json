@@ -1,0 +1,159 @@
+{
+  "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+  "payload": {
+    "acArtifactHashes": {
+      "14": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "15": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "16": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "17": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "18": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "19": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "20": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "21": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "22": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "23": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "24": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "25": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "26": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "27": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "28": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae"
+    },
+    "acArtifactIds": [
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28
+    ],
+    "acceptanceCriteria": [
+      {
+        "artifactId": 14,
+        "code": "AC-1",
+        "contentHash": "17fe33f4e5d401f23b460a3614d5e98c825fb6598aff034a6b6e330755ed0ea2",
+        "title": "Game Initialization"
+      },
+      {
+        "artifactId": 15,
+        "code": "AC-2",
+        "contentHash": "21b11938a0ba854725eb41f05e43265bcd812ecdc838712aac81be0d90e4c56a",
+        "title": "Hyperspace Jump Execution"
+      },
+      {
+        "artifactId": 16,
+        "code": "AC-3",
+        "contentHash": "e307012ec888ba95981f150abe4b11b5129153d82903cbb9b266f42f867538d1",
+        "title": "Commodity Purchase with Validation"
+      },
+      {
+        "artifactId": 17,
+        "code": "AC-4",
+        "contentHash": "cd4c2a291b4da71d0d51fdccf522a687b9ce73615c3a69aa70bd803e275a2d7a",
+        "title": "Commodity Sale with Validation"
+      },
+      {
+        "artifactId": 18,
+        "code": "AC-5",
+        "contentHash": "f58922d82ffe69338e00d9b4b410aaffa15827f50eb92c7324de994e75920d33",
+        "title": "Combat Victory"
+      },
+      {
+        "artifactId": 19,
+        "code": "AC-6",
+        "contentHash": "457c19f6731da089f4e86aa05418f9ecc709e31cae84f57bb3d101a436b78bfa",
+        "title": "Combat Defeat"
+      },
+      {
+        "artifactId": 20,
+        "code": "AC-7",
+        "contentHash": "1563226751ba9e9fcda29bbaf87222c13475df8fb72c900aef4a8b8332568555",
+        "title": "Successful Combat Flee"
+      },
+      {
+        "artifactId": 21,
+        "code": "AC-8",
+        "contentHash": "301c5218300ade433d3ea6e88533af2db324828a4b365cf05485267c9a355a7e",
+        "title": "Ship Upgrade Purchase"
+      },
+      {
+        "artifactId": 22,
+        "code": "AC-9",
+        "contentHash": "b0dd302d18168130f23554527d690830375f7f95a92e9aac563c2e7a643d5c4e",
+        "title": "Game State Save"
+      },
+      {
+        "artifactId": 23,
+        "code": "AC-10",
+        "contentHash": "ea648d28b2b2c389b0521488c59003a5a8bc5fb56fc8d975e02e8e2fd003ba85",
+        "title": "Game State Load"
+      },
+      {
+        "artifactId": 24,
+        "code": "AC-11",
+        "contentHash": "0d7c49e33b03734bb5aaf53aa3cf0a466d393e701c2e61aa0a367b1fd95eff9f",
+        "title": "Elite Rating Display"
+      },
+      {
+        "artifactId": 25,
+        "code": "AC-12",
+        "contentHash": "7485ace698e71c026008312774b85678440999470382ad95a38db4fbac159533",
+        "title": "Commodity Price Display"
+      },
+      {
+        "artifactId": 26,
+        "code": "AC-13",
+        "contentHash": "5f89d89e7945984bb63ee2b171e6912f75206f6742fb07e9ad7af50dd5428337",
+        "title": "Pirate Encounter Trigger"
+      },
+      {
+        "artifactId": 27,
+        "code": "AC-14",
+        "contentHash": "edb753be638e31e3524c9c8f11674ddd577be1dac0061fc517dd5d548cd415af",
+        "title": "Cargo Capacity Enforcement"
+      },
+      {
+        "artifactId": 28,
+        "code": "AC-15",
+        "contentHash": "85a71c228caf711d245f9756af41aada58bd084980e36840d305af681bb8663b",
+        "title": "Fuel Tank Upgrade Impact"
+      }
+    ],
+    "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+    "coveredConstraints": {
+      "AC-1": [
+        "ord-c-006",
+        "ord-c-007"
+      ],
+      "AC-2": [
+        "ord-c-003",
+        "ord-c-004"
+      ],
+      "AC-3": [
+        "ord-c-001"
+      ],
+      "AC-5": [
+        "ord-c-002",
+        "ord-c-004"
+      ],
+      "AC-9": [
+        "ord-c-005"
+      ]
+    },
+    "formalizationEpicId": 1,
+    "processRunId": 2,
+    "schemaVersion": "factory.acceptance-baseline-snapshot.v1",
+    "sourceReconciliationHash": "de0508aa8abf31bc8b6add36d0c3a8723ab731541388dd553694e9aa109b5882",
+    "sourceReconciliationRef": "production-cell-manifest:formalization-reconciliation:de0508aa8abf31bc8b6add36d0c3a8723ab731541388dd553694e9aa109b5882"
+  },
+  "schemaVersion": "factory.acceptance-baseline-snapshot.v1",
+  "snapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13"
+}

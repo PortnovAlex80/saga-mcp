@@ -1,0 +1,158 @@
+{
+  "attempt": 1,
+  "bindingHash": "8726ce8951b1e2692f78280ad98b5a7882aa28362f06af01c85a3e00f6db11eb",
+  "bindingSnapshot": {
+    "displayName": "Initial Discovery",
+    "entryConditions": [
+      "initiative.subject exists"
+    ],
+    "exitConditions": [
+      "Discovery has an immutable local outcome and certificate lineage"
+    ],
+    "id": "initial-discovery",
+    "inputMapping": {
+      "constraints": "$.initiative.constraints",
+      "context": "$.initiative.context",
+      "epicId": {
+        "runtime": "epicId"
+      },
+      "evidence": "$.initiative.evidence",
+      "initiatedBy": {
+        "runtime": "initiatedBy"
+      },
+      "objective": "$.initiative.subject",
+      "projectId": {
+        "runtime": "projectId"
+      },
+      "subject": "$.initiative.subject"
+    },
+    "moduleRef": {
+      "name": "product-discovery",
+      "version": "3.0.2"
+    },
+    "outcomeRoutes": {
+      "clarify": {
+        "stageId": "solution-formalization",
+        "type": "stage"
+      },
+      "failed": {
+        "status": "failed",
+        "type": "terminal"
+      },
+      "go": {
+        "stageId": "solution-formalization",
+        "type": "stage"
+      },
+      "reject": {
+        "stageId": "solution-formalization",
+        "type": "stage"
+      }
+    },
+    "outputMapping": {
+      "authority": "$.processOutcome.authority",
+      "certificate.hash": "$.processOutcome.certificateHash",
+      "certificate.ref": "$.processOutcome.certificateRef",
+      "certificate.schema": "$.processOutcome.certificateSchema",
+      "decision": "$.processOutcome.code",
+      "proposal.hash": "$.processOutcome.outputHash",
+      "proposal.ref": "$.processOutcome.outputRef",
+      "proposal.schema": "$.processOutcome.outputSchema",
+      "proposalPayload": "$.processOutcome.outputPayload"
+    }
+  },
+  "inputHash": "42bbc8b4d862a32895aa8dd37d9df8da37c27cf571b7aebf24e0912c6ae52c5a",
+  "inputSchema": "factory.discovery-case.v1",
+  "inputSnapshot": {
+    "constraints": {
+      "deploymentExcluded": true,
+      "humanAcceptanceAfterLocalStart": true,
+      "localRunRequired": true
+    },
+    "context": {
+      "complexity": "XS",
+      "type": "web-app"
+    },
+    "epicId": 1,
+    "evidence": {},
+    "initiatedBy": "factory-start",
+    "objective": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz.",
+    "projectId": 1,
+    "subject": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz."
+  },
+  "mappedOutputSnapshot": {
+    "authority": "discovery-settlement-policy",
+    "certificate": {
+      "hash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+      "ref": "certificate:1",
+      "schema": "factory.discovery-outcome-certificate.v1"
+    },
+    "decision": "go",
+    "proposal": {
+      "hash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+      "ref": "product:factory.discovery-proposal.v1:67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+      "schema": "factory.discovery-proposal.v1"
+    },
+    "proposalPayload": {
+      "assumptions": [
+        "Node.js is available on the development machine",
+        "Chrome is the target browser and will be used for testing",
+        "The player has basic familiarity with space trading games",
+        "A 2020 laptop is a reasonable minimum hardware target for 60fps",
+        "WebSocket or similar real-time communication is not required (single-player)",
+        "Local filesystem access for save/load is acceptable"
+      ],
+      "candidate_scope": "The minimum useful product scope includes: a Node.js server that serves a single HTML/JS frontend; a canvas/WebGL rendering system with parallax starfield; at least 8 named star systems with stations; a commodity market with dynamic per-system pricing; hyperspace jump mechanics with fuel consumption and pirate encounter probability; ship-to-ship combat with player lasers vs enemy AI; ship upgrades (cargo capacity, laser, shields, fuel tank); save/load game state functionality; unit tests for core mechanics; a browser smoke test; and a /healthz endpoint on the server.",
+      "evidence_refs": [
+        "Task metadata: initiative.objective and initiative.subject fields from process_node_input",
+        "Task metadata: initiative.context specifying complexity 'XS' and type 'web-app'",
+        "Task metadata: initiative.constraints including deploymentExcluded, humanAcceptanceAfterLocalStart, localRunRequired"
+      ],
+      "observed_context": "The workspace is currently empty with no existing artifacts or notes. The initiative context specifies a complexity rating of 'XS' and type 'web-app'. The system will consist of a Node.js backend serving a single-page canvas/WebGL frontend with parallax starfield, hyperspace jump effects, station docking screens, ship HUD, commodity market with dynamic pricing, and arcade laser combat.",
+      "problem_statement": "The initiative aims to create a single-player space trading and combat game inspired by the classic Elite. The problem being addressed is the need for an engaging browser-based game that combines economic trading mechanics with arcade-style combat, running entirely locally without external dependencies.",
+      "rationale": "The initiative is well-scoped for an XS complexity web-app with clear functional and non-functional requirements. The gameplay mechanics are classic and well-understood, reducing design uncertainty. The technical stack (Node.js + canvas/WebGL) is mature and capable of delivering the required experience. The constraints are reasonable and aligned with the complexity rating. No blockers or fundamental feasibility concerns were identified.",
+      "recommended_outcome": "go",
+      "risks": [
+        "Technical risk: Achieving 60fps on 2020 laptop hardware with canvas/WebGL may require optimization",
+        "Technical risk: Combat AI balance may require extensive tuning for enjoyable gameplay",
+        "Adoption risk: The game may be too simple or complex for the target audience",
+        "Technical risk: Ensuring no external CDN dependencies while maintaining visual quality"
+      ],
+      "stakeholders_or_actors": [
+        "Player: Single user who starts docked at a station with 100 credits and a small cargo hold",
+        "Developer: Person who will implement and maintain the game codebase",
+        "Quality Assurance: Will validate unit tests, browser smoke tests, and /healthz endpoint"
+      ],
+      "unknowns": [
+        "Exact pricing algorithms for commodity market dynamics",
+        "Specific combat balance and enemy AI behavior parameters",
+        "Precise visual effects implementation details (particle systems, shaders)",
+        "Optimal canvas/WebGL rendering approach for the target hardware",
+        "Exact save/load format and storage mechanism (localStorage vs files)"
+      ]
+    }
+  },
+  "moduleRefKey": "product-discovery@3.0.2",
+  "ordinal": 1,
+  "resultSnapshot": {
+    "authority": "discovery-settlement-policy",
+    "certificate": {
+      "certificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+      "certificateRef": "certificate:1",
+      "schema": "factory.discovery-outcome-certificate.v1"
+    },
+    "certificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+    "certificateRef": "certificate:1",
+    "certificateSchema": "factory.discovery-outcome-certificate.v1",
+    "code": "go",
+    "outcome": "go",
+    "output": {
+      "artifactRef": "product:factory.discovery-proposal.v1:67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+      "contentHash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+      "schema": "factory.discovery-proposal.v1"
+    },
+    "outputHash": "67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+    "outputRef": "product:factory.discovery-proposal.v1:67d5fe1083f98904e7cdd9322215c67d0736d698ab3cceda1c29768b2b6ba42f",
+    "outputSchema": "factory.discovery-proposal.v1"
+  },
+  "stageId": "initial-discovery"
+}
