@@ -321,7 +321,7 @@ canonical and Phase 5 verified green.
 
 - [x] One canonical `saga4` commit SHA: the completion-receipt commit —
       see `docs/factory-run/qualification-adr096/COMPLETION-RECEIPT.md`
-      (final line records the exact closing SHA).
+      (closing SHA: `bacf4f82` — this commit).
 - [x] Clean branch/worktree inventory.
       (`docs/factory-run/qualification-adr096/INVENTORY.md`, refreshed.)
 - [x] ADR-095 Phase-6 evidence table. (`DISCOVERY-PHASE6-CLOSURE.md`.)
