@@ -1,0 +1,3637 @@
+{
+  "schemaVersion": "ek.transition-universe.ek1-reconciliation.v1",
+  "workPackage": "EK-1 coordinator reconciliation (WP-02 forward + WP-03 reverse)",
+  "derivation": "Unified transition universe built by typed reconciliation of the two independently frozen derivations. Neither input graph was edited; every difference is recorded in reconciliation[] as resolved-with-citation or as an explicit protocol decision (protocolDecisions[]). Nothing is silently accepted.",
+  "base": {
+    "integrationBaseSha": "21ba0816e38ec1492b3acb4d21e7ccea49c6f5df",
+    "branch": "ek1/graph-reconciliation",
+    "inputs": {
+      "forward": {
+        "worktree": "D:/Development/saga-mcp-EK-WP02",
+        "branch": "ek1/wp02-forward-graph",
+        "commit": "1ccbf66d",
+        "file": "docs/refactoring/event-kernel/forward-graph.json (copied to ./forward-graph.json)",
+        "counts": {
+          "nodes": 56,
+          "edges": 132,
+          "typedWaits": 8,
+          "terminalProofs": 7,
+          "gaps": 10
+        }
+      },
+      "reverse": {
+        "worktree": "D:/Development/saga-mcp-EK-WP03",
+        "branch": "ek1/wp03-reverse-graph",
+        "commit": "6e029e08",
+        "file": "docs/refactoring/event-kernel/reverse-graph.json (copied to ./reverse-graph.json)",
+        "counts": {
+          "nodes": 88,
+          "edges": 112,
+          "terminalProofs": 28,
+          "gaps": 8
+        }
+      },
+      "census": {
+        "worktree": "D:/Development/saga-mcp-EK-WP01",
+        "branch": "ek1/wp01-census",
+        "commit": "eaa07093",
+        "file": "docs/refactoring/event-kernel/authority-census.json (copied to ./authority-census.json)"
+      }
+    }
+  },
+  "citationKeys": {
+    "PLAN:<section>": "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md at the named section",
+    "ADR097:<section>": "docs/architecture/decisions/097-event-projected-workflow-kernel.md at the named section",
+    "ADR053:<section>": "docs/architecture/decisions/053-workplace-production-revision-as-accepted-material-authority.md at the named section",
+    "FWD:<id>": "forward-graph.json node/edge/gap/wait/proof with that id (this directory)",
+    "REV:<id>": "reverse-graph.json node/edge/gap with that id (this directory)",
+    "CENSUS:<family>": "authority-census.json factFamilies[] entry with that id (this directory)"
+  },
+  "aggregates": [
+    {
+      "name": "FactoryRun",
+      "ownerRepo": "src/workflow-kernel (FactoryRun repository — sole writer)",
+      "revisionCas": "run revision CAS-owned by FactoryRun repository",
+      "notes": "run identity, pinned build/package/capsule digests, final run proof"
+    },
+    {
+      "name": "LifecycleRun",
+      "ownerRepo": "src/workflow-kernel (LifecycleRun repository — sole writer)",
+      "revisionCas": "lifecycle revision CAS-owned",
+      "notes": "lifecycle state; continuation parent lineage as immutable evidence"
+    },
+    {
+      "name": "StageRun",
+      "ownerRepo": "src/workflow-kernel (StageRun repository — sole writer)",
+      "revisionCas": "stage revision CAS-owned",
+      "notes": "one installed process module bound per stage (see reconciliation R10)"
+    },
+    {
+      "name": "ProcessRun",
+      "ownerRepo": "src/workflow-kernel (ProcessRun repository — sole writer)",
+      "revisionCas": "process revision CAS-owned",
+      "notes": "declared module flow cursor"
+    },
+    {
+      "name": "NodeRun",
+      "ownerRepo": "src/workflow-kernel (NodeRun repository — sole writer)",
+      "revisionCas": "node revision CAS-owned",
+      "notes": "kernel/production-cell/human/provider node instances"
+    },
+    {
+      "name": "Workplace",
+      "ownerRepo": "src/workflow-kernel (Workplace repository — sole writer)",
+      "revisionCas": "workplace revision CAS-owned",
+      "notes": "author/reviewer/repair loop AND the ADR-053 accepted-material chain (WorkplaceProductionRevision, CandidateSet, GateDecision, EffectReceipt, CellFinalAcceptance facts commit in Workplace transactions)"
+    },
+    {
+      "name": "ActivityAttempt",
+      "ownerRepo": "src/workflow-kernel (ActivityAttempt repository — sole writer)",
+      "revisionCas": "attempt lease CAS + CAS-fenced contextRevision",
+      "notes": "attempt lease/provenance and context admission counters; never accepted-material authority"
+    },
+    {
+      "name": "WorkItem",
+      "ownerRepo": "src/workflow-kernel (planning repository — sole writer of immutable planning facts)",
+      "revisionCas": "immutable after creation — no mutable revision (FWD:G8-free; target model row WorkItem)",
+      "notes": "WorkItem + WorkItemDependency + planning-claim coverage facts; single creation authority 'Planning'"
+    },
+    {
+      "name": "CognitionTransport",
+      "ownerRepo": "replaceable transport behind the provider-send obligation (not an aggregate owner)",
+      "revisionCas": "none — stateless replaceable boundary",
+      "notes": "instrumented OpenCode transport; admission linearization immediately before final serialization/network send"
+    }
+  ],
+  "nonAggregateAuthorities": [
+    {
+      "name": "Planning",
+      "role": "single immutable creation command authority for WorkItem/WorkItemDependency/planning-claim facts (workItem.planGraph)",
+      "citations": [
+        "REV:conventions.ownedBySpecials.Planning",
+        "PLAN:target-model"
+      ]
+    },
+    {
+      "name": "InstalledWorkshopManifest",
+      "role": "immutable content-addressed workshop semantics: CheckPlans, CanonicalRoleContract, PromptBudgetProfile, effect contracts",
+      "citations": [
+        "REV:conventions.ownedBySpecials.InstalledWorkshopManifest",
+        "FWD:in.manifest"
+      ]
+    },
+    {
+      "name": "TargetOwnerCapability",
+      "role": "the stateless obligation consumer acting for the exact target aggregate named by the obligation; TransitionObligation/ObligationCompletionReceipt/SettlementWorkObligation are durable kernel-ledger rows completed only in the target fact's transaction",
+      "citations": [
+        "REV:conventions.ownedBySpecials.TargetOwnerCapability",
+        "PLAN:durable-handoff"
+      ]
+    },
+    {
+      "name": "Input",
+      "role": "external inputs: operator idea, capsule, typed operator commands, manifest, planning facts (FWD nodes in.*)",
+      "citations": [
+        "FWD:in.idea",
+        "FWD:in.capsule",
+        "FWD:in.operator",
+        "FWD:in.manifest",
+        "FWD:in.planningFacts"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.bootstrap",
+      "sourceEvidence": [
+        "operator command: start (FWD:F001)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.bootstrapped"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ProtocolMetadata identity + pinned build/package digests"
+      ],
+      "citations": [
+        "FWD:factoryRun.bootstrap",
+        "PLAN:fresh-protocol-only"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.importCapsule",
+      "sourceEvidence": [
+        "content-addressed capsule through public ingress (FWD:F004)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.capsuleImported"
+      ],
+      "createsObligations": [
+        "obligation:ingestCapsuleFacts"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "CapsuleIngressReceipt (capsule/certificate/requirements/terminal-claims/AC-set/module-package/build/base-repo digests)",
+        "TypedRefusalReceipt on corrupt bytes, foreign lineage, illegal parent state, active attempt, stale protocol (pre-run; in-run grounding is decision D7)"
+      ],
+      "citations": [
+        "FWD:factoryRun.importCapsule",
+        "REV:CapsuleIngressReceipt",
+        "PLAN:EK5"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.start",
+      "sourceEvidence": [
+        "operator command: start (FWD:F003)",
+        "operator command: redevelop with prior lifecycle TerminalProof as carry-forward evidence (FWD:F006)",
+        "CapsuleIngressReceipt"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.started"
+      ],
+      "createsObligations": [
+        "obligation:bootstrapLifecycleRun"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:factoryRun.start"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.requestStop",
+      "sourceEvidence": [
+        "operator command: stop (FWD:F017)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.stopRequested"
+      ],
+      "createsObligations": [],
+      "waits": [
+        "TypedWait:policy-quota"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "OperatorStopCommand (durable command + evidence, never a direct state update)"
+      ],
+      "citations": [
+        "FWD:factoryRun.requestStop",
+        "REV:OperatorStopCommand",
+        "PLAN:EK4"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.resume",
+      "sourceEvidence": [
+        "operator command: resume (FWD:F019)",
+        "obligation:watchdogRestart (pending D9)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.resumed"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:factoryRun.resume"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.observeWatchdog",
+      "sourceEvidence": [
+        "observe-only supervision: heartbeat-freeze detection, budget watch (FWD:F020/F021)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.watchdogObserved"
+      ],
+      "createsObligations": [
+        "obligation:watchdogRestart",
+        "obligation:watchdogBudgetExhausted"
+      ],
+      "waits": [],
+      "proofs": [],
+      "pendingProtocolDecision": "D9",
+      "citations": [
+        "FWD:factoryRun.observeWatchdog",
+        "FWD:G3",
+        "PLAN:EK4 (watchdogs observe and issue commands only)"
+      ]
+    },
+    {
+      "aggregate": "FactoryRun",
+      "name": "factoryRun.recordRunTerminalProof",
+      "sourceEvidence": [
+        "obligation:runSettlement from lifecycleRun.issueTerminalProof (FWD:F039)",
+        "TerminalProof:lifecycle.success|failure|cancellation",
+        "ProductVerificationEvidence | ProductVerificationFailure (R5)",
+        "ContextEnvelopeComplianceEvidence (R6)",
+        "ForwardReverseReconciliationReceipt (R7)",
+        "EffectReceipt:success (local delivery/package receipts)",
+        "CapsuleIngressReceipt",
+        "TerminalClaimCoverage"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:factoryRun.runTerminalProven"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:run.success",
+        "TerminalProof:run.failure",
+        "TerminalProof:run.cancellation",
+        "TerminalProof:run.unreachable"
+      ],
+      "citations": [
+        "FWD:factoryRun.recordRunTerminalProof",
+        "REV:TerminalProof:run.*",
+        "PLAN:EK12"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.create",
+      "sourceEvidence": [
+        "obligation:bootstrapLifecycleRun (FWD:F009)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.created"
+      ],
+      "createsObligations": [
+        "obligation:enterStage.initial-discovery"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:lifecycleRun.create"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.createContinuation",
+      "sourceEvidence": [
+        "operator command: continue after approval-required / development-blocked (FWD:F011/F013)",
+        "authorized release policy + operator grant + prior terminal evidence (FWD:F012)",
+        "accepted-prefix capsule evidence (R11)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.continuationCreated"
+      ],
+      "createsObligations": [
+        "obligation:enterStage.continuation"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:lifecycleRun.createContinuation",
+        "FWD:G9",
+        "reconciliation R11"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.routeOutcome",
+      "sourceEvidence": [
+        "obligation:routeLifecycle with settled stage outcome certificate (FWD:F022)",
+        "exact declared outcome route only"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.outcomeRouted"
+      ],
+      "createsObligations": [
+        "obligation:enterStage.solution-formalization",
+        "obligation:enterStage.solution-development",
+        "obligation:enterStage.delivery-release",
+        "obligation:verifyTerminalClaims"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "LifecycleRoutingReceipt (RouteLifecycle obligation completion receipts — REV)"
+      ],
+      "citations": [
+        "FWD:lifecycleRun.routeOutcome",
+        "REV:LifecycleRoutingReceipt"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.issueTerminalProof",
+      "sourceEvidence": [
+        "terminal route from routeOutcome (FWD:F024/F026/F027/F029-F038)",
+        "obligation:watchdogBudgetExhausted (pending D9)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.terminalProven"
+      ],
+      "createsObligations": [
+        "obligation:runSettlement",
+        "obligation:replayCaptureSweep"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:lifecycle.success",
+        "TerminalProof:lifecycle.failure",
+        "TerminalProof:lifecycle.cancellation",
+        "TerminalProof:lifecycle.unreachable"
+      ],
+      "citations": [
+        "FWD:lifecycleRun.issueTerminalProof"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.cancel",
+      "sourceEvidence": [
+        "operator command: abandon (FWD:F015)",
+        "OperatorStopCommand"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.cancelled"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:lifecycle.cancellation"
+      ],
+      "citations": [
+        "FWD:lifecycleRun.cancel",
+        "PLAN:EK6"
+      ]
+    },
+    {
+      "aggregate": "LifecycleRun",
+      "name": "lifecycleRun.verifyTerminalClaims",
+      "sourceEvidence": [
+        "obligation:verifyTerminalClaims (pending D4)",
+        "TerminalLifecycleClaim + ConstructionSurface + ExecutableVerifierResult"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:lifecycleRun.terminalClaimsVerified"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "pendingProtocolDecision": "D4",
+      "materialFacts": [
+        "ExecutableVerifierResult (receipt kind pending D4)"
+      ],
+      "citations": [
+        "REV:ExecutableVerifierResult",
+        "REV:G8",
+        "PLAN:idea-conservation"
+      ]
+    },
+    {
+      "aggregate": "StageRun",
+      "name": "stageRun.create",
+      "sourceEvidence": [
+        "obligation:enterStage variant (FWD:F010/F012/F014/F023/F025/F028)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:stageRun.created"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:stageRun.create"
+      ]
+    },
+    {
+      "aggregate": "StageRun",
+      "name": "stageRun.activate",
+      "sourceEvidence": [
+        "same-aggregate activation (FWD:F041)",
+        "installed process module identity (one per stage — R10)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:stageRun.activated"
+      ],
+      "createsObligations": [
+        "obligation:bindProcessModule"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:stageRun.activate",
+        "reconciliation R10"
+      ]
+    },
+    {
+      "aggregate": "StageRun",
+      "name": "stageRun.recordLocalOutcome",
+      "sourceEvidence": [
+        "obligation:recordStageOutcome with ProcessOutcomeCertificate (FWD:F046/F048)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:stageRun.localOutcomeRecorded"
+      ],
+      "createsObligations": [
+        "obligation:routeLifecycle"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:stage.success",
+        "TerminalProof:stage.failure",
+        "TerminalProof:stage.cancellation",
+        "TerminalProof:stage.unreachable"
+      ],
+      "citations": [
+        "FWD:stageRun.recordLocalOutcome",
+        "REV:G7",
+        "reconciliation R10"
+      ]
+    },
+    {
+      "aggregate": "ProcessRun",
+      "name": "processRun.create",
+      "sourceEvidence": [
+        "obligation:bindProcessModule (FWD:F042)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:processRun.created"
+      ],
+      "createsObligations": [
+        "obligation:enterFirstNode"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:processRun.create"
+      ]
+    },
+    {
+      "aggregate": "ProcessRun",
+      "name": "processRun.enterNode",
+      "sourceEvidence": [
+        "obligation:enterFirstNode (FWD:F043)",
+        "obligation:advanceProcessFlow over the declared module flow (FWD:F106-F132)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:processRun.nodeEntered"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:processRun.enterNode"
+      ]
+    },
+    {
+      "aggregate": "ProcessRun",
+      "name": "processRun.recordNodeTerminal",
+      "sourceEvidence": [
+        "exact node terminal evidence (FWD:F095/F096/F097/F106-F132)",
+        "CellFinalAcceptance fan-in evidence at freeze/settle nodes"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:processRun.nodeTerminalRecorded"
+      ],
+      "createsObligations": [
+        "obligation:advanceProcessFlow",
+        "obligation:advanceProcessFlow.settle",
+        "obligation:freezeCandidate"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:processRun.recordNodeTerminal"
+      ]
+    },
+    {
+      "aggregate": "ProcessRun",
+      "name": "processRun.settle",
+      "sourceEvidence": [
+        "settlement fan-in: all-required-accepted | early-blocked (FWD:F096)",
+        "flow-terminal edges (FWD:F107-F132)",
+        "obligation:routeUpstreamRepair (upstream defect evidence — R1)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:processRun.settled"
+      ],
+      "createsObligations": [
+        "obligation:recordStageOutcome"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:process.success",
+        "TerminalProof:process.failure",
+        "TerminalProof:process.cancellation",
+        "TerminalProof:process.unreachable"
+      ],
+      "materialFacts": [
+        "ProcessOutcomeCertificate (commits in the settle transaction; is the process-scope terminal proof evidence — R14)"
+      ],
+      "citations": [
+        "FWD:processRun.settle",
+        "CENSUS:process",
+        "reconciliation R14"
+      ]
+    },
+    {
+      "aggregate": "ProcessRun",
+      "name": "processRun.settleFailure",
+      "sourceEvidence": [
+        "obligation:propagateNodeFailure with typed node failure proof (FWD:F047)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:processRun.settleFailed"
+      ],
+      "createsObligations": [
+        "obligation:recordStageOutcome.failed"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:process.failure"
+      ],
+      "citations": [
+        "FWD:processRun.settleFailure"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.create",
+      "sourceEvidence": [
+        "same-transaction with processRun.enterNode (FWD:F044)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.created"
+      ],
+      "createsObligations": [
+        "obligation:materializeWorkplace.production-cell"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:nodeRun.create"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.materializeCell",
+      "sourceEvidence": [
+        "flow entry into a production-cell node (FWD:F050/F051)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.cellMaterialized"
+      ],
+      "createsObligations": [
+        "obligation:materializeWorkplace.workItems-fanout",
+        "obligation:materializeWorkplace.verificationItems-fanout"
+      ],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:nodeRun.materializeCell"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.recordKernelResult",
+      "sourceEvidence": [
+        "obligation:freezeCandidate fan-in over exact predecessor CellFinalAcceptance evidence (FWD:F095)",
+        "flow edges (FWD:F097)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.kernelResultRecorded"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:nodeRun.recordKernelResult"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.recordCellAcceptance",
+      "sourceEvidence": [
+        "obligation:completeCellNode with exact CellFinalAcceptance evidence (FWD:F090)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.cellAcceptanceRecorded"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:node.success"
+      ],
+      "citations": [
+        "FWD:nodeRun.recordCellAcceptance"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.recordHumanDecision",
+      "sourceEvidence": [
+        "TypedWait:human-input(approval-pending) discharge via operator approval-decision command (FWD:F098/F099, W2)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.humanDecisionRecorded"
+      ],
+      "createsObligations": [
+        "obligation:publishRelease"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "WakeDischarge:human-response-command instance"
+      ],
+      "citations": [
+        "FWD:nodeRun.recordHumanDecision",
+        "REV:WakeDischarge:human-response-command"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.recordProviderOutcome",
+      "sourceEvidence": [
+        "obligation:publishRelease / obligation:observeRelease (FWD:F100/F102)",
+        "idempotent external-provider effect outcome evidence"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.providerOutcomeRecorded"
+      ],
+      "createsObligations": [
+        "obligation:observeRelease",
+        "obligation:effectRedrive"
+      ],
+      "waits": [
+        "TypedWait:effect-uncertainty"
+      ],
+      "proofs": [],
+      "notes": "re-typed per R13: the EffectReceipt fact commits in the owning Workplace transaction (workplace.settleEffect); recordProviderOutcome submits provider outcome evidence — NodeRun is NOT a second EffectReceipt writer",
+      "citations": [
+        "FWD:nodeRun.recordProviderOutcome",
+        "reconciliation R13",
+        "CENSUS:effect"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.settleUnreachable",
+      "sourceEvidence": [
+        "obligation:markDependantsUnreachable after a terminally failed predecessor (FWD:F092)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.unreachableSettled"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:node.unreachable"
+      ],
+      "materialFacts": [
+        "SettlementWorkObligation (runnable settlement work created)"
+      ],
+      "citations": [
+        "FWD:nodeRun.settleUnreachable",
+        "REV:SettlementWorkObligation",
+        "PLAN:durable-handoff"
+      ]
+    },
+    {
+      "aggregate": "NodeRun",
+      "name": "nodeRun.fail",
+      "sourceEvidence": [
+        "obligation:propagateCellFailure with workplace truthful-failure proof (FWD:F091)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:nodeRun.failed"
+      ],
+      "createsObligations": [
+        "obligation:propagateNodeFailure"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:node.failure"
+      ],
+      "citations": [
+        "FWD:nodeRun.fail"
+      ]
+    },
+    {
+      "aggregate": "WorkItem",
+      "name": "workItem.planGraph",
+      "sourceEvidence": [
+        "planning facts input: idea/scope items/unknowns/lifecycle claims/cross-cutting constraints/integration seams (FWD:F008, in.planningFacts)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workItem.graphPlanned"
+      ],
+      "createsObligations": [
+        "obligation:instantiateDependantWorkplaces",
+        "obligation:openUnknownObligation"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "WorkItem",
+        "WorkItemDependency",
+        "WorkItemObligationMapping",
+        "EpicScopeCoverage",
+        "DeferredScopeEntry (owner+reason)",
+        "DiscoveryUnknownObligation (command pending D10)",
+        "QualitativeRequirementDisposition",
+        "TerminalLifecycleClaim",
+        "TerminalClaimCoverage",
+        "ConstructionSurface",
+        "SeamOwnership"
+      ],
+      "citations": [
+        "FWD:workItem.planGraph",
+        "PLAN:idea-conservation",
+        "PLAN:EK6"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.materialize",
+      "sourceEvidence": [
+        "obligation:materializeWorkplace (FWD:F049/F050/F051/F094)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.materialized"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "citations": [
+        "FWD:workplace.materialize"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.admitWorkIntent",
+      "sourceEvidence": [
+        "readiness predicate over exact predecessor CellFinalAcceptance + EffectReceipt evidence (FWD:F052; TypedWait:readiness discharge — R4)",
+        "obligation:requeueRepair / requeueAfterBackoff / requeueWidened / requeueAfterHumanResolution / openReviewerDesk",
+        "obligation:openUnknownObligation (pending D10)",
+        "InstalledWorkshopManifest binding resolved once (FWD:F007)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.workIntentAdmitted"
+      ],
+      "createsObligations": [],
+      "waits": [
+        "TypedWait:readiness"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "WorkIntent (immutable: WorkItem, expected revision, input evidence, command, role-contract ref+digest)",
+        "CanonicalRoleContractBinding (pinned ref+digest)",
+        "InputEvidenceRefs (predecessor CellFinalAcceptance/EffectReceipt or CapsuleIngressReceipt refs)"
+      ],
+      "citations": [
+        "FWD:workplace.admitWorkIntent",
+        "REV:WorkIntent",
+        "REV:InputEvidenceRefs",
+        "PLAN:role-contract"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.recordContribution",
+      "sourceEvidence": [
+        "obligation:submitContribution through public ingress (FWD:F061)",
+        "ActivityAttempt:completed outcome evidence"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.contributionRecorded"
+      ],
+      "createsObligations": [
+        "obligation:sealRevision"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ActivityAttemptContribution (typed attempt contribution admitted into the shared desk)"
+      ],
+      "citations": [
+        "FWD:workplace.recordContribution",
+        "REV:ActivityAttemptContribution"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.sealProductionRevision",
+      "sourceEvidence": [
+        "obligation:sealRevision (FWD:F062)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.productionRevisionSealed"
+      ],
+      "createsObligations": [
+        "obligation:presentCandidates"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "WorkplaceProductionRevision (materialMembers, contributingExecutionRefs, presenterRef, materialDigest, semanticDigest)"
+      ],
+      "citations": [
+        "FWD:workplace.sealProductionRevision",
+        "REV:WorkplaceProductionRevision",
+        "ADR053:chain"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.presentCandidateSet",
+      "sourceEvidence": [
+        "obligation:presentCandidates (FWD:F063)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.candidateSetPresented"
+      ],
+      "createsObligations": [
+        "obligation:runGate.author",
+        "obligation:runGate.final"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "CandidateSet:author",
+        "CandidateSet:reviewer (binds subjectCandidateSetRef = author CandidateSet)"
+      ],
+      "citations": [
+        "FWD:workplace.presentCandidateSet",
+        "REV:CandidateSet:author",
+        "REV:CandidateSet:reviewer",
+        "reconciliation R20"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.runAuthorGate",
+      "sourceEvidence": [
+        "obligation:runGate(author) over CandidateSet:author + CheckPlan (FWD:F064)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.authorGateDecided"
+      ],
+      "createsObligations": [
+        "obligation:openReviewerDesk"
+      ],
+      "waits": [
+        "TypedWait:human-input"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "GateDecision verdict set {accepted, repair, upstream-repair, human-wait, terminal-reject} (verdicts upstream-repair and terminal-reject added by R1)"
+      ],
+      "citations": [
+        "FWD:workplace.runAuthorGate",
+        "reconciliation R1",
+        "PLAN:EK9-dimensions"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.runFinalGate",
+      "sourceEvidence": [
+        "obligation:runGate(final) over CandidateSet:reviewer verdict set + CheckPlan (FWD:F069)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.finalGateDecided"
+      ],
+      "createsObligations": [
+        "obligation:runEffects",
+        "obligation:routeUpstreamRepair"
+      ],
+      "waits": [
+        "TypedWait:human-input"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "GateDecision verdict set {accepted, repair, upstream-repair, human-wait, terminal-reject} (R1)",
+        "AcceptedCandidateAuthority (commits in the gate-accept transaction — R3)"
+      ],
+      "citations": [
+        "FWD:workplace.runFinalGate",
+        "reconciliation R1",
+        "reconciliation R3",
+        "ADR053:authority"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.enterRepairWait",
+      "sourceEvidence": [
+        "GateDecision:repair verdict (FWD:F067/F072)",
+        "EffectReceipt:repair outcome (pending D2; FWD:F075 git-integration conflict is the canonical case)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.repairWaitEntered"
+      ],
+      "createsObligations": [
+        "obligation:requeueRepair"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "RecoveryIssue (immutable exact repair feedback — R18)"
+      ],
+      "citations": [
+        "FWD:workplace.enterRepairWait",
+        "reconciliation R18"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.rolloverRepairEpoch",
+      "sourceEvidence": [
+        "epoch budget exhaustion (onExhausted=requeue; FWD:F079)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.repairEpochRolledOver"
+      ],
+      "createsObligations": [
+        "obligation:requeueAfterBackoff"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:workplace.failure"
+      ],
+      "materialFacts": [
+        "repair-epoch ledger (RepairTerminalityEvidence candidate — pending D6)"
+      ],
+      "citations": [
+        "FWD:workplace.rolloverRepairEpoch",
+        "REV:G1",
+        "decision D6"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.widenAuthorityScope",
+      "sourceEvidence": [
+        "scope insufficiency: same path-outside-authority key twice (FWD:F082)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.authorityScopeWidened"
+      ],
+      "createsObligations": [
+        "obligation:requeueWidened"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:workplace.failure"
+      ],
+      "citations": [
+        "FWD:workplace.widenAuthorityScope",
+        "decision D6"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.enterHumanWait",
+      "sourceEvidence": [
+        "GateDecision:human-wait verdict (FWD:F068/F073)",
+        "EffectReceipt:human-wait outcome (FWD:F076 — typed as human-input per R12)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.humanWaitEntered"
+      ],
+      "createsObligations": [],
+      "waits": [
+        "TypedWait:human-input"
+      ],
+      "proofs": [],
+      "citations": [
+        "FWD:workplace.enterHumanWait",
+        "reconciliation R12"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.resolveHumanResponse",
+      "sourceEvidence": [
+        "operator command: human-response (FWD:F086)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.humanResponseResolved"
+      ],
+      "createsObligations": [
+        "obligation:requeueAfterHumanResolution",
+        "obligation:resumeEffect"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "WakeDischarge:human-response-command instance"
+      ],
+      "citations": [
+        "FWD:workplace.resolveHumanResponse",
+        "REV:WakeDischarge:human-response-command"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.settleEffect",
+      "sourceEvidence": [
+        "obligation:runEffects (FWD:F070)",
+        "obligation:resumeEffect after human resolution (FWD:F088)",
+        "obligation:replayCaptureSweep (target pending D8; FWD:F040)",
+        "AcceptedCandidateAuthority (exact effect input — R3)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.effectSettled"
+      ],
+      "createsObligations": [
+        "obligation:effectRedrive"
+      ],
+      "waits": [
+        "TypedWait:human-input",
+        "TypedWait:effect-uncertainty"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "EffectReceipt outcome set {success, already-applied, retryable, unknown, human-wait, policy-terminal} (R2) plus repair (pending D2) — sole EffectReceipt writer (R13)"
+      ],
+      "citations": [
+        "FWD:workplace.settleEffect",
+        "reconciliation R2",
+        "reconciliation R13",
+        "PLAN:EK9-dimensions"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.recordFinalAcceptance",
+      "sourceEvidence": [
+        "runAuthorGate/runFinalGate accepted, no effect (FWD:F066/F071 — authority commit isFinal)",
+        "workplace.settleEffect success/already-applied for every declared effect (FWD:F074)",
+        "AcceptedCandidateAuthority"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.finalAcceptanceRecorded"
+      ],
+      "createsObligations": [
+        "obligation:closePresentation",
+        "obligation:completeCellNode"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:cell.success"
+      ],
+      "materialFacts": [
+        "CellFinalAcceptance (exact cell completion evidence; field set pending D11)",
+        "ObligationCompletionReceipt(RecordFinalAcceptance, same transaction)"
+      ],
+      "citations": [
+        "FWD:workplace.recordFinalAcceptance",
+        "REV:CellFinalAcceptance",
+        "ADR053:obligations",
+        "reconciliation R19"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.closePresentation",
+      "sourceEvidence": [
+        "obligation:closePresentation (FWD:F089)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.presentationClosed"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ObligationCompletionReceipt(closePresentation) — every sealed presentation closes durably, fenced, idempotent"
+      ],
+      "citations": [
+        "FWD:workplace.closePresentation"
+      ]
+    },
+    {
+      "aggregate": "Workplace",
+      "name": "workplace.issueWorkplaceTerminalProof",
+      "sourceEvidence": [
+        "TerminalProof:workplace.success: all material of the workplace's WorkItems accepted, no open obligations remain (FWD:P1)",
+        "TerminalProof:workplace.failure: rolloverRepairEpoch caps / widenAuthorityScope refusal (FWD:F081/F084; terminality pending D6)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:workplace.terminalProven"
+      ],
+      "createsObligations": [
+        "obligation:propagateCellFailure",
+        "obligation:markDependantsUnreachable"
+      ],
+      "waits": [],
+      "proofs": [
+        "TerminalProof:workplace.success",
+        "TerminalProof:workplace.failure",
+        "TerminalProof:workplace.cancellation",
+        "TerminalProof:workplace.unreachable"
+      ],
+      "citations": [
+        "FWD:workplace.issueWorkplaceTerminalProof",
+        "REV:TerminalProof:workplace.*"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.create",
+      "sourceEvidence": [
+        "same-transaction with workplace.admitWorkIntent (FWD:F053)",
+        "WorkIntent role-contract ref+digest copied and atomically verified",
+        "single route-policy evaluation"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.created"
+      ],
+      "createsObligations": [
+        "obligation:launchAdmission"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ProviderRoutePin (exact provider/model/version stored once)"
+      ],
+      "citations": [
+        "FWD:activityAttempt.create",
+        "REV:ProviderRoutePin",
+        "PLAN:role-contract"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.admitProviderRequest",
+      "sourceEvidence": [
+        "obligation:launchAdmission / prior request ordinal (FWD:F054)",
+        "CAS on contextRevision; every envelope limit validated"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.providerRequestAdmitted"
+      ],
+      "createsObligations": [
+        "obligation:providerSend"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "PromptAssemblyReceipt:admitted",
+        "PromptAssemblyReceipt:refused (rejected-envelope digest persisted; no context/retry-budget consumption)"
+      ],
+      "citations": [
+        "FWD:activityAttempt.admitProviderRequest",
+        "PLAN:context-envelope"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.recordProviderRefusal",
+      "sourceEvidence": [
+        "deterministic budget rejection / provider refusal (FWD:F057)",
+        "PromptAssemblyReceipt:refused"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.providerRefusalRecorded"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ActivityAttempt:failed-typed (provider refusal class)"
+      ],
+      "citations": [
+        "FWD:activityAttempt.recordProviderRefusal",
+        "REV:ActivityAttempt:failed-typed"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.recordOutcome",
+      "sourceEvidence": [
+        "worker result (tool calls/text/products) through the same public ingress (FWD:F056/F061)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.outcomeRecorded"
+      ],
+      "createsObligations": [
+        "obligation:submitContribution"
+      ],
+      "waits": [],
+      "proofs": [],
+      "materialFacts": [
+        "ActivityAttempt:completed",
+        "ProviderSendOutcome (send/outcome evidence separate from admission)"
+      ],
+      "citations": [
+        "FWD:activityAttempt.recordOutcome",
+        "REV:ActivityAttempt:completed",
+        "REV:ProviderSendOutcome"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.classifyWorkerLoss",
+      "sourceEvidence": [
+        "worker loss | provider refusal | malformed result | semantic rejection | effect uncertainty | policy terminal (FWD:F059/F060)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.workerLossClassified"
+      ],
+      "createsObligations": [
+        "obligation:retryAttempt"
+      ],
+      "waits": [
+        "TypedWait:external-availability",
+        "TypedWait:effect-uncertainty"
+      ],
+      "proofs": [],
+      "materialFacts": [
+        "ActivityAttempt:failed-typed (worker loss, malformed result, semantic rejection classes)"
+      ],
+      "citations": [
+        "FWD:activityAttempt.classifyWorkerLoss",
+        "PLAN:EK4"
+      ]
+    },
+    {
+      "aggregate": "ActivityAttempt",
+      "name": "activityAttempt.cancel",
+      "sourceEvidence": [
+        "OperatorStopCommand lease disposition during scope cancellation (REV:ActivityAttempt:cancelled)"
+      ],
+      "emitsEvents": [
+        "WorkflowEvent:activityAttempt.cancelled"
+      ],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "pendingProtocolDecision": "D3",
+      "materialFacts": [
+        "ActivityAttempt:cancelled (lease dispositioned with evidence)"
+      ],
+      "citations": [
+        "REV:ActivityAttempt:cancelled",
+        "REV:G6",
+        "decision D3"
+      ]
+    },
+    {
+      "aggregate": "CognitionTransport",
+      "name": "cognition.sendProviderRequest",
+      "sourceEvidence": [
+        "obligation:providerSend at the exact pinned provider/model (FWD:F055)",
+        "crash-redrive of the same obligation+ordinal (FWD:F058)"
+      ],
+      "emitsEvents": [],
+      "createsObligations": [],
+      "waits": [],
+      "proofs": [],
+      "notes": "replaceable transport, not an aggregate owner; admission linearization immediately before final serialization/network send; enforces maxOutputTokens <= reservedOutputTokens",
+      "citations": [
+        "FWD:cognition.sendProviderRequest",
+        "PLAN:context-envelope"
+      ]
+    }
+  ],
+  "obligations": [
+    {
+      "kind": "obligation:ingestCapsuleFacts",
+      "source": "factoryRun.importCapsule",
+      "target": "factoryRun.start",
+      "evidenceRefs": [
+        "CapsuleIngressReceipt (verified digests)"
+      ],
+      "citations": [
+        "FWD:F005"
+      ]
+    },
+    {
+      "kind": "obligation:bootstrapLifecycleRun",
+      "source": "factoryRun.start",
+      "target": "lifecycleRun.create",
+      "evidenceRefs": [
+        "run identity + pinned capsule digests"
+      ],
+      "citations": [
+        "FWD:F009"
+      ]
+    },
+    {
+      "kind": "obligation:enterStage.initial-discovery",
+      "source": "lifecycleRun.create",
+      "target": "stageRun.create",
+      "evidenceRefs": [
+        "initial stage route"
+      ],
+      "citations": [
+        "FWD:F010"
+      ]
+    },
+    {
+      "kind": "obligation:enterStage.solution-formalization",
+      "source": "lifecycleRun.routeOutcome",
+      "target": "stageRun.create",
+      "evidenceRefs": [
+        "outcome go|clarify|reject (permissive discovery routing; idea strength recorded, not gated)"
+      ],
+      "citations": [
+        "FWD:F023"
+      ]
+    },
+    {
+      "kind": "obligation:enterStage.solution-development",
+      "source": "lifecycleRun.routeOutcome",
+      "target": "stageRun.create",
+      "evidenceRefs": [
+        "outcome formalized; D0 handoff: certificate ref/hash, solution contract, baseline hash, SRS projection, AC set"
+      ],
+      "citations": [
+        "FWD:F025"
+      ]
+    },
+    {
+      "kind": "obligation:enterStage.delivery-release",
+      "source": "lifecycleRun.routeOutcome",
+      "target": "stageRun.create",
+      "evidenceRefs": [
+        "outcome verified"
+      ],
+      "citations": [
+        "FWD:F028"
+      ]
+    },
+    {
+      "kind": "obligation:enterStage.continuation",
+      "source": "lifecycleRun.createContinuation",
+      "target": "stageRun.create",
+      "evidenceRefs": [
+        "authorized policy + operator grant + prior terminal evidence; or accepted-prefix (R11)"
+      ],
+      "citations": [
+        "FWD:F012/F014",
+        "reconciliation R11"
+      ]
+    },
+    {
+      "kind": "obligation:routeLifecycle",
+      "source": "stageRun.recordLocalOutcome",
+      "target": "lifecycleRun.routeOutcome",
+      "evidenceRefs": [
+        "stage local outcome + ProcessOutcomeCertificate"
+      ],
+      "citations": [
+        "FWD:F022",
+        "REV:LifecycleRoutingReceipt"
+      ]
+    },
+    {
+      "kind": "obligation:replayCaptureSweep",
+      "source": "lifecycleRun.issueTerminalProof",
+      "target": "workplace.settleEffect",
+      "evidenceRefs": [
+        "replay-capture effect for cross-run capsule reuse"
+      ],
+      "pendingProtocolDecision": "D8",
+      "citations": [
+        "FWD:F040",
+        "FWD:G2",
+        "decision D8"
+      ]
+    },
+    {
+      "kind": "obligation:bindProcessModule",
+      "source": "stageRun.activate",
+      "target": "processRun.create",
+      "evidenceRefs": [
+        "installed module identity (one process per stage — R10)"
+      ],
+      "citations": [
+        "FWD:F042",
+        "reconciliation R10"
+      ]
+    },
+    {
+      "kind": "obligation:enterFirstNode",
+      "source": "processRun.create",
+      "target": "processRun.enterNode",
+      "evidenceRefs": [
+        "declared module flow entry"
+      ],
+      "citations": [
+        "FWD:F043"
+      ]
+    },
+    {
+      "kind": "obligation:materializeWorkplace.production-cell",
+      "source": "nodeRun.create",
+      "target": "workplace.materialize",
+      "evidenceRefs": [
+        "production-cell node binding"
+      ],
+      "citations": [
+        "FWD:F049"
+      ]
+    },
+    {
+      "kind": "obligation:materializeWorkplace.workItems-fanout",
+      "source": "nodeRun.materializeCell",
+      "target": "workplace.materialize",
+      "evidenceRefs": [
+        "one per WorkItem (implement-work-items)"
+      ],
+      "citations": [
+        "FWD:F050"
+      ]
+    },
+    {
+      "kind": "obligation:materializeWorkplace.verificationItems-fanout",
+      "source": "nodeRun.materializeCell",
+      "target": "workplace.materialize",
+      "evidenceRefs": [
+        "one per verification item (verify-acceptance)"
+      ],
+      "citations": [
+        "FWD:F051"
+      ]
+    },
+    {
+      "kind": "obligation:instantiateDependantWorkplaces",
+      "source": "workItem.planGraph",
+      "target": "workplace.materialize",
+      "evidenceRefs": [
+        "dependency edges; readiness is a predicate, never a blocked->todo command; explicit deferrals create no instantiation obligation"
+      ],
+      "citations": [
+        "FWD:F094",
+        "ADR097:decision"
+      ]
+    },
+    {
+      "kind": "obligation:openUnknownObligation",
+      "source": "workItem.planGraph",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "DiscoveryUnknownObligation with owner (cannot disappear at a workshop boundary)"
+      ],
+      "pendingProtocolDecision": "D10",
+      "citations": [
+        "FWD:G7",
+        "PLAN:idea-conservation",
+        "decision D10"
+      ]
+    },
+    {
+      "kind": "obligation:launchAdmission",
+      "source": "activityAttempt.create",
+      "target": "activityAttempt.admitProviderRequest",
+      "evidenceRefs": [
+        "first PromptAssemblyReceipt paired with launch admission"
+      ],
+      "citations": [
+        "FWD:F054"
+      ]
+    },
+    {
+      "kind": "obligation:providerSend",
+      "source": "activityAttempt.admitProviderRequest",
+      "target": "cognition.sendProviderRequest",
+      "evidenceRefs": [
+        "exact idempotent ordinal; crash before send redrives the SAME obligation+ordinal, never a new admission"
+      ],
+      "citations": [
+        "FWD:F055/F058",
+        "REV:TransitionObligation"
+      ]
+    },
+    {
+      "kind": "obligation:submitContribution",
+      "source": "activityAttempt.recordOutcome",
+      "target": "workplace.recordContribution",
+      "evidenceRefs": [
+        "public ingress contribution"
+      ],
+      "citations": [
+        "FWD:F061"
+      ]
+    },
+    {
+      "kind": "obligation:sealRevision",
+      "source": "workplace.recordContribution",
+      "target": "workplace.sealProductionRevision",
+      "evidenceRefs": [
+        "contribution -> production revision"
+      ],
+      "citations": [
+        "FWD:F062"
+      ]
+    },
+    {
+      "kind": "obligation:presentCandidates",
+      "source": "workplace.sealProductionRevision",
+      "target": "workplace.presentCandidateSet",
+      "evidenceRefs": [
+        "production revision -> CandidateSet"
+      ],
+      "citations": [
+        "FWD:F063"
+      ]
+    },
+    {
+      "kind": "obligation:runGate.author",
+      "source": "workplace.presentCandidateSet",
+      "target": "workplace.runAuthorGate",
+      "evidenceRefs": [
+        "CheckPlan over CandidateSet:author"
+      ],
+      "citations": [
+        "FWD:F064"
+      ]
+    },
+    {
+      "kind": "obligation:runGate.final",
+      "source": "workplace.presentCandidateSet",
+      "target": "workplace.runFinalGate",
+      "evidenceRefs": [
+        "CheckPlan over CandidateSet:reviewer verdict set"
+      ],
+      "citations": [
+        "FWD:F069"
+      ]
+    },
+    {
+      "kind": "obligation:openReviewerDesk",
+      "source": "workplace.runAuthorGate",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "pinned exact author CandidateSet; role=reviewer"
+      ],
+      "citations": [
+        "FWD:F065"
+      ]
+    },
+    {
+      "kind": "obligation:runEffects",
+      "source": "workplace.runFinalGate",
+      "target": "workplace.settleEffect",
+      "evidenceRefs": [
+        "every declared effect completes with an exact receipt (AcceptedCandidateAuthority input — R3)"
+      ],
+      "citations": [
+        "FWD:F070",
+        "ADR053:obligations"
+      ]
+    },
+    {
+      "kind": "obligation:routeUpstreamRepair",
+      "source": "workplace.runFinalGate",
+      "target": "processRun.settle",
+      "evidenceRefs": [
+        "GateDecision:upstream-repair verdict (R1): out-of-scope/upstream-material defect routed as typed repair obligation to the owning upstream aggregate; never silently widened"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "PLAN:EK5",
+        "reconciliation R1",
+        "FWD:F105 (predecessor mechanism re-typed)"
+      ]
+    },
+    {
+      "kind": "obligation:requeueRepair",
+      "source": "workplace.enterRepairWait",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "exact RecoveryIssue feedback; same Workplace re-staffed (R18)"
+      ],
+      "citations": [
+        "FWD:F078",
+        "reconciliation R18"
+      ]
+    },
+    {
+      "kind": "obligation:requeueAfterBackoff",
+      "source": "workplace.rolloverRepairEpoch",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "durable backoff deadline wake"
+      ],
+      "citations": [
+        "FWD:F080"
+      ]
+    },
+    {
+      "kind": "obligation:requeueWidened",
+      "source": "workplace.widenAuthorityScope",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "widened frozen scope, same Workplace"
+      ],
+      "citations": [
+        "FWD:F083"
+      ]
+    },
+    {
+      "kind": "obligation:requeueAfterHumanResolution",
+      "source": "workplace.resolveHumanResponse",
+      "target": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "human resolution -> repair requeue (replaces legacy direct unpark writes)"
+      ],
+      "citations": [
+        "FWD:F087"
+      ]
+    },
+    {
+      "kind": "obligation:resumeEffect",
+      "source": "workplace.resolveHumanResponse",
+      "target": "workplace.settleEffect",
+      "evidenceRefs": [
+        "human resolution -> effect resume"
+      ],
+      "citations": [
+        "FWD:F088"
+      ]
+    },
+    {
+      "kind": "obligation:effectRedrive",
+      "source": "workplace.settleEffect",
+      "target": "workplace.settleEffect",
+      "evidenceRefs": [
+        "idempotent effect action key; crash after external mutation before receipt redrives to receipt or typed wait (FWD:F103-class)"
+      ],
+      "citations": [
+        "FWD:F103"
+      ]
+    },
+    {
+      "kind": "obligation:completeCellNode",
+      "source": "workplace.recordFinalAcceptance",
+      "target": "nodeRun.recordCellAcceptance",
+      "evidenceRefs": [
+        "exact CellFinalAcceptance evidence"
+      ],
+      "citations": [
+        "FWD:F090"
+      ]
+    },
+    {
+      "kind": "obligation:closePresentation",
+      "source": "workplace.recordFinalAcceptance",
+      "target": "workplace.closePresentation",
+      "evidenceRefs": [
+        "durable, fenced, idempotent presentation closure"
+      ],
+      "citations": [
+        "FWD:F089"
+      ]
+    },
+    {
+      "kind": "obligation:propagateCellFailure",
+      "source": "workplace.issueWorkplaceTerminalProof",
+      "target": "nodeRun.fail",
+      "evidenceRefs": [
+        "workplace truthful-failure proof reference"
+      ],
+      "citations": [
+        "FWD:F091"
+      ]
+    },
+    {
+      "kind": "obligation:markDependantsUnreachable",
+      "source": "workplace.issueWorkplaceTerminalProof",
+      "target": "nodeRun.settleUnreachable",
+      "evidenceRefs": [
+        "dependants explicitly unreachable + SettlementWorkObligation (runnable settlement); nothing waits on a dead wake source"
+      ],
+      "citations": [
+        "FWD:F092",
+        "REV:SettlementWorkObligation"
+      ]
+    },
+    {
+      "kind": "obligation:propagateNodeFailure",
+      "source": "nodeRun.fail",
+      "target": "processRun.settleFailure",
+      "evidenceRefs": [
+        "typed node failure proof"
+      ],
+      "citations": [
+        "FWD:F047"
+      ]
+    },
+    {
+      "kind": "obligation:recordStageOutcome",
+      "source": "processRun.settle",
+      "target": "stageRun.recordLocalOutcome",
+      "evidenceRefs": [
+        "ProcessOutcomeCertificate evidence (R14)"
+      ],
+      "citations": [
+        "FWD:F046",
+        "reconciliation R14"
+      ]
+    },
+    {
+      "kind": "obligation:recordStageOutcome.failed",
+      "source": "processRun.settleFailure",
+      "target": "stageRun.recordLocalOutcome",
+      "evidenceRefs": [
+        "failure outcome certificate"
+      ],
+      "citations": [
+        "FWD:F048"
+      ]
+    },
+    {
+      "kind": "obligation:advanceProcessFlow",
+      "source": "processRun.recordNodeTerminal",
+      "target": "processRun.enterNode",
+      "evidenceRefs": [
+        "declared module flow (module flows are installed-manifest content — R17)"
+      ],
+      "citations": [
+        "FWD:F106-F132",
+        "reconciliation R17"
+      ]
+    },
+    {
+      "kind": "obligation:advanceProcessFlow.settle",
+      "source": "processRun.recordNodeTerminal",
+      "target": "processRun.settle",
+      "evidenceRefs": [
+        "declared module flow terminal edge"
+      ],
+      "citations": [
+        "FWD:F107-F132"
+      ]
+    },
+    {
+      "kind": "obligation:freezeCandidate",
+      "source": "processRun.recordNodeTerminal",
+      "target": "nodeRun.recordKernelResult",
+      "evidenceRefs": [
+        "fan-in: exact predecessor CellFinalAcceptance evidence of ALL implement cells"
+      ],
+      "citations": [
+        "FWD:F095"
+      ]
+    },
+    {
+      "kind": "obligation:retryAttempt",
+      "source": "activityAttempt.classifyWorkerLoss",
+      "target": "activityAttempt.create",
+      "evidenceRefs": [
+        "bounded retry for retryable substrate failures; typed unknown on exhaustion"
+      ],
+      "citations": [
+        "FWD:F060"
+      ]
+    },
+    {
+      "kind": "obligation:publishRelease",
+      "source": "nodeRun.recordHumanDecision",
+      "target": "nodeRun.recordProviderOutcome",
+      "evidenceRefs": [
+        "approved release publication"
+      ],
+      "citations": [
+        "FWD:F100"
+      ]
+    },
+    {
+      "kind": "obligation:observeRelease",
+      "source": "nodeRun.recordProviderOutcome",
+      "target": "nodeRun.recordProviderOutcome",
+      "evidenceRefs": [
+        "observation after idempotent publication EffectReceipt"
+      ],
+      "citations": [
+        "FWD:F102"
+      ]
+    },
+    {
+      "kind": "obligation:watchdogRestart",
+      "source": "factoryRun.observeWatchdog",
+      "target": "factoryRun.resume",
+      "evidenceRefs": [
+        "durable restart evidence; typed command only, never SQL repair"
+      ],
+      "pendingProtocolDecision": "D9",
+      "citations": [
+        "FWD:F020",
+        "decision D9"
+      ]
+    },
+    {
+      "kind": "obligation:watchdogBudgetExhausted",
+      "source": "factoryRun.observeWatchdog",
+      "target": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "budget-watch truthful failure"
+      ],
+      "pendingProtocolDecision": "D9",
+      "citations": [
+        "FWD:F021",
+        "decision D9"
+      ]
+    },
+    {
+      "kind": "obligation:verifyTerminalClaims",
+      "source": "lifecycleRun.routeOutcome",
+      "target": "lifecycleRun.verifyTerminalClaims",
+      "evidenceRefs": [
+        "every required terminal lifecycle claim verified over its owned construction surface"
+      ],
+      "pendingProtocolDecision": "D4",
+      "citations": [
+        "REV:ExecutableVerifierResult",
+        "decision D4"
+      ]
+    },
+    {
+      "kind": "obligation:runSettlement",
+      "source": "lifecycleRun.issueTerminalProof",
+      "target": "factoryRun.recordRunTerminalProof",
+      "evidenceRefs": [
+        "final run proof bound to lifecycle terminal evidence"
+      ],
+      "citations": [
+        "FWD:F039"
+      ]
+    }
+  ],
+  "waits": [
+    {
+      "kind": "TypedWait:human-input",
+      "wakeSource": "operator human-response command -> workplace.resolveHumanResponse | operator approval-decision command -> nodeRun.recordHumanDecision",
+      "dischargeEvidence": "WakeDischarge:human-response-command",
+      "citations": [
+        "FWD:W1",
+        "FWD:W2",
+        "FWD:W3",
+        "REV:TypedWait:human-input"
+      ]
+    },
+    {
+      "kind": "TypedWait:external-availability",
+      "wakeSource": "substrate re-probe obligation with deadline (bounded in-check retry; typed unknown on exhaustion, never product-failed) -> obligation completion",
+      "dischargeEvidence": "probe-obligation ObligationCompletionReceipt + probe result (exact kind pending D5)",
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "FWD:W4",
+        "REV:G3",
+        "decision D5"
+      ]
+    },
+    {
+      "kind": "TypedWait:policy-quota",
+      "wakeSource": "backoff deadline obligation (requeueAfterBackoff) | operator resume command (factoryRun.resume) after requestStop",
+      "dischargeEvidence": "deadline-obligation ObligationCompletionReceipt + policy re-evaluation | resume command receipt (exact kind pending D5)",
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "FWD:W5",
+        "FWD:W6",
+        "REV:G3",
+        "decision D5"
+      ]
+    },
+    {
+      "kind": "TypedWait:readiness",
+      "wakeSource": "predecessor CellFinalAcceptance/EffectReceipt evidence arrival (predecessor obligation completion); a terminally failed predecessor converts this wait into unreachable settlement via obligation:markDependantsUnreachable — never a dead wake source",
+      "dischargeEvidence": "predecessor ObligationCompletionReceipt + exact CellFinalAcceptance/EffectReceipt refs",
+      "citations": [
+        "FWD:W7",
+        "FWD:F052",
+        "ADR097:decision",
+        "reconciliation R4"
+      ]
+    },
+    {
+      "kind": "TypedWait:effect-uncertainty",
+      "wakeSource": "operator resolution command (never an automatic duplicate of a non-idempotent external send/effect)",
+      "dischargeEvidence": "uncertainty-resolution receipt (exact kind pending D12)",
+      "pendingProtocolDecision": "D12",
+      "citations": [
+        "FWD:W8",
+        "FWD:F059",
+        "FWD:F077",
+        "REV:G4",
+        "decision D12"
+      ]
+    }
+  ],
+  "proofs": [
+    {
+      "kind": "TerminalProof:success",
+      "scope": "cell",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.recordFinalAcceptance",
+      "requiredEvidenceClosure": [
+        "CellFinalAcceptance"
+      ],
+      "citations": [
+        "REV:TerminalProof:cell.success",
+        "reconciliation R19"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "cell",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.runAuthorGate | workplace.runFinalGate | workplace.settleEffect",
+      "requiredEvidenceClosure": [
+        "GateDecision:terminal-reject",
+        "EffectReceipt:policy-terminal",
+        "EffectPolicyRefusal",
+        "RepairTerminalityEvidence"
+      ],
+      "pendingProtocolDecision": "D6",
+      "citations": [
+        "REV:TerminalProof:cell.failure",
+        "REV:G1",
+        "decision D6"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "cell",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:cell.cancellation",
+        "REV:G6",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "cell",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.issueWorkplaceTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:cell.failure",
+        "SettlementWorkObligation"
+      ],
+      "citations": [
+        "REV:TerminalProof:cell.unreachable",
+        "FWD:F092"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "workplace",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.issueWorkplaceTerminalProof",
+      "requiredEvidenceClosure": [
+        "CellFinalAcceptance",
+        "ObligationCompletionReceipt"
+      ],
+      "quantifiers": [
+        "all material of the workplace's WorkItems accepted",
+        "no open obligations remain"
+      ],
+      "citations": [
+        "REV:TerminalProof:workplace.success",
+        "FWD:P1"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "workplace",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.rolloverRepairEpoch | workplace.widenAuthorityScope",
+      "requiredEvidenceClosure": [
+        "GateDecision:terminal-reject",
+        "EffectReceipt:policy-terminal",
+        "RepairTerminalityEvidence"
+      ],
+      "pendingProtocolDecision": "D6",
+      "citations": [
+        "REV:TerminalProof:workplace.failure",
+        "REV:G1",
+        "FWD:F081/F084",
+        "decision D6"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "workplace",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "ActivityAttempt:cancelled",
+        "TypedWaitDisposition"
+      ],
+      "quantifiers": [
+        "every in-flight attempt lease dispositioned with evidence"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:workplace.cancellation",
+        "REV:G6",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "workplace",
+      "ownerAggregate": "Workplace",
+      "issuingCommand": "workplace.issueWorkplaceTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:workplace.failure",
+        "SettlementWorkObligation"
+      ],
+      "citations": [
+        "REV:TerminalProof:workplace.unreachable"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "node",
+      "ownerAggregate": "NodeRun",
+      "issuingCommand": "nodeRun.recordCellAcceptance | nodeRun.recordKernelResult",
+      "requiredEvidenceClosure": [
+        "TerminalProof:workplace.success",
+        "WorkItemDependency",
+        "CellFinalAcceptance",
+        "EffectReceipt:success"
+      ],
+      "quantifiers": [
+        "every workplace/cell bound to the node",
+        "every inbound dependency edge with predecessor final-acceptance/effect evidence"
+      ],
+      "citations": [
+        "REV:TerminalProof:node.success",
+        "FWD:nodeRun.recordCellAcceptance"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "node",
+      "ownerAggregate": "NodeRun",
+      "issuingCommand": "nodeRun.fail",
+      "requiredEvidenceClosure": [
+        "TerminalProof:workplace.failure"
+      ],
+      "citations": [
+        "REV:TerminalProof:node.failure",
+        "FWD:F091"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "node",
+      "ownerAggregate": "NodeRun",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:node.cancellation",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "node",
+      "ownerAggregate": "NodeRun",
+      "issuingCommand": "nodeRun.settleUnreachable",
+      "requiredEvidenceClosure": [
+        "TerminalProof:node.failure",
+        "SettlementWorkObligation"
+      ],
+      "citations": [
+        "REV:TerminalProof:node.unreachable",
+        "FWD:F092"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "process",
+      "ownerAggregate": "ProcessRun",
+      "issuingCommand": "processRun.settle",
+      "requiredEvidenceClosure": [
+        "TerminalProof:node.success",
+        "ObligationCompletionReceipt",
+        "ProcessOutcomeCertificate"
+      ],
+      "quantifiers": [
+        "every node of the process"
+      ],
+      "citations": [
+        "REV:TerminalProof:process.success",
+        "reconciliation R14"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "process",
+      "ownerAggregate": "ProcessRun",
+      "issuingCommand": "processRun.settleFailure",
+      "requiredEvidenceClosure": [
+        "TerminalProof:node.failure"
+      ],
+      "citations": [
+        "REV:TerminalProof:process.failure",
+        "FWD:F047"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "process",
+      "ownerAggregate": "ProcessRun",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:process.cancellation",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "process",
+      "ownerAggregate": "ProcessRun",
+      "issuingCommand": "unresolved - unreachable scope set frozen by D7",
+      "requiredEvidenceClosure": [
+        "TerminalProof:process.failure",
+        "SettlementWorkObligation"
+      ],
+      "pendingProtocolDecision": "D7",
+      "citations": [
+        "REV:TerminalProof:process.unreachable",
+        "REV:G7",
+        "decision D7"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "stage",
+      "ownerAggregate": "StageRun",
+      "issuingCommand": "stageRun.recordLocalOutcome",
+      "requiredEvidenceClosure": [
+        "TerminalProof:process.success",
+        "ObligationCompletionReceipt"
+      ],
+      "quantifiers": [
+        "every process of the stage (membership frozen 1 process per stage — R10)"
+      ],
+      "citations": [
+        "REV:TerminalProof:stage.success",
+        "reconciliation R10"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "stage",
+      "ownerAggregate": "StageRun",
+      "issuingCommand": "stageRun.recordLocalOutcome",
+      "requiredEvidenceClosure": [
+        "TerminalProof:process.failure"
+      ],
+      "citations": [
+        "REV:TerminalProof:stage.failure",
+        "R10"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "stage",
+      "ownerAggregate": "StageRun",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:stage.cancellation",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "stage",
+      "ownerAggregate": "StageRun",
+      "issuingCommand": "unresolved - unreachable scope set frozen by D7",
+      "requiredEvidenceClosure": [
+        "TerminalProof:stage.failure",
+        "SettlementWorkObligation"
+      ],
+      "pendingProtocolDecision": "D7",
+      "citations": [
+        "REV:TerminalProof:stage.unreachable",
+        "REV:G7",
+        "decision D7"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "lifecycle",
+      "ownerAggregate": "LifecycleRun",
+      "issuingCommand": "lifecycleRun.issueTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:stage.success",
+        "LifecycleRoutingReceipt",
+        "ExecutableVerifierResult",
+        "TerminalClaimCoverage",
+        "TerminalLifecycleClaim",
+        "ConstructionSurface"
+      ],
+      "quantifiers": [
+        "every stage of the lifecycle",
+        "every required terminal lifecycle claim verified"
+      ],
+      "pendingProtocolDecision": "D4",
+      "citations": [
+        "REV:TerminalProof:lifecycle.success",
+        "REV:G8",
+        "decision D4"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "lifecycle",
+      "ownerAggregate": "LifecycleRun",
+      "issuingCommand": "lifecycleRun.issueTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:stage.failure"
+      ],
+      "citations": [
+        "REV:TerminalProof:lifecycle.failure",
+        "FWD:P4"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "lifecycle",
+      "ownerAggregate": "LifecycleRun",
+      "issuingCommand": "lifecycleRun.cancel",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:lifecycle.cancellation",
+        "FWD:P5",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "lifecycle",
+      "ownerAggregate": "LifecycleRun",
+      "issuingCommand": "unresolved - unreachable scope set frozen by D7",
+      "requiredEvidenceClosure": [
+        "TerminalProof:lifecycle.failure",
+        "SettlementWorkObligation"
+      ],
+      "pendingProtocolDecision": "D7",
+      "citations": [
+        "REV:TerminalProof:lifecycle.unreachable",
+        "decision D7"
+      ]
+    },
+    {
+      "kind": "TerminalProof:success",
+      "scope": "run",
+      "ownerAggregate": "FactoryRun",
+      "issuingCommand": "factoryRun.recordRunTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:lifecycle.success",
+        "ProductVerificationEvidence",
+        "EffectReceipt:success",
+        "CapsuleIngressReceipt",
+        "ContextEnvelopeComplianceEvidence",
+        "ForwardReverseReconciliationReceipt",
+        "TerminalClaimCoverage"
+      ],
+      "quantifiers": [
+        "every ActivityAttempt within its envelope (R6)"
+      ],
+      "citations": [
+        "REV:TerminalProof:run.success",
+        "reconciliation R5",
+        "reconciliation R6",
+        "reconciliation R7"
+      ]
+    },
+    {
+      "kind": "TerminalProof:truthful-failure",
+      "scope": "run",
+      "ownerAggregate": "FactoryRun",
+      "issuingCommand": "factoryRun.recordRunTerminalProof",
+      "requiredEvidenceClosure": [
+        "TerminalProof:lifecycle.failure",
+        "ProductVerificationFailure"
+      ],
+      "citations": [
+        "REV:TerminalProof:run.failure",
+        "reconciliation R5"
+      ]
+    },
+    {
+      "kind": "TerminalProof:cancellation",
+      "scope": "run",
+      "ownerAggregate": "FactoryRun",
+      "issuingCommand": "factoryRun.recordRunTerminalProof",
+      "requiredEvidenceClosure": [
+        "OperatorStopCommand",
+        "TypedWaitDisposition"
+      ],
+      "quantifiers": [
+        "all scopes of the run"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TerminalProof:run.cancellation",
+        "REV:G6",
+        "decision D3"
+      ]
+    },
+    {
+      "kind": "TerminalProof:unreachable",
+      "scope": "run",
+      "ownerAggregate": "FactoryRun",
+      "issuingCommand": "unresolved - unreachable scope set frozen by D7",
+      "requiredEvidenceClosure": [
+        "TerminalProof:run.failure",
+        "TypedRefusalReceipt"
+      ],
+      "pendingProtocolDecision": "D7",
+      "citations": [
+        "REV:TerminalProof:run.unreachable",
+        "REV:G2",
+        "decision D7"
+      ]
+    }
+  ],
+  "evidenceKinds": [
+    {
+      "id": "CellFinalAcceptance",
+      "producer": "workplace.recordFinalAcceptance",
+      "consumers": [
+        "TerminalProof:cell.success",
+        "TerminalProof:workplace.success",
+        "TerminalProof:node.success",
+        "obligation:completeCellNode"
+      ],
+      "pendingProtocolDecision": "D11",
+      "citations": [
+        "REV:CellFinalAcceptance",
+        "REV:G5"
+      ]
+    },
+    {
+      "id": "GateDecision:accepted",
+      "producer": "workplace.runAuthorGate | workplace.runFinalGate",
+      "consumers": [
+        "AcceptedCandidateAuthority",
+        "TerminalProof closure via CellFinalAcceptance"
+      ],
+      "citations": [
+        "REV:GateDecision:accepted"
+      ]
+    },
+    {
+      "id": "GateDecision:repair",
+      "producer": "workplace.runAuthorGate | workplace.runFinalGate",
+      "consumers": [
+        "workplace.enterRepairWait (repair loop)"
+      ],
+      "citations": [
+        "REV:GateDecision:repair"
+      ]
+    },
+    {
+      "id": "GateDecision:upstream-repair",
+      "producer": "workplace.runAuthorGate | workplace.runFinalGate (added by R1)",
+      "consumers": [
+        "obligation:routeUpstreamRepair"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "reconciliation R1"
+      ]
+    },
+    {
+      "id": "GateDecision:human-wait",
+      "producer": "workplace.runAuthorGate | workplace.runFinalGate",
+      "consumers": [
+        "workplace.enterHumanWait"
+      ],
+      "citations": [
+        "REV:GateDecision:human-wait"
+      ]
+    },
+    {
+      "id": "GateDecision:terminal-reject",
+      "producer": "workplace.runAuthorGate | workplace.runFinalGate (added by R1)",
+      "consumers": [
+        "TerminalProof:cell.failure",
+        "TerminalProof:workplace.failure"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "reconciliation R1"
+      ]
+    },
+    {
+      "id": "CheckPlan",
+      "producer": "InstalledWorkshopManifest (immutable content-addressed input; referenced as gate evidence — R15)",
+      "consumers": [
+        "workplace.runAuthorGate",
+        "workplace.runFinalGate"
+      ],
+      "citations": [
+        "REV:CheckPlan",
+        "reconciliation R15"
+      ]
+    },
+    {
+      "id": "CandidateSet:author",
+      "producer": "workplace.presentCandidateSet",
+      "consumers": [
+        "workplace.runAuthorGate",
+        "AcceptedCandidateAuthority"
+      ],
+      "citations": [
+        "REV:CandidateSet:author"
+      ]
+    },
+    {
+      "id": "CandidateSet:reviewer",
+      "producer": "workplace.presentCandidateSet",
+      "consumers": [
+        "workplace.runFinalGate"
+      ],
+      "citations": [
+        "REV:CandidateSet:reviewer"
+      ]
+    },
+    {
+      "id": "WorkplaceProductionRevision",
+      "producer": "workplace.sealProductionRevision",
+      "consumers": [
+        "workplace.presentCandidateSet"
+      ],
+      "citations": [
+        "REV:WorkplaceProductionRevision",
+        "ADR053:chain"
+      ]
+    },
+    {
+      "id": "ActivityAttemptContribution",
+      "producer": "workplace.recordContribution",
+      "consumers": [
+        "workplace.sealProductionRevision"
+      ],
+      "citations": [
+        "REV:ActivityAttemptContribution"
+      ]
+    },
+    {
+      "id": "ActivityAttempt:completed",
+      "producer": "activityAttempt.recordOutcome",
+      "consumers": [
+        "workplace.recordContribution"
+      ],
+      "citations": [
+        "REV:ActivityAttempt:completed"
+      ]
+    },
+    {
+      "id": "ActivityAttempt:failed-typed",
+      "producer": "activityAttempt.recordProviderRefusal | activityAttempt.classifyWorkerLoss",
+      "consumers": [
+        "obligation:retryAttempt",
+        "workplace repair routing"
+      ],
+      "citations": [
+        "REV:ActivityAttempt:failed-typed"
+      ]
+    },
+    {
+      "id": "ActivityAttempt:cancelled",
+      "producer": "activityAttempt.cancel (pending D3)",
+      "consumers": [
+        "TerminalProof:workplace.cancellation"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:ActivityAttempt:cancelled",
+        "decision D3"
+      ]
+    },
+    {
+      "id": "WorkIntent",
+      "producer": "workplace.admitWorkIntent",
+      "consumers": [
+        "activityAttempt.create"
+      ],
+      "citations": [
+        "REV:WorkIntent"
+      ]
+    },
+    {
+      "id": "CanonicalRoleContractBinding",
+      "producer": "workplace.admitWorkIntent (pin; value from InstalledWorkshopManifest — FWD:F007)",
+      "consumers": [
+        "activityAttempt.create (atomic equality verification)"
+      ],
+      "citations": [
+        "REV:CanonicalRoleContractBinding",
+        "PLAN:role-contract"
+      ]
+    },
+    {
+      "id": "PromptAssemblyReceipt:admitted",
+      "producer": "activityAttempt.admitProviderRequest",
+      "consumers": [
+        "ContextEnvelopeComplianceEvidence",
+        "activityAttempt.recordOutcome"
+      ],
+      "citations": [
+        "REV:PromptAssemblyReceipt:admitted"
+      ]
+    },
+    {
+      "id": "PromptAssemblyReceipt:refused",
+      "producer": "activityAttempt.admitProviderRequest",
+      "consumers": [
+        "ContextEnvelopeComplianceEvidence"
+      ],
+      "citations": [
+        "REV:PromptAssemblyReceipt:refused"
+      ]
+    },
+    {
+      "id": "ProviderSendOutcome",
+      "producer": "cognition.sendProviderRequest -> activityAttempt.recordOutcome",
+      "consumers": [
+        "EffectReceipt:unknown closure",
+        "ActivityAttempt:failed-typed"
+      ],
+      "citations": [
+        "REV:ProviderSendOutcome"
+      ]
+    },
+    {
+      "id": "ProviderRoutePin",
+      "producer": "activityAttempt.create (single route-policy evaluation)",
+      "consumers": [
+        "cognition.sendProviderRequest"
+      ],
+      "citations": [
+        "REV:ProviderRoutePin",
+        "PLAN:role-contract"
+      ]
+    },
+    {
+      "id": "TransitionObligation",
+      "producer": "every source command per durable-handoff grammar (co-requisite with its WorkflowEvent — R16)",
+      "consumers": [
+        "TargetOwnerCapability consumer",
+        "ObligationCompletionReceipt"
+      ],
+      "citations": [
+        "REV:TransitionObligation",
+        "reconciliation R16"
+      ]
+    },
+    {
+      "id": "ObligationCompletionReceipt",
+      "producer": "the target-command transaction of each obligation",
+      "consumers": [
+        "TerminalProof:workplace.success",
+        "TerminalProof:process.success",
+        "TerminalProof:stage.success"
+      ],
+      "citations": [
+        "REV:ObligationCompletionReceipt"
+      ]
+    },
+    {
+      "id": "SettlementWorkObligation",
+      "producer": "nodeRun.settleUnreachable (and unreachable settlements)",
+      "consumers": [
+        "TerminalProof:*:unreachable closures"
+      ],
+      "citations": [
+        "REV:SettlementWorkObligation"
+      ]
+    },
+    {
+      "id": "TypedWait:human-input",
+      "producer": "workplace.enterHumanWait | gate human-wait verdicts | nodeRun human nodes",
+      "consumers": [
+        "workplace.resolveHumanResponse | nodeRun.recordHumanDecision (wake discharge)"
+      ],
+      "citations": [
+        "REV:TypedWait:human-input"
+      ]
+    },
+    {
+      "id": "TypedWait:external-availability",
+      "producer": "bounded-retry exhaustion paths (W4)",
+      "consumers": [
+        "probe-obligation completion (kind pending D5)"
+      ],
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "REV:TypedWait:external-availability",
+        "decision D5"
+      ]
+    },
+    {
+      "id": "TypedWait:policy-quota",
+      "producer": "factoryRun.requestStop | workplace.rolloverRepairEpoch backoff",
+      "consumers": [
+        "factoryRun.resume | requeueAfterBackoff deadline (kind pending D5)"
+      ],
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "REV:TypedWait:policy-quota",
+        "decision D5"
+      ]
+    },
+    {
+      "id": "TypedWait:readiness",
+      "producer": "workplace.materialize/admitWorkIntent while predecessor evidence incomplete (R4)",
+      "consumers": [
+        "predecessor obligation completion discharge"
+      ],
+      "citations": [
+        "FWD:W7",
+        "reconciliation R4",
+        "ADR097:decision"
+      ]
+    },
+    {
+      "id": "TypedWait:effect-uncertainty",
+      "producer": "workplace.settleEffect(unknown) | activityAttempt.classifyWorkerLoss | nodeRun.recordProviderOutcome crash windows",
+      "consumers": [
+        "operator resolution command (discharge kind pending D12)"
+      ],
+      "pendingProtocolDecision": "D12",
+      "citations": [
+        "FWD:W8",
+        "decision D12"
+      ]
+    },
+    {
+      "id": "WakeDischarge:human-response-command",
+      "producer": "workplace.resolveHumanResponse | nodeRun.recordHumanDecision",
+      "consumers": [
+        "TypedWait:human-input closure"
+      ],
+      "citations": [
+        "REV:WakeDischarge:human-response-command"
+      ]
+    },
+    {
+      "id": "WakeDischarge:external-availability-event",
+      "producer": "probe-obligation completion + probe result (pending D5)",
+      "consumers": [
+        "TypedWait:external-availability closure"
+      ],
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "REV:G3",
+        "decision D5"
+      ]
+    },
+    {
+      "id": "WakeDischarge:policy-quota-release",
+      "producer": "deadline-obligation completion + policy re-evaluation | operator resume (pending D5)",
+      "consumers": [
+        "TypedWait:policy-quota closure"
+      ],
+      "pendingProtocolDecision": "D5",
+      "citations": [
+        "REV:G3",
+        "decision D5"
+      ]
+    },
+    {
+      "id": "TypedWaitDisposition",
+      "producer": "cancellation settlement (shape pending D3)",
+      "consumers": [
+        "all TerminalProof:cancellation closures"
+      ],
+      "pendingProtocolDecision": "D3",
+      "citations": [
+        "REV:TypedWaitDisposition",
+        "REV:G6",
+        "decision D3"
+      ]
+    },
+    {
+      "id": "OperatorStopCommand",
+      "producer": "factoryRun.requestStop (resume analogous)",
+      "consumers": [
+        "all TerminalProof:cancellation closures"
+      ],
+      "citations": [
+        "REV:OperatorStopCommand"
+      ]
+    },
+    {
+      "id": "WorkflowEvent",
+      "producer": "every aggregate command (co-requisite fact of the same transaction — R16)",
+      "consumers": [
+        "TransitionObligation creation",
+        "OperatorStopCommand",
+        "offline replay verification"
+      ],
+      "citations": [
+        "REV:WorkflowEvent",
+        "reconciliation R16"
+      ]
+    },
+    {
+      "id": "WorkItem",
+      "producer": "workItem.planGraph (immutable)",
+      "consumers": [
+        "WorkIntent",
+        "ConstructionSurface",
+        "TerminalProof:node.success"
+      ],
+      "citations": [
+        "REV:WorkItem"
+      ]
+    },
+    {
+      "id": "WorkItemDependency",
+      "producer": "workItem.planGraph (immutable)",
+      "consumers": [
+        "readiness predicates",
+        "TerminalProof:node.success"
+      ],
+      "citations": [
+        "REV:WorkItemDependency"
+      ]
+    },
+    {
+      "id": "WorkItemObligationMapping",
+      "producer": "workItem.planGraph (immutable)",
+      "consumers": [
+        "obligation:instantiateDependantWorkplaces",
+        "obligation:openUnknownObligation"
+      ],
+      "citations": [
+        "REV:WorkItemObligationMapping",
+        "PLAN:idea-conservation"
+      ]
+    },
+    {
+      "id": "EpicScopeCoverage",
+      "producer": "workItem.planGraph (epic scope equality: covered + explicitly deferred == declared)",
+      "consumers": [
+        "ForwardReverseReconciliationReceipt",
+        "TerminalClaimCoverage"
+      ],
+      "citations": [
+        "REV:EpicScopeCoverage",
+        "PLAN:EK6"
+      ]
+    },
+    {
+      "id": "DeferredScopeEntry",
+      "producer": "workItem.planGraph (owner + reason)",
+      "consumers": [
+        "EpicScopeCoverage"
+      ],
+      "citations": [
+        "REV:DeferredScopeEntry"
+      ]
+    },
+    {
+      "id": "DiscoveryUnknownObligation",
+      "producer": "workItem.planGraph clause (pending D10)",
+      "consumers": [
+        "TerminalClaimCoverage",
+        "obligation:openUnknownObligation"
+      ],
+      "pendingProtocolDecision": "D10",
+      "citations": [
+        "REV:DiscoveryUnknownObligation",
+        "FWD:G7",
+        "decision D10"
+      ]
+    },
+    {
+      "id": "QualitativeRequirementDisposition",
+      "producer": "workItem.planGraph (parameterized or explicitly deferred)",
+      "consumers": [
+        "TerminalClaimCoverage"
+      ],
+      "citations": [
+        "REV:QualitativeRequirementDisposition"
+      ]
+    },
+    {
+      "id": "TerminalLifecycleClaim",
+      "producer": "capsule planning facts -> workItem.planGraph (immutable)",
+      "consumers": [
+        "ExecutableVerifierResult",
+        "TerminalClaimCoverage"
+      ],
+      "citations": [
+        "REV:TerminalLifecycleClaim"
+      ]
+    },
+    {
+      "id": "TerminalClaimCoverage",
+      "producer": "workItem.planGraph (terminal-claim equality: owned and verifiable == required)",
+      "consumers": [
+        "TerminalProof:lifecycle.success",
+        "TerminalProof:run.success"
+      ],
+      "citations": [
+        "REV:TerminalClaimCoverage",
+        "PLAN:EK6"
+      ]
+    },
+    {
+      "id": "ConstructionSurface",
+      "producer": "workItem.planGraph (immutable)",
+      "consumers": [
+        "ExecutableVerifierResult"
+      ],
+      "citations": [
+        "REV:ConstructionSurface"
+      ]
+    },
+    {
+      "id": "ExecutableVerifierResult",
+      "producer": "lifecycleRun.verifyTerminalClaims (pending D4)",
+      "consumers": [
+        "TerminalProof:lifecycle.success"
+      ],
+      "pendingProtocolDecision": "D4",
+      "citations": [
+        "REV:ExecutableVerifierResult",
+        "REV:G8",
+        "decision D4"
+      ]
+    },
+    {
+      "id": "SeamOwnership",
+      "producer": "workItem.planGraph (every seam/test/integration surface owned)",
+      "consumers": [
+        "TerminalClaimCoverage"
+      ],
+      "citations": [
+        "REV:SeamOwnership"
+      ]
+    },
+    {
+      "id": "EffectReceipt:success",
+      "producer": "workplace.settleEffect (sole writer — R13)",
+      "consumers": [
+        "CellFinalAcceptance closure",
+        "EffectReceipt:already-applied",
+        "TerminalProof:run.success"
+      ],
+      "citations": [
+        "REV:EffectReceipt:success",
+        "reconciliation R13"
+      ]
+    },
+    {
+      "id": "EffectReceipt:already-applied",
+      "producer": "workplace.settleEffect (idempotency-key replay; added by R2)",
+      "consumers": [
+        "CellFinalAcceptance closure (satisfies via idempotency-key equality with prior success)"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "PLAN:EK3 (duplicate idempotency keys cannot create a second effect)",
+        "reconciliation R2"
+      ]
+    },
+    {
+      "id": "EffectReceipt:retryable",
+      "producer": "workplace.settleEffect (bounded substrate retry; added by R2)",
+      "consumers": [
+        "obligation:effectRedrive"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "PLAN:EK4",
+        "reconciliation R2"
+      ]
+    },
+    {
+      "id": "EffectReceipt:unknown",
+      "producer": "workplace.settleEffect | nodeRun.recordProviderOutcome (crash after un-idempotent external send)",
+      "consumers": [
+        "TypedWait:effect-uncertainty (resolution pending D12)"
+      ],
+      "pendingProtocolDecision": "D12",
+      "citations": [
+        "REV:EffectReceipt:unknown",
+        "REV:G4",
+        "decision D12"
+      ]
+    },
+    {
+      "id": "EffectReceipt:human-wait",
+      "producer": "workplace.settleEffect (human_required; typed as human-input wait per R12)",
+      "consumers": [
+        "workplace.enterHumanWait -> resolveHumanResponse -> resumeEffect"
+      ],
+      "citations": [
+        "FWD:F076/F088",
+        "reconciliation R12"
+      ]
+    },
+    {
+      "id": "EffectReceipt:policy-terminal",
+      "producer": "workplace.settleEffect (added by R2)",
+      "consumers": [
+        "TerminalProof:cell.failure",
+        "TerminalProof:workplace.failure"
+      ],
+      "citations": [
+        "PLAN:EK9-dimensions",
+        "PLAN:EK4",
+        "reconciliation R2"
+      ]
+    },
+    {
+      "id": "EffectReceipt:repair",
+      "producer": "workplace.settleEffect (repair_required verdict; git-integration conflict canonical case — pending D2)",
+      "consumers": [
+        "workplace.enterRepairWait (pending D2 re-typing alternative)"
+      ],
+      "pendingProtocolDecision": "D2",
+      "citations": [
+        "FWD:F075",
+        "decision D2"
+      ]
+    },
+    {
+      "id": "EffectPolicyRefusal",
+      "producer": "workplace.settleEffect (typed policy refusal over the exact effect contract)",
+      "consumers": [
+        "EffectReceipt:policy-terminal"
+      ],
+      "citations": [
+        "REV:EffectPolicyRefusal"
+      ]
+    },
+    {
+      "id": "AcceptedCandidateAuthority",
+      "producer": "workplace.runFinalGate / workplace.runAuthorGate accept transaction (R3; FWD:F066/F071 'authority commit isFinal')",
+      "consumers": [
+        "workplace.settleEffect (exact effect input)",
+        "workplace.recordFinalAcceptance"
+      ],
+      "citations": [
+        "ADR053:authority",
+        "ADR053:conservation",
+        "reconciliation R3"
+      ]
+    },
+    {
+      "id": "CapsuleIngressReceipt",
+      "producer": "factoryRun.importCapsule",
+      "consumers": [
+        "factoryRun.start",
+        "TerminalProof:run.success",
+        "InputEvidenceRefs"
+      ],
+      "citations": [
+        "REV:CapsuleIngressReceipt"
+      ]
+    },
+    {
+      "id": "ProductVerificationEvidence",
+      "producer": "independent verifier actor through public ingress (R5; no new aggregate)",
+      "consumers": [
+        "TerminalProof:run.success"
+      ],
+      "citations": [
+        "PLAN:EK12",
+        "reconciliation R5"
+      ]
+    },
+    {
+      "id": "ProductVerificationFailure",
+      "producer": "independent verifier actor through public ingress (R5)",
+      "consumers": [
+        "TerminalProof:run.failure"
+      ],
+      "citations": [
+        "PLAN:EK12",
+        "reconciliation R5"
+      ]
+    },
+    {
+      "id": "ContextEnvelopeComplianceEvidence",
+      "producer": "settlement-time predicate over PromptAssemblyReceipt sequence + role-digest pins (R6; no new linearization point)",
+      "consumers": [
+        "TerminalProof:run.success"
+      ],
+      "citations": [
+        "PLAN:EK11-kit",
+        "reconciliation R6"
+      ]
+    },
+    {
+      "id": "ForwardReverseReconciliationReceipt",
+      "producer": "settlement-time forward/reverse observed-graph comparison (R7; EK-6/EK-12 command)",
+      "consumers": [
+        "TerminalProof:run.success"
+      ],
+      "citations": [
+        "PLAN:EK6",
+        "PLAN:EK12",
+        "reconciliation R7"
+      ]
+    },
+    {
+      "id": "TypedRefusalReceipt",
+      "producer": "factoryRun.bootstrap | factoryRun.importCapsule fail-closed refusals (pre-run); in-run grounding pending D7",
+      "consumers": [
+        "TerminalProof:run.unreachable (pending D7)"
+      ],
+      "pendingProtocolDecision": "D7",
+      "citations": [
+        "REV:TypedRefusalReceipt",
+        "REV:G2",
+        "decision D7"
+      ]
+    },
+    {
+      "id": "InputEvidenceRefs",
+      "producer": "workplace.admitWorkIntent (binding)",
+      "consumers": [
+        "WorkIntent"
+      ],
+      "citations": [
+        "REV:InputEvidenceRefs"
+      ]
+    },
+    {
+      "id": "LifecycleRoutingReceipt",
+      "producer": "lifecycleRun.routeOutcome (RouteLifecycle obligation completion)",
+      "consumers": [
+        "TerminalProof:lifecycle.success"
+      ],
+      "citations": [
+        "REV:LifecycleRoutingReceipt"
+      ]
+    },
+    {
+      "id": "ProcessOutcomeCertificate",
+      "producer": "processRun.settle (one transaction)",
+      "consumers": [
+        "stageRun.recordLocalOutcome",
+        "TerminalProof:process.success (is the proof evidence — R14)"
+      ],
+      "citations": [
+        "CENSUS:process",
+        "FWD:F045/F046",
+        "reconciliation R14"
+      ]
+    },
+    {
+      "id": "RecoveryIssue",
+      "producer": "workplace.enterRepairWait | workplace.settleEffect(repair)",
+      "consumers": [
+        "obligation:requeueRepair (exact feedback)",
+        "GateDecision:repair loop"
+      ],
+      "citations": [
+        "FWD:F067/F075/F078",
+        "reconciliation R18"
+      ]
+    },
+    {
+      "id": "RepairTerminalityEvidence",
+      "producer": "workplace.rolloverRepairEpoch (repair-epoch ledger: attempt/epoch counters vs frozen caps) | workplace.widenAuthorityScope (scope-refusal receipt) — pending D6",
+      "consumers": [
+        "TerminalProof:cell.failure",
+        "TerminalProof:workplace.failure"
+      ],
+      "pendingProtocolDecision": "D6",
+      "citations": [
+        "FWD:F081/F084",
+        "REV:G1",
+        "decision D6"
+      ]
+    },
+    {
+      "id": "WatchdogObservation",
+      "producer": "factoryRun.observeWatchdog (pending D9)",
+      "consumers": [
+        "obligation:watchdogRestart",
+        "obligation:watchdogBudgetExhausted"
+      ],
+      "pendingProtocolDecision": "D9",
+      "citations": [
+        "FWD:G3",
+        "decision D9"
+      ]
+    }
+  ],
+  "reconciliation": [
+    {
+      "id": "R1",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires gate verdict kinds GateDecision:upstream-repair and GateDecision:terminal-reject; forward gate commands (workplace.runAuthorGate/runFinalGate) emit only {accepted, repair_required, human_required}. Two EK-9-frozen verdict kinds have no forward producer.",
+      "resolutionOrRequest": "RESOLVED: adopt the plan-frozen gate-result universe {accept, repair, upstream repair, human wait, terminal reject} for both gate commands; terminal-reject feeds truthful-failure proofs; upstream-repair creates obligation:routeUpstreamRepair (re-typing forward F105's contribution-level upstream-defect routing into the gate verdict). Citation: PLAN:EK9-dimensions ('gate result: accept, repair, upstream repair, human wait, terminal reject')."
+    },
+    {
+      "id": "R2",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires EffectReceipt kinds already-applied, retryable, policy-terminal; forward settleEffect outcomes are only {success, repair_required, human_required, unknown}.",
+      "resolutionOrRequest": "RESOLVED: adopt the plan-frozen effect-result universe {success, already applied, retryable, unknown, human wait, policy terminal} for workplace.settleEffect. already-applied = idempotency-key replay (PLAN:EK3: duplicate command/idempotency keys cannot create a second fact or effect); retryable = bounded substrate retry with redrive; policy-terminal = alternative terminal path for failure proofs. Citations: PLAN:EK9-dimensions (effect result list), PLAN:EK4 (policy terminal in failure taxonomy), PLAN:EK3."
+    },
+    {
+      "id": "R3",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse evidence kind AcceptedCandidateAuthority (exact effect input; authority conservation) has no explicit forward producer command.",
+      "resolutionOrRequest": "RESOLVED: AcceptedCandidateAuthority commits in the gate-accept transaction of workplace.runAuthorGate (accepted, no-effect path) / workplace.runFinalGate (accepted verdict) — the forward edges F066/F071 already carry the note 'authority commit isFinal'; it is consumed by workplace.settleEffect (F070) and workplace.recordFinalAcceptance. Citations: FWD:F066, FWD:F071 (notes), ADR053:authority (AcceptedCandidateAuthority is the exact effect input), ADR053:conservation."
+    },
+    {
+      "id": "R4",
+      "kind": "undischarged-wait",
+      "difference": "Forward TypedWait W7 (dependency readiness) with wake = predecessor obligation completion has no reverse node and no reverse discharge path; reverse models readiness only as a success-closure predicate (TerminalProof:node.success requires WorkItemDependency + predecessor evidence).",
+      "resolutionOrRequest": "RESOLVED: TypedWait:readiness enters the universe as a lawful nonterminal wait (plan write-time progress invariant: 'a typed wait with a durable wake source'); wake = predecessor CellFinalAcceptance/EffectReceipt arrival (predecessor obligation completion); dead-predecessor conversion to unreachable settlement via obligation:markDependantsUnreachable. Citations: ADR097:decision (readiness is a predicate over exact predecessor final-acceptance/effect evidence — never a blocked->todo command), FWD:F052 (waitPolicyDetail), FWD:W7, PLAN:durable-handoff (nothing waits on a dead wake source)."
+    },
+    {
+      "id": "R5",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires ProductVerificationEvidence / ProductVerificationFailure for TerminalProof:run.success / run.failure; forward factoryRun.recordRunTerminalProof binds only lifecycle terminal evidence.",
+      "resolutionOrRequest": "RESOLVED: independent product verification (install/build/test/start, API/CLI/browser smoke) is required evidence of the run terminal proofs, produced by an independent verifier actor through public ingress (no new aggregate; evidence fact of FactoryRun). Citation: PLAN:EK12 exit ('Every success has a truthful terminal proof and independent product verification') and the R1-R3 verification requirement list; PLAN:EK11 (product verification commands and budgets in the qualification kit)."
+    },
+    {
+      "id": "R6",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires ContextEnvelopeComplianceEvidence (every ActivityAttempt: pinned role digest + unbroken receipt sequence) for TerminalProof:run.success; forward has no producer.",
+      "resolutionOrRequest": "RESOLVED: it is a settlement-time predicate over existing evidence kinds (PromptAssemblyReceipt:admitted/refused sequence + CanonicalRoleContractBinding/ProviderRoutePin pins), evaluated and recorded with the run proof — not a new mutable fact or second linearization point (no 'latest receipt' selection: PLAN:context-envelope 'The accountant never derives current authority by selecting a latest receipt'). Citation: PLAN:EK11-kit ('every ActivityAttempt to carry its pinned role-contract digest and an unbroken PromptAssemblyReceipt sequence')."
+    },
+    {
+      "id": "R7",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires ForwardReverseReconciliationReceipt (idea/scope/unknown/terminal-claim forward-reverse typed equality) for TerminalProof:run.success; forward has no producer.",
+      "resolutionOrRequest": "RESOLVED: produced by the settlement-time observed-graph comparison command (EK-6: generate forward and reverse observed graphs from committed events and evidence, then compare with the independently declared protocol graphs). Citations: PLAN:EK6 ('Generate forward and reverse observed graphs... compare them with the independently declared protocol graphs'), PLAN:EK12 ('Require idea/scope/unknown/terminal-claim forward/reverse reconciliation')."
+    },
+    {
+      "id": "R8",
+      "kind": "gap-merge",
+      "difference": "Forward gaps G4 (documentation loop 13/23 demonstrated), G5 (Development pending tokens D2/D7/D8/D10), G9-in-part and G10-in-part (K4 crash-window demonstrations pending) are demonstration-debt gaps, not underspecified protocol.",
+      "resolutionOrRequest": "RESOLVED (routing): these edges are lawful-declared in the universe; their causal demonstration is a blocking EK-9 corpus obligation under the declared-equals-demonstrated law — not a protocol decision and not a silent acceptance. Citation: PLAN:EK9 ('Maintain an independently declared WORKFLOW_OBLIGATION_UNIVERSE and require declared equals demonstrated'; 'Fail CI if a test... is deleted or de-hosted')."
+    },
+    {
+      "id": "R9",
+      "kind": "gap-merge",
+      "difference": "Forward gap G6 (prompt/context admission semantics depth is not derivable from the transition graph).",
+      "resolutionOrRequest": "RESOLVED (assignment): the plan already owns this elsewhere — exact overflow/repair/retry-charge semantics are frozen in the EK-1 admission specifications (prompt-budget-profile.schema.json) and implemented by WP-18; the universe carries only the admission boundary (activityAttempt.admitProviderRequest, obligation:providerSend, admitted/refused receipts, crash-redrive, typed uncertainty). Citation: PLAN:EK1 (Successor admission specifications), plan work-package table row WP-18."
+    },
+    {
+      "id": "R10",
+      "kind": "gap-merge",
+      "difference": "Reverse gap G7: settlement fan-in membership (workplaces-per-node, nodes-per-process, processes-per-stage, stages-per-lifecycle) not frozen in plan text; reverse stage-level edges pattern-inferred and reverse assumed plural processes per stage.",
+      "resolutionOrRequest": "RESOLVED: membership frozen from the forward lane's own structure with corroborating census: workplaces-per-node = N (materializeCell fan-out per WorkItem/verification item, FWD:F050/F051); nodes-per-process = N per declared module flow (FWD:F106-F132); processes-per-stage = exactly 1 (stageRun.activate binds THE installed process module — FWD:F042; census stage family 'StageCommand(create|settle)... bind StageRun+ProcessRun'); stages-per-lifecycle = N per routing (FWD:F023/F025/F028). The stage fan-in quantifier is retained but degenerates to the single process. Citations: FWD:F042, FWD:F050, FWD:F051, CENSUS:stage, CENSUS:process."
+    },
+    {
+      "id": "R11",
+      "kind": "missing-reverse-consumer",
+      "difference": "Forward carry-forward edges (redevelop F006, release continuation F011/F012, development continuation F013/F014 — accepted-prefix) have no reverse-graph counterpart: no terminal claim walks continuations.",
+      "resolutionOrRequest": "RESOLVED: continuations are ingress-class — a continuation lifecycle begins from a capsule-hash-pinned input whose accepted prefix binds as InputEvidenceRefs/CapsuleIngressReceipt evidence (reverse already requires InputEvidenceRefs with note 'predecessor CellFinalAcceptance/EffectReceipt or CapsuleIngressReceipt refs'). No separate reverse closure exists because the continuation's own terminal proofs close over its own scope. Citations: REV:InputEvidenceRefs (note), FWD:F005/F006/F011-F014, FWD:G9."
+    },
+    {
+      "id": "R12",
+      "kind": "missing-reverse-consumer",
+      "difference": "Reverse types EffectReceipt:human-wait as requiring TypedWait:external-availability; forward types the effect human_required outcome as a human-input wait discharged by the operator human-response command (F076 enterHumanWait; F088 resumeEffect after human resolution).",
+      "resolutionOrRequest": "RESOLVED: the forward typing is adopted — EffectReceipt:human-wait creates TypedWait:human-input with wake = workplace.resolveHumanResponse -> obligation:resumeEffect. The reverse edge is re-typed accordingly (derivation slip: the effect wait is a human wait, not a substrate-availability wait; substrate availability is the separate W4/probe path). Citations: FWD:F076, FWD:F088, predecessor e70 (docs/factory-map/forward-graph.v1.json#e70), PLAN:EK9-dimensions (human wait is its own effect result)."
+    },
+    {
+      "id": "R13",
+      "kind": "missing-reverse-consumer",
+      "difference": "Forward has TWO producers of EffectReceipt-class facts: workplace.settleEffect and nodeRun.recordProviderOutcome ('with idempotent EffectReceipt'); reverse and census declare EffectReceipt a Workplace-owned fact with one writer (RunEffect).",
+      "resolutionOrRequest": "RESOLVED (single-writer re-typing): workplace.settleEffect is the sole EffectReceipt writer; nodeRun.recordProviderOutcome is re-typed as the NodeRun command that submits external-provider outcome evidence into the owning Workplace effect transaction (obligation chain publishRelease/observeRelease -> settleEffect). One fact, one owner, one linearization point. Citations: PLAN:target-model (EffectReceipt row), ADR053:chain (effects are post-acceptance Workplace chain), CENSUS:effect ('RunEffect(authority: AcceptedCandidateAuthority, idempotencyKey)'), PLAN:one-authority."
+    },
+    {
+      "id": "R14",
+      "kind": "missing-reverse-consumer",
+      "difference": "Forward processRun.settle issues a ProcessOutcomeCertificate consumed by stageRun.recordLocalOutcome; the reverse graph has no such node (process success closes over node successes + obligation receipts).",
+      "resolutionOrRequest": "RESOLVED: ProcessOutcomeCertificate IS the TerminalProof:process.success evidence committed in the settle transaction ('settle is a certificate, not a manifest capability'); it is also the route-lifecycle obligation evidence for the stage outcome. Citations: FWD:F045 (note), FWD:F046, CENSUS:process ('certificate becomes the proof evidence')."
+    },
+    {
+      "id": "R15",
+      "kind": "mapping-convention",
+      "difference": "Reverse requires CheckPlan (immutable manifest value) as gate-decision evidence; forward declares CheckPlans out of transition scope (workshop semantic content).",
+      "resolutionOrRequest": "RESOLVED (convention): CheckPlan instances are InstalledWorkshopManifest content — the forward input node in.manifest is the binding source; gates reference them as exact evidence refs. No kernel transition kind originates from a workshop. Citations: FWD:outOfScope[2] ('their contracts appear as evidenceRefs on the edges they guard'), REV:CheckPlan, PLAN:target-model (GateDecision row: 'immutable decision over one exact CandidateSet and CheckPlan')."
+    },
+    {
+      "id": "R16",
+      "kind": "mapping-convention",
+      "difference": "Reverse declares a WorkflowEvent co-requisite on every edge (not exploded into separate edges); forward materializes one emits-event per command.",
+      "resolutionOrRequest": "RESOLVED (convention): reconcile by convention, not by edge duplication — every command's WorkflowEvent is a co-requisite fact of the same transaction (universe records it in commands[].emitsEvents). Citation: REV:conventions.eventCoRequisite + reverse reconciliation note ('reconcile by convention, not by adding 112 edges'), PLAN:durable-handoff."
+    },
+    {
+      "id": "R17",
+      "kind": "mapping-convention",
+      "difference": "Forward carries 27 module-flow edges (discovery/formalization/development/delivery/documentation node advances); the reverse graph contains no module-flow nodes (workshop semantics are not protocol transitions).",
+      "resolutionOrRequest": "RESOLVED (convention): module flows are installed process-module manifest content; the typed protocol edge is obligation:advanceProcessFlow (processRun.recordNodeTerminal -> enterNode|settle) — one obligation kind, per-module data carried as flow descriptors, no workshop-name kernel branch. Citations: FWD grammar (flow-qualified edges), PLAN:EK8 ('Keep module/package identity in installed manifests, never in kernel conditionals'), FWD:outOfScope[2]."
+    },
+    {
+      "id": "R18",
+      "kind": "missing-reverse-consumer",
+      "difference": "Forward produces RecoveryIssue (immutable exact repair feedback) inside enterRepairWait/settleEffect(repair); the reverse repair closure stops at 'GateDecision:repair requires WorkIntent' and names no feedback evidence kind.",
+      "resolutionOrRequest": "RESOLVED: RecoveryIssue enters the evidence registry as the repair-loop feedback fact consumed by obligation:requeueRepair (the repair WorkIntent binds the exact RecoveryIssue refs). Citations: FWD:F067/F075/F078, tests/factory-contract/transition-conformance-scenarios.mjs#repair-loop (universal repair-loop theorem: candidate -> changes_requested -> exact feedback -> candidate -> approved)."
+    },
+    {
+      "id": "R19",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse declares a distinct TerminalProof:cell.success; forward's proof inventory has only workplace-scope P1 with the cell-level completion recorded as CellFinalAcceptance (no separate proof command).",
+      "resolutionOrRequest": "RESOLVED: TerminalProof:cell.success commits in the workplace.recordFinalAcceptance transaction — 'cell success is exactly the recorded final acceptance; an empty queue is never a proof'. Citations: REV:TerminalProof:cell.success (edge note), FWD:workplace.recordFinalAcceptance, PLAN:target-model (CellFinalAcceptance row)."
+    },
+    {
+      "id": "R20",
+      "kind": "mapping-convention",
+      "difference": "Reverse edge 'GateDecision:accepted requires CandidateSet:reviewer' reads as if every accepted gate needs a reviewer presentation; forward author gates decide over author presentations with no reviewer.",
+      "resolutionOrRequest": "RESOLVED (convention): reverse gate-closure edges are role-conditioned — author-phase gates require CandidateSet:author; final gates over the reviewer verdict set require CandidateSet:reviewer (which binds its subject author CandidateSet). Citations: REV:GateDecision:accepted edges (notes 'reviewer-role gates decide over the reviewer CandidateSet presentation'), FWD:F064/F069, R20 recorded in universe commands."
+    },
+    {
+      "id": "D1",
+      "kind": "gap-merge",
+      "difference": "Forward G1 (physical command/event/obligation names are proposals) + forward G8 (settle node placement) + reverse conventions.physicalNames: the physical vocabulary of the whole universe is unfrozen.",
+      "resolutionOrRequest": "PROTOCOL DECISION D1 (coordinator freeze): adopt the vocabulary of this transition-universe.json as the frozen physical names — including settle = processRun.settle (forward G8: 'naming freeze only, no semantic gap') — or name specific renames before WP-05. RECOMMENDED: adopt as-is; every identifier here is already used consistently by both reconciled lanes. Blocks: WP-05, WP-16 name pinning."
+    },
+    {
+      "id": "D2",
+      "kind": "missing-reverse-consumer",
+      "difference": "Forward produces EffectReceipt:repair_required (settleEffect repair outcome; git-integration conflict canonical case, F075) but the plan-frozen effect-result universe (EK-9) has no repair kind and neither does the reverse closure.",
+      "resolutionOrRequest": "PROTOCOL DECISION D2: EITHER (a) extend the frozen effect-result vocabulary with 'repair' (7 kinds) — the universal repair-loop theorem and predecessor obligation-contracts (effect.git-integration) demonstrate effect-level repair and the repair WorkIntent binds the exact RecoveryIssue — OR (b) re-type predecessor effect-repair as gate-level repair only (effect settles retryable/unknown; repair verdicts decided solely by gates), deleting EffectReceipt:repair. RECOMMENDED: (a). Blocks: effect contract freeze, EK-9 scenario dimensions."
+    },
+    {
+      "id": "D3",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse cancellation closures require TypedWaitDisposition (all waits discharged/cancelled) and ActivityAttempt:cancelled (every in-flight lease dispositioned); forward has no producer for either, and reverse G6 admits the propagation shape is not frozen (per-member proofs vs one proof naming member dispositions).",
+      "resolutionOrRequest": "PROTOCOL DECISION D3: EITHER (a) cancellation proofs exist at {lifecycle, run} scope and NAME member dispositions (per-scope member list + per-attempt lease disposition receipts committed by a new activityAttempt.cancel command and a TypedWaitDisposition evidence committed with the cancellation settlement) — OR (b) per-scope cancellation proofs at all 7 scopes, each requiring OperatorStopCommand + TypedWaitDisposition locally. RECOMMENDED: (a) — fewer proof kinds, same conservation (dispositions are named evidence, not separate proofs). Blocks: EK-4 wait/cancel semantics, EK-6 settlement."
+    },
+    {
+      "id": "D4",
+      "kind": "missing-forward-producer",
+      "difference": "Reverse requires ExecutableVerifierResult (every terminal lifecycle claim has an owned construction surface and an executable verifier — reverse G8: receipt kind and owner not frozen); forward has no verifier command at all.",
+      "resolutionOrRequest": "PROTOCOL DECISION D4: EITHER (a) LifecycleRun-owned command lifecycleRun.verifyTerminalClaims executing installed verifier contracts (verifier definitions are InstalledWorkshopManifest CheckPlan-class content; receipt ExecutableVerifierResult owned by LifecycleRun) — OR (b) a certifier-semantic-profile Workplace per lifecycle running verifiers through the accepted-material chain (receipt via CellFinalAcceptance). RECOMMENDED: (a) — no new Workplace lifecycle, verifier semantics stay workshop-manifest content. Blocks: lifecycle.success closure, EK-6 terminal-claim equality."
+    },
+    {
+      "id": "D5",
+      "kind": "undischarged-wait",
+      "difference": "Reverse G3: discharge evidence kinds for TypedWait:external-availability and TypedWait:policy-quota are unnamed (human-input discharge is clearly a typed command).",
+      "resolutionOrRequest": "PROTOCOL DECISION D5: EITHER (a) discharge = obligation completion receipts of the forward-named durable wake sources (substrate re-probe obligation for external-availability; backoff-deadline obligation + policy re-evaluation for policy/quota; operator resume for operator-stop) — OR (b) dedicated external event receipt kinds (ExternalAvailabilityEventReceipt, QuotaReleaseReceipt) as new evidence kinds. RECOMMENDED: (a) — no new evidence kinds; wake sources are already durable obligations. Blocks: EK-4 typed-wait implementation."
+    },
+    {
+      "id": "D6",
+      "kind": "gap-merge",
+      "difference": "Reverse G1: what proves 'no lawful repair transition remains' for truthful-failure proofs (cell/workplace) is unnamed; the reverse closure stops at the rejecting GateDecision:terminal-reject / EffectReceipt:policy-terminal.",
+      "resolutionOrRequest": "PROTOCOL DECISION D6: EITHER (a) RepairTerminalityEvidence = the immutable repair-epoch ledger (attempt/epoch counters vs frozen caps: total attempt cap, diagnosis-repeat, convergence ceiling) or scope-refusal receipt, committed by workplace.rolloverRepairEpoch / widenAuthorityScope in the failure transaction — OR (b) a dedicated gate-emitted terminality predicate fact. RECOMMENDED: (a) — forward F081/F084 already name exactly these conditions with predecessor evidence (recovery:retry-exhaustion-terminal). Blocks: truthful-failure proof closure, EK-6 settlement."
+    },
+    {
+      "id": "D7",
+      "kind": "gap-merge",
+      "difference": "Reverse claims unreachable proofs at all 7 scopes (process/stage/lifecycle/run edges are predecessor-instance pattern references; reverse G2 admits run-scope triggers are not enumerated); forward demonstrates unreachable only at workplace/cell/node scope (F092 -> nodeRun.settleUnreachable) — dependency edges live on the WorkItem graph.",
+      "resolutionOrRequest": "PROTOCOL DECISION D7: EITHER (a) freeze the unreachable scope set as {cell, workplace, node} (the WorkItemDependency-graph scopes); process/stage/lifecycle failures settle as truthful failure (already in the universe) and TerminalProof:run.unreachable is deleted with TypedRefusalReceipt remaining pre-run (ingress refusal, no run exists) — OR (b) keep all 7 scopes and enumerate the in-run run-scope unreachable triggers. RECOMMENDED: (a) — nothing in the model depends on process/stage/lifecycle predecessors (flow is declared, stages sequential, continuations created after parent terminal). Blocks: settlement vocabulary, EK-6."
+    },
+    {
+      "id": "D8",
+      "kind": "orphan-obligation",
+      "difference": "Forward G2: obligation:replayCaptureSweep (run-scope replay-capsule certification) is emitted by lifecycleRun.issueTerminalProof toward workplace.settleEffect, but which owner settles the run-scope capsule is not derivable (FactoryRun settlement effect vs a certification Workplace).",
+      "resolutionOrRequest": "PROTOCOL DECISION D8: EITHER (a) a certification Workplace materialized at run settlement (the sweep is an ordinary effect of that Workplace; EffectReceipt stays Workplace-written, one writer) — OR (b) a FactoryRun-owned settleRunEffect command (second effect writer at run scope, weakening the single-writer law). RECOMMENDED: (a). Blocks: effect contract freeze, replay-capture demonstration token."
+    },
+    {
+      "id": "D9",
+      "kind": "gap-merge",
+      "difference": "Forward G3: watchdog/supervisor target ownership — proposed aggregate command factoryRun.observeWatchdog (observe-only) vs a pure observer process with no aggregate.",
+      "resolutionOrRequest": "PROTOCOL DECISION D9: EITHER (a) factoryRun.observeWatchdog as adopted here (durable WatchdogObservation evidence + typed obligations watchdogRestart/watchdogBudgetExhausted, all observe/command-only; never SQL repair) — OR (b) a stateless observer issuing typed commands through public ingress with evidence as WorkflowEvents only (no aggregate command, no durable observation rows). RECOMMENDED: (a) — watchdog findings need a durable owner for restart evidence; the command is already observe-only per PLAN:EK4. Blocks: EK-4 driver/watchdog tests."
+    },
+    {
+      "id": "D10",
+      "kind": "gap-merge",
+      "difference": "Forward G7: the exact command that opens an owned obligation per Discovery unknown (currently folded into workItem.planGraph) is unfrozen.",
+      "resolutionOrRequest": "PROTOCOL DECISION D10: EITHER (a) workItem.planGraph clause creating the DiscoveryUnknownObligation planning fact plus obligation:openUnknownObligation (runnable when the owning work runs) — OR (b) a separate ingress-time command at capsule import opening unknown obligations before planning. RECOMMENDED: (a) — unknowns cannot disappear at a workshop boundary and planning is where owners are assigned (PLAN:idea-conservation). Blocks: planning contract, EK-6."
+    },
+    {
+      "id": "D11",
+      "kind": "gap-merge",
+      "difference": "Reverse G5: CellFinalAcceptance required field set — embed acceptanceDigest and digest equality with the accepted WorkplaceProductionRevision, or only gate+effect refs.",
+      "resolutionOrRequest": "PROTOCOL DECISION D11: EITHER (a) embed acceptanceDigest + materialDigest/semanticDigest equality with the accepted revision (digest-equality edges join the closure) — OR (b) exact gate+effect+obligation refs only (digest equality checked by tests, not carried by the fact). RECOMMENDED: (a) — makes the authority-conservation invariant (ADR053:conservation test 1) executable on the fact itself. Blocks: schema freeze (WP-06), CellFinalAcceptance contract."
+    },
+    {
+      "id": "D12",
+      "kind": "undischarged-wait",
+      "difference": "Reverse G4 + forward G10(demonstration part routed by R8): what receipt RESOLVES an EffectReceipt:unknown / send-uncertainty wait is unnamed (idempotency probe? external confirmation? human disposition?).",
+      "resolutionOrRequest": "PROTOCOL DECISION D12: EITHER (a) operator human disposition via typed resolution command (discharge receipt = the command's evidence; matches forward W8 wake and PLAN:EK9 'human wait' effect result) — OR (b) automated idempotency-probe receipt (external check executed by the effect contract) — OR (c) both, with (b) as an effect-contract extension and (a) as the guaranteed fallback. RECOMMENDED: (a) now (smallest frozen surface), (c) later only if an effect contract needs probes. Blocks: EK-4 uncertainty semantics, K4-class fault demonstrations."
+    }
+  ],
+  "protocolDecisions": [
+    {
+      "id": "D1",
+      "question": "Physical vocabulary freeze",
+      "options": [
+        "adopt transition-universe.json names as frozen (incl. settle = processRun.settle)",
+        "named renames before WP-05"
+      ],
+      "recommendation": "adopt as-is",
+      "blocks": [
+        "WP-05",
+        "WP-16"
+      ],
+      "sources": [
+        "FWD:G1",
+        "FWD:G8",
+        "REV:conventions.physicalNames"
+      ]
+    },
+    {
+      "id": "D2",
+      "question": "Effect-level repair verdict: extend the frozen effect-result vocabulary with 'repair', or re-type effect repair as gate-level repair only",
+      "options": [
+        "extend vocabulary (7 effect kinds)",
+        "re-type to gate-level repair (6 kinds, EffectReceipt:repair deleted)"
+      ],
+      "recommendation": "extend (7 kinds)",
+      "blocks": [
+        "effect contract freeze",
+        "EK-9 dimensions"
+      ],
+      "sources": [
+        "FWD:F075",
+        "PLAN:EK9-dimensions",
+        "reconciliation D2"
+      ]
+    },
+    {
+      "id": "D3",
+      "question": "Cancellation propagation shape and lease disposition",
+      "options": [
+        "proofs at {lifecycle, run} naming member dispositions + activityAttempt.cancel + TypedWaitDisposition committed with settlement",
+        "per-scope cancellation proofs at all 7 scopes"
+      ],
+      "recommendation": "{lifecycle, run} proofs naming dispositions",
+      "blocks": [
+        "EK-4",
+        "EK-6"
+      ],
+      "sources": [
+        "REV:G6",
+        "REV:TypedWaitDisposition",
+        "REV:ActivityAttempt:cancelled",
+        "reconciliation D3"
+      ]
+    },
+    {
+      "id": "D4",
+      "question": "ExecutableVerifierResult producer and receipt kind",
+      "options": [
+        "LifecycleRun command lifecycleRun.verifyTerminalClaims (verifier contracts as manifest content)",
+        "certifier-profile Workplace running verifiers through the material chain"
+      ],
+      "recommendation": "LifecycleRun command",
+      "blocks": [
+        "lifecycle.success closure",
+        "EK-6"
+      ],
+      "sources": [
+        "REV:G8",
+        "REV:ExecutableVerifierResult",
+        "reconciliation D4"
+      ]
+    },
+    {
+      "id": "D5",
+      "question": "Wake-discharge evidence kinds for external-availability and policy/quota waits",
+      "options": [
+        "obligation-completion receipts of the named durable wake sources (probe/backoff/resume)",
+        "dedicated external event receipt kinds"
+      ],
+      "recommendation": "obligation-completion receipts",
+      "blocks": [
+        "EK-4"
+      ],
+      "sources": [
+        "REV:G3",
+        "FWD:W4",
+        "FWD:W5",
+        "FWD:W6",
+        "reconciliation D5"
+      ]
+    },
+    {
+      "id": "D6",
+      "question": "Truthful-failure terminality predicate evidence",
+      "options": [
+        "RepairTerminalityEvidence = repair-epoch ledger exhaustion / scope-refusal receipt (committed by rolloverRepairEpoch/widenAuthorityScope)",
+        "dedicated gate-emitted terminality fact"
+      ],
+      "recommendation": "repair-epoch ledger + scope-refusal receipt",
+      "blocks": [
+        "failure-proof closure",
+        "EK-6"
+      ],
+      "sources": [
+        "REV:G1",
+        "FWD:F081",
+        "FWD:F084",
+        "reconciliation D6"
+      ]
+    },
+    {
+      "id": "D7",
+      "question": "Unreachable-proof scope set",
+      "options": [
+        "{cell, workplace, node} only; run.unreachable deleted (TypedRefusalReceipt stays pre-run)",
+        "all 7 scopes with enumerated in-run run-scope triggers"
+      ],
+      "recommendation": "{cell, workplace, node}",
+      "blocks": [
+        "settlement vocabulary",
+        "EK-6"
+      ],
+      "sources": [
+        "REV:G2",
+        "REV:G7",
+        "FWD:F092",
+        "reconciliation D7"
+      ]
+    },
+    {
+      "id": "D8",
+      "question": "Run-scope replay-capture sweep owner",
+      "options": [
+        "certification Workplace at run settlement (one effect writer)",
+        "FactoryRun settleRunEffect command (second effect writer)"
+      ],
+      "recommendation": "certification Workplace",
+      "blocks": [
+        "effect contract freeze",
+        "replay-capture token"
+      ],
+      "sources": [
+        "FWD:G2",
+        "FWD:F040",
+        "reconciliation D8"
+      ]
+    },
+    {
+      "id": "D9",
+      "question": "Watchdog ownership",
+      "options": [
+        "factoryRun.observeWatchdog aggregate command (durable evidence, observe-only)",
+        "stateless observer issuing typed commands (WorkflowEvent evidence only)"
+      ],
+      "recommendation": "factoryRun.observeWatchdog",
+      "blocks": [
+        "EK-4"
+      ],
+      "sources": [
+        "FWD:G3",
+        "FWD:F020/F021",
+        "PLAN:EK4",
+        "reconciliation D9"
+      ]
+    },
+    {
+      "id": "D10",
+      "question": "Command that opens an owned obligation per Discovery unknown",
+      "options": [
+        "workItem.planGraph clause (+ obligation:openUnknownObligation)",
+        "separate ingress-time command at capsule import"
+      ],
+      "recommendation": "planGraph clause",
+      "blocks": [
+        "planning contract",
+        "EK-6"
+      ],
+      "sources": [
+        "FWD:G7",
+        "PLAN:idea-conservation",
+        "reconciliation D10"
+      ]
+    },
+    {
+      "id": "D11",
+      "question": "CellFinalAcceptance field set",
+      "options": [
+        "embed acceptanceDigest + digest equality with accepted revision",
+        "refs-only (gate+effect+obligation refs)"
+      ],
+      "recommendation": "embed digests",
+      "blocks": [
+        "WP-06 schema",
+        "CellFinalAcceptance contract"
+      ],
+      "sources": [
+        "REV:G5",
+        "ADR053:conservation",
+        "reconciliation D11"
+      ]
+    },
+    {
+      "id": "D12",
+      "question": "Effect/send-uncertainty resolution evidence",
+      "options": [
+        "operator human disposition command receipt",
+        "automated idempotency-probe receipt",
+        "both (probe optional per effect contract, human guaranteed)"
+      ],
+      "recommendation": "operator disposition now",
+      "blocks": [
+        "EK-4",
+        "K4 fault demonstrations"
+      ],
+      "sources": [
+        "REV:G4",
+        "FWD:G10",
+        "FWD:W8",
+        "reconciliation D12"
+      ]
+    }
+  ],
+  "counts": {
+    "aggregates": 9,
+    "nonAggregateAuthorities": 4,
+    "commands": 53,
+    "commandsPendingDecisions": 3,
+    "obligations": 49,
+    "obligationsPendingDecisions": 5,
+    "waits": 5,
+    "waitsPendingDecisions": 3,
+    "proofs": 28,
+    "proofsPendingDecisions": 14,
+    "evidenceKinds": 67,
+    "evidenceKindsPendingDecisions": 15,
+    "reconciliationEntries": 32,
+    "differencesResolvedWithCitation": 20,
+    "protocolDecisionsFramed": 12,
+    "silentlyAcceptedDifferences": 0,
+    "forwardGapsMerged": 10,
+    "reverseGapsMerged": 8
+  }
+}
