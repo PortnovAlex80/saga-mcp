@@ -4,6 +4,14 @@
   forbidden from later implementing WP-05, WP-17 or WP-18 (plan role rule).
 - **Integration base SHA:** `21ba0816e38ec1492b3acb4d21e7ccea49c6f5df`
 - **Branch:** `ek1/wp16-complexity-budget`
+- **Budget revision:** **rev2** (`ek1/fix-complexity-measurer`, branched from
+  `integration/event-kernel-ek` @ `65e11f14`, operator review items 3 + 4):
+  (a) the three SQL-counting authority dimensions split into **lawful vs
+  bypass** columns with a spec-frozen lawful-owner convention
+  (`lawfulRepositoryConvention` in the budget JSON); (b)
+  `structure.phaseCount` / `structure.topLevelPackageCount` changed from
+  EXACT to MAXIMUM per the plan's own wording "capped at". Recorded in the
+  budget JSON `revisions` array.
 - **Machine artifact:** [`complexity-budget.json`](./complexity-budget.json)
   (36 dimensions, each with baseline, finite target, deterministic measurement
   command, rationale and accountable work package)
@@ -58,9 +66,49 @@ twelve frozen protocol decisions D1–D12 (all adopted as recommended).
 | `authority.mutableOwnerFanInFiles` | **25** writer files on one table (`tasks`; 64 writer statements) | max **1** writer module per mutable aggregate | WP-06 |
 | `authority.mutableOwnerAggregates` | **16** fact families / 124 accessed tables, mixed ownership | exact **13** authority kinds (9 owner aggregates + 4 non-aggregate authorities, frozen universe) | WP-05 |
 | `authority.authoritativeRelationKinds` | **1** generic obligation substrate (narrow, EC-8 only) | exact **54** (49 obligation kinds + 5 wait kinds, frozen universe) | WP-05 |
-| `authority.decisionReaderStatements` | **1113** decision-path reads, all direct SQL (829 AUTH / 281 DELETE / 373 presentation overall) | max **0** decision reads bypassing the owning repository | WP-06 |
-| `authority.projectionAuthorityReads` | **281** DELETE-class decision reads (task-status scheduling, recency, MAX(id)) | **0** (hard target, after EK-7) | WP-12 |
-| `authority.decisionWriterStatements` | **524** direct writers (390 src / 104 scripts / 30 tracker-view; 171 retain / 256 rewrite / 97 delete) | max **0** writes outside a typed owning command | WP-06 |
+| `authority.decisionReaderStatements` | **1113** decision-path reads, all direct SQL — pre-kernel split: **bypass 1113 / lawful 0** (829 AUTH / 281 DELETE / 373 presentation overall) | max **0** — binds on the **bypass** column: direct-SQL reads of aggregate tables outside the owning repository | WP-06 |
+| `authority.projectionAuthorityReads` | **281** DELETE-class decision reads (task-status scheduling, recency, MAX(id)) — pre-kernel split: **bypass 281 / lawful 0** | **0** (hard target, after EK-7) — binds on the **bypass** column: kernel-scope direct-SQL reads of declared projection tables; lawful is structurally 0 | WP-12 |
+| `authority.decisionWriterStatements` | **524** direct writers (390 src / 104 scripts / 30 tracker-view; 171 retain / 256 rewrite / 97 delete) — pre-kernel split: **bypass 524 / lawful 0** | max **0** — binds on the **bypass** column: direct-SQL writes of aggregate tables outside the owning repository | WP-06 |
+
+**Lawful/bypass split (rev2).** The operator review found the original
+contract could not distinguish lawful SQL inside the owning repository from
+forbidden bypass SQL once the new kernel exists — it counted all old-tree SQL
+and could therefore never bind correctly. The amended contract
+(`lawfulRepositoryConvention` in the budget JSON, re-proved against the frozen
+inputs on every driver run):
+
+- **Lawful-owner file convention:** the sole lawful home of direct SQL against
+  an aggregate's tables is that aggregate's EK-3 sole-writer repository,
+  `src/workflow-kernel/persistence/<aggregate>-repository.ts`
+  (FactoryRun → `factory-run-repository.ts`, …).
+- **Aggregate→table map (spec-frozen here):** each aggregate owns the tables
+  whose names equal its snake_case prefix, the prefix + `s`, or the prefix +
+  `_…` (`factory_run`, `factory_runs`, `factory_run_events` → FactoryRun).
+  The aggregate set is exactly the frozen universe's nine aggregates; the
+  projection-table set is exactly the census PROJECTION class — both
+  equalities are enforced by the driver, so the map cannot drift.
+- **Split columns:** every one of the three dimensions above emits
+  `{lawful, bypass, total}` (plus per-aggregate and bypass-site detail).
+  The **target binds on bypass == 0**; the lawful column is unconstrained by
+  these dimensions — it is bounded instead by the repository-count dimensions
+  (`authority.mutableOwnerFanInFiles` max 1 writer file per table,
+  `authority.mutableOwnerAggregates` exact 13).
+- **Pre-kernel honesty:** while `src/workflow-kernel/` is absent the vector
+  already emits the split with **bypass = frozen-census total, lawful = 0**
+  (no lawful owner exists on the predecessor tree), so `--check` binds on the
+  bypass column the moment the kernel lands.
+- **Successor-mode measurement:** once the kernel exists the dimensions scan
+  the live tree (`src/**`, `scripts/**`, `tracker-view/**`; production
+  sources only) with a deterministic SQL-literal lexer (reduced form of the
+  WP-01 census scanner): reads count any statement whose extracted read
+  tables belong to an aggregate (embedded `SELECT`s inside write statements
+  included — a repository of A reading B's tables via SQL is a bypass read of
+  B); writes count INSERT/UPDATE/DELETE/REPLACE whose write targets belong to
+  an aggregate; DDL is out of scope (the EK-3 declarative bootstrap is a
+  separate sanctioned surface). Presentation-scope direct reads of aggregate
+  tables also count as bypass — outside the one repository there is no lawful
+  direct-SQL read of authoritative tables regardless of consumer; projection
+  reads are legal only outside the kernel.
 
 Rationale in one line each: fan-in 25 is ADR-097 violation 6 made countable;
 the 13-kind authority topology was derived twice and reconciled with zero
@@ -143,11 +191,17 @@ command **fails loudly** today (exit 2,
 
 | id | baseline | target | WP |
 |---|---|---|---|
-| `structure.phaseCount` | **14** (`## Phase EK-…` headers parsed from the plan document) | exact **14** (EK-0..EK-13) | WP-16 |
-| `structure.topLevelPackageCount` | **24** (`\| WP-…` rows parsed from the plan's table) | exact **24** | WP-16 |
+| `structure.phaseCount` | **14** (`## Phase EK-…` headers parsed from the plan document) | max **14** (EK-0..EK-13) | WP-16 |
+| `structure.topLevelPackageCount` | **24** (`\| WP-…` rows parsed from the plan's table) | max **24** | WP-16 |
 
 The measurement parses the governing plan document itself, so adding a phase
-or a 25th top-level package turns the checker red mechanically.
+or a 25th top-level package turns the checker red mechanically. Both caps are
+**maxima, not exact equalities** (rev2, operator review item 4): the plan's
+own wording is *"The execution structure is **capped at** the 14 named phases
+EK-0 through EK-13 and the 24 top-level work packages listed below"* — an
+upper bound whose replacement/merge clause explicitly contemplates the count
+going down (a merge leaving 13 phases / 23 packages is a structural
+simplification inside the envelope, not a deviation).
 
 ## 4. The measurement driver contract
 
@@ -162,13 +216,24 @@ node docs/refactoring/event-kernel/specs/measure-complexity.mjs --selftest
 - **Every run** first verifies the three frozen-input digests, then validates
   the budget structure (required keys, unique ids, finite targets,
   measurement commands, mandated-dimension coverage, no waivers, no orphan
-  measurement implementations). Structural defects exit 1.
+  measurement implementations, and — since rev2 — the
+  `lawfulRepositoryConvention` map against the frozen universe aggregate set
+  and the frozen census PROJECTION class). Structural defects exit 1.
 - **Baseline dimensions** are measured now from the frozen census/universe
   plus deterministic tree scans (sorted iteration only).
+- **Split dimensions** (`authority.decisionReaderStatements`,
+  `authority.decisionWriterStatements`,
+  `authority.projectionAuthorityReads`): the measured value the target binds
+  on is the **bypass** column. Pre-kernel the split is emitted from the
+  frozen census (bypass = total, lawful = 0); post-kernel from a live
+  deterministic direct-SQL scan (see §3.1).
 - **Target-only dimensions** (`contract.*`): `--dimension` fails loudly with
   exit 2 `COMPLEXITY_DIMENSION_UNMEASURABLE_BEFORE_KERNEL` until the admission
-  schemas exist — they never silently pass. The full-vector run emits them
-  with status `TARGET-ONLY-UNTIL-ADMISSION-SCHEMAS` and `measured: null`.
+  schemas exist — they never silently pass. (The schemas exist on this tree
+  since WP-16 part 2; the loud-failure path was re-proven by temporarily
+  hiding one schema — see §5.) The full-vector run emits them
+  with status `TARGET-ONLY-UNTIL-ADMISSION-SCHEMAS` and `measured: null`
+  when they are absent.
 - **Binding semantics:** while `src/workflow-kernel/` is absent the vector is
   `predecessor-baseline-tree` and targets are explicitly non-binding
   (diagnostic evidence). Once the kernel exists the same command produces
@@ -178,7 +243,8 @@ node docs/refactoring/event-kernel/specs/measure-complexity.mjs --selftest
 
 ## 5. Determinism evidence (plan-required two-run proof)
 
-Command sequence (Windows, Git Bash, this tree):
+Command sequence (Windows, Git Bash, this tree, budget revision rev2 @
+`ek1/fix-complexity-measurer` from `integration/event-kernel-ek` `65e11f14`):
 
 ```
 $ node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out .ek-tmp/vector-run1.json
@@ -186,17 +252,36 @@ $ node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out .ek-tmp/
 $ cmp .ek-tmp/vector-run1.json .ek-tmp/vector-run2.json && echo IDENTICAL
 IDENTICAL
 $ sha256sum .ek-tmp/vector-run*.json
-ba9b66c9674343952a61919ceb2dba3b3c6b57e469bd38d151239ebc86dc84cb  vector-run1.json
-ba9b66c9674343952a61919ceb2dba3b3c6b57e469bd38d151239ebc86dc84cb  vector-run2.json
+628a9dacb82f0016ac14adf352c958faa05327d9d149f7a31129cc5384f5718c  vector-run1.json
+628a9dacb82f0016ac14adf352c958faa05327d9d149f7a31129cc5384f5718c  vector-run2.json
 ```
 
 Byte-identical. The driver contains no clock, no randomness, no absolute paths
 in output; every directory iteration is sorted; output is canonical 2-space
-JSON with a trailing newline. Vector summary at the base tree:
-**36 dimensions — 29 measured, 7 target-only** (the 7 are exactly the
-contract-shape schema dimensions).
+JSON with a trailing newline. Vector summary at this tree:
+**36 dimensions — 36 measured, 0 target-only** (the admission schemas exist
+since WP-16 part 2; schema version `ek1.complexity-vector.v2` — rev2 added
+the split columns). The three split dimensions already emit
+`bypass = census total, lawful = 0` on this pre-kernel tree.
 
-Loud-failure evidence (placeholder command run before the kernel exists):
+**Kernel-mode binding + determinism proof (rev2).** With a scratch
+`src/workflow-kernel/` containing one lawful repository read/write, one
+cross-aggregate read inside a repository, one app-script bypass read, one
+scripts bypass write, one kernel-scope projection read and one presentation
+tracker-view aggregate read, the live scan classified every site correctly
+(reads: lawful 1 / bypass 3; writes: lawful 1 / bypass 2; projection reads:
+bypass 1 — plus one real legacy statement,
+`src/process-modules/persistence/sqlite-lifecycle-run-repository.ts:1254`
+writing `factory_run_terminal_event_receipts`, correctly claimed by the
+`factory_run` prefix as transitional bypass). Two runs on that tree were
+byte-identical (`8b5f3b80…1db3`), and `--check` exited 1
+(`COMPLEXITY_CHECK_RED`) with all three split dimensions among the binding
+violations — the stop-gate binds on the bypass column the moment
+`src/workflow-kernel` lands. The scratch tree was then removed and the
+vector reverted byte-identically to the pre-kernel digest above.
+
+Loud-failure evidence (re-proven at rev2 by temporarily hiding one admission
+schema; restore is immediate):
 
 ```
 $ node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension contract.schemaAlternatives
@@ -206,11 +291,20 @@ silently passing; the EK-1 target is frozen in complexity-budget.json.
 (exit code 2)
 ```
 
-Mutation-resistance evidence (seed of the WP-16 part 3 corpus): deleting the
-`protocol.waitKinds` dimension from the budget turns `--selftest` red with two
-problems (mandated dimension missing; orphan measurement implementation),
-exit 1. The same mechanism makes "remove a complexity dimension" red, as the
-plan demands.
+Mutation-resistance evidence (seed of the WP-16 part 3 corpus):
+
+- deleting the `protocol.waitKinds` dimension from the budget turns
+  `--selftest` red with two problems (mandated dimension missing; orphan
+  measurement implementation), exit 1 — unchanged from rev1;
+- deleting `CognitionTransport` from
+  `lawfulRepositoryConvention.aggregateTablePrefixes` turns `--selftest` red
+  (declared aggregates ≠ frozen universe aggregates), exit 1;
+- deleting `templates` from `lawfulRepositoryConvention.projectionTables`
+  turns `--selftest` red (declared projections ≠ frozen census PROJECTION
+  class), exit 1.
+
+The same mechanism makes "remove a complexity dimension" and "silently
+re-scope the lawful-owner map" red, as the plan demands.
 
 ## 6. What EK-13 re-measures
 
@@ -224,7 +318,10 @@ At EK-13 the same driver runs on the final tree in binding mode:
    obligation-consumer protocol, one role-binding compilation path, one
    cumulative context accountant, zero projection-authority reads, zero
    workshop-owned schedulers, zero workshop-name kernel branches, zero
-   temporary legacy/replacement debt, 14 phases, 24 top-level packages.
+   temporary legacy/replacement debt, at most 14 phases, at most 24
+   top-level packages. The three split dimensions pass with
+   **bypass == 0**; their lawful columns (the SQL inside the sole-writer
+   repositories) are bounded by the repository-count dimensions, not zeroed.
 3. **Two-run determinism re-proven** on the final tree (same byte-identity
    requirement; the vector JSON is part of the qualification evidence).
 4. **Frozen-input digests still verified** — the census/universe/decisions
@@ -241,18 +338,53 @@ complexity cap" is therefore a machine check, not a prose claim.
    seven `contract.*` dimensions then flip from target-only to measured and
    their `--dimension` commands stop failing. The field-count measurement
    collapses digest/version companions onto their `…Ref` sibling, so the exact
-   targets are the plan's named counts (16 / 14).
+   targets are the plan's named counts (16 / 14). *(Parts 2 schemas and the
+   unified validator exist on this tree; part 3's mutation corpus remains.)*
 2. **WP-05** should register the typed vocabularies so `countKernelVocab`
    enumerates real declarations; until then the equality targets (53/52/49/5/
    28/67) are pinned by this budget against the frozen universe.
-3. **WP-16 part 3** folds `--selftest`/`--check` into
+3. **WP-06/EK-3** must name each aggregate's physical tables with the frozen
+   prefix of `lawfulRepositoryConvention.aggregateTablePrefixes`
+   (`factory_run…`, `lifecycle_run…`, `stage_run…`, `process_run…`,
+   `node_run…`, `workplace…`, `activity_attempt…`, `work_item…`,
+   `cognition_transport…`) and place their direct SQL only in
+   `src/workflow-kernel/persistence/<aggregate>-repository.ts`; anything else
+   the scan sees is bypass and red. Renaming a prefix is a budget revision
+   requiring an independent-verifier-approved measured complexity delta; adding
+   an aggregate or prefix reopens EK-1.
+4. **Census-frozen dimensions remain permanently red on any kernel tree**
+   (known, out of rev2 scope): `authority.mutableOwnerFanInFiles` (25),
+   `authority.mutableOwnerAggregates` (16), `authority.authoritativeRelationKinds`
+   (1), `composition.obligationConsumerImplementations` (4),
+   `roles.bindingAuthorities` (12), `prompts.assemblers` (10),
+   `workshops.ownedSchedulerImplementations` (27) and
+   `debt.temporaryLegacySurfaces` (97) all measure the frozen census/universe
+   inputs and therefore cannot go green on a successor tree the way the driver
+   binds today. Rev2 fixed exactly the three SQL-counting dimensions named by
+   operator review item 3; these others need the same lawful/predecessor-mode
+   treatment (separate review item / work package) before `--check` can ever
+   be green on a kernel tree.
+5. **Split-measurement edges (deliberate, documented):** presentation-scope
+   direct reads of aggregate tables count as bypass (no lawful direct-SQL read
+   of authoritative tables exists outside the one repository); a `DELETE FROM
+   <aggregate table>` outside its repository is counted in both the read and
+   write bypass columns; DDL is out of scope for the ownership scan (the EK-3
+   declarative bootstrap is sanctioned); cross-aggregate reads embedded in
+   write statements are caught by the read aspect; bypass-site lists in the
+   vector are capped at 50 sorted sites per dimension (`bypassSitesTruncated`
+   flags overflow).
+6. **WP-16 part 3** folds `--selftest`/`--check` into
    `npm run validate:ek-admission-specs` and the mutation corpus (the
-   remove-dimension red path demonstrated in §5 is the first corpus entry).
-4. The `admissionContractDigest` (plan EK-1) must include the digest of
+   remove-dimension and convention-drift red paths demonstrated in §5 are the
+   first corpus entries).
+7. The `admissionContractDigest` (plan EK-1) must include the digest of
    `complexity-budget.json` and of `measure-complexity.mjs` — both are inputs
    to the admission contract, and the vector JSON records the budget's sha256
-   for exactly that purpose.
-5. Determinism of the driver depends on sorted iteration and the frozen
+   for exactly that purpose. Rev2 changed both digests
+   (`complexity-budget.json` → `1e22a3d3…3b2e`,
+   `measure-complexity.mjs` → `d7e00b4c…0800b` at the rev2 commit); the
+   digest rotation is itself evidence of the sanctioned amendment.
+8. Determinism of the driver depends on sorted iteration and the frozen
    inputs only; if a future dimension needs environment data (e.g. provider
    limits), it must enter via a frozen, digest-verified artifact — never via
    ambient state.

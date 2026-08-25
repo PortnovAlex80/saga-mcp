@@ -30,6 +30,50 @@
     }
   },
   "measurementDriver": "measure-complexity.mjs",
+  "lawfulRepositoryConvention": {
+    "repositoryFilePattern": "src/workflow-kernel/persistence/<aggregate>-repository.ts",
+    "convention": "The sole lawful home of direct SQL against an aggregate's tables is that aggregate's EK-3 sole-writer repository file: src/workflow-kernel/persistence/<kebab(AggregateName)>-repository.ts (FactoryRun -> src/workflow-kernel/persistence/factory-run-repository.ts). Every direct-SQL statement against those tables in any other file is FORBIDDEN bypass SQL.",
+    "aggregateTablePrefixes": {
+      "FactoryRun": "factory_run",
+      "LifecycleRun": "lifecycle_run",
+      "StageRun": "stage_run",
+      "ProcessRun": "process_run",
+      "NodeRun": "node_run",
+      "Workplace": "workplace",
+      "ActivityAttempt": "activity_attempt",
+      "WorkItem": "work_item",
+      "CognitionTransport": "cognition_transport"
+    },
+    "tableBelongsRule": "table t belongs to aggregate A (prefix p) iff t === p || t === p + 's' || t.startsWith(p + '_'); anchored at the table-name start, so predecessor composites (factory_lifecycle_runs, factory_workplaces, factory_runtime_mode) belong to no successor aggregate",
+    "projectionTables": [
+      "activity_log",
+      "comments",
+      "factory_development_task_projections",
+      "notes",
+      "runtime_observations",
+      "subtasks",
+      "task_dependencies",
+      "tasks",
+      "templates"
+    ],
+    "kernelScope": "src/workflow-kernel/**",
+    "scannedScopes": ["src/**", "scripts/**", "tracker-view/**"],
+    "derivation": "The aggregate set is exactly the frozen universe's aggregates (frozen-inputs/transition-universe.json aggregates[].name) and the projection-table set is exactly the census PROJECTION class (frozen-inputs/authority-census.json tables[t].tableClass === 'PROJECTION'); measure-complexity.mjs re-proves both equalities on every run, so this declared map cannot drift from the frozen inputs. The table prefixes themselves are frozen HERE (this budget is the spec-frozen authority for successor physical table naming per aggregate).",
+    "splitContract": "For every dimension that counts SQL statements against new-kernel aggregates (authority.decisionReaderStatements, authority.decisionWriterStatements, authority.projectionAuthorityReads): lawful = statements inside the owning repository file of an aggregate whose tables they touch; bypass = the same statements anywhere else. The target binds on bypass == 0; the lawful column is unconstrained by these dimensions (bounded instead by authority.mutableOwnerFanInFiles max 1 writer file per table and authority.mutableOwnerAggregates exact 13 authority kinds). Before src/workflow-kernel exists the vector emits bypass = frozen-census total, lawful = 0 (no lawful owner exists on the predecessor tree), so --check binds on the bypass column the moment the kernel lands. Adding a projection table name is a recorded tightening; removing one reopens EK-1.",
+    "revisionPolicy": "Adding an aggregate or an aggregate table prefix reopens EK-1 (authority-topology delta); renaming a prefix is a budget revision requiring an independent-verifier-approved measured complexity delta before code is written."
+  },
+  "revisions": [
+    {
+      "id": "rev2-operator-review-items-3-4",
+      "branch": "ek1/fix-complexity-measurer",
+      "baseIntegrationSha": "65e11f1478c3caede383408d5562dc808808645d",
+      "operatorReview": "item 3 (decisionReaderStatements/decisionWriterStatements count ALL old-tree SQL; after the new kernel exists the measurer must distinguish LAWFUL SQL inside the owning repository from FORBIDDEN bypass SQL) + item 4 (topLevelPackageCount and phaseCount must be MAXIMUM, the plan's own wording is 'capped at')",
+      "changes": [
+        "lawfulRepositoryConvention block added; the three SQL-counting authority dimensions split into lawful/bypass columns and now bind on bypass == 0 (lawful bounded by the repository-count dimensions instead)",
+        "structure.phaseCount and structure.topLevelPackageCount target.kind exact -> max per plan line 'The execution structure is capped at the 14 named phases EK-0 through EK-13 and the 24 top-level work packages listed below' (docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md, Bounded successor complexity checklist)"
+      ]
+    }
+  ],
   "determinismContract": {
     "requirement": "plan EK-1: 'Run deterministic measurements twice on the same tree and require the same complexity vector' — byte-identical output, no clock, no randomness, sorted iteration, canonical JSON",
     "proofCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out run1.json && node docs/refactoring/event-kernel/specs/measure-complexity.mjs --out run2.json && cmp run1.json run2.json"
@@ -57,8 +101,8 @@
     "topLevelPackageCount": 24
   },
   "executionStructure": {
-    "phases": "exactly the 14 named phases EK-0 through EK-13 of docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md",
-    "topLevelPackages": "exactly the 24 top-level work packages WP-01..WP-18 (with WP-11D/F/V/L and WP-13A/B/C/D) listed in the plan's work-package table; a coordinator may split a package into tracked subtasks under the same owner/dependencies but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision"
+    "phases": "at most the 14 named phases EK-0 through EK-13 of docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md (the plan enumerates exactly 14 today; a 15th is forbidden, merges may reduce the count — 'capped at', operator review item 4)",
+    "topLevelPackages": "at most the 24 top-level work packages WP-01..WP-18 (with WP-11D/F/V/L and WP-13A/B/C/D) listed in the plan's work-package table (the plan lists exactly 24 today); a coordinator may split a package into tracked subtasks under the same owner/dependencies but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision; merges may reduce the count — 'capped at', operator review item 4"
   },
   "groups": {
     "authority": "who may read/write which fact (census-grounded)",
@@ -145,69 +189,103 @@
     {
       "id": "authority.decisionReaderStatements",
       "group": "authority",
-      "title": "Decision readers — direct-SQL decision reads outside the owning aggregate repository",
+      "title": "Decision readers — direct-SQL reads of aggregate-owned tables outside the owning repository (bypass column)",
       "planMandate": "plan: Bounded successor complexity — 'decision readers and writers'; plan: One authority — 'Only that repository may compare-and-set the aggregate revision'",
       "baseline": {
         "value": 1113,
         "unit": "decision-path reader statements (all direct SQL)",
         "measuredOn": "predecessor tree @ 21ba0816",
         "source": "frozen-inputs/authority-census.json tables[t].readers kind=READ_DECISION",
-        "citation": "AUTHORITY-CENSUS §1: '1486 reader statements (1113 decision-path, 373 presentation)'; §2 classes: 829 AUTHORITATIVE / 376 DIAGNOSTIC / 281 DELETE"
+        "citation": "AUTHORITY-CENSUS §1: '1486 reader statements (1113 decision-path, 373 presentation)'; §2 classes: 829 AUTHORITATIVE / 376 DIAGNOSTIC / 281 DELETE",
+        "split": {
+          "lawful": 0,
+          "bypass": 1113,
+          "note": "pre-kernel split: every predecessor decision read is bypass — no owning repository exists, so bypass = census total and lawful = 0"
+        }
       },
       "target": {
         "kind": "max",
         "value": 0,
         "enforcedFrom": "EK-6",
         "finalGate": "EK-13",
-        "detail": "zero decision reads that bypass the owning repository's read API; reads may still exist, but only through the one repository per aggregate"
+        "detail": "zero BYPASS reads: direct SQL against an aggregate's tables (per lawfulRepositoryConvention.aggregateTablePrefixes) is lawful only inside src/workflow-kernel/persistence/<aggregate>-repository.ts; the measured value this target binds on is the bypass column. The lawful column is unconstrained by this dimension — it is bounded by authority.mutableOwnerFanInFiles (max 1 writer file per table) and authority.mutableOwnerAggregates (exact 13)"
+      },
+      "splitSemantics": {
+        "population": "direct-SQL statements whose extracted read tables belong to a declared aggregate (live-tree scan of src/**, scripts/**, tracker-view/** once src/workflow-kernel exists; frozen-census totals before that)",
+        "lawful": "statement file === the owning repository file of every aggregate whose tables it reads",
+        "bypass": "the same statements in any other file — including presentation-scope files; a direct-SQL read of authoritative aggregate tables outside the one repository is a bypass of the read API regardless of consumer",
+        "binding": "target binds on bypass == 0; lawful unconstrained here"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.decisionReaderStatements",
-      "rationale": "Every one of the 1113 predecessor decision reads is a direct SQL statement outside any owning-repository contract; 281 of them select authority through channels the target model deletes. The successor re-expresses decision reads as owning-aggregate queries only.",
+      "rationale": "Every one of the 1113 predecessor decision reads is a direct SQL statement outside any owning-repository contract; 281 of them select authority through channels the target model deletes. The successor re-expresses decision reads as owning-aggregate queries only: the dimension binds on the bypass column (zero direct-SQL reads of aggregate tables outside the owning repository), while the lawful column — the SQL legitimately living inside the EK-3 sole-writer repositories — is bounded by the repository-count dimensions, not starved to zero by this one.",
       "accountableWorkPackage": "WP-06"
     },
     {
       "id": "authority.projectionAuthorityReads",
       "group": "authority",
-      "title": "Projection-authority reads — decision reads classified DELETE (projection/recency/status as authority)",
+      "title": "Projection-authority reads — kernel-scope direct-SQL reads of projection tables (bypass column)",
       "planMandate": "plan: Bounded successor complexity hard target — 'zero projection-authority reads'; plan: Definition of complete — 'Kanban cards are disposable read models and are never read by the kernel'",
       "baseline": {
         "value": 281,
         "unit": "DELETE-class decision reader statements",
         "measuredOn": "predecessor tree @ 21ba0816",
         "source": "frozen-inputs/authority-census.json tables[t].readers kind=READ_DECISION authorityClass=DELETE",
-        "citation": "AUTHORITY-CENSUS §2/§3.4: 281 DELETE-class readers; 128 DELETE-class marker uses concentrated in workitem-task (73), execution-attempt (28), material (28)"
+        "citation": "AUTHORITY-CENSUS §2/§3.4: 281 DELETE-class readers; 128 DELETE-class marker uses concentrated in workitem-task (73), execution-attempt (28), material (28)",
+        "split": {
+          "lawful": 0,
+          "bypass": 281,
+          "note": "pre-kernel split: all DELETE-class decision reads are bypass; lawful is structurally 0 for this dimension — a projection has no owning repository and no lawful kernel read exists"
+        }
       },
       "target": {
         "kind": "zero-after-phase",
         "value": 0,
         "enforcedFrom": "EK-7",
-        "finalGate": "EK-13"
+        "finalGate": "EK-13",
+        "detail": "zero kernel-scope (src/workflow-kernel/**) direct-SQL reads of the declared projection tables (lawfulRepositoryConvention.projectionTables — exactly the census PROJECTION class). Presentation-scope reads of projections outside the kernel remain legal: that is what disposable read models are for"
+      },
+      "splitSemantics": {
+        "population": "direct-SQL read statements of projection tables from kernel-scope files (live-tree scan once src/workflow-kernel exists; frozen-census DELETE-class totals before that)",
+        "lawful": "structurally 0 — projections are never read by the kernel; there is no owning repository to be lawful in",
+        "bypass": "every kernel-scope direct-SQL read touching a declared projection table",
+        "binding": "target binds on bypass == 0; lawful is identically 0 by construction"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.projectionAuthorityReads",
-      "rationale": "This is the plan's named hard target. The predecessor's task-status scheduling, recency selection and MAX(id) adoption are exactly this class; deleting/rebuilding the Kanban projection must change no decision outcome.",
+      "rationale": "This is the plan's named hard target. The predecessor's task-status scheduling, recency selection and MAX(id) adoption are exactly this class; deleting/rebuilding the Kanban projection must change no decision outcome. Post-kernel the class is measured mechanically: any SELECT issued from src/workflow-kernel/** that touches a projection table is a projection-authority read; no lawful variant exists.",
       "accountableWorkPackage": "WP-12"
     },
     {
       "id": "authority.decisionWriterStatements",
       "group": "authority",
-      "title": "Decision writers — direct-SQL writes outside an owning typed command",
+      "title": "Decision writers — direct-SQL writes of aggregate-owned tables outside the owning repository (bypass column)",
       "planMandate": "plan: Bounded successor complexity — 'decision readers and writers'; plan: One authority — 'A projector, UI, worker, reconciler, watchdog or recovery tool may issue a command, never a direct write'",
       "baseline": {
         "value": 524,
         "unit": "direct writer statements (390 src / 104 scripts / 30 tracker-view)",
         "measuredOn": "predecessor tree @ 21ba0816",
         "source": "frozen-inputs/authority-census.json tables[t].writers",
-        "citation": "AUTHORITY-CENSUS §1: 'writer statements enumerated + classified: 524'; dispositions 171 retain-and-move / 256 rewrite / 97 delete"
+        "citation": "AUTHORITY-CENSUS §1: 'writer statements enumerated + classified: 524'; dispositions 171 retain-and-move / 256 rewrite / 97 delete",
+        "split": {
+          "lawful": 0,
+          "bypass": 524,
+          "note": "pre-kernel split: every predecessor direct write is bypass — no owning repository exists, so bypass = census total and lawful = 0"
+        }
       },
       "target": {
         "kind": "max",
         "value": 0,
         "enforcedFrom": "EK-6",
         "finalGate": "EK-13",
-        "detail": "zero direct writes; every mutation is one of the 53 typed commands committed by the owning repository"
+        "detail": "zero BYPASS writes: direct SQL (INSERT/UPDATE/DELETE/REPLACE) against an aggregate's tables is lawful only inside src/workflow-kernel/persistence/<aggregate>-repository.ts — there every mutation is one of the 53 typed commands with idempotency keys, fences and expected revisions. The lawful column is unconstrained by this dimension — it is bounded by authority.mutableOwnerFanInFiles (max 1 writer file per table) and authority.mutableOwnerAggregates (exact 13)"
+      },
+      "splitSemantics": {
+        "population": "direct-SQL write statements whose extracted write targets belong to a declared aggregate (live-tree scan of src/**, scripts/**, tracker-view/** once src/workflow-kernel exists; frozen-census totals before that); DDL (CREATE/ALTER/DROP) is not a data write — the EK-3 declarative schema bootstrap is a separate sanctioned surface",
+        "lawful": "statement file === the owning repository file of every aggregate whose tables it writes",
+        "bypass": "the same statements in any other file",
+        "binding": "target binds on bypass == 0; lawful unconstrained here"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.decisionWriterStatements",
-      "rationale": "The restore-by-row-rewrite recovery surface (scripts/restore-from-checkpoint.mjs) and the four external factory_workplaces writers are the incident-generating class; the successor allows writes only through typed commands with idempotency keys, fences and expected revisions.",
+      "rationale": "The restore-by-row-rewrite recovery surface (scripts/restore-from-checkpoint.mjs) and the four external factory_workplaces writers are the incident-generating class; the successor allows writes only through typed commands committed by the owning repository. The dimension binds on the bypass column (zero direct writes outside the sole-writer repositories); the SQL inside those repositories is the lawful remainder, bounded by the repository-count dimensions instead of by this one.",
       "accountableWorkPackage": "WP-06"
     },
     {
@@ -876,8 +954,8 @@
     {
       "id": "structure.phaseCount",
       "group": "structure",
-      "title": "Execution structure — phase count (exact)",
-      "planMandate": "plan: Bounded successor complexity — 'The execution structure is capped at the 14 named phases EK-0 through EK-13'",
+      "title": "Execution structure — phase count (maximum 14)",
+      "planMandate": "plan: Bounded successor complexity — 'The execution structure is capped at the 14 named phases EK-0 through EK-13 and the 24 top-level work packages listed below. A coordinator may split a package into tracked subtasks under the same owner/dependencies, but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision'",
       "baseline": {
         "value": 14,
         "unit": "phases declared in the plan document",
@@ -886,20 +964,20 @@
         "citation": "EK-0 through EK-13"
       },
       "target": {
-        "kind": "exact",
+        "kind": "max",
         "value": 14,
         "enforcedFrom": "EK-1",
         "finalGate": "EK-13",
-        "detail": "the plan may not grow a 15th phase; re-scoping merges or replaces an existing phase and reopens the admission decision"
+        "detail": "the plan may not grow a 15th phase (measured > 14 is red); merging or re-scoping phases may reduce the count below 14 without failing — the plan's own wording is 'capped at', a maximum, not an exact equality (operator review item 4; budget revision rev2)"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension structure.phaseCount",
-      "rationale": "Phase count is schedule-shaped complexity: hidden phases are untracked authority. The measurement reads the governing plan document itself, so adding a phase turns the checker red.",
+      "rationale": "Phase count is schedule-shaped complexity: hidden phases are untracked authority. The measurement reads the governing plan document itself, so adding a phase turns the checker red. The cap is a maximum because the plan freezes an upper bound on execution structure ('capped at the 14 named phases'), not a required exact count: a merge that leaves 13 phases is a structural simplification inside the envelope, not a deviation.",
       "accountableWorkPackage": "WP-16"
     },
     {
       "id": "structure.topLevelPackageCount",
       "group": "structure",
-      "title": "Execution structure — top-level work-package count (exact)",
+      "title": "Execution structure — top-level work-package count (maximum 24)",
       "planMandate": "plan: Bounded successor complexity — 'and the 24 top-level work packages listed below. A coordinator may split a package into tracked subtasks under the same owner/dependencies, but may not add another top-level package after EK-1 without replacing or merging an existing package and reopening the admission decision'",
       "baseline": {
         "value": 24,
@@ -909,14 +987,14 @@
         "citation": "WP-01..WP-10, WP-11D/F/V/L, WP-12, WP-13A/B/C/D, WP-14..WP-18"
       },
       "target": {
-        "kind": "exact",
+        "kind": "max",
         "value": 24,
         "enforcedFrom": "EK-1",
         "finalGate": "EK-13",
-        "detail": "tracked subtasks under an existing owner are legal; a 25th top-level package is a structural complexity delta requiring package replacement/merge plus reopened admission"
+        "detail": "tracked subtasks under an existing owner are legal; a 25th top-level package is a structural complexity delta requiring package replacement/merge plus reopened admission (measured > 24 is red); merging packages may reduce the count without failing — the plan's own wording is 'capped at', a maximum, not an exact equality (operator review item 4; budget revision rev2)"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension structure.topLevelPackageCount",
-      "rationale": "Work packages are ownership boundaries; adding one without removing another is authority sprawl. The measurement parses the plan table, so the cap is enforced against the actual document.",
+      "rationale": "Work packages are ownership boundaries; adding one without removing another is authority sprawl. The measurement parses the plan table, so the cap is enforced against the actual document. The cap is a maximum because the plan's freeze is an upper bound on the execution structure ('capped at ... the 24 top-level work packages') whose replacement/merge clause explicitly contemplates the count going down while never going up.",
       "accountableWorkPackage": "WP-16"
     }
   ]
