@@ -74,6 +74,9 @@ round 3 correction).
 
 ## New work item: Elite Evidence Kit v1 (operator directive 2026-08-25)
 
+**Status 2026-08-26: EXTRACTION COMPLETE** — merged at c2cc99de (branch ek/evk-extract, HEAD 533555ea). Two corpus entries committed: elite-fresh-20260825 (35 input capsules / 28 actor capsules / 876 normalized events / 13-13 invariants) and elite-8 (41 / 29 / 665 / 13-13, 14 failure witnesses incl. 9 repair_required verdicts). Deterministic extractor tools/elite-evidence-kit/extract.mjs (double-extraction byte-identical). Consumers: WP-08 capsule ingress + WP-13A scenario contract + WP-13B actors + WP-13D corpus. Elite-2 remains parked at its human gate (operator-reserved click).
+
+
 Convert Elite runs into regression corpus per the operator's proposal:
 - **Elite-8** (terminal, failed at development-plan-task-graph) → immutable
   NEGATIVE scenario: expected outcome = honest typed refusal without
