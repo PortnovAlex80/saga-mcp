@@ -65,7 +65,7 @@ function configureFactoryControl(db, epicId, model, concurrency) {
     model.provider,
     model.id,
     model.effort,
-    model.limit,
+    concurrency,  // model_concurrency_limit = operator's concurrency (no catalog forcing)
   );
 }
 

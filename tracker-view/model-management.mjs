@@ -464,11 +464,13 @@ export function createModelManagementApi({
              VALUES (?, ?, ?, ?, ?, 1)
              ON CONFLICT(epic_id) DO UPDATE SET
                model_name=excluded.model_name,
-               model_concurrency_limit=excluded.model_concurrency_limit,
                model_provider=excluded.model_provider,
                model_effort=excluded.model_effort,
                updated_at=datetime('now')`
           ).run(epicId, modelId, model.limit, provider, model.effort ?? null));
+          // model_concurrency_limit: written ONLY on INSERT (new row needs a
+          // default). On UPDATE the limit is untouched — POST /api/engine/
+          // concurrency is the single writer (STAGE-23 one-entry law).
         } catch (e) {
           return respondJson(res, 500, { ok:false, error:'control write failed: ' + e.message });
         }
@@ -506,13 +508,14 @@ export function createModelManagementApi({
         return respondJson(res, 400, { ok: false, error: 'value must be an integer 1..10' });
       }
       withDbWrite(db => db.prepare(
-        `INSERT INTO lifecycle_execution_controls (epic_id, concurrency)
-         VALUES (?, ?)
+        `INSERT INTO lifecycle_execution_controls (epic_id, concurrency, model_concurrency_limit)
+         VALUES (?, ?, ?)
          ON CONFLICT(epic_id) DO UPDATE SET
            concurrency=excluded.concurrency,
+           model_concurrency_limit=excluded.model_concurrency_limit,
            concurrency_changed_at=datetime('now'),
            updated_at=datetime('now')`,
-      ).run(epicId, raw));
+      ).run(epicId, raw, raw));
       const row = withDb(db => db.prepare(
         'SELECT concurrency FROM lifecycle_execution_controls WHERE epic_id=?',
       ).get(epicId));
