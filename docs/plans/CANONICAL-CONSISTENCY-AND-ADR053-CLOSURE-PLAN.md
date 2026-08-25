@@ -251,8 +251,10 @@ run green on the audited tree; fresh operator re-run 123/123).
       quarantined; the concurrent drive failures were root-caused as TEMP disk
       exhaustion — 8.2GB of stale harness roots removed — and re-verified
       green: e2e-deterministic 29/29, conveyor-periphery 663/663.)
-- [ ] Full-suite re-run on the FINAL head (post `7e59016e` + the Phase-7
-      documentation commits) — scheduled after the canary window closes.
+- [x] Full-suite re-run on the FINAL head: GREEN — `TOTAL tests=4649
+      pass=4616 fail=0 skipped=33`, exit 0 (after two honest guard repairs:
+      the REG-28 drain sanctioned in the lifecycle writer ratchet; K0
+      frozen-evidence pins re-captured to the final-harvest blobs).
 
 ## Phase 6 — Make `saga4` canonical and clean branch topology — EXECUTED (FF target has since advanced)
 
@@ -301,20 +303,25 @@ canonical and Phase 5 verified green.
 - [x] Run clean scripted E2E from a fresh DB/repository. (Frozen-build
       scripted legs: 3 whole-factory lanes + 3 Development scenarios + the
       documentation witness, 8/8 green, receipt-witnessed immutability.)
-- [ ] Run the clean real canary required by ADR-053 EC-10. (Canary-1 PASSED:
+- [x] Run the clean real canary required by ADR-053 EC-10. (Canary-1 PASSED:
       terminal runnable-local / stage verified / exit 0, ~3h10m, zero
-      intervention, snapshot captured. Canary-2 IN FLIGHT.)
+      intervention, snapshot captured. Canary-2 COMPLETED zero-intervention
+      to an honest typed `development-blocked` terminal — certificate
+      implementation-incomplete, declared outcome class, no new invariant.)
 - [x] Run the bounded ADR-096 qualification/kill gate. (GATE-RECEIPT drafted
       with per-item verdicts — items 2/3/4 PASS, item 1 honest PARTIAL 34/40,
       item 5 half-passed, item 6 no new invariant class so far; finalized
       after canary-2.)
-- [ ] Only after evidence review, sign ADR-053 closure or publish its exact
-      remaining counterexample.
+- [x] Only after evidence review, sign ADR-053 closure or publish its exact
+      remaining counterexample. (SIGNED CLOSED — `2c3319a8`, registry 72/72;
+      no counterexample stands; residuals classified in
+      `COMPLETION-RECEIPT.md`.)
 
 ## Final deliverables
 
-- [ ] One canonical `saga4` commit SHA. (Interim: `7e59016e`; final SHA issued
-      with the completion receipt after the canary window.)
+- [x] One canonical `saga4` commit SHA: the completion-receipt commit —
+      see `docs/factory-run/qualification-adr096/COMPLETION-RECEIPT.md`
+      (final line records the exact closing SHA).
 - [x] Clean branch/worktree inventory.
       (`docs/factory-run/qualification-adr096/INVENTORY.md`, refreshed.)
 - [x] ADR-095 Phase-6 evidence table. (`DISCOVERY-PHASE6-CLOSURE.md`.)
