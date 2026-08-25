@@ -179,6 +179,17 @@ test('architecture: no direct lifecycle UPDATE outside sanctioned writers', () =
     // mechanism for one event); the writer stays sanctioned as the drain for
     // any future explicitly-mandated re-plan cycle.
     'src/modules/development/application/replan-supersede.ts',
+    // REG-28 (2026-08-25, W2): the settlement drain cancels anonymous
+    // todo/queued projections at process settlement — same sanctioned class
+    // as replan-supersede and lifecycle burial: transactional (runs INSIDE
+    // the GenericFlowExecutor settlement transaction via sharedDeps.
+    // settleDrain), one-way (todo/queued -> cancelled only), closed
+    // terminal_reason vocabulary, CAS revision bump per row, result
+    // recorded in task metadata, typed §23 parks protected, idempotent on
+    // re-settlement. Regression: tests/process-modules/
+    // reg28-kanban-drain-at-settlement.test.mjs (4 tests) plus the
+    // kanban-drain oracle on both terminal scenario drives.
+    'src/process-modules/infrastructure/workplace-settlement-drain.ts',
   ]);
 
   const FORBIDDEN_PATTERNS = [

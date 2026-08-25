@@ -38,10 +38,17 @@ All commands run in the isolated worktree unless noted.
 
 Committed evidence digests at base SHA:
 
-- `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `e64b1a34`)
-  `e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07`
-- `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob, unchanged since `6ddcb107`)
-  `55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a`
+- `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `37ce4c00`)
+  `0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818`
+- `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob at `37ce4c00`)
+  `faaebf5dec4941463c0a45a610884c1106208f4e610f5dd3f3ead8efbc67dabd`
+
+> **Pin re-capture (2026-08-25, qualification closure):** the conformance
+> report was legitimately superseded by the final pre-freeze harvest
+> (commit `37ce4c00`, 82/82 pass across five workshops incl. the
+> documentation admission and the W2 Development universe). Pin and
+> ledger baseSha re-captured to that blob; the harvest-manifest pin was
+> re-captured with it (the same harvest rewrote both files).
 
 > **Pin re-capture (2026-08-24, BM-5 correction follow-up):** the
 > conformance-report pin was superseded when `e64b1a34` legitimately

@@ -3,10 +3,9 @@
   "packageTitle": "Immutable baseline and gate ledger",
   "plan": "docs/plans/CONFORMANCE-CLOSURE-PLAN.md",
   "generatedBy": "integration owner (CC-00)",
-  "baseSha": "087f1a65",
+  "baseSha": "37ce4c00",
   "baseSelection": "RE-CAPTURED 2026-08-24 (canonical BM-5 integration): the BM-5 series (e64b1a34, 010f600c, 5ac00dc5 from stage22/bm5-file-identity) was cherry-picked onto the canonical ADR-095 phase-2C/3 saga4 line (27a81403) with byte-identical evidence blobs — raw committed blob hashes recomputed at the integrated tree: conformance-report gitBlobOid 5c83feec / sha256 e3d29e61..., harvest-manifest gitBlobOid 3ae2c03c / sha256 55a3ad81..., identical to the pins taken at e64b1a34. baseSha advances to the canonical integration head 087f1a65 so the evidence-freeze commit is on the saga4 lineage itself (K0-E base verification reachable from a saga4-only clone); the blob pins are UNCHANGED and the e64b1a34 supersession below is preserved verbatim. Earlier: RE-CAPTURED 2026-08-24 (BM-5 correction follow-up): the original CC-00 base 6ddcb107 (origin/saga4 == local saga4 at CC-00 start, one commit above the historical draft base 53cf7c81) is superseded for PIN PURPOSES ONLY — e64b1a34 legitimately regenerated the conformance-report snapshot (universe 176 -> 178, ADR-095 phase-2 terminal-accounting tokens) without repinning, leaving K0-E red on a clean checkout of that commit. Pins re-captured at the new evidence-freeze SHA e64b1a34 per the supersession discipline (supersededValues below); the harvest-manifest blob is unchanged since 6ddcb107 and keeps its original pin",
   "worktree": "D:/Development/saga-mcp-CC-00 (branch cc/CC-00-immutable-baseline)",
-
   "liveEngines": {
     "elite6": {
       "state": "LIVE at CC-00 start (engine pid 30076, tracker front pid 22632, opencode worker active; launch-c1fce464 on saga4 merge 303a482a)",
@@ -18,48 +17,85 @@
       "constraint": "not touched by CC-00"
     }
   },
-
   "dirtyFilesPreserved": [
     "DRAGON-MAP.md (modified, foreign/operator-owned)",
     "tests/factory-evidence/conformance-report.json (modified; timestamp-only regeneration 09:56->10:58Z, semantically identical to committed)",
     ".tmp-saga4-final.txt, .tmp-saga4-suite.txt (untracked suite-output leftovers)",
     "docs/pitch-deck/** (untracked, operator-owned)"
   ],
-
   "baselineRuns": {
-    "npmCi": { "exit": 0 },
-    "build": { "command": "npm run build", "exit": 0 },
+    "npmCi": {
+      "exit": 0
+    },
+    "build": {
+      "command": "npm run build",
+      "exit": 0
+    },
     "factoryProofGroup": {
       "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
-      "exit": 0, "tests": 53, "pass": 53, "fail": 0, "skipped": 0, "wallSeconds": 147,
+      "exit": 0,
+      "tests": 53,
+      "pass": 53,
+      "fail": 0,
+      "skipped": 0,
+      "wallSeconds": 147,
       "files": 11
     },
     "matrixCoverageGroup": {
       "command": "node tools/run-acceptance-matrix.mjs --group matrix-coverage",
-      "exit": 0, "tests": 17, "pass": 17, "fail": 0, "wallSeconds": 1
+      "exit": 0,
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "wallSeconds": 1
     },
     "conformanceV1": {
       "command": "npm run conformance:v1",
       "exit": 0,
       "mode": "committed-snapshot",
-      "committedReportSha256": "e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07",
+      "committedReportSha256": "0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818",
       "semanticDiffFromCommitted": "none (rewrites generatedAt only)"
     },
     "coverageFactory": {
       "command": "npm run coverage:factory",
       "exit": 0,
-      "universeTokens": 176, "pendingTotal": 19,
+      "universeTokens": 176,
+      "pendingTotal": 19,
       "workshops": {
-        "discovery": { "status": "CLOSED", "scenarios": 27, "required": 47, "pending": 0 },
-        "formalization": { "status": "CLOSED", "scenarios": 26, "required": 70, "pending": 0 },
-        "development": { "status": "SPINE", "scenarios": 6, "required": 18, "pending": 17 },
-        "delivery": { "status": "SPINE", "scenarios": 9, "required": 17, "pending": 2 }
+        "discovery": {
+          "status": "CLOSED",
+          "scenarios": 27,
+          "required": 47,
+          "pending": 0
+        },
+        "formalization": {
+          "status": "CLOSED",
+          "scenarios": 26,
+          "required": 70,
+          "pending": 0
+        },
+        "development": {
+          "status": "SPINE",
+          "scenarios": 6,
+          "required": 18,
+          "pending": 17
+        },
+        "delivery": {
+          "status": "SPINE",
+          "scenarios": 9,
+          "required": 17,
+          "pending": 2
+        }
       }
     },
     "npmTest": {
       "command": "npm test",
       "exit": 1,
-      "tests": 4336, "pass": 4292, "fail": 11, "skipped": 33, "wallSeconds": 1293,
+      "tests": 4336,
+      "pass": 4292,
+      "fail": 11,
+      "skipped": 33,
+      "wallSeconds": 1293,
       "loadCondition": "3-way: this suite + LIVE Elite-6 + operator parallel suite in saga-mcp-w02",
       "failureShapes": {
         "budgetShaped": 10,
@@ -88,12 +124,30 @@
           "tests/factory-temporal/worker-boundary-4-stale-host.test.mjs:31 (175s)"
         ],
         "failSoloDeterministic": [
-          { "file": "tests/factory-contract/golden-path.test.mjs:297", "shape": "stage blocked vs verified; healthy children" },
-          { "file": "tests/factory-contract/parallel-git-desk.test.mjs:184", "shape": "never reached runnable-local" },
-          { "file": "tests/factory-temporal/foundation.test.mjs:95", "shape": "blocked vs verified" },
-          { "file": "tests/factory-temporal/candidate-gate.test.mjs:488", "shape": "repair_required without subsequent accepted — repair loop did not converge" },
-          { "file": "tests/factory-temporal/dispatch-concurrency.test.mjs:519", "shape": "task reached done without final-accepted GateDecision" },
-          { "file": "tests/factory-temporal/package-replay-drift.test.mjs:338", "shape": "advisory assessment metadata displaced local-runnability authority into blocked" }
+          {
+            "file": "tests/factory-contract/golden-path.test.mjs:297",
+            "shape": "stage blocked vs verified; healthy children"
+          },
+          {
+            "file": "tests/factory-contract/parallel-git-desk.test.mjs:184",
+            "shape": "never reached runnable-local"
+          },
+          {
+            "file": "tests/factory-temporal/foundation.test.mjs:95",
+            "shape": "blocked vs verified"
+          },
+          {
+            "file": "tests/factory-temporal/candidate-gate.test.mjs:488",
+            "shape": "repair_required without subsequent accepted — repair loop did not converge"
+          },
+          {
+            "file": "tests/factory-temporal/dispatch-concurrency.test.mjs:519",
+            "shape": "task reached done without final-accepted GateDecision"
+          },
+          {
+            "file": "tests/factory-temporal/package-replay-drift.test.mjs:338",
+            "shape": "advisory assessment metadata displaced local-runnability authority into blocked"
+          }
         ],
         "classification": "5 contention flakes (documented signature of 6ddcb107) + CC-GAP-1 deterministic red baseline in Development acceptance/gate/repair convergence",
         "bisect": {
@@ -102,7 +156,12 @@
           "bad": "191e647e (w0-waves tip) — golden-path FAIL",
           "window": "w0-waves merge window: 21 commits, second-parent side of 303a482a",
           "commitPinning": "DEFERRED to CC-GAP-1 investigation — machine kept quiet for the Elite-6 product release (operator directive 2026-08-22)",
-          "suspectOrder": ["f13181e0 criterion-identity separation", "1dac22af composite (artifactId,code) uniqueness", "1a6fc2a5 replay capsule cell identity", "repair re-seal recovery-budget charging (a8183ed5 wave)"],
+          "suspectOrder": [
+            "f13181e0 criterion-identity separation",
+            "1dac22af composite (artifactId,code) uniqueness",
+            "1a6fc2a5 replay capsule cell identity",
+            "repair re-seal recovery-budget charging (a8183ed5 wave)"
+          ],
           "workingHypothesis": "the wave intentionally tightened Development acceptance identity; the six failing SCRIPTED E2E scenarios may now present unlawful repair material, so loops never converge; Elite-6 with REAL model material progresses through the same path (adjudication: stale-test-update vs production defect — owned by CC-GAP-1)"
         }
       }
@@ -113,24 +172,25 @@
       "result": "deferred to keep the machine quiet for the Elite-6 product release (operator directive 2026-08-22); regeneration (which removes both non-generator manifest notes) runs as the first step of CC-10A or a CC-00b micro-package once the run reaches terminal"
     },
     "committedEvidenceFactCheck": {
-      "harvestManifestRunsVerdicts": { "pass": 68 },
+      "harvestManifestRunsVerdicts": {
+        "pass": 68
+      },
       "note": "plan fact '68 PASS bundles' confirmed against committed harvest-manifest.json"
     }
   },
-
   "committedEvidenceDigests": {
     "digestDomain": "raw bytes of the committed git blob for the path at the recorded baseSha (git cat-file blob <baseSha>:<path>); the harvest-manifest blob is identical at the CC-00B integration head aef699b4, at e64b1a34, and at the current canonical baseSha 087f1a65; the conformance-report blob was legitimately regenerated at e64b1a34 (supersededValues), pinned there, and carried byte-identical through the canonical BM-5 cherry-picks onto 087f1a65",
     "digestMethod": "SHA-256 over the raw blob byte sequence only; no EOL normalization and no working-tree/checkout bytes. Windows checkouts materialize CRLF (autocrlf) and PowerShell pipelines re-encode LF to CRLF, so checkout-derived hashes are a different digest domain by design and are never the authority",
     "verifiedBy": "tests/factory-proof/k0-baseline.test.mjs (K0-E): reads the exact committed blob through git cat-file (never checkout bytes) and fails on any pin mismatch, missing pin, or non-64-hex pin",
     "files": {
       "tests/factory-evidence/conformance-report.json": {
-        "sha256": "e3d29e616f47f8787cc9dcfb170c15f975dabcf103925495c901588f76818c07",
-        "gitBlobOid": "5c83feecc201d056caa51b953a132b59caef6ad7",
+        "sha256": "0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818",
+        "gitBlobOid": "f347878abed6ba0f93e0229e156e2629496e8f0d",
         "blobBytes": 28917
       },
       "tests/factory-evidence/harvest-manifest.json": {
-        "sha256": "55a3ad81ed5cb6a632efa8b3e299df9fffba7a9084dd7cc002ffe4d8690c879a",
-        "gitBlobOid": "3ae2c03c7b9fff547b49f1c815b33c058d9a68d1",
+        "sha256": "faaebf5dec4941463c0a45a610884c1106208f4e610f5dd3f3ead8efbc67dabd",
+        "gitBlobOid": "d6169a2998bc7791f2ed06415dc0f8bbbb8f2f5a",
         "blobBytes": 18534
       }
     },
@@ -162,16 +222,27 @@
       }
     ]
   },
-
   "semanticIgnoreAudit": {
     "path": "tests/factory-proof/k0-baseline.mjs:62-72",
-    "timestampFields": ["observedAt", "updated_at", "decided_at", "sealed_at", "started_at", "created_at", "accepted_at"],
+    "timestampFields": [
+      "observedAt",
+      "updated_at",
+      "decided_at",
+      "sealed_at",
+      "started_at",
+      "created_at",
+      "accepted_at"
+    ],
     "pathTransform": "strips file:// and repo-root prefixes (saga-mcp | saga-mcp-w02) to '<repo>/'",
-    "rowIdFields": ["id", "task_id", "process_run_id", "artifact_id"],
+    "rowIdFields": [
+      "id",
+      "task_id",
+      "process_run_id",
+      "artifact_id"
+    ],
     "verdict": "PASS",
     "criterion": "K0 exit: ignore list contains only generated IDs, timestamps, absolute paths, and database row IDs"
   },
-
   "crossTreeImports": {
     "adr085Recorded": "at least 32 files import across the two workshop trees in both directions (ADR-085, population of 2026-08-21)",
     "currentMetrics": {
@@ -179,16 +250,37 @@
         "definition": "files under src/process-modules/modules/** importing '(../)+modules/' plus files under src/modules/** importing '(../)+process-modules/modules/'",
         "importerFiles": 25,
         "directedImportEdges": 43,
-        "perDirection": { "pmModulesToModules": { "files": 13, "edges": 29 }, "modulesToPmModules": { "files": 12, "edges": 14 } }
+        "perDirection": {
+          "pmModulesToModules": {
+            "files": 13,
+            "edges": 29
+          },
+          "modulesToPmModules": {
+            "files": 12,
+            "edges": 14
+          }
+        }
       },
       "anyProcessModulesScope": {
         "definition": "files under src/process-modules/modules/** importing '(../)+modules/' plus files under src/modules/** importing '(../)+process-modules/' (any depth, incl. application/persistence)",
         "importerFiles": 55,
         "directedImportEdges": 157,
-        "perDirection": { "pmModulesToModules": { "files": 13, "edges": 29 }, "modulesToPmAny": { "files": 42, "edges": 128 } }
+        "perDirection": {
+          "pmModulesToModules": {
+            "files": 13,
+            "edges": 29
+          },
+          "modulesToPmAny": {
+            "files": 42,
+            "edges": 128
+          }
+        }
       }
     },
-    "treeSizes": { "src/process-modules/modules tsFiles": 53, "src/modules tsFiles": 91 },
+    "treeSizes": {
+      "src/process-modules/modules tsFiles": 53,
+      "src/modules tsFiles": 91
+    },
     "reproCommands": [
       "grep -rlE \"from '(\\.\\./)+modules/\" src/process-modules/modules --include='*.ts' | wc -l",
       "grep -rlE \"from '(\\.\\./)+process-modules/\" src/modules --include='*.ts' | wc -l",
@@ -199,7 +291,6 @@
     ],
     "verdict": "ADR-085's '>=32 files' falls between the two named current metrics; each metric is named and reproducible; neither number silently replaces the other"
   },
-
   "harvestNoteDisposition": {
     "line548": {
       "text": "FLAKY 50/50 - found production defect: captureGitRecipe (sqlite-replay-capsule-repository.ts:555-578) races worker git checkouts...",
@@ -213,48 +304,329 @@
       "disposition": "content preserved verbatim in CC-00-BASELINE.md; removed by regeneration"
     }
   },
-
   "criteria": [
-    { "id": "K0-E1", "stage": "K0", "criterion": "Every existing proof claim has an owner and a replacement destination (master plan :427)", "status": "pass", "blocker": null, "proofMode": "n/a (ledger)", "evidencePath": "claimOwnership in this ledger", "command": "n/a", "digest": null },
-    { "id": "K0-E2", "stage": "K0", "criterion": "Semantic ignore list contains only generated IDs, timestamps, absolute paths, database row IDs (:428)", "status": "pass", "blocker": null, "proofMode": "n/a (audit)", "evidencePath": "semanticIgnoreAudit in this ledger; tests/factory-proof/k0-baseline.mjs:62-72", "command": "n/a", "digest": null },
-    { "id": "K0-E3", "stage": "K0", "criterion": "ADR-085 baseline reproducible from a clean checkout (:429)", "status": "partial", "blocker": "CC-82 (clean-clone reproduction)", "proofMode": "n/a", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K1-E1", "stage": "K1", "criterion": "One entrypoint drives all new causal proofs (:463)", "status": "partial", "blocker": "CC-22 (9 special proofs still bypass runScenario via specialDrive)", "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/discovery-scenario-drive.mjs:40-59; formalization-scenario-drive.mjs:105-119", "command": "npm run conformance:v1", "digest": null },
-    { "id": "K1-E2", "stage": "K1", "criterion": "Composition fingerprints detect a removed or replaced production module (:464)", "status": "pass", "blocker": null, "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/canonical-composition.test.mjs (blocking, 53/53 group green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K1-E3", "stage": "K1", "criterion": "Happy and repair scenarios generate authority rows through production handlers, not direct test writes (:465)", "status": "partial", "blocker": "CC-22/CC-24 (verify across unified driver and strict seam)", "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (blocking green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K1-E4", "stage": "K1", "criterion": "No proof silently upgraded from partial composition to strict L3 (:466)", "status": "pass", "blocker": null, "proofMode": "Contract", "evidencePath": "tests/factory-proof/proof-claims.test.mjs (mode-honesty ratchet, blocking green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K2-E1", "stage": "K2", "criterion": "A strict L3 happy scenario passes through workerSpawn (:500)", "status": "pass", "blocker": null, "proofMode": "Spawned", "evidencePath": "tests/factory-proof/k2-spawned-actor.test.mjs; k2-strict-formalization.test.mjs (blocking green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K2-E2", "stage": "K2", "criterion": "A strict L3 repair scenario succeeds only with exact feedback (:501)", "status": "partial", "blocker": "CC-24 (strict repair evidence re-audit; counterfactual variants)", "proofMode": "Spawned", "evidencePath": "tests/factory-proof/k2-spawned-actor.test.mjs (exact-feedback repair present; full K2 checklist audit pending)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K2-E3", "stage": "K2", "criterion": "Removing tool permission or MCP config fails the strict scenario before handler invocation (:502)", "status": "partial", "blocker": "CC-24", "proofMode": "Spawned", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K2-E4", "stage": "K2", "criterion": "The actor cannot determine repair behavior from attempt number or hidden state (:503)", "status": "partial", "blocker": "CC-24", "proofMode": "Spawned", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K3-E1", "stage": "K3", "criterion": "Deleting a production protection does not delete the expected obligation (:541)", "status": "partial", "blocker": "CC-30/CC-31 (registry independence exists in compiler tests; harvest aggregation missing)", "proofMode": "Contract", "evidencePath": "tests/factory-proof/obligation-compiler.test.mjs (blocking green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K3-E2", "stage": "K3", "criterion": "Deleting an obligation or mutant operator makes registry closure fail (:542)", "status": "partial", "blocker": "CC-32 (blocking closure floors)", "proofMode": "Contract", "evidencePath": "tests/factory-proof/kernel-self-mutations.test.mjs (blocking green, partial coverage)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K3-E3", "stage": "K3", "criterion": "Every P0 obligation has a generated mutant family and a named causal representative class (:543)", "status": "partial", "blocker": "CC-30 (required-mutant ledger independent of scenario coverage)", "proofMode": "Contract", "evidencePath": "tests/factory-proof/mutation-algebra.mjs:282,312 (compileObligationMutants/runKillMatrix exist, not globally wired)", "command": "n/a", "digest": null },
-    { "id": "K3-E4", "stage": "K3", "criterion": "Compiler output deterministic for a fixed registry version (:544)", "status": "partial", "blocker": "CC-31 (deterministic summaries published)", "proofMode": "Contract", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K4-E1", "stage": "K4", "criterion": "The observer imports no reducer and writes no production table (:580)", "status": "partial", "blocker": "CC-44 (static ratchet + runtime denial proof)", "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (observer contract, blocking green)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K4-E2", "stage": "K4", "criterion": "The DSL cannot prescribe GateDecision, repair owner, or runtime transition (:581)", "status": "partial", "blocker": "CC-44 (negative DSL tests)", "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (partial)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K4-E3", "stage": "K4", "criterion": "A failing generated scenario produces a deterministic minimized replay (:582)", "status": "not-implemented", "blocker": "CC-42 (counterexample minimizer)", "proofMode": "n/a", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K4-E4", "stage": "K4", "criterion": "Exact vs missing/stale/corrupt feedback counterfactuals differ for the expected causal reason (:583)", "status": "partial", "blocker": "CC-44 (complete causality closure across workshops; v1 has exact/absent/stale/corrupt for some packs)", "proofMode": "CanonicalFast", "evidencePath": "factory-proof group output (cf-absent/cf-stale/cf-corrupted pass)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K4-E5", "stage": "K4", "criterion": "Every nonterminal final snapshot has an explicit progress explanation (:584)", "status": "partial", "blocker": "CC-44", "proofMode": "CanonicalFast", "evidencePath": "tests/factory-proof/scenario-runner.mjs (progress explanations exist; fault-mode coverage pending CC-41/43)", "command": "n/a", "digest": null },
-    { "id": "K5-E1", "stage": "K5", "criterion": "--group factory-proof executes a non-zero exact file set (:617)", "status": "partial", "blocker": "CC-10A (11 of 23 files; 12 v1 files outside the group)", "proofMode": "n/a", "evidencePath": "tools/run-acceptance-matrix.mjs:85-100", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K5-E2", "stage": "K5", "criterion": "Every kernel self-mutation makes the group red (:618)", "status": "partial", "blocker": "CC-10B (self-mutations for composition removal, lifecycle bypass, missing fence/receipt/effect, route omission)", "proofMode": "Contract", "evidencePath": "tests/factory-proof/kernel-self-mutations.test.mjs (partial)", "command": "node tools/run-acceptance-matrix.mjs --group factory-proof", "digest": null },
-    { "id": "K5-E3", "stage": "K5", "criterion": "A vacuous empty scenario pack makes the group red (:619)", "status": "not-implemented", "blocker": "CC-10B (vacuous-pack mutant)", "proofMode": "n/a", "evidencePath": null, "command": "n/a", "digest": null },
-    { "id": "K5-E4", "stage": "K5", "criterion": "The group is deterministic across repeated clean runs (:620)", "status": "partial", "blocker": "CC-10A (three fresh-environment runs) / CC-10B (final)", "proofMode": "n/a", "evidencePath": null, "command": "n/a", "digest": null }
+    {
+      "id": "K0-E1",
+      "stage": "K0",
+      "criterion": "Every existing proof claim has an owner and a replacement destination (master plan :427)",
+      "status": "pass",
+      "blocker": null,
+      "proofMode": "n/a (ledger)",
+      "evidencePath": "claimOwnership in this ledger",
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K0-E2",
+      "stage": "K0",
+      "criterion": "Semantic ignore list contains only generated IDs, timestamps, absolute paths, database row IDs (:428)",
+      "status": "pass",
+      "blocker": null,
+      "proofMode": "n/a (audit)",
+      "evidencePath": "semanticIgnoreAudit in this ledger; tests/factory-proof/k0-baseline.mjs:62-72",
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K0-E3",
+      "stage": "K0",
+      "criterion": "ADR-085 baseline reproducible from a clean checkout (:429)",
+      "status": "partial",
+      "blocker": "CC-82 (clean-clone reproduction)",
+      "proofMode": "n/a",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K1-E1",
+      "stage": "K1",
+      "criterion": "One entrypoint drives all new causal proofs (:463)",
+      "status": "partial",
+      "blocker": "CC-22 (9 special proofs still bypass runScenario via specialDrive)",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/discovery-scenario-drive.mjs:40-59; formalization-scenario-drive.mjs:105-119",
+      "command": "npm run conformance:v1",
+      "digest": null
+    },
+    {
+      "id": "K1-E2",
+      "stage": "K1",
+      "criterion": "Composition fingerprints detect a removed or replaced production module (:464)",
+      "status": "pass",
+      "blocker": null,
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/canonical-composition.test.mjs (blocking, 53/53 group green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K1-E3",
+      "stage": "K1",
+      "criterion": "Happy and repair scenarios generate authority rows through production handlers, not direct test writes (:465)",
+      "status": "partial",
+      "blocker": "CC-22/CC-24 (verify across unified driver and strict seam)",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (blocking green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K1-E4",
+      "stage": "K1",
+      "criterion": "No proof silently upgraded from partial composition to strict L3 (:466)",
+      "status": "pass",
+      "blocker": null,
+      "proofMode": "Contract",
+      "evidencePath": "tests/factory-proof/proof-claims.test.mjs (mode-honesty ratchet, blocking green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K2-E1",
+      "stage": "K2",
+      "criterion": "A strict L3 happy scenario passes through workerSpawn (:500)",
+      "status": "pass",
+      "blocker": null,
+      "proofMode": "Spawned",
+      "evidencePath": "tests/factory-proof/k2-spawned-actor.test.mjs; k2-strict-formalization.test.mjs (blocking green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K2-E2",
+      "stage": "K2",
+      "criterion": "A strict L3 repair scenario succeeds only with exact feedback (:501)",
+      "status": "partial",
+      "blocker": "CC-24 (strict repair evidence re-audit; counterfactual variants)",
+      "proofMode": "Spawned",
+      "evidencePath": "tests/factory-proof/k2-spawned-actor.test.mjs (exact-feedback repair present; full K2 checklist audit pending)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K2-E3",
+      "stage": "K2",
+      "criterion": "Removing tool permission or MCP config fails the strict scenario before handler invocation (:502)",
+      "status": "partial",
+      "blocker": "CC-24",
+      "proofMode": "Spawned",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K2-E4",
+      "stage": "K2",
+      "criterion": "The actor cannot determine repair behavior from attempt number or hidden state (:503)",
+      "status": "partial",
+      "blocker": "CC-24",
+      "proofMode": "Spawned",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K3-E1",
+      "stage": "K3",
+      "criterion": "Deleting a production protection does not delete the expected obligation (:541)",
+      "status": "partial",
+      "blocker": "CC-30/CC-31 (registry independence exists in compiler tests; harvest aggregation missing)",
+      "proofMode": "Contract",
+      "evidencePath": "tests/factory-proof/obligation-compiler.test.mjs (blocking green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K3-E2",
+      "stage": "K3",
+      "criterion": "Deleting an obligation or mutant operator makes registry closure fail (:542)",
+      "status": "partial",
+      "blocker": "CC-32 (blocking closure floors)",
+      "proofMode": "Contract",
+      "evidencePath": "tests/factory-proof/kernel-self-mutations.test.mjs (blocking green, partial coverage)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K3-E3",
+      "stage": "K3",
+      "criterion": "Every P0 obligation has a generated mutant family and a named causal representative class (:543)",
+      "status": "partial",
+      "blocker": "CC-30 (required-mutant ledger independent of scenario coverage)",
+      "proofMode": "Contract",
+      "evidencePath": "tests/factory-proof/mutation-algebra.mjs:282,312 (compileObligationMutants/runKillMatrix exist, not globally wired)",
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K3-E4",
+      "stage": "K3",
+      "criterion": "Compiler output deterministic for a fixed registry version (:544)",
+      "status": "partial",
+      "blocker": "CC-31 (deterministic summaries published)",
+      "proofMode": "Contract",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K4-E1",
+      "stage": "K4",
+      "criterion": "The observer imports no reducer and writes no production table (:580)",
+      "status": "partial",
+      "blocker": "CC-44 (static ratchet + runtime denial proof)",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (observer contract, blocking green)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K4-E2",
+      "stage": "K4",
+      "criterion": "The DSL cannot prescribe GateDecision, repair owner, or runtime transition (:581)",
+      "status": "partial",
+      "blocker": "CC-44 (negative DSL tests)",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/scenario-actor-observer.test.mjs (partial)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K4-E3",
+      "stage": "K4",
+      "criterion": "A failing generated scenario produces a deterministic minimized replay (:582)",
+      "status": "not-implemented",
+      "blocker": "CC-42 (counterexample minimizer)",
+      "proofMode": "n/a",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K4-E4",
+      "stage": "K4",
+      "criterion": "Exact vs missing/stale/corrupt feedback counterfactuals differ for the expected causal reason (:583)",
+      "status": "partial",
+      "blocker": "CC-44 (complete causality closure across workshops; v1 has exact/absent/stale/corrupt for some packs)",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "factory-proof group output (cf-absent/cf-stale/cf-corrupted pass)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K4-E5",
+      "stage": "K4",
+      "criterion": "Every nonterminal final snapshot has an explicit progress explanation (:584)",
+      "status": "partial",
+      "blocker": "CC-44",
+      "proofMode": "CanonicalFast",
+      "evidencePath": "tests/factory-proof/scenario-runner.mjs (progress explanations exist; fault-mode coverage pending CC-41/43)",
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K5-E1",
+      "stage": "K5",
+      "criterion": "--group factory-proof executes a non-zero exact file set (:617)",
+      "status": "partial",
+      "blocker": "CC-10A (11 of 23 files; 12 v1 files outside the group)",
+      "proofMode": "n/a",
+      "evidencePath": "tools/run-acceptance-matrix.mjs:85-100",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K5-E2",
+      "stage": "K5",
+      "criterion": "Every kernel self-mutation makes the group red (:618)",
+      "status": "partial",
+      "blocker": "CC-10B (self-mutations for composition removal, lifecycle bypass, missing fence/receipt/effect, route omission)",
+      "proofMode": "Contract",
+      "evidencePath": "tests/factory-proof/kernel-self-mutations.test.mjs (partial)",
+      "command": "node tools/run-acceptance-matrix.mjs --group factory-proof",
+      "digest": null
+    },
+    {
+      "id": "K5-E3",
+      "stage": "K5",
+      "criterion": "A vacuous empty scenario pack makes the group red (:619)",
+      "status": "not-implemented",
+      "blocker": "CC-10B (vacuous-pack mutant)",
+      "proofMode": "n/a",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    },
+    {
+      "id": "K5-E4",
+      "stage": "K5",
+      "criterion": "The group is deterministic across repeated clean runs (:620)",
+      "status": "partial",
+      "blocker": "CC-10A (three fresh-environment runs) / CC-10B (final)",
+      "proofMode": "n/a",
+      "evidencePath": null,
+      "command": "n/a",
+      "digest": null
+    }
   ],
-
   "claimOwnership": [
-    { "claim": "canonical-composition", "owner": "CC-22 (unified driver) + CC-24 (strict audit)", "replacementDestination": "post-cutover canonical closed catalog (ADR-085 R5 composition switch, R8 co-located conformance declarations); claim requalified by CC-61" },
-    { "claim": "import-ratchet", "owner": "CC-10A (bidirectional group<->claim closure)", "replacementDestination": "same ratchet survives cutover; import surface re-baselined by ADR-086 R10" },
-    { "claim": "obligation-compiler", "owner": "CC-30/CC-31/CC-32 (mutant taxonomy, harvest wiring, blocking floors)", "replacementDestination": "obligation contracts move with workshop packages (ADR-085 R3/R8); registry version pinned" },
-    { "claim": "scenario-actor-observer", "owner": "CC-44 (observer/DSL/progress closure)", "replacementDestination": "observer stays test-side under ADR-084; no structural dependency" },
-    { "claim": "kernel-self-mutations", "owner": "CC-32 + CC-10B (self-mutation completion)", "replacementDestination": "mutation ratchets re-frozen post-cutover by CC-82 floors" },
-    { "claim": "k0-baseline", "owner": "CC-00 (this ledger)", "replacementDestination": "baseline re-captured at structural-train base SHA (CC-82 evidence freeze)" },
-    { "claim": "proof-claims", "owner": "CC-10A (claims for 12 v1 files; bidirectional exactness)", "replacementDestination": "claim registry remains the honesty surface; modes re-audited by CC-24/CC-60" },
-    { "claim": "w1-1-fabricated-hash", "owner": "CC-61 (strict requalification through workerSpawn)", "replacementDestination": "strict composition via canonical spawn; CanonicalFast no longer the highest level" },
-    { "claim": "k2-spawned-actor", "owner": "CC-24 (K2 audit; add only missing regressions)", "replacementDestination": "strict seam preserved through cutover (workerSpawn is production surface)" },
-    { "claim": "k2-strict-formalization", "owner": "CC-24 + CC-60 (full-lifecycle strict qualification)", "replacementDestination": "same; extended to Development/Delivery by CC-60 without workshop branches" },
-    { "claim": "w1-4-two-lifecycles", "owner": "CC-61 (strict requalification)", "replacementDestination": "strict composition via canonical spawn" }
+    {
+      "claim": "canonical-composition",
+      "owner": "CC-22 (unified driver) + CC-24 (strict audit)",
+      "replacementDestination": "post-cutover canonical closed catalog (ADR-085 R5 composition switch, R8 co-located conformance declarations); claim requalified by CC-61"
+    },
+    {
+      "claim": "import-ratchet",
+      "owner": "CC-10A (bidirectional group<->claim closure)",
+      "replacementDestination": "same ratchet survives cutover; import surface re-baselined by ADR-086 R10"
+    },
+    {
+      "claim": "obligation-compiler",
+      "owner": "CC-30/CC-31/CC-32 (mutant taxonomy, harvest wiring, blocking floors)",
+      "replacementDestination": "obligation contracts move with workshop packages (ADR-085 R3/R8); registry version pinned"
+    },
+    {
+      "claim": "scenario-actor-observer",
+      "owner": "CC-44 (observer/DSL/progress closure)",
+      "replacementDestination": "observer stays test-side under ADR-084; no structural dependency"
+    },
+    {
+      "claim": "kernel-self-mutations",
+      "owner": "CC-32 + CC-10B (self-mutation completion)",
+      "replacementDestination": "mutation ratchets re-frozen post-cutover by CC-82 floors"
+    },
+    {
+      "claim": "k0-baseline",
+      "owner": "CC-00 (this ledger)",
+      "replacementDestination": "baseline re-captured at structural-train base SHA (CC-82 evidence freeze)"
+    },
+    {
+      "claim": "proof-claims",
+      "owner": "CC-10A (claims for 12 v1 files; bidirectional exactness)",
+      "replacementDestination": "claim registry remains the honesty surface; modes re-audited by CC-24/CC-60"
+    },
+    {
+      "claim": "w1-1-fabricated-hash",
+      "owner": "CC-61 (strict requalification through workerSpawn)",
+      "replacementDestination": "strict composition via canonical spawn; CanonicalFast no longer the highest level"
+    },
+    {
+      "claim": "k2-spawned-actor",
+      "owner": "CC-24 (K2 audit; add only missing regressions)",
+      "replacementDestination": "strict seam preserved through cutover (workerSpawn is production surface)"
+    },
+    {
+      "claim": "k2-strict-formalization",
+      "owner": "CC-24 + CC-60 (full-lifecycle strict qualification)",
+      "replacementDestination": "same; extended to Development/Delivery by CC-60 without workshop branches"
+    },
+    {
+      "claim": "w1-4-two-lifecycles",
+      "owner": "CC-61 (strict requalification)",
+      "replacementDestination": "strict composition via canonical spawn"
+    }
   ],
-
   "reportCorrections": [
     "tests/factory-evidence/conformance-report.json:144-147 says mutation kills are K4-owned; per the closure plan the report text itself is corrected in CC-31 (mutation identity/kill closure are K3; K4 owns fault schedules)"
   ]
