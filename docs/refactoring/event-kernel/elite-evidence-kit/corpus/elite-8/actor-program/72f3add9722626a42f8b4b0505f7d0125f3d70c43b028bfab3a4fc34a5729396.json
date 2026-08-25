@@ -1,0 +1,200 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [
+            {
+              "id": 11,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_ACCEPTANCE_INCOMPLETE:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:e4716200d4455bbda8010cd14f04ba87a9c2bb06c10d52cc5d31770692dfa38e"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-9: derived_from requires FR|NFR",
+          "path": "AC-9",
+          "severity": "error",
+          "subjectRef": "artifact:22"
+        },
+        {
+          "actual": [
+            {
+              "id": 12,
+              "type": "UC"
+            }
+          ],
+          "code": "FORMALIZATION_ACCEPTANCE_INCOMPLETE:derived_from",
+          "evidenceRefs": [
+            "submission-validation-rejection:e4716200d4455bbda8010cd14f04ba87a9c2bb06c10d52cc5d31770692dfa38e"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "derived_from",
+            "requiredTargetTypes": [
+              "FR",
+              "NFR"
+            ]
+          },
+          "message": "AC-10: derived_from requires FR|NFR",
+          "path": "AC-10",
+          "severity": "error",
+          "subjectRef": "artifact:23"
+        }
+      ],
+      "policyId": "submission-validation:formalization.acceptance-contract.v1",
+      "reasonCode": "FORMALIZATION_ACCEPTANCE_INCOMPLETE",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+          "kind": "artifact",
+          "ref": "artifact:22",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+          "kind": "artifact",
+          "ref": "artifact:23",
+          "schema": "AC"
+        }
+      ],
+      "summary": "Submission preflight formalization.acceptance-contract.v1@1.2.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "AC-9",
+        "content_hash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+        "id": 22,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "AC-10",
+        "content_hash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+        "id": 23,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      }
+    ],
+    "observedSetDigest": "14c11f979aecd0fe1b3c7ffa4f8f4e0b18dbd2b17524843174a6a8004e9f5e22",
+    "origin": {
+      "executionId": "worker-execution:ddbf2ed6-4a49-4b50-a403-e263f5e9a779",
+      "inputSnapshotHash": "9db998bbda9f761b595b270b03eba6f649dee82ab3b43108691fc2ee6f816755",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-acceptance-contract",
+      "processRunId": 2,
+      "taskId": 7,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+    },
+    "rejectionDigest": "e4716200d4455bbda8010cd14f04ba87a9c2bb06c10d52cc5d31770692dfa38e",
+    "rejectionRef": "submission-validation-rejection:e4716200d4455bbda8010cd14f04ba87a9c2bb06c10d52cc5d31770692dfa38e",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.acceptance-contract.v1",
+      "version": "1.2.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "AC-9",
+      "artifactId": 22,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 11,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-10",
+      "artifactId": 23,
+      "artifactType": "AC",
+      "existingTargets": [
+        {
+          "id": 12,
+          "type": "UC"
+        }
+      ],
+      "missing": {
+        "minimum": 1,
+        "relation": "derived_from",
+        "requiredTargetTypes": [
+          "FR",
+          "NFR"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-acceptance-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "AC-9",
+      "content_hash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+      "id": 22,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "AC-10",
+      "content_hash": "0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7",
+      "id": 23,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_ACCEPTANCE_INCOMPLETE",
+  "rejectionDigest": "e4716200d4455bbda8010cd14f04ba87a9c2bb06c10d52cc5d31770692dfa38e",
+  "task": "formalization.acceptance#1",
+  "validatorId": "formalization.acceptance-contract.v1",
+  "validatorVersion": "1.2.0",
+  "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

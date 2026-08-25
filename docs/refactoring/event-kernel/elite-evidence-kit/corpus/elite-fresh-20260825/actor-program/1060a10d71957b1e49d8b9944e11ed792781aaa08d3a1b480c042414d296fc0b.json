@@ -1,0 +1,471 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-001"
+            ]
+          },
+          "message": "Constraint ord-c-001 (execution: one-command `npm install && npm start`) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-001",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-002"
+            ]
+          },
+          "message": "Constraint ord-c-002 (material: TypeScript backend) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-002",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-003"
+            ]
+          },
+          "message": "Constraint ord-c-003 (human: Chrome client feel) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-003",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-004"
+            ]
+          },
+          "message": "Constraint ord-c-004 (execution: local run required) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-004",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-005"
+            ]
+          },
+          "message": "Constraint ord-c-005 (human: human acceptance after local start) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-005",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-006"
+            ]
+          },
+          "message": "Constraint ord-c-006 (execution: deployment excluded) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-006",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-007"
+            ]
+          },
+          "message": "Constraint ord-c-007 (material: Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-007",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-008"
+            ]
+          },
+          "message": "Constraint ord-c-008 (material: Detailed balance of ship upgrade costs vs. profitability) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-008",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-009"
+            ]
+          },
+          "message": "Constraint ord-c-009 (material: Specific visual effect implementation details (hyperspace jump, parallax depth)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-009",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-010"
+            ]
+          },
+          "message": "Constraint ord-c-010 (material: Save/load persistence mechanism (localStorage, file system, etc.)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-010",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-011"
+            ]
+          },
+          "message": "Constraint ord-c-011 (material: Specific pirate AI behavior patterns) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-011",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-012"
+            ]
+          },
+          "message": "Constraint ord-c-012 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-012",
+          "severity": "error",
+          "subjectRef": null
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNCOVERED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-013"
+            ]
+          },
+          "message": "Constraint ord-c-013 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+          "path": "ord-c-013",
+          "severity": "error",
+          "subjectRef": null
+        }
+      ],
+      "policyId": "submission-validation:formalization.acceptance-contract.v1",
+      "reasonCode": "FORMALIZATION_CONSTRAINT_UNCOVERED",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [],
+      "summary": "Submission preflight formalization.acceptance-contract.v1@1.2.0 rejected the current node output."
+    },
+    "observedArtifacts": [],
+    "observedSetDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "origin": {
+      "executionId": "worker-execution:55acbf1d-d08a-4c1e-ad76-bbc16dc156dc",
+      "inputSnapshotHash": "35ca4c19a345214b6d81751026cfd895b6689d81fd9ab60c713a37e5f7cd3a90",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-acceptance-contract",
+      "processRunId": 2,
+      "taskId": 7,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+    },
+    "rejectionDigest": "5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee",
+    "rejectionRef": "submission-validation-rejection:5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.acceptance-contract.v1",
+      "version": "1.2.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "ord-c-001",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-001 (execution: one-command `npm install && npm start`) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-001"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-002",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-002 (material: TypeScript backend) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-002"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-003",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-003 (human: Chrome client feel) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-003"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-004",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-004 (execution: local run required) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-004"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-005",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-005 (human: human acceptance after local start) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-005"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-006",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-006 (execution: deployment excluded) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-006"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-007",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-007 (material: Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-007"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-008",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-008 (material: Detailed balance of ship upgrade costs vs. profitability) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-008"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-009",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-009 (material: Specific visual effect implementation details (hyperspace jump, parallax depth)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-009"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-010",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-010 (material: Save/load persistence mechanism (localStorage, file system, etc.)) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-010"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-011",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-011 (material: Specific pirate AI behavior patterns) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-011"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-012",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-012 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-012"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-013",
+      "artifactId": -1,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Constraint ord-c-013 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no AC: add it to an AC artifact's metadata covered_constraint_ids (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-013"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-acceptance-contract",
+  "observedArtifacts": [],
+  "rejectionCode": "FORMALIZATION_CONSTRAINT_UNCOVERED",
+  "rejectionDigest": "5fc6ecedc69023b012e0018b82a7fbaab18c40c6892d8e6400cd12a92177f3ee",
+  "task": "formalization.acceptance#1",
+  "validatorId": "formalization.acceptance-contract.v1",
+  "validatorVersion": "1.2.0",
+  "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

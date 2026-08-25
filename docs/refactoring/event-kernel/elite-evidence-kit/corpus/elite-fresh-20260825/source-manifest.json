@@ -1,0 +1,183 @@
+{
+  "digests": {
+    "buildDigest": {
+      "method": "sha256 over sorted \"name@version:packageDigest:status\" of factory_module_installations",
+      "value": "9991ede633107afb8443eb6dde8176354968329b0edbacf061a01444a863ea52"
+    },
+    "dbContentDigest": {
+      "method": "read-only canonical dump: every user table, rows by rowid, sorted-key JSON rows, sha256 over the concatenation",
+      "value": "65e6e6cd7f46d9b3fe0bf555d606477571552571b2318f8f42a8f5efe1407634"
+    },
+    "journalDigest": {
+      "method": "sha256 over factory-run-journal.jsonl bytes",
+      "value": "82db4b826a020ed07f785408dc35b11f881478a235475566b1a243b46d21fb37"
+    },
+    "packageStoreMerkleDigest": {
+      "method": "merkle over content-addressed entries: per entry sha256 over sorted (relative-path, file-sha256) pairs, then sha256 over sorted (entryDigest, fileMerkle) pairs",
+      "value": "cd94d031f75b264902633c90802d2b13dccbb2fc193d545fdc8249bba86050e6"
+    },
+    "repoCommitDigest": {
+      "note": "HEAD of the product repository the run wrote to (read-only resolution of .git/HEAD).",
+      "provenance": "direct:loose-ref",
+      "value": "3cc360a3306c89154e4da9071eb3b6699ed940c8"
+    },
+    "sourceSHA": {
+      "direct": false,
+      "note": "The factory checkout that produced this run is not archived with the run root. The value pins the exact factory module packages (content digests recorded by the DB) and built-in provider bases that executed the run — the strongest recoverable identity of the producing code.",
+      "provenance": "derived:package-store-digests+schema-version",
+      "value": "297a3168ed6c67f05f0516263e840ca72ea97e15455b251c437af62d6d943d69"
+    }
+  },
+  "extractedFrom": {
+    "dbFile": "factory.sqlite",
+    "dbOpened": "readonly",
+    "journal": {
+      "bytes": 520534,
+      "digest": "82db4b826a020ed07f785408dc35b11f881478a235475566b1a243b46d21fb37",
+      "lines": 876,
+      "present": true
+    },
+    "packageStore": {
+      "entries": 1,
+      "present": true
+    },
+    "productDir": "D:\\Development\\elite-fresh-20260825\\product",
+    "sourceRoot": "D:\\Development\\elite-fresh-20260825",
+    "walPresent": true
+  },
+  "kitStats": {
+    "actorCapsules": 28,
+    "actorProgramWorkplaces": 17,
+    "failureWitnesses": [
+      "engine-restarts",
+      "final-gate-failed-solution-development-1-4-4-development-readiness-certification-singleton-0e09e392",
+      "journal-duplicate-obligation-created",
+      "journal-visibility-gap-lost-executions",
+      "readiness-refusal-chain",
+      "spec-vs-data",
+      "supervision-anomalies"
+    ],
+    "inputCapsules": 35,
+    "invariantChecks": 13,
+    "invariantFailures": 0,
+    "traceEvents": 876,
+    "traceStreams": 82
+  },
+  "kitVersion": "elite-evidence-kit/v1",
+  "observations": {
+    "commandReceipts": 34,
+    "gateDecisions": {
+      "byVerdict": {
+        "accepted": 29,
+        "failed": 1
+      },
+      "total": 30
+    },
+    "journalEvents": 876,
+    "lifecycleRuns": 1,
+    "obligations": {
+      "byState": {
+        "completed": 86
+      },
+      "total": 86
+    },
+    "sealedMaterials": 30,
+    "stages": [
+      {
+        "authority": "discovery-settlement-policy",
+        "localOutcome": "go",
+        "moduleRefKey": "product-discovery@4.0.0",
+        "stageId": "initial-discovery",
+        "status": "completed"
+      },
+      {
+        "authority": "formalization_settlement_policy",
+        "localOutcome": "formalized",
+        "moduleRefKey": "solution-formalization@1.0.0",
+        "stageId": "solution-formalization",
+        "status": "completed"
+      },
+      {
+        "authority": "development_settlement_policy",
+        "localOutcome": "blocked",
+        "moduleRefKey": "solution-development@1.4.4",
+        "stageId": "solution-development",
+        "status": "completed"
+      }
+    ],
+    "tasks": {
+      "byStatus": {
+        "done": 30
+      },
+      "total": 30
+    },
+    "terminalStatus": "development-blocked",
+    "workerExecutions": {
+      "byState": {
+        "exited": 30,
+        "lost": 2,
+        "terminated": 1
+      },
+      "total": 33
+    },
+    "workplaces": {
+      "byTerminalReason": {
+        "accepted": 16,
+        "failed": 1
+      },
+      "total": 17
+    }
+  },
+  "runId": "elite-fresh-20260825",
+  "scenario": {
+    "allClaimsMatch": true,
+    "claimsVerification": [
+      {
+        "actual": "development-blocked",
+        "claim": "terminalStatus",
+        "expected": "development-blocked",
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      },
+      {
+        "actual": 30,
+        "claim": "tasksDone",
+        "expected": 30,
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      },
+      {
+        "actual": 30,
+        "claim": "tasksTotal",
+        "expected": 30,
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      },
+      {
+        "actual": 29,
+        "claim": "gatesAccepted",
+        "expected": 29,
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      },
+      {
+        "actual": 30,
+        "claim": "gatesTotal",
+        "expected": 30,
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      },
+      {
+        "actual": "development-readiness-certification",
+        "claim": "failurePointCell",
+        "expected": "development-readiness-certification",
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+      }
+    ],
+    "profile": "success-partial",
+    "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+  },
+  "schemaVersion": 15,
+  "toolVersion": "elite-evidence-kit-extract/1.0.0"
+}

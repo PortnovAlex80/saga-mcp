@@ -1,0 +1,5 @@
+{
+  "contentSha256": "111ef522c060011738ef58ad88fa81f15ad78eaaae4393939d9373d16fe8e557",
+  "path": "docs/requirements/REQ-001-elite-fresh/05-rules.md",
+  "text": "# Business Rules\n\n## RULE-1: Starting Conditions\n\nStatus: draft\n\nThe player shall begin the game docked at a station with 100 credits and a small cargo hold.\n\n## RULE-2: Fuel Consumption Per Jump\n\nStatus: draft\n\nEach hyperspace jump shall consume a fixed or distance-based amount of fuel from the ship's fuel tank.\n\n## RULE-3: Commodity Price Variation\n\nStatus: draft\n\nEach commodity shall have a base price modified per system so that price differences create profitable trade routes between systems.\n\n## RULE-4: Elite Rating\n\nStatus: draft\n\nThe Elite combat rating shall be calculated from the player's accumulated profit and combat kills, progressing through defined rating tiers."
+}

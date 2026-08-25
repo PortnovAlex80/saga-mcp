@@ -1,0 +1,162 @@
+{
+  "duplicates": [
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/1/product-discovery@3.0.2/discovery-proposal/singleton/ea5ad43957d434bd51dec75fb308ba0f0191afc2ef4e883af150b5d117f699a4/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:6f7058b4ee30ad59ce0848fd2df77f34c709b4a24e81aba63e08dfd0d6f9dc0f:run-effects"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/1/product-discovery@3.0.2/discovery-readiness/singleton/9891e882fedd42a6ae6a292ad1ce251f4205e99ec1ee62428bc1017d20b8e753/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:cadb94ea59ba85cc90a2f36963a406d2d5c78f739c8487ae1206e76f8015c7a1:run-effects"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "process-settled:process-run:1:route-lifecycle"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/a902551ef845254e2e60ac15bfd2aa282d31ee198985886e6d539621d71d3ca0/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/4ad8e1557b915865c967a55131a7fb9f48de1bbbda86db0b36a8731fb955976c/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-product-contract/singleton/a902551ef845254e2e60ac15bfd2aa282d31ee198985886e6d539621d71d3ca0/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:2868d2014d997967acd06bb8975185a1f7110fcf41690a48be62aa6ef4f022cc:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:4f1025dcd896740a01e59e7b7b4e2dd2fb397a25306ca19e93214d200985747c:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/4a27fa16291ea1120c60127ef9e33cc8ec377987bd962d065ba7c992ba8a6056/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/5995f0248f59b468f1ff053ce69e8d491eb9c735eaf31153037ec07895f89b01/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/4a27fa16291ea1120c60127ef9e33cc8ec377987bd962d065ba7c992ba8a6056/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:9a45a6f9db9fce14db4f8beb60a03754b6e703b5d96845b8b83c13e7bc12b9c0:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:31cadad9ac7802b4a0481c8975260cfbdfebdf3e98260121e0f701281daf54ba:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/1ac4820edd81b919610b4ad46e3e650c08573c4c9094926fc18aed7a3a732520/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/36a6668498538263687f222b772f3759fc20d5683dfe50ac341b4e938491c10a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/1ac4820edd81b919610b4ad46e3e650c08573c4c9094926fc18aed7a3a732520/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/9b7f5f87a72a5e474864b5ff1a06a1bb7ed0f97ebf671115e8409852e9665772/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/37c5a97c2548cfaca447adf1214d004a3291165a45601234fb672d3efe6050f0/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/9b7f5f87a72a5e474864b5ff1a06a1bb7ed0f97ebf671115e8409852e9665772/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/7a10fc0ce98f5bb33051f82ab1647c451a04ed3a08dfd5cccbf76b045402e74c/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/ad3500be4ae9d3059868796bb88363d0a53f17847443886e7dd73ff666241317/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/7a10fc0ce98f5bb33051f82ab1647c451a04ed3a08dfd5cccbf76b045402e74c/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/3c82d56220e96082710450754dce6c4f257034c3746b6df16efb135ddcfee7d9/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/65a37332421119b343293b8d6391660fbc5710e2b5984d5884b1738849dfe66a/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/3c82d56220e96082710450754dce6c4f257034c3746b6df16efb135ddcfee7d9/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:5b7675b14e4ee439dd4068aa0560e6e37ac721882b37f80c5c20b98fe99e2b07:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:3d9086f8495b136dc542a1861756402de23be0153efddaea6f9594e142ca8da3:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/47dd91d9ef1316cf756cf6d1c769f1a1f50ea011ed7eec7152e6a1fd1e18793a/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/3decf8e5febb316ed9641165920c65407c945c177051d65001a4cc2d1112968e/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-reconciliation/singleton/47dd91d9ef1316cf756cf6d1c769f1a1f50ea011ed7eec7152e6a1fd1e18793a/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:6c2b46d8bba2390d3985f4dfb4ce929617db4b1408929a50164ea215cb9b19bd:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:9e217fa6f434d070836c5b147fe658562c5d9bc1486b7a97d9ca023eefb8e4df:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/5cc02b78506752bfa50e1f780ba5288784c40d12c6b19f31cb2e49503c543ae5/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/6339aa7a7e5d8623265f59307c0a7997108eaefe4c93748ebb1674e21316a94d/reviewer/candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/5cc02b78506752bfa50e1f780ba5288784c40d12c6b19f31cb2e49503c543ae5/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "gate-accepted:decision:gate-run:32c532eaa38a488fda1ebe97985b5adad595ec0879e65f3259cd73a81680e8a5:run-effects"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "effects-settled:cell-effect-receipt:b6109fe850cae5a458a59538e7cce00646017cb1f98fcb8c617445fe1b5cbf55:record-final-acceptance"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "process-settled:process-run:2:route-lifecycle"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/b967485ed66942adba0993885fee38810143034f6c0f0a89a53f4a48f81bbe1f/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/838907f938a2948649b04d7ce8cb6595f19cfa63c7fc0db2beee165816e72efe/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/4aa2cd212675ceed6e972712efdc50dc4d71cfc7a9028d32a7042e7a96d3c9d0/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/c59c99fd7136356632c3d08d9d4e2b03cc322f13f131fee7e8b79ae65f77a2db/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/6b67d5630ee556a49c3b4d387e07e5ec805a4121f313262bdc1700d0559174df/author:run-gate"
+    },
+    {
+      "createdEvents": 4,
+      "obligationKey": "candidate-set-sealed:candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/dc400fac949926f5cc31039710e1647555e72fe9199b49487e82fc275f03ceeb/author:run-gate"
+    },
+    {
+      "createdEvents": 3,
+      "obligationKey": "process-settled:process-run:3:route-lifecycle"
+    }
+  ],
+  "kind": "journal-noise-observation",
+  "note": "obligation.created emitted more than once for the same key (idempotent append re-emission across engine restarts). The DB holds a single row per key and exactly one settlement — no duplicate settlement, but trace comparators must dedupe created-events by key."
+}

@@ -1,0 +1,34 @@
+{
+  "contentDigest": "dd048bfbd1f3e2562e6f42469314cc72041e0cf6e4a7e167065487cc6e921e09",
+  "payload": {
+    "buildProducts": {
+      "testCommand": "npx vitest run tests/combat.test.ts",
+      "testExitCode": 0
+    },
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "354a817a23e1b8da4857d25cc5194e34e08012b9",
+      "integrationBranch": "dev",
+      "name": "D:/Development/elite-fresh-20260825-repo",
+      "projectRepositoryId": 1
+    },
+    "snapshot": {
+      "changedFiles": [
+        "src/combat.ts",
+        "src/travel.ts",
+        "tests/combat.test.ts"
+      ],
+      "commitSha": "933a606cc661d42fd4da3f70803860c77c89baf2",
+      "treeSha": "eb71f05b72ccc61e17a28e4b90dbd85a0e315536"
+    },
+    "source": {
+      "branch": "saga/task/14/execution/78f79b50c625125567c0",
+      "commitSha": "933a606cc661d42fd4da3f70803860c77c89baf2",
+      "workItemKey": "impl-combat"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-combat"
+  },
+  "payloadHash": "dd048bfbd1f3e2562e6f42469314cc72041e0cf6e4a7e167065487cc6e921e09",
+  "schemaId": "factory.development-implementation-result.v1"
+}

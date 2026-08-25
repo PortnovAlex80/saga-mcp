@@ -1,0 +1,10 @@
+{
+  "contentDigest": "12d2153132745df8ee5a91b940f19a95e497248ec859cb12fa4c33a12e744f9b",
+  "payload": {
+    "findings": [],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton/5cc02b78506752bfa50e1f780ba5288784c40d12c6b19f31cb2e49503c543ae5/author",
+    "verdict": "approved"
+  },
+  "payloadHash": "12d2153132745df8ee5a91b940f19a95e497248ec859cb12fa4c33a12e744f9b",
+  "schemaId": "factory.review-verdict.v1"
+}

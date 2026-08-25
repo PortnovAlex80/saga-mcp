@@ -1,0 +1,52 @@
+{
+  "contentDigest": "522bf4bfb8647239b2da5abce9020d2df603878f89e6c70baf6708c5a4293a0e",
+  "payload": {
+    "buildProducts": [],
+    "reasonCodes": [
+      "AC-18: HUD displays ship status (location, credits, fuel, hull, shield, cargo, kills, profit, rank)",
+      "AC-19: Elite rating progresses with profit and kills via 7-rank system"
+    ],
+    "repository": {
+      "baseCommit": "61b92b9cbc91d18b6c1c0514650a97aae6e80df0",
+      "integrationBranch": "dev",
+      "name": "product",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "modified",
+          "path": "src/game-state.ts"
+        },
+        {
+          "change": "added",
+          "path": "src/rating.ts"
+        },
+        {
+          "change": "modified",
+          "path": "src/rendering.ts"
+        },
+        {
+          "change": "modified",
+          "path": "src/ui.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/rating.test.ts"
+        }
+      ],
+      "commitSha": "6e41d3d4e59e9b66e5549b4379d1a75fdf00b806",
+      "treeSha": "067606ca57e899195013515ff5c75674f58a2a73"
+    },
+    "source": {
+      "branch": "saga/task/16/execution/548b210f6e1f1decb458",
+      "commitSha": "6e41d3d4e59e9b66e5549b4379d1a75fdf00b806",
+      "workItemKey": "impl-hud-and-rating"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-hud-and-rating"
+  },
+  "payloadHash": "522bf4bfb8647239b2da5abce9020d2df603878f89e6c70baf6708c5a4293a0e",
+  "schemaId": "factory.development-implementation-result.v1"
+}

@@ -1,0 +1,32 @@
+{
+  "contentDigest": "fd657aad824cba420b94f299813cdfdbf942e9f9ed0f3b9a845928194efcb5e9",
+  "payload": {
+    "acceptance_criterion_keys": [
+      "41:AC-9",
+      "42:AC-10",
+      "43:AC-11",
+      "44:AC-12"
+    ],
+    "author_candidate_set_digest": "c4512bcf6ee9db012e6a88779dc8a29f2d96aabe704b316e32322781b5328003",
+    "author_execution_id": "worker-execution:9696e83e-f872-43bc-badc-544e33fab75e",
+    "base_commit": "354a817a23e1b8da4857d25cc5194e34e08012b9",
+    "findings": [
+      "AC-9: performHyperspaceJump correctly adds pirateEncountered flag to JumpResult with 50% random chance on successful jumps; failed jumps never trigger encounters. createCombatState creates in_combat state with AI pirate. Cross-module travel->combat seam is correct. [src/travel.ts, src/combat.ts, tests/combat.test.ts]",
+      "AC-10: playerAttack deals 10 damage per call; pirate hull reaching 0 transitions status to pirate_destroyed and increments combatKills. INV-8 (combatKills >= 0) is preserved. Tests verify kill recording and accumulation across combats. [src/combat.ts, tests/combat.test.ts]",
+      "AC-11: pirateAttack deals 8 damage; player hull at 0 sets status to player_destroyed. Math.max(0,...) prevents negative hull. Tests verify game-over signal and non-negative invariant. [src/combat.ts, tests/combat.test.ts]",
+      "AC-12 (degradable): attemptFlee uses 50% random chance; success sets status to fled, failure retains in_combat. No-op guard for already-over combat. Tests cover both branches and edge case. [src/combat.ts, tests/combat.test.ts]",
+      "All 12 tests pass at reviewed commit. Change scope limited to declared files (src/combat.ts, src/travel.ts, tests/combat.test.ts). No unrelated scope expansion. Functional module design matches SRS D1 surface for combat module."
+    ],
+    "producer_execution_id": "worker-execution:8be91fda-5342-47fe-ab53-2b42b176c36a",
+    "producer_task_id": 27,
+    "project_repository_id": 1,
+    "reviewed_branch": "saga/task/14/execution/78f79b50c625125567c0",
+    "reviewed_source_commit": "933a606cc661d42fd4da3f70803860c77c89baf2",
+    "reviewed_tree": "eb71f05b72ccc61e17a28e4b90dbd85a0e315536",
+    "subject_candidate_set_ref": "candidate-set/3/solution-development@1.4.4/development-implementation/ac8eef07ee342ff2a249b254/a18187740e183fa6e48bb233b410e06aaea9ffcafa3662cef2aa1315c76beb9f/author",
+    "verdict": "approved",
+    "work_item_key": "impl-combat"
+  },
+  "payloadHash": "fd657aad824cba420b94f299813cdfdbf942e9f9ed0f3b9a845928194efcb5e9",
+  "schemaId": "factory.development-review-verdict.v1"
+}

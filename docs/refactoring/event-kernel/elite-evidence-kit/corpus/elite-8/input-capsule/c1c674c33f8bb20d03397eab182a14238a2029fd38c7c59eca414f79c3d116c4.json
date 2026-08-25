@@ -1,0 +1,602 @@
+{
+  "artifactTraces": [
+    {
+      "link_type": "derived_from",
+      "source_id": 2,
+      "target_id": 1,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 3,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 4,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 5,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 6,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 7,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 8,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 9,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 10,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 11,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 12,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 13,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 6,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 7,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 8,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 9,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 10,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 11,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 12,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 13,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 14,
+      "target_id": 6,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 14,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 15,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 15,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 16,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 16,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 17,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 17,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 18,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 18,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 19,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 19,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 20,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 20,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 21,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 21,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 22,
+      "target_id": 11,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 22,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 23,
+      "target_id": 12,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 23,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 24,
+      "target_id": 13,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 24,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 25,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 25,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 26,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 26,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 27,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 27,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 28,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 28,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 29,
+      "target_id": 2,
+      "target_type": "artifact"
+    }
+  ],
+  "artifacts": [
+    {
+      "code": "brief",
+      "contentHash": "7a3b3b60b6516a8e336a97589e9ea5b55bc300d4cfd6896260aa61442f44980a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/01-brief.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-style Space Trading and Combat Game - Brief",
+      "type": "brief"
+    },
+    {
+      "code": "PRD",
+      "contentHash": "0c930f56c2b260f27785833bd35a75b6afb82321bc7ba26258d1118fc158cf36",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-PRD.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-style Space Trading and Combat Game - PRD",
+      "type": "PRD"
+    },
+    {
+      "code": "FR",
+      "contentHash": "8ffbf8555ae58de58aa7037927eab9e30b9563d771f9656914855994d378add7",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-functional-requirements.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Functional Requirements",
+      "type": "FR"
+    },
+    {
+      "code": "NFR",
+      "contentHash": "07333cc67dd49205e3f7a518da54b95a2ca09ab1703be2bff137cbe61a66322d",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/04-non-functional-requirements.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Non-Functional Requirements",
+      "type": "NFR"
+    },
+    {
+      "code": "RULE",
+      "contentHash": "2c24e8f2c839aa56ae504dbc888afee6e63e311c3a5fd97669a78020c2203376",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/05-business-rules.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Business Rules",
+      "type": "RULE"
+    },
+    {
+      "code": "UC-1",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Start New Game",
+      "type": "UC"
+    },
+    {
+      "code": "UC-2",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Navigate Between Star Systems",
+      "type": "UC"
+    },
+    {
+      "code": "UC-3",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Trade Commodities at Station",
+      "type": "UC"
+    },
+    {
+      "code": "UC-4",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Engage in Ship Combat",
+      "type": "UC"
+    },
+    {
+      "code": "UC-5",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Upgrade Ship Modules",
+      "type": "UC"
+    },
+    {
+      "code": "UC-6",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save Game State",
+      "type": "UC"
+    },
+    {
+      "code": "UC-7",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Load Game State",
+      "type": "UC"
+    },
+    {
+      "code": "UC-8",
+      "contentHash": "aaf680879a497f350826253c476781de272981d85657d2af13a3fdbe6b29c55c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-use-cases.md#UC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "View Elite Rating Progress",
+      "type": "UC"
+    },
+    {
+      "code": "AC-1",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Initialization",
+      "type": "AC"
+    },
+    {
+      "code": "AC-2",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Jump Execution",
+      "type": "AC"
+    },
+    {
+      "code": "AC-3",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Purchase with Validation",
+      "type": "AC"
+    },
+    {
+      "code": "AC-4",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Sale with Validation",
+      "type": "AC"
+    },
+    {
+      "code": "AC-5",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Combat Victory",
+      "type": "AC"
+    },
+    {
+      "code": "AC-6",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Combat Defeat",
+      "type": "AC"
+    },
+    {
+      "code": "AC-7",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Successful Combat Flee",
+      "type": "AC"
+    },
+    {
+      "code": "AC-8",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Ship Upgrade Purchase",
+      "type": "AC"
+    },
+    {
+      "code": "AC-9",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game State Save",
+      "type": "AC"
+    },
+    {
+      "code": "AC-10",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game State Load",
+      "type": "AC"
+    },
+    {
+      "code": "AC-11",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite Rating Display",
+      "type": "AC"
+    },
+    {
+      "code": "AC-12",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-12",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Commodity Price Display",
+      "type": "AC"
+    },
+    {
+      "code": "AC-13",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-13",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Pirate Encounter Trigger",
+      "type": "AC"
+    },
+    {
+      "code": "AC-14",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-14",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Cargo Capacity Enforcement",
+      "type": "AC"
+    },
+    {
+      "code": "AC-15",
+      "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Fuel Tank Upgrade Impact",
+      "type": "AC"
+    },
+    {
+      "code": "SRS",
+      "contentHash": "e63d44e5ade55ed36733f88bf4a3c73dd88538ef37f6586000c149e83646054c",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-SRS.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite-style Space Trading and Combat Game - Software Requirements Specification",
+      "type": "SRS"
+    }
+  ]
+}

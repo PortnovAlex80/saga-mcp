@@ -1,0 +1,50 @@
+{
+  "claims": [
+    {
+      "actual": "development-blocked",
+      "claim": "terminalStatus",
+      "expected": "development-blocked",
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    },
+    {
+      "actual": 30,
+      "claim": "tasksDone",
+      "expected": 30,
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    },
+    {
+      "actual": 30,
+      "claim": "tasksTotal",
+      "expected": 30,
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    },
+    {
+      "actual": 29,
+      "claim": "gatesAccepted",
+      "expected": 29,
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    },
+    {
+      "actual": 30,
+      "claim": "gatesTotal",
+      "expected": 30,
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    },
+    {
+      "actual": "development-readiness-certification",
+      "claim": "failurePointCell",
+      "expected": "development-readiness-certification",
+      "matches": true,
+      "specRef": "SPEC-v1.md §Elite-fresh-20260825 (success/partial)"
+    }
+  ],
+  "kind": "spec-vs-data",
+  "mismatches": [],
+  "note": "Claims from the SPEC scenario profile checked against the extracted data. The DATA wins in expected-trace.json; any mismatch is recorded here.",
+  "scenario": "success-partial"
+}

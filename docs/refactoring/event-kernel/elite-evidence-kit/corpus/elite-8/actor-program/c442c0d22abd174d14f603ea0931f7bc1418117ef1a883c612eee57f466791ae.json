@@ -1,0 +1,39 @@
+{
+  "contentDigest": "563dca56a1a709d0641ec17e4a8f5601513a47522714f9025f643c2ba963b367",
+  "payload": {
+    "findings": [
+      {
+        "artifact_id": 14,
+        "message": "AC-1 (Game Initialization) document claims derivation from UC-1 and FR-1, but actual traces show derivation from UC-6 (Save Game State) and FR-3 (Commodity Trading System). Document 'Derived From' sections do not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 15,
+        "message": "AC-2 (Hyperspace Jump) document claims derivation from UC-2 and FR-2, but actual traces show derivation from UC-7 (Load Game State) and FR-3. Document 'Derived From' sections do not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 16,
+        "message": "AC-3 (Commodity Purchase) document claims derivation from UC-3 and FR-3, but actual traces show derivation from UC-8 (View Elite Rating) and FR-3, RULE-1. Document 'Derived From' sections do not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 17,
+        "message": "AC-4 (Commodity Sale) document claims derivation from UC-3 and FR-3, but actual traces show derivation from UC-8 and FR-3. Missing RULE derivation claimed in document.",
+        "severity": "error"
+      },
+      {
+        "message": "Systematic traceability inconsistency: The acceptance criteria document's 'Derived From' sections and traceability matrix (lines 18-671) do not match the actual trace links in the MCP trace graph. All 15 AC artifacts have trace derivations that differ from what the document claims. The trace graph is the authoritative source for lineage; the document must be corrected to match the actual traces or the traces must be corrected to match the document content.",
+        "severity": "error"
+      },
+      {
+        "message": "All 15 AC artifacts have identical content_hash (0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7), suggesting they may share the same source file. Each AC should have unique content corresponding to its individual acceptance criterion.",
+        "severity": "warning"
+      }
+    ],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/1ac4820edd81b919610b4ad46e3e650c08573c4c9094926fc18aed7a3a732520/author",
+    "verdict": "changes_requested"
+  },
+  "payloadHash": "563dca56a1a709d0641ec17e4a8f5601513a47522714f9025f643c2ba963b367",
+  "schemaId": "factory.review-verdict.v1"
+}

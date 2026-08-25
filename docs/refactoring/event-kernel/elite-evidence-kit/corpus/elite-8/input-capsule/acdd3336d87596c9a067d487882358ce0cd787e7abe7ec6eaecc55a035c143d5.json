@@ -1,0 +1,73 @@
+{
+  "authority": "formalization_settlement_policy",
+  "certificateHash": "65f6ec50cb1893187ff97ff6f59d35fd5ed44ab0dbaa2514e8cc691866e01bbc",
+  "certificatePayload": {
+    "decision": "formalized",
+    "inputHash": "43a1c9ad7a66fde11cfc3482d7711998f170f174aec0029f5818baeaf5f790cd",
+    "payload": {
+      "acceptanceBaselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+      "bundleHash": "9388e74195779a6813d051859f5d2990485de80291ef08fd3712cc0092620b2c",
+      "decision": "formalized",
+      "discoveryCertificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+      "discoveryCertificateRef": "certificate:1",
+      "inputHash": "43a1c9ad7a66fde11cfc3482d7711998f170f174aec0029f5818baeaf5f790cd",
+      "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+      "reasonCodes": [],
+      "schemaVersion": "factory.solution-contract-certificate.generic.v1",
+      "warrantRef": {
+        "constraintRegisterDigest": "29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd",
+        "constraintRegisterRef": "constraint-register:29d3cba5ae88d1e5f0e41591ad6d9dab60b896fe292d759d0fd0c8da584219cd",
+        "discoveryCertificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+        "dispositions": {
+          "ord-c-001": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Pricing algorithms will be determined during development based on gameplay balance testing",
+            "unblockCriterion": "Development phase with gameplay balance requirements"
+          },
+          "ord-c-002": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Combat balance parameters will be tuned during development through playtesting",
+            "unblockCriterion": "Development phase with combat mechanics implementation"
+          },
+          "ord-c-003": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Visual effects implementation will be chosen during development based on performance testing",
+            "unblockCriterion": "Development phase with rendering system implementation"
+          },
+          "ord-c-004": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Rendering approach will be optimized during development for target hardware",
+            "unblockCriterion": "Development phase with performance optimization"
+          },
+          "ord-c-005": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Save/load mechanism will be selected during development based on technical requirements",
+            "unblockCriterion": "Development phase with persistence system design"
+          },
+          "ord-c-006": {
+            "disposition": "accepted"
+          },
+          "ord-c-007": {
+            "disposition": "accepted"
+          }
+        },
+        "dispositionsDigest": "15590be5fab81b44bb38bcd304a62aa0a6ac073f2e967df15cf9fdb41b718e23",
+        "formalizationCaseDigest": "6d142d28f7501b67c0d89bc0ad3b886dc8de9ffa48df8b3073c8a2800ef3134a"
+      }
+    },
+    "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+    "reasonCodes": [],
+    "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+  },
+  "decision": "formalized",
+  "inputHash": "43a1c9ad7a66fde11cfc3482d7711998f170f174aec0029f5818baeaf5f790cd",
+  "moduleRefKey": "solution-formalization@1.0.0",
+  "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+  "reasonCodes": [],
+  "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+}

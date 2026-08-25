@@ -1,0 +1,345 @@
+{
+  "authority": "discovery-settlement-policy",
+  "certificateHash": "acb6a7e4013e97b2cf12905212f8fe90741bde6dc16fee9eab9b9bac79683cbc",
+  "certificatePayload": {
+    "constraintRegister": {
+      "constraints": [
+        {
+          "class": "execution",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-001",
+          "kind": "scope",
+          "text": "one-command `npm install && npm start`"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-002",
+          "kind": "scope",
+          "text": "TypeScript backend"
+        },
+        {
+          "class": "human",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-003",
+          "kind": "scope",
+          "text": "Chrome client feel"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-004",
+          "kind": "scope",
+          "text": "local run required"
+        },
+        {
+          "class": "human",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-005",
+          "kind": "scope",
+          "text": "human acceptance after local start"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "initiative.constraints",
+          "id": "ord-c-006",
+          "kind": "scope",
+          "text": "deployment excluded"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-007",
+          "kind": "open-question",
+          "text": "Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling)"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-008",
+          "kind": "open-question",
+          "text": "Detailed balance of ship upgrade costs vs. profitability"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-009",
+          "kind": "open-question",
+          "text": "Specific visual effect implementation details (hyperspace jump, parallax depth)"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-010",
+          "kind": "open-question",
+          "text": "Save/load persistence mechanism (localStorage, file system, etc.)"
+        },
+        {
+          "class": "material",
+          "evidenceRef": "proposal.unknowns",
+          "id": "ord-c-011",
+          "kind": "open-question",
+          "text": "Specific pirate AI behavior patterns"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "lifecycle.classification.runnable-local",
+          "id": "ord-c-012",
+          "kind": "synthesis",
+          "lifecycleSynthesis": {
+            "classification": "runnable-local",
+            "injectionTableRef": "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+          },
+          "text": "the delivered product is synthesized and assembled as one whole that is runnable locally"
+        },
+        {
+          "class": "execution",
+          "evidenceRef": "lifecycle.classification.runnable-local",
+          "id": "ord-c-013",
+          "kind": "ordered-smoke",
+          "lifecycleSynthesis": {
+            "classification": "runnable-local",
+            "injectionTableRef": "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+          },
+          "text": "an ordered smoke test performs the install step, then the start step, then reaches the running product"
+        }
+      ],
+      "registerDigest": "fd24487945f3f052bfcd2d0940706a61c745d35bdf0eab9f323c1ffbbb912eac",
+      "schemaVersion": "factory.order-constraint-register.v2"
+    },
+    "decision": "go",
+    "inputHash": "7152a17267974931e61c57e647ec7a2c8c1aebf2524bf4bbc6d5fb479cc2a331",
+    "lifecycleBinding": {
+      "definitionHash": "b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7",
+      "injectionTableRefs": [
+        "lifecycle-obligation-injection:0e689a9ce05424229eb1a6043d357dda78e6e66db326280389fd890b8cee3872"
+      ],
+      "lifecycleRunId": 1,
+      "terminalClassifications": [
+        "failed",
+        "failed",
+        "formalization-inconsistent",
+        "development-blocked",
+        "failed",
+        "runnable-local"
+      ]
+    },
+    "payload": {
+      "policyHash": "a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402",
+      "policyVersion": "factory.discovery-settlement-policy.v1",
+      "processInputHash": "42bbc8b4d862a32895aa8dd37d9df8da37c27cf571b7aebf24e0912c6ae52c5a",
+      "proposalProductRef": {
+        "digest": "59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+        "ref": "managed-node-submission:1",
+        "schemaId": "factory.discovery-proposal.v1"
+      },
+      "readinessProductRef": {
+        "digest": "01ac811aad61e0667c934dada69336820635c9188faa6f15154e42fda4df8062",
+        "ref": "managed-node-submission:2",
+        "schemaId": "factory.discovery-readiness-assessment.v2"
+      },
+      "settlementInput": {
+        "captured_at": "2026-08-25 10:22:17",
+        "epic_id": 1,
+        "policy": {
+          "content_hash": "a39afa9bdf575228e2dd154f1e0cb31b60cbbaeb39ccba08e115e1e2f38ca402",
+          "version": "factory.discovery-settlement-policy.v1"
+        },
+        "proposal": {
+          "content_hash": "59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+          "id": 1,
+          "normalization_proposal_id": null,
+          "payload": {
+            "assumptions": [
+              "Player has Chrome browser installed",
+              "Node.js environment is available on the local machine",
+              "The game logic can be implemented entirely in JavaScript/TypeScript",
+              "Canvas/WebGL is sufficient for the required visual effects",
+              "Simple commodity market price variation algorithms are acceptable",
+              "Pirate AI can be basic and still provide engaging combat"
+            ],
+            "candidate_scope": "Minimum useful scope: a playable browser-based game with at least 8 star systems, one station per system, a simple commodity trading market, basic hyperspace travel (fuel consumption, pirate encounters), ship-to-ship combat (player lasers vs AI), ship upgrades (cargo, laser, shields, fuel), and save/load functionality. The frontend must be a single-page canvas/WebGL application with visual effects (parallax starfield, hyperspace jump, laser combat), and the server must expose a /healthz endpoint.",
+            "evidence_refs": [
+              "Initiative objective: Elite-style single-player space trading and combat game with a rich browser frontend",
+              "Initiative constraints: one-command startup, TypeScript backend, Chrome client feel",
+              "Context metadata: complexity XS, type web-app",
+              "Trusted provider bindings: saga-real-model-worker, development.verification-product-contract.v2, development.readiness-profile-monotonicity.v1, factory.local-runnability.v1, factory.accessible-counter-sandbox-check.v1, factory.authorized-verification-observer.v1, factory.documentation-completeness.v1"
+            ],
+            "observed_context": "Factory-initiated initiative with XS complexity and web-app type. The project requires a local Node.js server that serves the frontend, with Chrome as the target browser. No external CDN dependencies allowed—must be fully offline. The game must start immediately after `npm install && npm start` with no manual build steps. Evidence from the initiative specifies: 8+ named star systems with per-system price variation, fuel-consuming hyperspace jumps with pirate-encounter risk, ship upgrades (cargo capacity, laser, shields, fuel tank), save/load functionality, and unit tests for core game mechanics. Performance target is 60fps on a 2020 laptop.",
+            "order_constraints": [
+              {
+                "class": "execution",
+                "evidence_ref": "initiative.constraints",
+                "text": "one-command `npm install && npm start`"
+              },
+              {
+                "class": "material",
+                "evidence_ref": "initiative.constraints",
+                "text": "TypeScript backend"
+              },
+              {
+                "class": "human",
+                "evidence_ref": "initiative.constraints",
+                "text": "Chrome client feel"
+              },
+              {
+                "class": "execution",
+                "evidence_ref": "initiative.constraints",
+                "text": "local run required"
+              },
+              {
+                "class": "human",
+                "evidence_ref": "initiative.constraints",
+                "text": "human acceptance after local start"
+              },
+              {
+                "class": "execution",
+                "evidence_ref": "initiative.constraints",
+                "text": "deployment excluded"
+              }
+            ],
+            "problem_statement": "A desire exists to create an Elite-inspired single-player space trading and combat game playable in a web browser. The game should deliver a complete single-page experience with parallax starfield, hyperspace jumps, station docking, ship management (shields, fuel, cargo, credits), commodity trading with dynamic pricing, and arcade laser combat with visual effects.",
+            "rationale": "The initiative is well-bounded with clear constraints and a specific technology stack (Node.js server, Chrome frontend, TypeScript, no external dependencies). The scope is appropriate for XS complexity, and the functional requirements are understood (8+ systems, trading, combat, upgrades, save/load). Visual polish expectations are reasonable for a browser-based game. The verification requirements (unit tests, browser smoke test, /healthz) are standard and achievable. No evidence suggests technical infeasibility or missing critical information.",
+            "recommended_outcome": "go",
+            "risks": [
+              "Performance risk: 60fps target on 2020 laptop with full visual effects",
+              "Complexity risk: Implementing engaging combat AI within XS scope",
+              "Integration risk: Ensuring smooth offline operation with no CDN dependencies",
+              "Acceptance risk: Human acceptance after local start may require subjective visual polish"
+            ],
+            "stakeholders_or_actors": [
+              "Player: Single human user who opens localhost:port in Chrome and expects immediate gameplay",
+              "Factory system: Requires one-command startup, local runnability, and offline capability",
+              "Verification providers: Require unit tests for pricing/jump/combat/save-load logic, browser smoke test, and /healthz endpoint"
+            ],
+            "unknowns": [
+              "Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling)",
+              "Detailed balance of ship upgrade costs vs. profitability",
+              "Specific visual effect implementation details (hyperspace jump, parallax depth)",
+              "Save/load persistence mechanism (localStorage, file system, etc.)",
+              "Specific pirate AI behavior patterns"
+            ]
+          },
+          "source_intent_id": 1,
+          "source_submission_id": 1
+        },
+        "readiness": {
+          "assessment_id": 2,
+          "content_hash": "01ac811aad61e0667c934dada69336820635c9188faa6f15154e42fda4df8062",
+          "payload": {
+            "blocking_gaps": [],
+            "confidence": 0.85,
+            "dimension_assessments": {
+              "assumption_visibility": {
+                "rationale": "All key technical assumptions are explicitly documented: Chrome browser availability, Node.js environment, JavaScript/TypeScript implementation, Canvas/WebGL sufficiency, acceptable commodity market algorithms, and basic pirate AI. No hidden or unstated assumptions that would impact feasibility.",
+                "source_refs": [
+                  "$.assumptions"
+                ],
+                "status": "sufficient"
+              },
+              "evidence_grounding": {
+                "rationale": "Evidence references are grounded in initiative objectives, constraints, and metadata (complexity XS, type web-app). The rationale explicitly cites these evidence sources, and the proposed scope aligns with the stated constraints and verification requirements.",
+                "source_refs": [
+                  "$.evidence_refs"
+                ],
+                "status": "sufficient"
+              },
+              "problem_clarity": {
+                "rationale": "Problem statement clearly defines an Elite-inspired single-player space trading and combat game with specific functional requirements (parallax starfield, hyperspace jumps, station docking, ship management, commodity trading, laser combat) and明确的技术栈约束 (web browser, Chrome, single-page experience).",
+                "source_refs": [
+                  "$.problem_statement"
+                ],
+                "status": "sufficient"
+              },
+              "risk_visibility": {
+                "rationale": "Risks are well-identified across performance (60fps target), complexity (combat AI within XS scope), integration (offline operation), and acceptance (subjective visual polish). Risk categories are comprehensive and each risk is specific and actionable for mitigation.",
+                "source_refs": [
+                  "$.risks"
+                ],
+                "status": "sufficient"
+              },
+              "scope_boundedness": {
+                "rationale": "Candidate scope provides concrete minimum useful scope with quantifiable deliverables: 8+ star systems, one station per system, commodity trading market, hyperspace travel with fuel consumption and pirate encounters, ship-to-ship combat, ship upgrades, save/load functionality, and /healthz endpoint. The scope is appropriately bounded for XS complexity.",
+                "source_refs": [
+                  "$.candidate_scope"
+                ],
+                "status": "sufficient"
+              },
+              "stakeholder_coverage": {
+                "rationale": "Stakeholders are clearly identified with distinct roles and expectations: the Player (immediate gameplay experience), the Factory system (one-command startup, local runnability, offline capability), and Verification providers (specific test requirements and endpoints). Coverage is complete for the production context.",
+                "source_refs": [
+                  "$.stakeholders_or_actors"
+                ],
+                "status": "sufficient"
+              },
+              "unknowns_manageability": {
+                "rationale": "Unknowns are specific and technical (market mechanics, upgrade balance, visual effect details, persistence mechanism, AI patterns) rather than fundamental feasibility questions. These are standard implementation details that can be resolved through iterative development and do not block progress.",
+                "source_refs": [
+                  "$.unknowns"
+                ],
+                "status": "sufficient"
+              }
+            },
+            "non_blocking_gaps": [
+              {
+                "code": "NBGAP-001",
+                "description": "Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling) need implementation detail decisions",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-002",
+                "description": "Detailed balance of ship upgrade costs vs. profitability requires playtesting and tuning",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-003",
+                "description": "Specific visual effect implementation details (hyperspace jump, parallax depth) need technical specification",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-004",
+                "description": "Save/load persistence mechanism (localStorage, file system, etc.) requires architectural decision",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              },
+              {
+                "code": "NBGAP-005",
+                "description": "Specific pirate AI behavior patterns need definition during development",
+                "source_refs": [
+                  "$.unknowns"
+                ]
+              }
+            ],
+            "overall_readiness": "ready",
+            "proposal_content_hash": "59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+            "rationale": "All seven readiness dimensions are sufficient. The problem is clearly defined, scope is appropriately bounded for XS complexity, stakeholders are comprehensively covered, assumptions are explicit, unknowns are manageable implementation details, risks are well-identified, and the proposal is grounded in initiative evidence. No blocking gaps exist; five non-blocking gaps represent standard development decisions. The proposal's recommended_outcome of 'go' and the comprehensive rationale supporting feasibility confirm readiness to proceed to settlement.",
+            "recommended_next_action": "proceed_to_settlement"
+          },
+          "status": "accepted_by_kernel"
+        },
+        "schema_version": "factory.discovery-settlement-input.v1"
+      },
+      "settlementInputHash": "7152a17267974931e61c57e647ec7a2c8c1aebf2524bf4bbc6d5fb479cc2a331"
+    },
+    "rationale": "Proposal is ready, grounded, and confident enough to proceed",
+    "reasonCodes": [
+      "GO_READY_AND_GROUNDED"
+    ],
+    "schemaVersion": "factory.discovery-outcome-certificate.v1"
+  },
+  "decision": "go",
+  "inputHash": "7152a17267974931e61c57e647ec7a2c8c1aebf2524bf4bbc6d5fb479cc2a331",
+  "moduleRefKey": "product-discovery@4.0.0",
+  "rationale": "Proposal is ready, grounded, and confident enough to proceed",
+  "reasonCodes": [
+    "GO_READY_AND_GROUNDED"
+  ],
+  "schemaVersion": "factory.discovery-outcome-certificate.v1"
+}

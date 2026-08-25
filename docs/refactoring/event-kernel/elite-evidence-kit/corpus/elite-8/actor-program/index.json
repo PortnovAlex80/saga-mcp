@@ -1,0 +1,179 @@
+{
+  "capsules": [
+    {
+      "digest": "1f08341fc14cad5018feb63153fbbce719d2905444154e8a69899fa50bbe0c6b",
+      "file": "actor-program/1f08341fc14cad5018feb63153fbbce719d2905444154e8a69899fa50bbe0c6b.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "307e40dc4622f5b4095d29652c8e9ed4ab8f17f530c50d15243833c0600aacab",
+      "file": "actor-program/307e40dc4622f5b4095d29652c8e9ed4ab8f17f530c50d15243833c0600aacab.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "30def6df4fff72ab86b5cb0282906d3d2e87b80e3e68a8156aac6e80bb21815c",
+      "file": "actor-program/30def6df4fff72ab86b5cb0282906d3d2e87b80e3e68a8156aac6e80bb21815c.json",
+      "role": "worker-executions",
+      "summary": "39 executions"
+    },
+    {
+      "digest": "3483f360ccb303ea6a8a1123f2ffce5624fd39ce6dc4df2b5fe55df6048b9e31",
+      "file": "actor-program/3483f360ccb303ea6a8a1123f2ffce5624fd39ce6dc4df2b5fe55df6048b9e31.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_UNCOVERED on define-acceptance-contract"
+    },
+    {
+      "digest": "379e89bfcb02d50c6b16e85635aa375bf2a4c49f31dee7d606ecee04b3b80371",
+      "file": "actor-program/379e89bfcb02d50c6b16e85635aa375bf2a4c49f31dee7d606ecee04b3b80371.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "38e8e83c938949b37c2a757889ab8f21704bea19e56c5dca4c38cf1fe218402a",
+      "file": "actor-program/38e8e83c938949b37c2a757889ab8f21704bea19e56c5dca4c38cf1fe218402a.json",
+      "role": "command-receipts",
+      "summary": "40 commands"
+    },
+    {
+      "digest": "3974f19ac557ec8a83bf2d786578aaeb9e43bf4cab6d86c9ba151345c6769ec1",
+      "file": "actor-program/3974f19ac557ec8a83bf2d786578aaeb9e43bf4cab6d86c9ba151345c6769ec1.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "4a55f5deabe069488c4c2362b2016ef5bd72fab85c4e98dd326cd16ebab58b95",
+      "file": "actor-program/4a55f5deabe069488c4c2362b2016ef5bd72fab85c4e98dd326cd16ebab58b95.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_UNCOVERED on define-acceptance-contract"
+    },
+    {
+      "digest": "68e16ec856a15e5d9179bce38f675f05a72154c5ac5b90cc6a7208f5dd7e77ba",
+      "file": "actor-program/68e16ec856a15e5d9179bce38f675f05a72154c5ac5b90cc6a7208f5dd7e77ba.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "72f3add9722626a42f8b4b0505f7d0125f3d70c43b028bfab3a4fc34a5729396",
+      "file": "actor-program/72f3add9722626a42f8b4b0505f7d0125f3d70c43b028bfab3a4fc34a5729396.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_ACCEPTANCE_INCOMPLETE on define-acceptance-contract"
+    },
+    {
+      "digest": "7f2690aa105b8ff906530bf49660105177c05ee6c49c5c49e3534db54ce56dfe",
+      "file": "actor-program/7f2690aa105b8ff906530bf49660105177c05ee6c49c5c49e3534db54ce56dfe.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "8049b8aa5f3d3ec714a18c06e7a8a862135b3f46a18a6f2d00a95341bb640e25",
+      "file": "actor-program/8049b8aa5f3d3ec714a18c06e7a8a862135b3f46a18a6f2d00a95341bb640e25.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "927b4783894eee3b10a3bd922a68195b8d0c77691ac2d306fa139a0ce76e6a27",
+      "file": "actor-program/927b4783894eee3b10a3bd922a68195b8d0c77691ac2d306fa139a0ce76e6a27.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "9d74526c3db115734b5032e78c9489e5c984bb06b50ad28bcf548fee65b03d71",
+      "file": "actor-program/9d74526c3db115734b5032e78c9489e5c984bb06b50ad28bcf548fee65b03d71.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID on define-product-contract"
+    },
+    {
+      "digest": "ac2fcf39f64d1a020226a83732ee6be60ea8b4a1796cd94f93d01a47340db4dd",
+      "file": "actor-program/ac2fcf39f64d1a020226a83732ee6be60ea8b4a1796cd94f93d01a47340db4dd.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "aeeaf67008219a2a9a296369471c4cfdd8b99a9d1ca0b0f83cd0a8b6802308bc",
+      "file": "actor-program/aeeaf67008219a2a9a296369471c4cfdd8b99a9d1ca0b0f83cd0a8b6802308bc.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_ACCEPTANCE_INCOMPLETE on define-acceptance-contract"
+    },
+    {
+      "digest": "b036d401999f2c6751f95e87bd8ac4b185e0cc652718d77dcede0f0d89680fc5",
+      "file": "actor-program/b036d401999f2c6751f95e87bd8ac4b185e0cc652718d77dcede0f0d89680fc5.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "b970a72c41351882d68ad7985dffa7344ff6be2835c3323ecf8f22eef3d4ded6",
+      "file": "actor-program/b970a72c41351882d68ad7985dffa7344ff6be2835c3323ecf8f22eef3d4ded6.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "c281aa4f27ac4b4fc5227a2a040430595906622fe1df7e13e61dd4d5d34f68a6",
+      "file": "actor-program/c281aa4f27ac4b4fc5227a2a040430595906622fe1df7e13e61dd4d5d34f68a6.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "c442c0d22abd174d14f603ea0931f7bc1418117ef1a883c612eee57f466791ae",
+      "file": "actor-program/c442c0d22abd174d14f603ea0931f7bc1418117ef1a883c612eee57f466791ae.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "c7da85b2158f65b6057ac8f6aafb1a04d06c6223234a0d01441a7651b23ef303",
+      "file": "actor-program/c7da85b2158f65b6057ac8f6aafb1a04d06c6223234a0d01441a7651b23ef303.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "ce739a892fdf99bc01e5c5d27fd46a7d868addc719ed24a475228ec3f15496c5",
+      "file": "actor-program/ce739a892fdf99bc01e5c5d27fd46a7d868addc719ed24a475228ec3f15496c5.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "d67ab6e53082b47632dae387dce5d716ff5ccb3b729518221a76050b9b742a18",
+      "file": "actor-program/d67ab6e53082b47632dae387dce5d716ff5ccb3b729518221a76050b9b742a18.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "e7c1bf212b277a627002824ccbcc86389f3b05eb879378caf4d25462d11c8995",
+      "file": "actor-program/e7c1bf212b277a627002824ccbcc86389f3b05eb879378caf4d25462d11c8995.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "e8803a24aa6b021252d01804bc115a586ba4c41336dcee43ba21fcfc07ee457e",
+      "file": "actor-program/e8803a24aa6b021252d01804bc115a586ba4c41336dcee43ba21fcfc07ee457e.json",
+      "role": "sealed-material/factory.review-verdict.v1",
+      "summary": "factory.review-verdict.v1"
+    },
+    {
+      "digest": "e9be65076d3e1eedeebbd27a1d93f24a0611573b57796f2d324fb4c2e0dc78d9",
+      "file": "actor-program/e9be65076d3e1eedeebbd27a1d93f24a0611573b57796f2d324fb4c2e0dc78d9.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_CONSTRAINT_UNDISPOSED on define-product-contract"
+    },
+    {
+      "digest": "f1797ff7983c031d2330f8ee3c784a98e1ff02cf88baa9ea7192081232d990f6",
+      "file": "actor-program/f1797ff7983c031d2330f8ee3c784a98e1ff02cf88baa9ea7192081232d990f6.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_AC_HEADING_UNRESOLVED on define-acceptance-contract"
+    },
+    {
+      "digest": "f4c04524a8f2d2a2cbf61a61c0be7f5b7a2076b6e78f39ef35814a85f77e5370",
+      "file": "actor-program/f4c04524a8f2d2a2cbf61a61c0be7f5b7a2076b6e78f39ef35814a85f77e5370.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_SRS_INCOMPLETE on define-architecture-contract"
+    },
+    {
+      "digest": "fb4783d713e9212bf1ef6700164ac094d0c4d1e482508d9811d88774095bb4a2",
+      "file": "actor-program/fb4783d713e9212bf1ef6700164ac094d0c4d1e482508d9811d88774095bb4a2.json",
+      "role": "submission-rejection",
+      "summary": "FORMALIZATION_AC_HEADING_UNRESOLVED on define-acceptance-contract"
+    }
+  ],
+  "runId": "elite-8"
+}

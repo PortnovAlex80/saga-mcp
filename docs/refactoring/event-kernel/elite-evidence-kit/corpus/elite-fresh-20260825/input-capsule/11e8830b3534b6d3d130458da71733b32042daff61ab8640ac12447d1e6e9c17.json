@@ -1,0 +1,53 @@
+{
+  "installations": [
+    {
+      "name": "product-discovery",
+      "packageDigest": "6e77401ec7b431b2e334077432a2a1aee50d757a025fdbbab5ca0a82b94cae07",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\6e\\6e77\\6e77401ec7b431b2e334077432a2a1aee50d757a025fdbbab5ca0a82b94cae07",
+      "version": "4.0.0"
+    },
+    {
+      "name": "solution-formalization",
+      "packageDigest": "df7e8ba35ec52691297f4d38d4431523069d26210b6fc4022dbc317ef198218d",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\df\\df7e\\df7e8ba35ec52691297f4d38d4431523069d26210b6fc4022dbc317ef198218d",
+      "version": "1.0.0"
+    },
+    {
+      "name": "solution-development",
+      "packageDigest": "a5e72f81576fac8782c2d4788a5886a6367ba041ef45f92a96f2fb454f3e326c",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\a5\\a5e7\\a5e72f81576fac8782c2d4788a5886a6367ba041ef45f92a96f2fb454f3e326c",
+      "version": "1.4.4"
+    },
+    {
+      "name": "solution-development-managed",
+      "packageDigest": "9b59b1038dbc837cd0e38e556966350d4cd7ae0708d5880468cf101ba8694614",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\9b\\9b59\\9b59b1038dbc837cd0e38e556966350d4cd7ae0708d5880468cf101ba8694614",
+      "version": "1.1.0"
+    },
+    {
+      "name": "solution-development-verification-continuation",
+      "packageDigest": "343ebb1205bfa0cbd2bf72dd1e584529e13d53c7c06dce5d6d39a91aa93b7539",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\34\\343e\\343ebb1205bfa0cbd2bf72dd1e584529e13d53c7c06dce5d6d39a91aa93b7539",
+      "version": "1.0.0"
+    },
+    {
+      "name": "delivery-release",
+      "packageDigest": "e579e5d41b34e317e7b14a5f76f562cea698f47989534dafac25ecb11c21a765",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\e5\\e579\\e579e5d41b34e317e7b14a5f76f562cea698f47989534dafac25ecb11c21a765",
+      "version": "1.0.0"
+    },
+    {
+      "name": "documentation-release",
+      "packageDigest": "c72e81d7a314b1b88120270a09d9e521e1c224ad1763337d15540a43a1dd2779",
+      "status": "active",
+      "storeLocation": "D:\\Development\\elite-fresh-20260825\\package-store\\c7\\c72e\\c72e81d7a314b1b88120270a09d9e521e1c224ad1763337d15540a43a1dd2779",
+      "version": "1.0.0"
+    }
+  ]
+}

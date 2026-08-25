@@ -1,0 +1,132 @@
+{
+  "gaps": [
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#11",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#12",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#13",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#14",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#15",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#16",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#17",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#18",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#19",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#20",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#21",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#22",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#23",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 7 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#24",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "formalization.acceptance#1"
+    }
+  ],
+  "kind": "journal-visibility-gap",
+  "note": "Executions the DB marks lost/terminated with a loss reason but whose transition never appears in the journal. Not a phantom execution (INV-07 checks: no completion products, task re-completed by a successor) — but a replay must reproduce the loss via DB-side state, not via a journal event."
+}

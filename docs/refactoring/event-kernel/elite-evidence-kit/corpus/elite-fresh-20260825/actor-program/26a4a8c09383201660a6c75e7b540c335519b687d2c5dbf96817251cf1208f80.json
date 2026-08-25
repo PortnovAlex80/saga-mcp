@@ -1,0 +1,118 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID:disposes_register",
+          "evidenceRefs": [
+            "submission-validation-rejection:9d7401bdf28f83e7d45065d7d0dc79ffc169125c5f8947f8e9c077cb043b0343"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "disposes_register",
+            "requiredTargetTypes": [
+              "constraint_dispositions"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_REGISTER_DIGEST_PIN_MISSING: the brief metadata must carry 'constraint_dispositions_register_digest' (<registerDigest>) beside constraint_dispositions — positional ord-c dispositions are never reusable across register revisions",
+          "path": "constraint_dispositions",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        }
+      ],
+      "policyId": "submission-validation:formalization.product-contract.v1",
+      "reasonCode": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "5ad5d8c1d56bb00257753be258da3fea0b62dbcc2f6f80ed1a89f95ba9ed473d",
+          "kind": "artifact",
+          "ref": "artifact:1",
+          "schema": "brief"
+        }
+      ],
+      "summary": "Submission preflight formalization.product-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "brief",
+        "content_hash": "5ad5d8c1d56bb00257753be258da3fea0b62dbcc2f6f80ed1a89f95ba9ed473d",
+        "id": 1,
+        "path": "docs/requirements/REQ-001-elite-fresh/01-brief.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "brief"
+      }
+    ],
+    "observedSetDigest": "60ca19363ecbaf32603eb6463c0f3fe6a618fd9251997f2d9c234c2fea3a03cb",
+    "origin": {
+      "executionId": "worker-execution:aa634e34-1321-4d7e-b40a-322f68bc95e3",
+      "inputSnapshotHash": "d6c13ab1507331917869ed75df7f2e93a8483022d3291bd983d0bb52a5060024",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-product-contract",
+      "processRunId": 2,
+      "taskId": 3,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+    },
+    "rejectionDigest": "9d7401bdf28f83e7d45065d7d0dc79ffc169125c5f8947f8e9c077cb043b0343",
+    "rejectionRef": "submission-validation-rejection:9d7401bdf28f83e7d45065d7d0dc79ffc169125c5f8947f8e9c077cb043b0343",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.product-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "constraint_dispositions",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_REGISTER_DIGEST_PIN_MISSING: the brief metadata must carry 'constraint_dispositions_register_digest' (<registerDigest>) beside constraint_dispositions — positional ord-c dispositions are never reusable across register revisions",
+      "missing": {
+        "minimum": 1,
+        "relation": "disposes_register",
+        "requiredTargetTypes": [
+          "constraint_dispositions"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-product-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "brief",
+      "content_hash": "5ad5d8c1d56bb00257753be258da3fea0b62dbcc2f6f80ed1a89f95ba9ed473d",
+      "id": 1,
+      "path": "docs/requirements/REQ-001-elite-fresh/01-brief.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "brief"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_CONSTRAINT_DISPOSITIONS_INVALID",
+  "rejectionDigest": "9d7401bdf28f83e7d45065d7d0dc79ffc169125c5f8947f8e9c077cb043b0343",
+  "task": "formalization.product#1",
+  "validatorId": "formalization.product-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-product-contract/singleton"
+}

@@ -1,0 +1,1102 @@
+{
+  "note": "Actor program: ordered author/reviewer responses per workplace with gate outcomes (accepted AND rejected). Capsules are content-addressed payloads of each response; command-receipts and worker-executions carry the normalized tool-call/process surface.",
+  "runId": "elite-fresh-20260825",
+  "workplaces": [
+    {
+      "moduleRef": "product-discovery@4.0.0",
+      "productionCellId": "discovery-proposal",
+      "responses": [
+        {
+          "candidateSetDigest": "a05f27edae51909c7e36eae1d0891c5b82cf5959c3de67177a3160c960fb6026",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+              "origin": "produced",
+              "schema": "factory.discovery-proposal.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        }
+      ],
+      "tasks": [
+        "discovery.work#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "product-discovery@4.0.0/discovery-proposal/singleton"
+    },
+    {
+      "moduleRef": "product-discovery@4.0.0",
+      "productionCellId": "discovery-readiness",
+      "responses": [
+        {
+          "candidateSetDigest": "b9cc54e2e0a3cb6574c15e3d53657b4ee02d438c057e7942ba40e91fb09c6a8d",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "01ac811aad61e0667c934dada69336820635c9188faa6f15154e42fda4df8062",
+              "origin": "produced",
+              "schema": "factory.discovery-readiness-assessment.v2"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        }
+      ],
+      "tasks": [
+        "discovery.assess#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "product-discovery@4.0.0/discovery-readiness/singleton"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "0a8154549922464ba2a707951261ae3a6d303eacc60fbf084e7e625c01df3bab",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/e32e2a21c89b2a6265f7ef2d613064b0e899e43bd9d9cc57d3ce6e6f3cc0fc7d.json"
+              },
+              "digest": "522bf4bfb8647239b2da5abce9020d2df603878f89e6c70baf6708c5a4293a0e",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "4702664be4ce5752b5b4a450a4a5768f4499d0ca0b3571a22f4cc12811699bec",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/e32e2a21c89b2a6265f7ef2d613064b0e899e43bd9d9cc57d3ce6e6f3cc0fc7d.json"
+              },
+              "digest": "522bf4bfb8647239b2da5abce9020d2df603878f89e6c70baf6708c5a4293a0e",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/b7ed2254ad0f5fd2e06e26d6dc401fe59ce02cd1406cfb66e2a974ab31885824.json"
+              },
+              "digest": "48b07aebeacf8194cf5fab8043b8cfa6cbd40a19608761f2fd4074a61fc5d968",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#3",
+        "development.code.review#8"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "2bc06277c9f89bf43b6e0744",
+      "workplace": "solution-development@1.4.4/development-implementation/2bc06277c9f89bf43b6e0744"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "70a68c68ce694b6e8bd92641e5698ed37dde4e8ddf58e589cbe91bbbb2920d1c",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/a7e32aeedeb47f72842a66d1fb86e4ef09ae31b5d2120c1915824bd73517d3c1.json"
+              },
+              "digest": "5c90b048e7e0adc8e98778df7d0e2fa3abd453273cf0536797fac33e09215c48",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "a90d518b93b195eb43886e76aa7293a5d2fb0990766a996927b78d7bb1a258f2",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/a7e32aeedeb47f72842a66d1fb86e4ef09ae31b5d2120c1915824bd73517d3c1.json"
+              },
+              "digest": "5c90b048e7e0adc8e98778df7d0e2fa3abd453273cf0536797fac33e09215c48",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/62081397e4883bbc6a55fc612a6d68b0d187caceeb7880a625f3d0ae22f903d7.json"
+              },
+              "digest": "0acf4f9c5c58edb7197ec6e98c57ed7c64b466b06e7e39050fd8353413948bda",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#2",
+        "development.code.review#2"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "47a05303d714cc5a3cc2a587",
+      "workplace": "solution-development@1.4.4/development-implementation/47a05303d714cc5a3cc2a587"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "566a079d5b982da0f0a6940ea9dcdf720bd272457b1420efa1170880bde40b3e",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/697d3fba74652ef6e3f70a8f4e9de3cea40d772bbbfd8bdd2a968bb8f7449bc1.json"
+              },
+              "digest": "23e9f8232097d9d07a1a9c722811516a35408357cdf166104375ee415562117c",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "27534f3ea17ee6222a5f76183689d9a905cab0d80f0f8b233ee85d8bbf8e390c",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/697d3fba74652ef6e3f70a8f4e9de3cea40d772bbbfd8bdd2a968bb8f7449bc1.json"
+              },
+              "digest": "23e9f8232097d9d07a1a9c722811516a35408357cdf166104375ee415562117c",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/1a97136c01dd532975d886eb1437e257ac00c3acef047cecdb0d41dd862ce68b.json"
+              },
+              "digest": "91d5c96f9504f8e5c89b8c34641b305b46c292c602fb6b111cb02e258fc12724",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#8",
+        "development.code.review#3"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "589e3e5022d693d6be13877e",
+      "workplace": "solution-development@1.4.4/development-implementation/589e3e5022d693d6be13877e"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "558554412c4782b1d7f4189bcf938cb771d5cf4568f09df49ece867cec1a9ec6",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/711c9c01359a2727946204347a90903c5f47def5da486581ad9e851474dd1e91.json"
+              },
+              "digest": "3148ab0f37b9c4995e0899eb73668907cfee4821c3dcc10ee4edf2a051992484",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "9098bc6902e7d6bc90396e057f3a09aa886f83f228b5d323857556e17f5ed4ee",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/711c9c01359a2727946204347a90903c5f47def5da486581ad9e851474dd1e91.json"
+              },
+              "digest": "3148ab0f37b9c4995e0899eb73668907cfee4821c3dcc10ee4edf2a051992484",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/2637edbdf0ede1675a376305c571b8ea4cf5da9e2f3a613ceeeed797bbae090e.json"
+              },
+              "digest": "9f33abc3c6c96554d8ede083331cbdf532e0a59d78dbc8129b52d50fea0ad94f",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#6",
+        "development.code.review#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "65444935587bc11eb4139df1",
+      "workplace": "solution-development@1.4.4/development-implementation/65444935587bc11eb4139df1"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "c4512bcf6ee9db012e6a88779dc8a29f2d96aabe704b316e32322781b5328003",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/074fcb0702f3c68cc8f074ed60ec6ca64950ce673f6b749653775f215fab7b3a.json"
+              },
+              "digest": "dd048bfbd1f3e2562e6f42469314cc72041e0cf6e4a7e167065487cc6e921e09",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "ae5fc28076ac18f44bf5bc734b28920f7fe391293d8c7f22c2b8dc08bd7d1cae",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/074fcb0702f3c68cc8f074ed60ec6ca64950ce673f6b749653775f215fab7b3a.json"
+              },
+              "digest": "dd048bfbd1f3e2562e6f42469314cc72041e0cf6e4a7e167065487cc6e921e09",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/68c508277bcea40ad4072925dcaf58c2ee7cf50c4ad2d102b4eb61bfbacfedfe.json"
+              },
+              "digest": "fd657aad824cba420b94f299813cdfdbf942e9f9ed0f3b9a845928194efcb5e9",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#1",
+        "development.code.review#6"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "ac8eef07ee342ff2a249b254",
+      "workplace": "solution-development@1.4.4/development-implementation/ac8eef07ee342ff2a249b254"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "350d0dfeccb38459e395d3b4819640daec89e639b63f9a6d598742555e1e272d",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/7879938bc23f1ec03402712c39583035b4b56b9beb4321d7bd87f538be82d7ee.json"
+              },
+              "digest": "dc0301e48d2191dd68e0dec5c2733a175c2878849eadecd1ef154a35669b5e20",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "b48b1bfba6eaab98b6ec8409e2ddd5abc96b2222bbb99bd9406ce502384e941f",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/7879938bc23f1ec03402712c39583035b4b56b9beb4321d7bd87f538be82d7ee.json"
+              },
+              "digest": "dc0301e48d2191dd68e0dec5c2733a175c2878849eadecd1ef154a35669b5e20",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/5aa8c79dda90387db28a9cc370f63c17a9669097f54ea953b83b63220876e88e.json"
+              },
+              "digest": "110b31908f60e491e448263fbec5facf4643fd7e3273f7e177b23b37096a3b96",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#7",
+        "development.code.review#4"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "b62a31d1e17b827468cd253a",
+      "workplace": "solution-development@1.4.4/development-implementation/b62a31d1e17b827468cd253a"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "73eadeb5e21c9d240e78cff5b74d1e4eea498c53395492edfb1779d4a738103d",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/b053dfc848aa51024228bedbea2f5ebfc3de11c322dc87d597cbc020ccbf1cb6.json"
+              },
+              "digest": "824a801cde4e1cad01d8548049e9e70185179b89086db4180e25d8d1c14f0919",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "9ea8a328dffbf836def5e7032935f460185d4ba0166de3b8b4e8c0ae249f77af",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/b053dfc848aa51024228bedbea2f5ebfc3de11c322dc87d597cbc020ccbf1cb6.json"
+              },
+              "digest": "824a801cde4e1cad01d8548049e9e70185179b89086db4180e25d8d1c14f0919",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/397636fcf1b6195a3d70f7f73a73ec71abca131df641410ae40ef72baab5c447.json"
+              },
+              "digest": "7c30218f8581c05dc37ae98e118c4a4bcf5515447d412c78c4f5ad125a34f96f",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#4",
+        "development.code.review#7"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "f3b799615a7b13645189f6a6",
+      "workplace": "solution-development@1.4.4/development-implementation/f3b799615a7b13645189f6a6"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-implementation",
+      "responses": [
+        {
+          "candidateSetDigest": "c14de62f226f1022bdab9d4c48c40245a35c0117c4788361d46d76ada2902081",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/a13348e1f0933885518a13e1df44fe7080d86a7ceea0015bf4c2be89dfe8c3a7.json"
+              },
+              "digest": "beb1e8d13464f86376116c675fd90ff1b9e534c4bdcf1a559d8cde888c38b2fd",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "64cd9a269bd31db42b00068f10f4712b2b16f74d4fc575fa1f460623e0fbf476",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "file": "actor-program/a13348e1f0933885518a13e1df44fe7080d86a7ceea0015bf4c2be89dfe8c3a7.json"
+              },
+              "digest": "beb1e8d13464f86376116c675fd90ff1b9e534c4bdcf1a559d8cde888c38b2fd",
+              "origin": "produced",
+              "schema": "factory.development-implementation-result.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/bebbd511e7b532132e48a5fd4e09303aa6f1816e4a4e15fe4c121bc0330146c5.json"
+              },
+              "digest": "f14aabf49d7dd80438c06f36a976eda1253139028c0ce133ecee59e31afbef4f",
+              "origin": "produced",
+              "schema": "factory.development-review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "development.code#5",
+        "development.code.review#5"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "fb94e2966c8af0aab4559544",
+      "workplace": "solution-development@1.4.4/development-implementation/fb94e2966c8af0aab4559544"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-plan-task-graph",
+      "responses": [
+        {
+          "candidateSetDigest": "9a331fc4074f8d8879c7eec5e328edecd2fa7b9e8e16fa013f2d5738f3449afc",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "5fe033106c3184907f7a3a95c2bd9139cdb6e012c685de6f52a3c934c8b17c6f",
+              "origin": "produced",
+              "schema": "factory.development-task-graph-proposal.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        }
+      ],
+      "tasks": [
+        "planning.decomposition#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-development@1.4.4/development-plan-task-graph/singleton"
+    },
+    {
+      "moduleRef": "solution-development@1.4.4",
+      "productionCellId": "development-readiness-certification",
+      "responses": [
+        {
+          "candidateSetDigest": "387f9c002a81d5e4240cfb3716a727a8058ef3c2d6610c8ab2d390945caf7e5b",
+          "candidateSetLabel": "cand#1",
+          "disposition": "rejected:failed",
+          "gateDecisions": [
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "failed"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "05c48d4250e30ace7154af95a41095c84552fab5b2813852f0cd81194df12867",
+              "origin": "produced",
+              "schema": "factory.development-readiness-manifest.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        }
+      ],
+      "tasks": [
+        "development.readiness#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "failed",
+        "loopState": "terminal",
+        "terminalReason": "failed"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-development@1.4.4/development-readiness-certification/singleton"
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "productionCellId": "formalization-acceptance-contract",
+      "responses": [
+        {
+          "candidateSetDigest": "185566c3aae0a7c1876d26aeb7818c67223b34359591c61f1ce5cc954c0894c9",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "ef7daa4cd8a491046a4cb6432b9b65c1d4d38d1fef8637c592bf73f054bf7eb0",
+              "origin": "produced",
+              "schema": "factory.formalization-acceptance-bundle.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "57ef45eb2ffe99f4a62243f960758c46ae9d2daaa6f0af7c6e4059cdfa08ec07",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "ef7daa4cd8a491046a4cb6432b9b65c1d4d38d1fef8637c592bf73f054bf7eb0",
+              "origin": "produced",
+              "schema": "factory.formalization-acceptance-bundle.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/c0590d9df3b0ad6b172490be562ebf2f17c0ab4c9216dd064ab656dcef7372cb.json"
+              },
+              "digest": "f9d55c64fcf0f9ce1a5a9735c7a61e85abe335a44592019d396bb4e975bf184f",
+              "origin": "produced",
+              "schema": "factory.review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "formalization.acceptance#1",
+        "formalization.review#3"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "productionCellId": "formalization-architecture-contract",
+      "responses": [
+        {
+          "candidateSetDigest": "8c4b4e053e82062e1576d9d5cd1622028eaf807d918e1079b134730eefcc276e",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "2d16ab3eed015408842c5b7ed6cc9e1f44a54eda26ede2e0004bae4cd823d81b",
+              "origin": "produced",
+              "schema": "factory.formalization-architecture-bundle.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "13261feb14dda40e09afcbc9013a2640bfc573a541957ad7200c0694467c32ed",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "2d16ab3eed015408842c5b7ed6cc9e1f44a54eda26ede2e0004bae4cd823d81b",
+              "origin": "produced",
+              "schema": "factory.formalization-architecture-bundle.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/20275df89f9887f2ae038b21f436c9a8a42992bec11401996c8d104770f55be9.json"
+              },
+              "digest": "3c8ec1a289b689916c1ea27247e49560c49a863fe9bd06308f5331249a0e7182",
+              "origin": "produced",
+              "schema": "factory.review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "formalization.architecture#1",
+        "formalization.review#5"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "productionCellId": "formalization-product-contract",
+      "responses": [
+        {
+          "candidateSetDigest": "0e2c89731a23f24e119b4cf27794592209e3787f49ca9fe4206c42455597d3f5",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "574d18b63208d583aa21f5febc5e01853b9186ca3d34c4683e595f4cba2adf0c",
+              "origin": "produced",
+              "schema": "factory.formalization-product-bundle.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "d6f5b248608b1006edd878d7054e3a8d5a83528d8ce926ae7f44c70555b9b076",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "574d18b63208d583aa21f5febc5e01853b9186ca3d34c4683e595f4cba2adf0c",
+              "origin": "produced",
+              "schema": "factory.formalization-product-bundle.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/8746f957bc410e0378b3f45b0489b67c4690e9750a907b344e516f1f34ba18ec.json"
+              },
+              "digest": "42526706e9dfeab199059eb55cc8253b08268a31ceab8d3aa0d77c3957ad3654",
+              "origin": "produced",
+              "schema": "factory.review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "formalization.product#1",
+        "formalization.review#1"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-formalization@1.0.0/formalization-product-contract/singleton"
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "productionCellId": "formalization-reconciliation",
+      "responses": [
+        {
+          "candidateSetDigest": "38d077435da7a8ce3cd8c8b43b047136b9417b7e63e02ac0a9907fa1dfddd289",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "9a3d24bccacfa259cd5c98e978bb72aa40af8323934bbd5fb95bc863d36227f5",
+              "origin": "produced",
+              "schema": "factory.formalization-reconciliation-report.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "25d20eb526f0cbb04bcf9475ace7a3e097410d4b774c981ab1a394680caeb4c1",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "9a3d24bccacfa259cd5c98e978bb72aa40af8323934bbd5fb95bc863d36227f5",
+              "origin": "produced",
+              "schema": "factory.formalization-reconciliation-report.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/221f7b186a95afe298b6bc60d389c89e670a8c46e9fe0cafc1dd1650ff59bba4.json"
+              },
+              "digest": "59322ead0a3c582a759274d94f6d19576346b4677179769864f3f581791bcb58",
+              "origin": "produced",
+              "schema": "factory.review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "formalization.reconcile#1",
+        "formalization.review#4"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-formalization@1.0.0/formalization-reconciliation/singleton"
+    },
+    {
+      "moduleRef": "solution-formalization@1.0.0",
+      "productionCellId": "formalization-use-cases",
+      "responses": [
+        {
+          "candidateSetDigest": "ca63c515b757900ef0f02d60b5681037d8268533cc1209253010877291ba4994",
+          "candidateSetLabel": "cand#1",
+          "disposition": "accepted",
+          "gateDecisions": [
+            {
+              "phase": "author",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            },
+            {
+              "phase": "final",
+              "repairTargetRole": null,
+              "verdict": "accepted"
+            }
+          ],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "d845c4a54c65c244d8cc7744a67ea503a07f930b1a1f63546fc497483683fa4f",
+              "origin": "produced",
+              "schema": "factory.formalization-use-case-bundle.v1"
+            }
+          ],
+          "revisionOrdinal": 1,
+          "role": "author"
+        },
+        {
+          "candidateSetDigest": "761127f4d39163539597d7dc11c6723b3cbce054672fc73d94bc220d5f83362b",
+          "candidateSetLabel": "cand#2",
+          "disposition": "no-gate-decision",
+          "gateDecisions": [],
+          "members": [
+            {
+              "capsule": {
+                "note": "material not sealed as an actor capsule"
+              },
+              "digest": "d845c4a54c65c244d8cc7744a67ea503a07f930b1a1f63546fc497483683fa4f",
+              "origin": "produced",
+              "schema": "factory.formalization-use-case-bundle.v1"
+            },
+            {
+              "capsule": {
+                "file": "actor-program/df014d5403df77828a146802c6e08d3a733014fffe77be1cedb895b14674e145.json"
+              },
+              "digest": "df1beb5c0e140e687e22b6e4e887d42a39df238f4fa43ce396e5115c080e3fdc",
+              "origin": "produced",
+              "schema": "factory.review-verdict.v1"
+            }
+          ],
+          "revisionOrdinal": 2,
+          "role": "reviewer"
+        }
+      ],
+      "tasks": [
+        "formalization.use-cases#1",
+        "formalization.review#2"
+      ],
+      "terminal": {
+        "kanbanPhase": "done",
+        "loopState": "terminal",
+        "terminalReason": "accepted"
+      },
+      "workKey": "singleton",
+      "workplace": "solution-formalization@1.0.0/formalization-use-cases/singleton"
+    }
+  ]
+}

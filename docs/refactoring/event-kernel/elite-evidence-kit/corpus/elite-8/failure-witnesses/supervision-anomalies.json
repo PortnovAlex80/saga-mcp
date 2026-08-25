@@ -1,0 +1,302 @@
+{
+  "anomalies": [
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 131945,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:3acfc1c8-47c9-42f6-bd9d-1b1a1aa7af3f"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#11",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 131547,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:316cb1e1-4778-4014-a3ff-6e360e30dc71"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#12",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 139223,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:28a8cdbe-d541-4eac-979c-0d09603777ad"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#13",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 130846,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:7eb1f8fb-7652-405f-b765-e705f04ed8c8"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#14",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 127534,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:c1ffa425-3846-4e5d-a8b9-e7af6a74b956"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#15",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 131774,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:fc247746-e699-48c3-ba69-29e43a4bc287"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#16",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 139271,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:dccdd788-0310-4fe1-91bb-2cbbfc8ca288"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#17",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 128002,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:cdb0790f-c164-4b27-b525-74f7f4a18962"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#18",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 130673,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:dd45536c-e251-4f17-8372-7d8a50f68105"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#19",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 139898,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:df9d7834-646f-4afb-8758-eba79e15be65"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#20",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 133689,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:3e65e05c-6d86-46aa-877b-9f4e9d2c2e40"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#21",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 135028,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:4b5d93fc-ba58-4788-99fc-a001a2dd7343"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#22",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 136380,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:9d905a15-ccaa-4043-9cb0-b2d2d096bfc8"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#23",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Draft",
+            "duration_ms": 141198,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 7,
+            "worker_done_received": false,
+            "worker_id": "worker:dfe629cd-68c9-4b29-a3b4-e088b936a192"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#24",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "action": "lost",
+            "reason": "OS process is not alive",
+            "released": true,
+            "task_id": 7
+          },
+          "kind": "supervision.reaped"
+        }
+      ],
+      "exec": "exec#25",
+      "state": "lost",
+      "task": "formalization.acceptance#1"
+    }
+  ],
+  "kind": "supervision-observation",
+  "note": "Lost/terminated executions with their supervision evidence. Not a defect by itself: INV-07 requires (and checks) that they produced no completion products and were reaped/recovered openly."
+}

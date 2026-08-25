@@ -1,0 +1,22 @@
+{
+  "projectRepositories": [
+    {
+      "integrationBranch": "dev",
+      "localPath": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8\\product",
+      "role": "component",
+      "status": "active"
+    }
+  ],
+  "projects": [
+    {
+      "name": ".factory-sandboxes/elite8",
+      "status": "active"
+    }
+  ],
+  "repositories": [
+    {
+      "defaultBranch": "main",
+      "name": ".factory-sandboxes/elite8-repo"
+    }
+  ]
+}

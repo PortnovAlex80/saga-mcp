@@ -1,0 +1,56 @@
+{
+  "contentDigest": "beb1e8d13464f86376116c675fd90ff1b9e534c4bdcf1a559d8cde888c38b2fd",
+  "payload": {
+    "acceptanceCriterionKeys": [
+      "49:AC-17",
+      "54:AC-22"
+    ],
+    "coveredConstraintIds": [
+      "ord-c-001",
+      "ord-c-002",
+      "ord-c-004",
+      "ord-c-005",
+      "ord-c-006",
+      "ord-c-012",
+      "ord-c-013"
+    ],
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "3ef96b3597b5c4b5093f937eec54a57a0a6f29f8",
+      "integrationBranch": "dev",
+      "name": "product",
+      "projectRepositoryId": 1
+    },
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "modified",
+          "path": "package.json"
+        },
+        {
+          "change": "added",
+          "path": "server/index.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/server.test.ts"
+        },
+        {
+          "change": "added",
+          "path": "tests/smoke.test.ts"
+        }
+      ],
+      "commitSha": "277f09b26d47071b0dd4da9b11e08d78bb1b1aa7",
+      "treeSha": "6f8ec167977b8367eaec25d837a7c8515f1e70af"
+    },
+    "source": {
+      "branch": "saga/task/18/execution/1c5a44ab17dd7f96052a",
+      "commitSha": "277f09b26d47071b0dd4da9b11e08d78bb1b1aa7",
+      "workItemKey": "impl-server"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-server"
+  },
+  "payloadHash": "beb1e8d13464f86376116c675fd90ff1b9e534c4bdcf1a559d8cde888c38b2fd",
+  "schemaId": "factory.development-implementation-result.v1"
+}

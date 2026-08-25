@@ -1,0 +1,469 @@
+{
+  "details": {
+    "actualAcCodes": [
+      "AC-1",
+      "AC-2",
+      "AC-3",
+      "AC-4",
+      "AC-5",
+      "AC-6",
+      "AC-7",
+      "AC-8",
+      "AC-9",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15"
+    ],
+    "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+    "baselineSnapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13",
+    "canonicalDecisionLogExample": "## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|----------------|-------------------------|-----------|------|\n| 1 | Modular monolith | local | layered monolith, services | Fits bounded local scope | 2026-08-11 |",
+    "canonicalExample": "## §D2 AC Map\n```yaml\n- ac: AC-1\n  title: Exact frozen AC title\n  module: core\n  files: [src/core.ts]\n  invariants: [INV-1]\n  test_layers: [L0]\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n```",
+    "d2Enums": {
+      "ac_kind": [
+        "implementation",
+        "verification"
+      ],
+      "criticality": [
+        "blocker",
+        "degradable",
+        "nice_to_have"
+      ],
+      "pattern": [
+        "A",
+        "B"
+      ]
+    },
+    "decisionLogRepresentation": "one §12 Decision Log heading followed by either a markdown table with the six canonical columns or one or more `### Decision N` subsections",
+    "expectedAcCodes": [
+      "AC-1",
+      "AC-2",
+      "AC-3",
+      "AC-4",
+      "AC-5",
+      "AC-6",
+      "AC-7",
+      "AC-8",
+      "AC-9",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15"
+    ],
+    "observedSrsFileHash": "221f80acaae08380839f5cd580fd236b79b9ee86569ff5742278fa0d6ef4a9dd",
+    "representation": "one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block",
+    "requiredD2Fields": [
+      "ac",
+      "title",
+      "module",
+      "files",
+      "invariants",
+      "test_layers",
+      "pattern",
+      "depends_on",
+      "ac_kind",
+      "criticality"
+    ],
+    "requiredDecisionLogColumns": [
+      "#",
+      "Decision",
+      "Source/profile",
+      "Alternatives considered",
+      "Rationale",
+      "Date"
+    ],
+    "srsArtifactId": 29
+  },
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {
+        "actualAcCodes": [
+          "AC-1",
+          "AC-2",
+          "AC-3",
+          "AC-4",
+          "AC-5",
+          "AC-6",
+          "AC-7",
+          "AC-8",
+          "AC-9",
+          "AC-10",
+          "AC-11",
+          "AC-12",
+          "AC-13",
+          "AC-14",
+          "AC-15"
+        ],
+        "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+        "baselineSnapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13",
+        "canonicalDecisionLogExample": "## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|----------------|-------------------------|-----------|------|\n| 1 | Modular monolith | local | layered monolith, services | Fits bounded local scope | 2026-08-11 |",
+        "canonicalExample": "## §D2 AC Map\n```yaml\n- ac: AC-1\n  title: Exact frozen AC title\n  module: core\n  files: [src/core.ts]\n  invariants: [INV-1]\n  test_layers: [L0]\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n```",
+        "d2Enums": {
+          "ac_kind": [
+            "implementation",
+            "verification"
+          ],
+          "criticality": [
+            "blocker",
+            "degradable",
+            "nice_to_have"
+          ],
+          "pattern": [
+            "A",
+            "B"
+          ]
+        },
+        "decisionLogRepresentation": "one §12 Decision Log heading followed by either a markdown table with the six canonical columns or one or more `### Decision N` subsections",
+        "expectedAcCodes": [
+          "AC-1",
+          "AC-2",
+          "AC-3",
+          "AC-4",
+          "AC-5",
+          "AC-6",
+          "AC-7",
+          "AC-8",
+          "AC-9",
+          "AC-10",
+          "AC-11",
+          "AC-12",
+          "AC-13",
+          "AC-14",
+          "AC-15"
+        ],
+        "observedSrsFileHash": "221f80acaae08380839f5cd580fd236b79b9ee86569ff5742278fa0d6ef4a9dd",
+        "representation": "one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block",
+        "requiredD2Fields": [
+          "ac",
+          "title",
+          "module",
+          "files",
+          "invariants",
+          "test_layers",
+          "pattern",
+          "depends_on",
+          "ac_kind",
+          "criticality"
+        ],
+        "requiredDecisionLogColumns": [
+          "#",
+          "Decision",
+          "Source/profile",
+          "Alternatives considered",
+          "Rationale",
+          "Date"
+        ],
+        "srsArtifactId": 29
+      },
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-001"
+            ]
+          },
+          "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-001",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-002"
+            ]
+          },
+          "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-002",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-003"
+            ]
+          },
+          "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-003",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-004"
+            ]
+          },
+          "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-004",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-005"
+            ]
+          },
+          "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-005",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-006"
+            ]
+          },
+          "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-006",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-007"
+            ]
+          },
+          "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-007",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        }
+      ],
+      "policyId": "submission-validation:formalization.srs-contract.v1",
+      "reasonCode": "FORMALIZATION_SRS_INCOMPLETE",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "221f80acaae08380839f5cd580fd236b79b9ee86569ff5742278fa0d6ef4a9dd",
+          "kind": "artifact",
+          "ref": "artifact:29",
+          "schema": "SRS"
+        }
+      ],
+      "summary": "Submission preflight formalization.srs-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "SRS",
+        "content_hash": "221f80acaae08380839f5cd580fd236b79b9ee86569ff5742278fa0d6ef4a9dd",
+        "id": 29,
+        "path": "docs/requirements/REQ-001/06-SRS.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "SRS"
+      }
+    ],
+    "observedSetDigest": "9c4c75c8ea3fb664e685ce1f25bce035903e0c58036c675514726a8e2294ca0b",
+    "origin": {
+      "executionId": "worker-execution:3df74cfa-89ab-4c4d-ba75-33eb02b55c96",
+      "inputSnapshotHash": "8eaaea70788651e639b2c811abb7228e2965449965453d13c2c76709d9174875",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-architecture-contract",
+      "processRunId": 2,
+      "taskId": 14,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+    },
+    "rejectionDigest": "296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb",
+    "rejectionRef": "submission-validation-rejection:296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": {
+        "digest": "4ebcd19cb53a7ffc000456e0196e2eef006123317d42eaad1754ffc6e21c23c7",
+        "version": "2.2"
+      },
+      "id": "formalization.srs-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "ord-c-001",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-001"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-002",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-002"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-003",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-003"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-004",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-004"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-005",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-005"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-006",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-006"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-007",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-007"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-architecture-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "SRS",
+      "content_hash": "221f80acaae08380839f5cd580fd236b79b9ee86569ff5742278fa0d6ef4a9dd",
+      "id": 29,
+      "path": "docs/requirements/REQ-001/06-SRS.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "SRS"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_SRS_INCOMPLETE",
+  "rejectionDigest": "296690364ece6a5299a6df38303a91d03c9b431ea2db255be3f9a76e3a62f4eb",
+  "task": "formalization.architecture#1",
+  "validatorId": "formalization.srs-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+}

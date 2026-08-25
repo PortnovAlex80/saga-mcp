@@ -1,0 +1,232 @@
+{
+  "baselineHash": "aa924b4b1238728fcae00074620574f9421e78c98c8778b24303d15f1e344750",
+  "payload": {
+    "acArtifactHashes": {
+      "33": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "34": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "35": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "36": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "37": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "38": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "39": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "40": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "41": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "42": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "43": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "44": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "45": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "46": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "47": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "48": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "49": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "50": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "51": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "52": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "53": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "54": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0",
+      "55": "478ee99c139df397a38f3eeebb90762254594d6b61627a294ed9639bd85ca9d0"
+    },
+    "acArtifactIds": [
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55
+    ],
+    "acceptanceCriteria": [
+      {
+        "artifactId": 33,
+        "code": "AC-1",
+        "contentHash": "9367673699b420826e837fa4fbdcbf9695d78bb12a9f33654c504b0b401604ce",
+        "title": "Galaxy Map Displays Star Systems"
+      },
+      {
+        "artifactId": 34,
+        "code": "AC-2",
+        "contentHash": "234adb74ff23f4745c5a8762d10660fba8da1f920b2b50ef2a1cb3fdb07d9514",
+        "title": "Select Destination from Galaxy Map"
+      },
+      {
+        "artifactId": 35,
+        "code": "AC-3",
+        "contentHash": "cc4dbc6cf316ba051851c6c054f7a8dedb0b8216f361dc99b02313d4725b4db0",
+        "title": "Buy Commodity with Sufficient Funds"
+      },
+      {
+        "artifactId": 36,
+        "code": "AC-4",
+        "contentHash": "66b9b49fbfeb623f44f3f26fe93b86de6e2bca29c679f32a6773a777754a6b42",
+        "title": "Buy Commodity Rejected When Insufficient Credits"
+      },
+      {
+        "artifactId": 37,
+        "code": "AC-5",
+        "contentHash": "fcc06e1638a3978935a231d8d6faca035aad901b70f95f7d478bfbdcbe3c213e",
+        "title": "Sell Commodity from Cargo"
+      },
+      {
+        "artifactId": 38,
+        "code": "AC-6",
+        "contentHash": "e1524089fbb49a2ce3f0b70de8a4b0b9b31a7d5cf328f41e6a3fd2e1fc89647a",
+        "title": "Commodity Prices Differ Between Systems"
+      },
+      {
+        "artifactId": 39,
+        "code": "AC-7",
+        "contentHash": "be16853b0859c90716c14f0704dd6a69e3a8f8034d7f99e921bb9b0315554875",
+        "title": "Hyperspace Jump Deducts Fuel and Moves Player"
+      },
+      {
+        "artifactId": 40,
+        "code": "AC-8",
+        "contentHash": "0a2a11a4df113a4857c0d1ca7930fb38aecfcd5a07f074402b01a35462d079ad",
+        "title": "Hyperspace Jump Rejected When Insufficient Fuel"
+      },
+      {
+        "artifactId": 41,
+        "code": "AC-9",
+        "contentHash": "3cb5b3639604f37d724392676a340ae708d5d81ca40e29bc52f67b1e81859ce4",
+        "title": "Pirate Encounter Triggered on Jump"
+      },
+      {
+        "artifactId": 42,
+        "code": "AC-10",
+        "contentHash": "678cca26e0c3e9714a59d407422ca0e654ba2922511f26c1442540cb306c55ce",
+        "title": "Combat Resolves When Pirate Destroyed"
+      },
+      {
+        "artifactId": 43,
+        "code": "AC-11",
+        "contentHash": "c7bc1ecb1459a546e38609ba5adb9eceebba2cf3163a599447a60a15c6329fd8",
+        "title": "Player Destruction Ends Game"
+      },
+      {
+        "artifactId": 44,
+        "code": "AC-12",
+        "contentHash": "447c716b7c60b871984c6087b13753744212cc96a0f9ab480ae815e3453f6cd7",
+        "title": "Flee from Combat"
+      },
+      {
+        "artifactId": 45,
+        "code": "AC-13",
+        "contentHash": "c589432a6a4e0a284f0e5bd732ac56b30564ba1934b0c9657f9206db50ac8dfb",
+        "title": "Purchase Ship Upgrade with Sufficient Credits"
+      },
+      {
+        "artifactId": 46,
+        "code": "AC-14",
+        "contentHash": "0a19227c0efd8ea1789eac3543f459986ddff3dbeeb9871aabdfe87dcab7c00e",
+        "title": "Upgrade Rejected When Insufficient Credits"
+      },
+      {
+        "artifactId": 47,
+        "code": "AC-15",
+        "contentHash": "2113ce6a57a8796e759b980d45735777b737488869cc09b1ba52e9e23bf59ff7",
+        "title": "Save Game Persists All State"
+      },
+      {
+        "artifactId": 48,
+        "code": "AC-16",
+        "contentHash": "95a0f94d37c6de11fca7283821c414142619526bfc5b2758396f4b19af4f447d",
+        "title": "Load Game Restores State or Starts Fresh"
+      },
+      {
+        "artifactId": 49,
+        "code": "AC-17",
+        "contentHash": "9091c7b301bea2aa651d766b594a6ec968c593ba5ad52c59782559d20cea9e22",
+        "title": "Server Health Endpoint Returns Healthy"
+      },
+      {
+        "artifactId": 50,
+        "code": "AC-18",
+        "contentHash": "87621da245228ee2ce0ce2bccd73d309c1330500a313208c1e4908dd4aa34d7b",
+        "title": "HUD Displays Ship Status"
+      },
+      {
+        "artifactId": 51,
+        "code": "AC-19",
+        "contentHash": "9a704107253310e497c0f76e363568da2a3f542c76454412b708f88255962912",
+        "title": "Elite Rating Progresses with Profit and Kills"
+      },
+      {
+        "artifactId": 52,
+        "code": "AC-20",
+        "contentHash": "1b6ce750262d36bbef38b4799981cbd06bb66aeaaa82ea6838a2f35524633cc8",
+        "title": "Game Renders at 60 FPS"
+      },
+      {
+        "artifactId": 53,
+        "code": "AC-21",
+        "contentHash": "1e174e7306b8f2c88b1dae3116b9e3ccf1b53d5d8d1271afba368da99520b34b",
+        "title": "Game Operates Fully Offline"
+      },
+      {
+        "artifactId": 54,
+        "code": "AC-22",
+        "contentHash": "bd9e3cad5ea0aa1bb6085e5cb8e1e72e97132ec7e2a1031037cedce1bec7c953",
+        "title": "Game Starts with One Command"
+      },
+      {
+        "artifactId": 55,
+        "code": "AC-23",
+        "contentHash": "4e75802563c4e21f65ff310d7a94d31cae9c01b5ab011895fd9208ed025b1e27",
+        "title": "All User-Facing Text Is in English"
+      }
+    ],
+    "baselineHash": "aa924b4b1238728fcae00074620574f9421e78c98c8778b24303d15f1e344750",
+    "coveredConstraints": {
+      "AC-10": [
+        "ord-c-011"
+      ],
+      "AC-13": [
+        "ord-c-008"
+      ],
+      "AC-15": [
+        "ord-c-010"
+      ],
+      "AC-20": [
+        "ord-c-003"
+      ],
+      "AC-22": [
+        "ord-c-001",
+        "ord-c-002",
+        "ord-c-004",
+        "ord-c-005",
+        "ord-c-006",
+        "ord-c-012",
+        "ord-c-013"
+      ],
+      "AC-6": [
+        "ord-c-007"
+      ],
+      "AC-7": [
+        "ord-c-009"
+      ]
+    },
+    "formalizationEpicId": 1,
+    "processRunId": 2,
+    "schemaVersion": "factory.acceptance-baseline-snapshot.v1",
+    "sourceReconciliationHash": "ab2cede57d09b2bf21f7f745e00612515bba4c5bdc23c2709e2b75312c679718",
+    "sourceReconciliationRef": "production-cell-manifest:formalization-reconciliation:ab2cede57d09b2bf21f7f745e00612515bba4c5bdc23c2709e2b75312c679718"
+  },
+  "schemaVersion": "factory.acceptance-baseline-snapshot.v1",
+  "snapshotHash": "c11c710871e6a75b113005d0b7e4f6dd427334687294ab6f13fcc740bd1537eb"
+}

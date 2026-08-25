@@ -1,0 +1,215 @@
+{
+  "capsules": [
+    {
+      "digest": "081ddaa19b64424ade9816dd6a09c6c0c96cbe314bffa68d7f75a7ccb9f5b815",
+      "file": "input-capsule/081ddaa19b64424ade9816dd6a09c6c0c96cbe314bffa68d7f75a7ccb9f5b815.json",
+      "role": "formalization-output/architecture-bundle",
+      "summary": "factory.formalization-architecture-bundle.v1"
+    },
+    {
+      "digest": "11e8830b3534b6d3d130458da71733b32042daff61ab8640ac12447d1e6e9c17",
+      "file": "input-capsule/11e8830b3534b6d3d130458da71733b32042daff61ab8640ac12447d1e6e9c17.json",
+      "role": "module-installation-identities",
+      "summary": "7 installations"
+    },
+    {
+      "digest": "1e54a67a249b960ee188a22550c8e2caf8d8936ad5d749b416b712e655c3ceb9",
+      "file": "input-capsule/1e54a67a249b960ee188a22550c8e2caf8d8936ad5d749b416b712e655c3ceb9.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/02-use-cases.md"
+    },
+    {
+      "digest": "483bda64b63503ddb677f7e8cd26abc5a9f836c3b1b099d5b1523542d975e876",
+      "file": "input-capsule/483bda64b63503ddb677f7e8cd26abc5a9f836c3b1b099d5b1523542d975e876.json",
+      "role": "process-envelope",
+      "summary": "process-run product-discovery@4.0.0"
+    },
+    {
+      "digest": "508dfd3c1459e5955d9b8490e5025e17a6ed4beb1f86b7d7eebdd4f135053d6d",
+      "file": "input-capsule/508dfd3c1459e5955d9b8490e5025e17a6ed4beb1f86b7d7eebdd4f135053d6d.json",
+      "role": "discovery-output/readiness-assessment",
+      "summary": "factory.discovery-readiness-assessment.v2"
+    },
+    {
+      "digest": "5810117a032b1d28bac1bd2287e645ab18fcd450d689e1fcfeea76cc484504cc",
+      "file": "input-capsule/5810117a032b1d28bac1bd2287e645ab18fcd450d689e1fcfeea76cc484504cc.json",
+      "role": "formalization-solution-contract",
+      "summary": "formalization solution contract"
+    },
+    {
+      "digest": "58524de5e2458bd9c38e359aebb157c140ec38ac028971172a17b5efc50f8e20",
+      "file": "input-capsule/58524de5e2458bd9c38e359aebb157c140ec38ac028971172a17b5efc50f8e20.json",
+      "role": "outcome-certificate",
+      "summary": "product-discovery@4.0.0 -> go"
+    },
+    {
+      "digest": "591e8870bdd0cef4fee3eb6ab5db981f8073d29ea8f5faf57d931a2df69e3eab",
+      "file": "input-capsule/591e8870bdd0cef4fee3eb6ab5db981f8073d29ea8f5faf57d931a2df69e3eab.json",
+      "role": "development-verification-ledger",
+      "summary": "69 ledger entries"
+    },
+    {
+      "digest": "6be0c44aead3cb09990f3d8332a178f01d2ebf0790d92583a5770022374d1ece",
+      "file": "input-capsule/6be0c44aead3cb09990f3d8332a178f01d2ebf0790d92583a5770022374d1ece.json",
+      "role": "trusted-providers",
+      "summary": "7 providers"
+    },
+    {
+      "digest": "81af9f94b52363f9d7d97a1f161052ec7faa43d24018ef2d81e0e5f5cf1f047f",
+      "file": "input-capsule/81af9f94b52363f9d7d97a1f161052ec7faa43d24018ef2d81e0e5f5cf1f047f.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/05-rules.md"
+    },
+    {
+      "digest": "81f5692b66830fde7e098c1a4ec77664385c9f028934eb4748e9c5ace7034e8a",
+      "file": "input-capsule/81f5692b66830fde7e098c1a4ec77664385c9f028934eb4748e9c5ace7034e8a.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/04-non-functional-requirements.md"
+    },
+    {
+      "digest": "855a3831e414dc9a50d57dc4fb3861ab4600e4e02433741d64005a33b7de2e06",
+      "file": "input-capsule/855a3831e414dc9a50d57dc4fb3861ab4600e4e02433741d64005a33b7de2e06.json",
+      "role": "artifact-registry",
+      "summary": "56 artifacts"
+    },
+    {
+      "digest": "88a476e15b3cecc7857ecb372a95be230e357e53602b0b290eba15e893007072",
+      "file": "input-capsule/88a476e15b3cecc7857ecb372a95be230e357e53602b0b290eba15e893007072.json",
+      "role": "formalization-acceptance-baseline",
+      "summary": "formalization acceptance baseline"
+    },
+    {
+      "digest": "8d6aab40c0659ae01d5f1c26c7f33aa9454c2d23f61449506e5ca75984b5edc2",
+      "file": "input-capsule/8d6aab40c0659ae01d5f1c26c7f33aa9454c2d23f61449506e5ca75984b5edc2.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-formalization"
+    },
+    {
+      "digest": "9043a532ebc01c670caa12176a83fa8894225b22bacbb849b47a7360f2b5977d",
+      "file": "input-capsule/9043a532ebc01c670caa12176a83fa8894225b22bacbb849b47a7360f2b5977d.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-development@1.4.4"
+    },
+    {
+      "digest": "91420987999eb6c2cae4e1287627731aaa66391f05b0d150bffe75c96759a689",
+      "file": "input-capsule/91420987999eb6c2cae4e1287627731aaa66391f05b0d150bffe75c96759a689.json",
+      "role": "project-identity",
+      "summary": "project / repository / checkout identity"
+    },
+    {
+      "digest": "9a1c85e256f9eecf0066a3aaf4b0b2e449e64f02ccb312afe100887a4eadf7dc",
+      "file": "input-capsule/9a1c85e256f9eecf0066a3aaf4b0b2e449e64f02ccb312afe100887a4eadf7dc.json",
+      "role": "stage-envelope",
+      "summary": "stage initial-discovery"
+    },
+    {
+      "digest": "af7b9deb702b5b599dc3967098e8c24e73d04b4e9eb578fba44e160d8e8cbe7a",
+      "file": "input-capsule/af7b9deb702b5b599dc3967098e8c24e73d04b4e9eb578fba44e160d8e8cbe7a.json",
+      "role": "outcome-certificate",
+      "summary": "solution-formalization@1.0.0 -> formalized"
+    },
+    {
+      "digest": "b0305f475a2219870f3c2f995b1e214c4a4ac1d3bfab82d5d957907cbf3c0fbc",
+      "file": "input-capsule/b0305f475a2219870f3c2f995b1e214c4a4ac1d3bfab82d5d957907cbf3c0fbc.json",
+      "role": "lifecycle-definition",
+      "summary": "lifecycle product-build@1.2.0"
+    },
+    {
+      "digest": "b0a4378d1dbe9d8f345f5637ea4d5b12d520d75a791c99509cd8bb6304a6cac0",
+      "file": "input-capsule/b0a4378d1dbe9d8f345f5637ea4d5b12d520d75a791c99509cd8bb6304a6cac0.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/01-brief.md"
+    },
+    {
+      "digest": "b32b7439198f1068dde34ab04e23f61ee3febdd7f3f9740539d777ef4a0a2c18",
+      "file": "input-capsule/b32b7439198f1068dde34ab04e23f61ee3febdd7f3f9740539d777ef4a0a2c18.json",
+      "role": "formalization-output/use-case-bundle",
+      "summary": "factory.formalization-use-case-bundle.v1"
+    },
+    {
+      "digest": "b37f42fcd1c4478b1c30b60eaed4e269ece7c4a22d0bd4223f1775c39b935a0a",
+      "file": "input-capsule/b37f42fcd1c4478b1c30b60eaed4e269ece7c4a22d0bd4223f1775c39b935a0a.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-development"
+    },
+    {
+      "digest": "b55a5f8c05df24603f9992119272e97d84c681e6bb99de3626ab989764f7513a",
+      "file": "input-capsule/b55a5f8c05df24603f9992119272e97d84c681e6bb99de3626ab989764f7513a.json",
+      "role": "order",
+      "summary": "order order-1bcbcd0f-0d0a-4962-a171-173dc1eb6fcf"
+    },
+    {
+      "digest": "baf73f3d0af5867e77251de4c26ed8238c979577f9d93c1d4c981bfba350a4d8",
+      "file": "input-capsule/baf73f3d0af5867e77251de4c26ed8238c979577f9d93c1d4c981bfba350a4d8.json",
+      "role": "formalization-output/reconciliation-report",
+      "summary": "factory.formalization-reconciliation-report.v1"
+    },
+    {
+      "digest": "be248ee6005d6dca955a366c4a23df403b65a5c906702772338b8dd66834e370",
+      "file": "input-capsule/be248ee6005d6dca955a366c4a23df403b65a5c906702772338b8dd66834e370.json",
+      "role": "development-output/readiness-manifest",
+      "summary": "factory.development-readiness-manifest.v1"
+    },
+    {
+      "digest": "c02374e654c980fb2e51855f0fdd84dac23a2d229daf785ef0190028623123ee",
+      "file": "input-capsule/c02374e654c980fb2e51855f0fdd84dac23a2d229daf785ef0190028623123ee.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/07-srs.md"
+    },
+    {
+      "digest": "d5ab10b7d4b5c20e55572aa6456f3da1fe8218baaedc8790690eed08345ef679",
+      "file": "input-capsule/d5ab10b7d4b5c20e55572aa6456f3da1fe8218baaedc8790690eed08345ef679.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "d696741e774ce5ab8a6161de5ab5b6ce61394c3e036bf258f1c9cffcfe0b9b94",
+      "file": "input-capsule/d696741e774ce5ab8a6161de5ab5b6ce61394c3e036bf258f1c9cffcfe0b9b94.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/03-functional-requirements.md"
+    },
+    {
+      "digest": "e4f73cce7e54aff55f46ea64b0904581283f26906a0ea12890653c7062894987",
+      "file": "input-capsule/e4f73cce7e54aff55f46ea64b0904581283f26906a0ea12890653c7062894987.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/06-acceptance-criteria.md"
+    },
+    {
+      "digest": "e8c398a684aa84933cc13e40ae65c0dfd1dbd3a90180d3c311f16250c27c4ddd",
+      "file": "input-capsule/e8c398a684aa84933cc13e40ae65c0dfd1dbd3a90180d3c311f16250c27c4ddd.json",
+      "role": "outcome-certificate",
+      "summary": "solution-development@1.4.4 -> blocked"
+    },
+    {
+      "digest": "e96b0e86762e3cd11afcd39dffd29ca3711b3a881535b819688ab5be9359afe1",
+      "file": "input-capsule/e96b0e86762e3cd11afcd39dffd29ca3711b3a881535b819688ab5be9359afe1.json",
+      "role": "formalization-output/product-bundle",
+      "summary": "factory.formalization-product-bundle.v1"
+    },
+    {
+      "digest": "f2b4fe91d4e16433f8801e4cfc14cd475bf46e210952eeab902ab5f96594bd4d",
+      "file": "input-capsule/f2b4fe91d4e16433f8801e4cfc14cd475bf46e210952eeab902ab5f96594bd4d.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "f3374ac33a04d9b7b60ec27718bfcaf08f1a148d58a857558bfc239beb4feb43",
+      "file": "input-capsule/f3374ac33a04d9b7b60ec27718bfcaf08f1a148d58a857558bfc239beb4feb43.json",
+      "role": "discovery-output/proposal",
+      "summary": "factory.discovery-proposal.v1"
+    },
+    {
+      "digest": "fbf9eeff59913524714c37f5c14802809c1bdfa0d94e7b57817fa027b5b324ae",
+      "file": "input-capsule/fbf9eeff59913524714c37f5c14802809c1bdfa0d94e7b57817fa027b5b324ae.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-formalization@1.0.0"
+    },
+    {
+      "digest": "fccaef40c630c373a424b69f94be9fcaa15c5ae292e2627fb870a5319f9c0a8d",
+      "file": "input-capsule/fccaef40c630c373a424b69f94be9fcaa15c5ae292e2627fb870a5319f9c0a8d.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001-elite-fresh/02-prd.md"
+    }
+  ],
+  "runId": "elite-fresh-20260825"
+}

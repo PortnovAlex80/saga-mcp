@@ -1,0 +1,96 @@
+{
+  "contentDigest": "f3527dd3d2386ac4e969dc6836f75f17b6e5e6ec280eed9039487883a11d76a9",
+  "payload": {
+    "findings": [
+      {
+        "artifact_id": null,
+        "message": "Systematic traceability inconsistency: All 15 AC documents claim UC derivations that do not match the actual trace graph. The document traceability matrix (lines 653-671) and 'Derived From' sections are inconsistent with the MCP trace links.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 14,
+        "message": "AC-1 (Game Initialization) document claims derivation from UC-1 (Start New Game) but actual traces show derivation from UC-6 (Save Game State). Document 'Derived From' section at line 19 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 15,
+        "message": "AC-2 (Hyperspace Jump Execution) document claims derivation from UC-2 (Navigate Between Star Systems) but actual traces show derivation from UC-7 (Load Game State). Document 'Derived From' section at line 40 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 16,
+        "message": "AC-3 (Commodity Purchase with Validation) document claims derivation from UC-3 (Trade Commodities at Station) but actual traces show derivation from UC-8 (View Elite Rating Progress). Document 'Derived From' section at line 90 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 17,
+        "message": "AC-4 (Commodity Sale with Validation) document claims derivation from UC-3 (Trade Commodities at Station) but actual traces show derivation from UC-8 (View Elite Rating Progress). Document 'Derived From' section at line 158 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 18,
+        "message": "AC-5 (Combat Victory) document claims derivation from UC-4 (Engage in Ship Combat) but actual traces show derivation from UC-9 (non-existent - id 9 is UC-4). The UC mapping is incorrect.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 19,
+        "message": "AC-6 (Combat Defeat) document claims derivation from UC-4 (Engage in Ship Combat) but actual traces show derivation from UC-9 (non-existent - id 9 is UC-4). The UC mapping is incorrect.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 20,
+        "message": "AC-7 (Successful Combat Flee) document claims derivation from UC-4 (Engage in Ship Combat) but actual traces show derivation from UC-9 (non-existent - id 9 is UC-4). The UC mapping is incorrect.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 21,
+        "message": "AC-8 (Ship Upgrade Purchase) document claims derivation from UC-5 (Upgrade Ship Modules) but actual traces show derivation from UC-10 (Upgrade Ship Modules - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 22,
+        "message": "AC-9 (Game State Save) document claims derivation from UC-6 (Save Game State) but actual traces show derivation from UC-11 (Save Game State - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 23,
+        "message": "AC-10 (Game State Load) document claims derivation from UC-7 (Load Game State) but actual traces show derivation from UC-12 (Load Game State - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 24,
+        "message": "AC-11 (Elite Rating Display) document claims derivation from UC-8 (View Elite Rating Progress) but actual traces show derivation from UC-13 (View Elite Rating Progress - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 25,
+        "message": "AC-12 (Commodity Price Display) document claims derivation from UC-3 (Trade Commodities at Station) but actual traces show derivation from UC-8 (View Elite Rating Progress). Document 'Derived From' section at line 484 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 26,
+        "message": "AC-13 (Pirate Encounter Trigger) document claims derivation from UC-2 (Navigate Between Star Systems) but actual traces show derivation from UC-7 (Navigate Between Star Systems - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 27,
+        "message": "AC-14 (Cargo Capacity Enforcement) document claims derivation from UC-3 (Trade Commodities at Station) but actual traces show derivation from UC-8 (View Elite Rating Progress). Document 'Derived From' section at line 572 does not match trace graph.",
+        "severity": "error"
+      },
+      {
+        "artifact_id": 28,
+        "message": "AC-15 (Fuel Tank Upgrade Impact) document claims derivation from UC-5 (Upgrade Ship Modules) but actual traces show derivation from UC-10 (Upgrade Ship Modules - correct ID mismatch in documentation).",
+        "severity": "error"
+      },
+      {
+        "artifact_id": null,
+        "message": "The traceability matrix (lines 653-671) in the acceptance criteria document does not accurately reflect the actual trace graph. Every row contains UC derivations that don't match the MCP trace links. This indicates a fundamental documentation error that must be corrected.",
+        "severity": "error"
+      }
+    ],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-acceptance-contract/singleton/7a10fc0ce98f5bb33051f82ab1647c451a04ed3a08dfd5cccbf76b045402e74c/author",
+    "verdict": "changes_requested"
+  },
+  "payloadHash": "f3527dd3d2386ac4e969dc6836f75f17b6e5e6ec280eed9039487883a11d76a9",
+  "schemaId": "factory.review-verdict.v1"
+}

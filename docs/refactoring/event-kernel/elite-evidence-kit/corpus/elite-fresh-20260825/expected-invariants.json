@@ -1,0 +1,360 @@
+{
+  "additionalChecks": [
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-02b-obligation-drain-closed",
+      "statement": "Every obligation key created (journal or DB) is settled in the journal; REG-28 drain closes."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-03-no-review-bypass",
+      "statement": "Every final-accepted development-implementation gate decision cites a sealed reviewer candidate set."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-05b-terminal-chain-truthful",
+      "statement": "Last transition terminal_status == lifecycle terminal_status == receipt == run.terminal event; the last stage localOutcome maps onto the terminal status."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-06b-workplace-outcome-truthful",
+      "statement": "Every accepted workplace ends on an accepted gate decision; every failed workplace ends on a failed/repair_required gate decision."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-06c-certificates-truthful",
+      "statement": "Every outcome certificate decision equals its stage local outcome. Stages without a certificate are recorded (a failed development stage in the negative corpus legitimately emits none)."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-07-no-phantom-executions",
+      "statement": "No phantom executions: exited executions map to real tasks; lost/terminated executions produced no completion products and carry supervision evidence (journal reap/recovery event or DB loss marker); no execution is left in a non-terminal state."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-08-execution-bookkeeping",
+      "statement": "Every worker_executions row has an execution.reserved journal event (no unbooked actors)."
+    },
+    {
+      "assertion": {
+        "see": "verification.results",
+        "type": "extractor-evaluated"
+      },
+      "id": "INV-09-no-chain-damage",
+      "statement": "Formalization chain intact: all artifacts accepted, zero pending obligations, all workplaces terminal, all tasks done, product repo left at its recorded commit."
+    }
+  ],
+  "note": "Machine-checkable assertions over the normalized trace and extracted facts. The rule JSON is the contract for the future event-kernel test engine; \"verification\" records what this extractor proved against the source data at kit-build time.",
+  "rules": [
+    {
+      "assertions": [
+        {
+          "in": [
+            "done",
+            "failed",
+            "cancelled"
+          ],
+          "selector": "status",
+          "subject": "tasks",
+          "type": "all-satisfy"
+        },
+        {
+          "in": [
+            "terminal"
+          ],
+          "selector": "loopState",
+          "subject": "workplaces",
+          "type": "all-satisfy"
+        }
+      ],
+      "id": "INV-01-no-orphan-task",
+      "severity": "blocking",
+      "statement": "No orphan task: every task reaches a terminal status; every workplace is terminal."
+    },
+    {
+      "assertions": [
+        {
+          "in": [
+            "completed"
+          ],
+          "selector": "state",
+          "subject": "obligations",
+          "type": "all-satisfy"
+        },
+        {
+          "keyField": "obligationKey",
+          "kind": "obligation.settled",
+          "type": "events-unique-per-key"
+        }
+      ],
+      "id": "INV-02-no-silent-obligation-loss",
+      "severity": "blocking",
+      "statement": "No silent obligation loss: every DB transition obligation is completed; obligation.created/settled journal events are unique per key (REG-28 drain closes)."
+    },
+    {
+      "assertions": [
+        {
+          "keyField": "obligationKey",
+          "kind": "obligation.settled",
+          "type": "events-unique-per-key"
+        }
+      ],
+      "id": "INV-04-no-duplicate-settlement",
+      "severity": "blocking",
+      "statement": "No duplicate settlement: obligation.settled appears at most once per obligation key; effect receipts are unique per (workplace, effect, candidate set) by DB constraint."
+    },
+    {
+      "assertions": [
+        {
+          "equals": 1,
+          "kind": "run.terminal",
+          "type": "events-count"
+        },
+        {
+          "equals": 1,
+          "subject": "terminalReceipts",
+          "type": "count"
+        }
+      ],
+      "id": "INV-05-exactly-once-terminal",
+      "severity": "blocking",
+      "statement": "Exactly-once terminal: exactly one run.terminal journal event and exactly one terminal receipt row."
+    },
+    {
+      "assertions": [
+        {
+          "in": [
+            "accepted",
+            "failed",
+            "cancelled"
+          ],
+          "selector": "terminalReason",
+          "subject": "workplaces",
+          "type": "all-satisfy"
+        }
+      ],
+      "id": "INV-06-truthful-outcomes",
+      "severity": "blocking",
+      "statement": "Truthful outcomes (surface): workplaces carry a typed terminal reason; gate verdicts are typed."
+    }
+  ],
+  "runId": "elite-fresh-20260825",
+  "verification": {
+    "evaluatedBy": "elite-evidence-kit-extract/1.0.0",
+    "policy": "Data wins. Failures are recorded honestly and cross-referenced in failure-witnesses/.",
+    "results": [
+      {
+        "evidence": {
+          "engine": [
+            {
+              "checked": 30,
+              "failures": [],
+              "path": "$INV-01-no-orphan-task",
+              "subject": "tasks"
+            },
+            {
+              "checked": 17,
+              "failures": [],
+              "path": "$INV-01-no-orphan-task",
+              "subject": "workplaces"
+            }
+          ]
+        },
+        "ruleId": "INV-01-no-orphan-task",
+        "statement": "No orphan task: every task reaches a terminal status; every workplace is terminal.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "engine": [
+            {
+              "checked": 86,
+              "failures": [],
+              "path": "$INV-02-no-silent-obligation-loss",
+              "subject": "obligations"
+            },
+            {
+              "duplicates": 0,
+              "events": 86,
+              "kind": "obligation.settled",
+              "path": "$INV-02-no-silent-obligation-loss",
+              "uniqueKeys": 86
+            }
+          ]
+        },
+        "ruleId": "INV-02-no-silent-obligation-loss",
+        "statement": "No silent obligation loss: every DB transition obligation is completed; obligation.created/settled journal events are unique per key (REG-28 drain closes).",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "engine": [
+            {
+              "duplicates": 0,
+              "events": 86,
+              "kind": "obligation.settled",
+              "path": "$INV-04-no-duplicate-settlement",
+              "uniqueKeys": 86
+            }
+          ]
+        },
+        "ruleId": "INV-04-no-duplicate-settlement",
+        "statement": "No duplicate settlement: obligation.settled appears at most once per obligation key; effect receipts are unique per (workplace, effect, candidate set) by DB constraint.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "engine": [
+            {
+              "count": 1,
+              "expected": 1,
+              "kind": "run.terminal",
+              "path": "$INV-05-exactly-once-terminal"
+            },
+            {
+              "count": 1,
+              "expected": 1,
+              "path": "$INV-05-exactly-once-terminal",
+              "subject": "terminalReceipts"
+            }
+          ]
+        },
+        "ruleId": "INV-05-exactly-once-terminal",
+        "statement": "Exactly-once terminal: exactly one run.terminal journal event and exactly one terminal receipt row.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "engine": [
+            {
+              "checked": 17,
+              "failures": [],
+              "path": "$INV-06-truthful-outcomes",
+              "subject": "workplaces"
+            }
+          ]
+        },
+        "ruleId": "INV-06-truthful-outcomes",
+        "statement": "Truthful outcomes (surface): workplaces carry a typed terminal reason; gate verdicts are typed.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "dbKeysNeverSettledInJournal": [],
+          "dbObligationRows": 86,
+          "journalCreatedUnique": 86,
+          "journalSettledUnique": 86,
+          "lostKeys": []
+        },
+        "ruleId": "INV-02b-obligation-drain-closed",
+        "statement": "Every obligation key created (journal or DB) is settled in the journal; REG-28 drain closes.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "finalAcceptedImplementationDecisions": 8,
+          "reviewerCandidateSets": 13,
+          "violations": []
+        },
+        "ruleId": "INV-03-no-review-bypass",
+        "statement": "Every final-accepted development-implementation gate decision cites a sealed reviewer candidate set.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "chainOk": true,
+          "stageFeedsTerminal": true,
+          "values": {
+            "lastStageLocalOutcome": "blocked",
+            "lastTransitionTerminalStatus": "development-blocked",
+            "lifecycleTerminalStatus": "development-blocked",
+            "receiptTerminalStatus": "development-blocked",
+            "runTerminalEventStatus": "development-blocked"
+          }
+        },
+        "ruleId": "INV-05b-terminal-chain-truthful",
+        "statement": "Last transition terminal_status == lifecycle terminal_status == receipt == run.terminal event; the last stage localOutcome maps onto the terminal status.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "checked": 17,
+          "violations": []
+        },
+        "ruleId": "INV-06b-workplace-outcome-truthful",
+        "statement": "Every accepted workplace ends on an accepted gate decision; every failed workplace ends on a failed/repair_required gate decision.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "mismatches": [],
+          "stagesWithoutCertificate": []
+        },
+        "ruleId": "INV-06c-certificates-truthful",
+        "statement": "Every outcome certificate decision equals its stage local outcome. Stages without a certificate are recorded (a failed development stage in the negative corpus legitimately emits none).",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "checked": 33,
+          "supervisionEvidence": {
+            "dbRecordedLossOnly": 2,
+            "journalReaped": 1
+          },
+          "violations": []
+        },
+        "ruleId": "INV-07-no-phantom-executions",
+        "statement": "No phantom executions: exited executions map to real tasks; lost/terminated executions produced no completion products and carry supervision evidence (journal reap/recovery event or DB loss marker); no execution is left in a non-terminal state.",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "executionRows": 33,
+          "reservedEvents": 33
+        },
+        "ruleId": "INV-08-execution-bookkeeping",
+        "statement": "Every worker_executions row has an execution.reserved journal event (no unbooked actors).",
+        "status": "pass"
+      },
+      {
+        "evidence": {
+          "nonAcceptedArtifacts": [],
+          "nonDoneTasks": [],
+          "nonTerminalWorkplaces": [],
+          "pendingObligations": 0,
+          "productRepoCommit": "3cc360a3306c89154e4da9071eb3b6699ed940c8",
+          "productRepoCommitProvenance": "direct:loose-ref"
+        },
+        "ruleId": "INV-09-no-chain-damage",
+        "statement": "Formalization chain intact: all artifacts accepted, zero pending obligations, all workplaces terminal, all tasks done, product repo left at its recorded commit.",
+        "status": "pass"
+      }
+    ],
+    "summary": {
+      "failed": 0,
+      "passed": 13,
+      "total": 13
+    }
+  }
+}

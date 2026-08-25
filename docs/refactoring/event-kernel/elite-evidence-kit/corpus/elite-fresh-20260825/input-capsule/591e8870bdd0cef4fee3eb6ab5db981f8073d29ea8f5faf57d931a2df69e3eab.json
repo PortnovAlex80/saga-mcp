@@ -1,0 +1,832 @@
+{
+  "entries": [
+    {
+      "criterionKey": "33:AC-1",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-1"
+    },
+    {
+      "criterionKey": "33:AC-1",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-1"
+    },
+    {
+      "criterionKey": "42:AC-10",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-10"
+    },
+    {
+      "criterionKey": "42:AC-10",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-10"
+    },
+    {
+      "criterionKey": "43:AC-11",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-11"
+    },
+    {
+      "criterionKey": "43:AC-11",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-11"
+    },
+    {
+      "criterionKey": "44:AC-12",
+      "criticality": "degradable",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-12"
+    },
+    {
+      "criterionKey": "44:AC-12",
+      "criticality": "degradable",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-12"
+    },
+    {
+      "criterionKey": "45:AC-13",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-13"
+    },
+    {
+      "criterionKey": "45:AC-13",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-13"
+    },
+    {
+      "criterionKey": "46:AC-14",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-14"
+    },
+    {
+      "criterionKey": "46:AC-14",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-14"
+    },
+    {
+      "criterionKey": "47:AC-15",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-15"
+    },
+    {
+      "criterionKey": "47:AC-15",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-15"
+    },
+    {
+      "criterionKey": "48:AC-16",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-16"
+    },
+    {
+      "criterionKey": "48:AC-16",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-16"
+    },
+    {
+      "criterionKey": "49:AC-17",
+      "criticality": "nice_to_have",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-17"
+    },
+    {
+      "criterionKey": "49:AC-17",
+      "criticality": "nice_to_have",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-17"
+    },
+    {
+      "criterionKey": "50:AC-18",
+      "criticality": "degradable",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-18"
+    },
+    {
+      "criterionKey": "50:AC-18",
+      "criticality": "degradable",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-18"
+    },
+    {
+      "criterionKey": "51:AC-19",
+      "criticality": "degradable",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-19"
+    },
+    {
+      "criterionKey": "51:AC-19",
+      "criticality": "degradable",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-19"
+    },
+    {
+      "criterionKey": "34:AC-2",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-2"
+    },
+    {
+      "criterionKey": "34:AC-2",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-2"
+    },
+    {
+      "criterionKey": "52:AC-20",
+      "criticality": "degradable",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-20"
+    },
+    {
+      "criterionKey": "52:AC-20",
+      "criticality": "degradable",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-20"
+    },
+    {
+      "criterionKey": "53:AC-21",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-21"
+    },
+    {
+      "criterionKey": "53:AC-21",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-21"
+    },
+    {
+      "criterionKey": "54:AC-22",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-22"
+    },
+    {
+      "criterionKey": "54:AC-22",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-22"
+    },
+    {
+      "criterionKey": "55:AC-23",
+      "criticality": "nice_to_have",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-23"
+    },
+    {
+      "criterionKey": "55:AC-23",
+      "criticality": "nice_to_have",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-23"
+    },
+    {
+      "criterionKey": "35:AC-3",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-3"
+    },
+    {
+      "criterionKey": "35:AC-3",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-3"
+    },
+    {
+      "criterionKey": "36:AC-4",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-4"
+    },
+    {
+      "criterionKey": "36:AC-4",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-4"
+    },
+    {
+      "criterionKey": "37:AC-5",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-5"
+    },
+    {
+      "criterionKey": "37:AC-5",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-5"
+    },
+    {
+      "criterionKey": "38:AC-6",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-6"
+    },
+    {
+      "criterionKey": "38:AC-6",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-6"
+    },
+    {
+      "criterionKey": "39:AC-7",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-7"
+    },
+    {
+      "criterionKey": "39:AC-7",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-7"
+    },
+    {
+      "criterionKey": "40:AC-8",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-8"
+    },
+    {
+      "criterionKey": "40:AC-8",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-8"
+    },
+    {
+      "criterionKey": "41:AC-9",
+      "criticality": "blocker",
+      "entryState": "proposed",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-9"
+    },
+    {
+      "criterionKey": "41:AC-9",
+      "criticality": "blocker",
+      "entryState": "pending",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": null,
+      "terminalRoute": null,
+      "verificationItemKey": "verify-ac-9"
+    },
+    {
+      "criterionKey": "33:AC-1",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-1"
+    },
+    {
+      "criterionKey": "34:AC-2",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-2"
+    },
+    {
+      "criterionKey": "35:AC-3",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-3"
+    },
+    {
+      "criterionKey": "36:AC-4",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-4"
+    },
+    {
+      "criterionKey": "37:AC-5",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-5"
+    },
+    {
+      "criterionKey": "38:AC-6",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-6"
+    },
+    {
+      "criterionKey": "39:AC-7",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-7"
+    },
+    {
+      "criterionKey": "40:AC-8",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-8"
+    },
+    {
+      "criterionKey": "41:AC-9",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-9"
+    },
+    {
+      "criterionKey": "42:AC-10",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-10"
+    },
+    {
+      "criterionKey": "43:AC-11",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-11"
+    },
+    {
+      "criterionKey": "44:AC-12",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-12"
+    },
+    {
+      "criterionKey": "45:AC-13",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-13"
+    },
+    {
+      "criterionKey": "46:AC-14",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-14"
+    },
+    {
+      "criterionKey": "47:AC-15",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-15"
+    },
+    {
+      "criterionKey": "48:AC-16",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-16"
+    },
+    {
+      "criterionKey": "49:AC-17",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-17"
+    },
+    {
+      "criterionKey": "50:AC-18",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-18"
+    },
+    {
+      "criterionKey": "51:AC-19",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-19"
+    },
+    {
+      "criterionKey": "52:AC-20",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-20"
+    },
+    {
+      "criterionKey": "53:AC-21",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-21"
+    },
+    {
+      "criterionKey": "54:AC-22",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-22"
+    },
+    {
+      "criterionKey": "55:AC-23",
+      "criticality": null,
+      "entryState": "terminal-blocked",
+      "graphHash": "d580b433f35c4b88cc20f7b1f43c40b99f8462d3a15b6815c4548606a557dcdc",
+      "outcome": null,
+      "required": true,
+      "terminalReasonCodes": [
+        "candidate-missing",
+        "local-readiness-failed"
+      ],
+      "terminalRoute": "blocked",
+      "verificationItemKey": "verify-ac-23"
+    }
+  ]
+}

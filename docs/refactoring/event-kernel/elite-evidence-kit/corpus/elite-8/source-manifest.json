@@ -1,0 +1,161 @@
+{
+  "digests": {
+    "buildDigest": {
+      "method": "sha256 over sorted \"name@version:packageDigest:status\" of factory_module_installations",
+      "value": "9bfa5566d7df079965cdcfc24fd0380924b8b7aed16b2a84708b0bb886b03e27"
+    },
+    "dbContentDigest": {
+      "method": "read-only canonical dump: every user table, rows by rowid, sorted-key JSON rows, sha256 over the concatenation",
+      "value": "095e96d01165751d47fd119c0d1068914991506c24002ac634577973b5098817"
+    },
+    "journalDigest": {
+      "method": "sha256 over factory-run-journal.jsonl bytes",
+      "value": "61a3300f0648fb3cebc1041b9524d9ea8bed73374773aa569cc6b620fb42faea"
+    },
+    "packageStoreMerkleDigest": {
+      "method": "merkle over content-addressed entries: per entry sha256 over sorted (relative-path, file-sha256) pairs, then sha256 over sorted (entryDigest, fileMerkle) pairs",
+      "value": "00250ba657ccbc9a5cb28b76bf2d1190eff2788ec74181d649c45567bc62db17"
+    },
+    "repoCommitDigest": {
+      "note": "HEAD of the product repository the run wrote to (read-only resolution of .git/HEAD).",
+      "provenance": "direct:loose-ref",
+      "value": "b6db0253e96a787e786d500d3696d8128836ef8e"
+    },
+    "sourceSHA": {
+      "direct": false,
+      "note": "The factory checkout that produced this run is not archived with the run root. The value pins the exact factory module packages (content digests recorded by the DB) and built-in provider bases that executed the run — the strongest recoverable identity of the producing code.",
+      "provenance": "derived:package-store-digests+schema-version",
+      "value": "273a13a997bab1bdc076eeac879789ac4f32176b4232f3bd6ca61f2fcc429af0"
+    }
+  },
+  "extractedFrom": {
+    "dbFile": "factory.sqlite",
+    "dbOpened": "readonly",
+    "journal": {
+      "bytes": 401107,
+      "digest": "61a3300f0648fb3cebc1041b9524d9ea8bed73374773aa569cc6b620fb42faea",
+      "lines": 665,
+      "present": true
+    },
+    "packageStore": {
+      "entries": 1,
+      "present": true
+    },
+    "productDir": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8\\product",
+    "sourceRoot": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db",
+    "walPresent": true
+  },
+  "kitStats": {
+    "actorCapsules": 29,
+    "actorProgramWorkplaces": 8,
+    "failureWitnesses": [
+      "engine-restarts",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-19d76770",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-37731dbd",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-830f01e3",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-b4f1b327",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-d1052319",
+      "final-gate-repair_required-solution-development-1-4-4-development-plan-task-graph-singleton-ef9c68cb",
+      "final-gate-repair_required-solution-formalization-1-0-0-formalization-acceptance-contract-singleton-1d776130",
+      "final-gate-repair_required-solution-formalization-1-0-0-formalization-acceptance-contract-singleton-46fca9e6",
+      "final-gate-repair_required-solution-formalization-1-0-0-formalization-acceptance-contract-singleton-8758f012",
+      "journal-duplicate-obligation-created",
+      "journal-visibility-gap-lost-executions",
+      "spec-vs-data",
+      "supervision-anomalies"
+    ],
+    "inputCapsules": 41,
+    "invariantChecks": 13,
+    "invariantFailures": 0,
+    "traceEvents": 665,
+    "traceStreams": 72
+  },
+  "kitVersion": "elite-evidence-kit/v1",
+  "observations": {
+    "commandReceipts": 40,
+    "gateDecisions": {
+      "byVerdict": {
+        "accepted": 15,
+        "repair_required": 9
+      },
+      "total": 24
+    },
+    "journalEvents": 665,
+    "lifecycleRuns": 1,
+    "obligations": {
+      "byState": {
+        "completed": 54
+      },
+      "total": 54
+    },
+    "sealedMaterials": 24,
+    "stages": [
+      {
+        "authority": "discovery-settlement-policy",
+        "localOutcome": "go",
+        "moduleRefKey": "product-discovery@3.0.2",
+        "stageId": "initial-discovery",
+        "status": "completed"
+      },
+      {
+        "authority": "formalization_settlement_policy",
+        "localOutcome": "formalized",
+        "moduleRefKey": "solution-formalization@1.0.0",
+        "stageId": "solution-formalization",
+        "status": "completed"
+      },
+      {
+        "authority": null,
+        "localOutcome": "failed",
+        "moduleRefKey": "solution-development@1.4.4",
+        "stageId": "solution-development",
+        "status": "completed"
+      }
+    ],
+    "tasks": {
+      "byStatus": {
+        "done": 16
+      },
+      "total": 16
+    },
+    "terminalStatus": "failed",
+    "workerExecutions": {
+      "byState": {
+        "exited": 24,
+        "lost": 15
+      },
+      "total": 39
+    },
+    "workplaces": {
+      "byTerminalReason": {
+        "accepted": 7,
+        "failed": 1
+      },
+      "total": 8
+    }
+  },
+  "runId": "elite-8",
+  "scenario": {
+    "allClaimsMatch": true,
+    "claimsVerification": [
+      {
+        "actual": "failed",
+        "claim": "terminalStatus",
+        "expected": "failed",
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-8 (negative scenario)"
+      },
+      {
+        "actual": "development-plan-task-graph",
+        "claim": "failurePointCell",
+        "expected": "development-plan-task-graph",
+        "matches": true,
+        "specRef": "SPEC-v1.md §Elite-8 (negative scenario)"
+      }
+    ],
+    "profile": "negative",
+    "specRef": "SPEC-v1.md §Elite-8 (negative scenario)"
+  },
+  "schemaVersion": 15,
+  "toolVersion": "elite-evidence-kit-extract/1.0.0"
+}

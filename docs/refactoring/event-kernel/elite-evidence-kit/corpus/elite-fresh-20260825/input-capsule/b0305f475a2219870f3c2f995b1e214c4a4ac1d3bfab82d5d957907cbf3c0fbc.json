@@ -1,0 +1,252 @@
+{
+  "definitionHash": "b8b6f4205f1686af9c5967ba3755fd7201962e31e3210f610d47786bed2e24c7",
+  "definitionSnapshot": {
+    "entryStageId": "initial-discovery",
+    "identity": {
+      "description": "Builds and proves one locally runnable product revision; deployment and human acceptance are separate requests.",
+      "displayName": "Product Build",
+      "name": "product-build",
+      "version": "1.2.0"
+    },
+    "stages": [
+      {
+        "displayName": "Initial Discovery",
+        "entryConditions": [
+          "initiative.subject exists"
+        ],
+        "exitConditions": [
+          "Discovery has an immutable local outcome and certificate lineage"
+        ],
+        "id": "initial-discovery",
+        "inputMapping": {
+          "constraints": "$.initiative.constraints",
+          "context": "$.initiative.context",
+          "epicId": {
+            "runtime": "epicId"
+          },
+          "evidence": "$.initiative.evidence",
+          "initiatedBy": {
+            "runtime": "initiatedBy"
+          },
+          "objective": "$.initiative.subject",
+          "projectId": {
+            "runtime": "projectId"
+          },
+          "subject": "$.initiative.subject"
+        },
+        "moduleRef": {
+          "name": "product-discovery",
+          "version": "4.0.0"
+        },
+        "outcomeRoutes": {
+          "clarify": {
+            "stageId": "solution-formalization",
+            "type": "stage"
+          },
+          "failed": {
+            "status": "failed",
+            "type": "terminal"
+          },
+          "go": {
+            "stageId": "solution-formalization",
+            "type": "stage"
+          },
+          "reject": {
+            "stageId": "solution-formalization",
+            "type": "stage"
+          }
+        },
+        "outputMapping": {
+          "authority": "$.processOutcome.authority",
+          "certificate.hash": "$.processOutcome.certificateHash",
+          "certificate.ref": "$.processOutcome.certificateRef",
+          "certificate.schema": "$.processOutcome.certificateSchema",
+          "decision": "$.processOutcome.code",
+          "proposal.hash": "$.processOutcome.outputHash",
+          "proposal.ref": "$.processOutcome.outputRef",
+          "proposal.schema": "$.processOutcome.outputSchema",
+          "proposalPayload": "$.processOutcome.outputPayload"
+        }
+      },
+      {
+        "displayName": "Solution Formalization",
+        "entryConditions": [
+          "Discovery certificate ref and hash exist"
+        ],
+        "exitConditions": [
+          "Formalization has a frozen content-addressed Solution Contract"
+        ],
+        "id": "solution-formalization",
+        "inputMapping": {
+          "discoveryCertificateHash": "$.stages.initial-discovery.certificate.hash",
+          "discoveryCertificateRef": "$.stages.initial-discovery.certificate.ref",
+          "discoveryEpicId": {
+            "runtime": "epicId"
+          },
+          "discoveryOutcome": "$.stages.initial-discovery.decision",
+          "discoveryProposalHash": "$.stages.initial-discovery.proposal.hash",
+          "discoveryProposalPayload": "$.stages.initial-discovery.proposalPayload",
+          "discoveryProposalRef": "$.stages.initial-discovery.proposal.ref",
+          "formalizationEpicId": {
+            "runtime": "epicId"
+          },
+          "initiatedBy": {
+            "runtime": "initiatedBy"
+          },
+          "initiativeSubject": "$.initiative.subject",
+          "schemaVersion": {
+            "literal": "factory.formalization-case.v1"
+          }
+        },
+        "moduleRef": {
+          "name": "solution-formalization",
+          "version": "1.0.0"
+        },
+        "outcomeRoutes": {
+          "failed": {
+            "status": "failed",
+            "type": "terminal"
+          },
+          "formalized": {
+            "stageId": "solution-development",
+            "type": "stage"
+          },
+          "inconsistent": {
+            "status": "formalization-inconsistent",
+            "type": "terminal"
+          }
+        },
+        "outputMapping": {
+          "authority": "$.processOutcome.authority",
+          "certificate.hash": "$.processOutcome.certificateHash",
+          "certificate.ref": "$.processOutcome.certificateRef",
+          "certificate.schema": "$.processOutcome.certificateSchema",
+          "decision": "$.processOutcome.code",
+          "solutionContract.hash": "$.processOutcome.outputHash",
+          "solutionContract.ref": "$.processOutcome.outputRef",
+          "solutionContract.schema": "$.processOutcome.outputSchema",
+          "solutionContractPayload": "$.processOutcome.outputPayload"
+        }
+      },
+      {
+        "displayName": "Solution Development",
+        "entryConditions": [
+          "Formalization outcome is formalized",
+          "Solution Contract and accepted baseline are content-addressed"
+        ],
+        "exitConditions": [
+          "Development has frozen an immutable integrated candidate",
+          "Factory-owned tests and a loopback start probe passed for the exact commit/tree"
+        ],
+        "id": "solution-development",
+        "inputMapping": {
+          "acceptanceBaselineHash": "$.stages.solution-formalization.solutionContractPayload.bundle.acceptanceBaselineHash",
+          "acceptanceCriteria": "$.stages.solution-formalization.solutionContractPayload.acceptanceCriteria",
+          "epicId": {
+            "runtime": "epicId"
+          },
+          "formalizationCertificate.decision": {
+            "literal": "formalized"
+          },
+          "formalizationCertificate.hash": "$.stages.solution-formalization.certificate.hash",
+          "formalizationCertificate.ref": "$.stages.solution-formalization.certificate.ref",
+          "formalizationCertificate.schema": "$.stages.solution-formalization.certificate.schema",
+          "initiatedBy": {
+            "runtime": "initiatedBy"
+          },
+          "policy": "$.development.policy",
+          "projectId": {
+            "runtime": "projectId"
+          },
+          "repositories": "$.development.repositories",
+          "schemaVersion": {
+            "literal": "factory.development-case.v1"
+          },
+          "solutionContract.hash": "$.stages.solution-formalization.solutionContract.hash",
+          "solutionContract.ref": "$.stages.solution-formalization.solutionContract.ref",
+          "solutionContract.schema": "$.stages.solution-formalization.solutionContract.schema",
+          "solutionContractPayload": "$.stages.solution-formalization.solutionContractPayload",
+          "srs": "$.stages.solution-formalization.solutionContractPayload.srs"
+        },
+        "moduleRef": {
+          "name": "solution-development",
+          "version": "1.4.4"
+        },
+        "outcomeRoutes": {
+          "blocked": {
+            "status": "development-blocked",
+            "type": "terminal"
+          },
+          "failed": {
+            "status": "failed",
+            "type": "terminal"
+          },
+          "verified": {
+            "status": "runnable-local",
+            "type": "terminal"
+          }
+        },
+        "outputMapping": {
+          "authority": "$.processOutcome.authority",
+          "certificate.hash": "$.processOutcome.certificateHash",
+          "certificate.ref": "$.processOutcome.certificateRef",
+          "certificate.schema": "$.processOutcome.certificateSchema",
+          "decision": "$.processOutcome.code",
+          "verifiedBundle.hash": "$.processOutcome.outputHash",
+          "verifiedBundle.ref": "$.processOutcome.outputRef",
+          "verifiedBundle.schema": "$.processOutcome.outputSchema",
+          "verifiedBundlePayload": "$.processOutcome.outputPayload"
+        }
+      }
+    ]
+  },
+  "displayName": "Product Build",
+  "entryStageId": "initial-discovery",
+  "inputHash": "c2dd8d8f26430f84f15da7ba86089a73feb7aff5a7e07afe8cccab7c66c2d67c",
+  "inputSnapshot": {
+    "delivery": {
+      "deferredProfile": {
+        "profileHash": "96fea0194989ada584e299c4b2faa6e9a23db0c0ed4e22b03842fd43e73d0ee8",
+        "reason": "authorization-required",
+        "schemaVersion": "factory.delivery-deferred-profile.v1",
+        "source": "start-from-idea"
+      },
+      "mode": "deferred",
+      "operatorAuthorization": null,
+      "policy": null
+    },
+    "development": {
+      "policy": {
+        "contentHash": "0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4",
+        "id": "reference-development-policy",
+        "requiredChangeScopes": [],
+        "version": "1.2.0"
+      },
+      "repositories": [
+        {
+          "expectedBaseCommit": "9e489ed322b218b7c1150bf469988e78d57126e6",
+          "integrationBranch": "dev",
+          "repositoryRef": {
+            "repositoryName": "D:/Development/elite-fresh-20260825-repo",
+            "role": "component"
+          }
+        }
+      ]
+    },
+    "initiative": {
+      "constraints": {
+        "deploymentExcluded": true,
+        "humanAcceptanceAfterLocalStart": true,
+        "localRunRequired": true
+      },
+      "context": {
+        "complexity": "XS",
+        "type": "web-app"
+      },
+      "evidence": {},
+      "subject": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz."
+    },
+    "schemaVersion": "factory.product-delivery-lifecycle-input.v2"
+  },
+  "lifecycleRefKey": "product-build@1.2.0"
+}

@@ -1,0 +1,251 @@
+{
+  "capsules": [
+    {
+      "digest": "03a1cbe3228313b40ccc422bedbc4fd7d613222d23b9b5145b5922e9a3660c87",
+      "file": "input-capsule/03a1cbe3228313b40ccc422bedbc4fd7d613222d23b9b5145b5922e9a3660c87.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "08497a4262a920b5e0b0979955d33611fdd580270cc3f447e6425e836595fd43",
+      "file": "input-capsule/08497a4262a920b5e0b0979955d33611fdd580270cc3f447e6425e836595fd43.json",
+      "role": "formalization-output/product-bundle",
+      "summary": "factory.formalization-product-bundle.v1"
+    },
+    {
+      "digest": "0ce37b7761cda5ada802be404f9322e3918a02bdec902ec500659d3243b882ca",
+      "file": "input-capsule/0ce37b7761cda5ada802be404f9322e3918a02bdec902ec500659d3243b882ca.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "12ebd1a009641c83c18780d5294484884312cb85343a7bce3089de7a61c87640",
+      "file": "input-capsule/12ebd1a009641c83c18780d5294484884312cb85343a7bce3089de7a61c87640.json",
+      "role": "outcome-certificate",
+      "summary": "product-discovery@3.0.2 -> go"
+    },
+    {
+      "digest": "14a27bc4fa37f8779860901fd556ac09814205696c7a3e683ca5c1c361dd545d",
+      "file": "input-capsule/14a27bc4fa37f8779860901fd556ac09814205696c7a3e683ca5c1c361dd545d.json",
+      "role": "order",
+      "summary": "order order-0dcaffec-f1fd-49ed-9ff1-7f98dcd0a156"
+    },
+    {
+      "digest": "1642e894a4b88712d0344ed1e0f77d5635724ec5b0aed7453485f3799d6b0b23",
+      "file": "input-capsule/1642e894a4b88712d0344ed1e0f77d5635724ec5b0aed7453485f3799d6b0b23.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "288b8f70bafcb190ed3084bf64a9fc3314c3dec8c775b6132428473654dff566",
+      "file": "input-capsule/288b8f70bafcb190ed3084bf64a9fc3314c3dec8c775b6132428473654dff566.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/03-functional-requirements.md"
+    },
+    {
+      "digest": "29f8564edb9e8adf956eeff8bae558bbddb0c7e90dc284743fd8737f4aa3120d",
+      "file": "input-capsule/29f8564edb9e8adf956eeff8bae558bbddb0c7e90dc284743fd8737f4aa3120d.json",
+      "role": "formalization-solution-contract",
+      "summary": "formalization solution contract"
+    },
+    {
+      "digest": "2c887e843156c2a54b4f4e916a05f4002f431c559dc5d0c7ef16bb8276d62faa",
+      "file": "input-capsule/2c887e843156c2a54b4f4e916a05f4002f431c559dc5d0c7ef16bb8276d62faa.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/02-use-cases.md"
+    },
+    {
+      "digest": "307bde0ce5fc38a36ce2055c3b9b2314ce8747b2e4a32a3796e69a064ee900e0",
+      "file": "input-capsule/307bde0ce5fc38a36ce2055c3b9b2314ce8747b2e4a32a3796e69a064ee900e0.json",
+      "role": "formalization-output/use-case-bundle",
+      "summary": "factory.formalization-use-case-bundle.v1"
+    },
+    {
+      "digest": "320dd2a7ff208347007afb1826d801f866a29325a0037e53cedaf45b0c5cb2d6",
+      "file": "input-capsule/320dd2a7ff208347007afb1826d801f866a29325a0037e53cedaf45b0c5cb2d6.json",
+      "role": "formalization-acceptance-baseline",
+      "summary": "formalization acceptance baseline"
+    },
+    {
+      "digest": "327e09a17729a3e8204f313c10f6bef07800fc733c4205af17a077277930fbb4",
+      "file": "input-capsule/327e09a17729a3e8204f313c10f6bef07800fc733c4205af17a077277930fbb4.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "33db98ba37533744e4948188ef98ecdef654ebdd65630909181f11b2152f6d3b",
+      "file": "input-capsule/33db98ba37533744e4948188ef98ecdef654ebdd65630909181f11b2152f6d3b.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/01-brief.md"
+    },
+    {
+      "digest": "364b37738032a28a72829f4d2192b70bd9353c9ee8dddfc5b70c2785f995d6ac",
+      "file": "input-capsule/364b37738032a28a72829f4d2192b70bd9353c9ee8dddfc5b70c2785f995d6ac.json",
+      "role": "development-verification-ledger",
+      "summary": "0 ledger entries"
+    },
+    {
+      "digest": "3e1e62a7f262d27fa1bad83a5dc76752d7dbe04a2bb972fb8c3ffb64076886ae",
+      "file": "input-capsule/3e1e62a7f262d27fa1bad83a5dc76752d7dbe04a2bb972fb8c3ffb64076886ae.json",
+      "role": "trusted-providers",
+      "summary": "6 providers"
+    },
+    {
+      "digest": "4003ccecc78b8783eb8f83854d0f981943a8a00096135a7c64cb43e87af71b7d",
+      "file": "input-capsule/4003ccecc78b8783eb8f83854d0f981943a8a00096135a7c64cb43e87af71b7d.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-development@1.4.4"
+    },
+    {
+      "digest": "4b19f8781f8fb6caf4f2f341df374e80dd9af85c76505a938658eb2f4c366a8a",
+      "file": "input-capsule/4b19f8781f8fb6caf4f2f341df374e80dd9af85c76505a938658eb2f4c366a8a.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "52cf87f6667f6dc47746863d60ac869c0c88ad993ccc77adcd0f3f1b15d5e0d4",
+      "file": "input-capsule/52cf87f6667f6dc47746863d60ac869c0c88ad993ccc77adcd0f3f1b15d5e0d4.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-development"
+    },
+    {
+      "digest": "569c3cde6a3eadb91bad9a08b65d371d7dcafd0426f99886803ca12bee2640c3",
+      "file": "input-capsule/569c3cde6a3eadb91bad9a08b65d371d7dcafd0426f99886803ca12bee2640c3.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-formalization"
+    },
+    {
+      "digest": "5c4774892482112cca3210ee7e97b9b56623fddcec96a8bd09b782b76fbb2a59",
+      "file": "input-capsule/5c4774892482112cca3210ee7e97b9b56623fddcec96a8bd09b782b76fbb2a59.json",
+      "role": "module-installation-identities",
+      "summary": "6 installations"
+    },
+    {
+      "digest": "697d148fb4b2c277d18594977e255cb339e7a4518346b9f3fb9612a81fd154f5",
+      "file": "input-capsule/697d148fb4b2c277d18594977e255cb339e7a4518346b9f3fb9612a81fd154f5.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "71f4dc8214cfab8082f34774dcfa16da113e8ee161eabbf4baeea7f1290c13cc",
+      "file": "input-capsule/71f4dc8214cfab8082f34774dcfa16da113e8ee161eabbf4baeea7f1290c13cc.json",
+      "role": "project-identity",
+      "summary": "project / repository / checkout identity"
+    },
+    {
+      "digest": "7bffa5eac8cebe563fb6811e01d74063b3a02a4ebf6e1c0ac84aa510498efcc5",
+      "file": "input-capsule/7bffa5eac8cebe563fb6811e01d74063b3a02a4ebf6e1c0ac84aa510498efcc5.json",
+      "role": "stage-envelope",
+      "summary": "stage initial-discovery"
+    },
+    {
+      "digest": "808536f395407cbc7e7a9c5822508c1f384f8d8bcaab49846b4b96e3006495bb",
+      "file": "input-capsule/808536f395407cbc7e7a9c5822508c1f384f8d8bcaab49846b4b96e3006495bb.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "95f3c578ab7b579852d11802bf133237ed9cf3e4b9a01a6b76b771aaaa9ebc13",
+      "file": "input-capsule/95f3c578ab7b579852d11802bf133237ed9cf3e4b9a01a6b76b771aaaa9ebc13.json",
+      "role": "formalization-output/reconciliation-report",
+      "summary": "factory.formalization-reconciliation-report.v1"
+    },
+    {
+      "digest": "a25ec7b7333b5bbfc2fa457ebd57f9b170d0e0aaeefa0cc5f18fa845e34ed990",
+      "file": "input-capsule/a25ec7b7333b5bbfc2fa457ebd57f9b170d0e0aaeefa0cc5f18fa845e34ed990.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "accae2dbb43c6494b1c6d24764ab50c3a6fdb039042ae9a6f884a3476795fd89",
+      "file": "input-capsule/accae2dbb43c6494b1c6d24764ab50c3a6fdb039042ae9a6f884a3476795fd89.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/03-acceptance-criteria.md"
+    },
+    {
+      "digest": "acdd3336d87596c9a067d487882358ce0cd787e7abe7ec6eaecc55a035c143d5",
+      "file": "input-capsule/acdd3336d87596c9a067d487882358ce0cd787e7abe7ec6eaecc55a035c143d5.json",
+      "role": "outcome-certificate",
+      "summary": "solution-formalization@1.0.0 -> formalized"
+    },
+    {
+      "digest": "b26ccb314e6c00e807c2a151cdfab66fe2b55fceed28e3f4a46e40caac6b9782",
+      "file": "input-capsule/b26ccb314e6c00e807c2a151cdfab66fe2b55fceed28e3f4a46e40caac6b9782.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/02-PRD.md"
+    },
+    {
+      "digest": "c1c674c33f8bb20d03397eab182a14238a2029fd38c7c59eca414f79c3d116c4",
+      "file": "input-capsule/c1c674c33f8bb20d03397eab182a14238a2029fd38c7c59eca414f79c3d116c4.json",
+      "role": "artifact-registry",
+      "summary": "29 artifacts"
+    },
+    {
+      "digest": "c3761050bb74c4d516acfdb297770ebb71b819f2d01d79437f94952ddf3c8809",
+      "file": "input-capsule/c3761050bb74c4d516acfdb297770ebb71b819f2d01d79437f94952ddf3c8809.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "c3c083eb0a3333bbc9e328df4a28af00713fa6077d7648dfef02f3706db50ead",
+      "file": "input-capsule/c3c083eb0a3333bbc9e328df4a28af00713fa6077d7648dfef02f3706db50ead.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "c59446b5d424bb6ddd2b3009234c23402d80e34b8ee154602ba4ac59e7598643",
+      "file": "input-capsule/c59446b5d424bb6ddd2b3009234c23402d80e34b8ee154602ba4ac59e7598643.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/06-SRS.md"
+    },
+    {
+      "digest": "c972f288f68b58ba6ebd95bb66be06a5b19d8e8e545749a88ce757dadbe84b1a",
+      "file": "input-capsule/c972f288f68b58ba6ebd95bb66be06a5b19d8e8e545749a88ce757dadbe84b1a.json",
+      "role": "lifecycle-definition",
+      "summary": "lifecycle product-build@1.2.0"
+    },
+    {
+      "digest": "d27d04d2d3e592ba3dc3c0a32d3248ae0e6930b5a8d37b75d94d255e34421a02",
+      "file": "input-capsule/d27d04d2d3e592ba3dc3c0a32d3248ae0e6930b5a8d37b75d94d255e34421a02.json",
+      "role": "process-envelope",
+      "summary": "process-run product-discovery@3.0.2"
+    },
+    {
+      "digest": "d4cd92fa4499bae02c43c5e223b33d70de1395b93be2b74ae4e33f968a7b1887",
+      "file": "input-capsule/d4cd92fa4499bae02c43c5e223b33d70de1395b93be2b74ae4e33f968a7b1887.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-formalization@1.0.0"
+    },
+    {
+      "digest": "d8b3c5a6a08fdfc06c10bac49987e38d0ae76f7664e449e4a9918760de951583",
+      "file": "input-capsule/d8b3c5a6a08fdfc06c10bac49987e38d0ae76f7664e449e4a9918760de951583.json",
+      "role": "discovery-output/proposal",
+      "summary": "factory.discovery-proposal.v1"
+    },
+    {
+      "digest": "d97a47225e992e79a60979a0dbb9809dd2c090ab56076869d6795853946ec8a6",
+      "file": "input-capsule/d97a47225e992e79a60979a0dbb9809dd2c090ab56076869d6795853946ec8a6.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/04-non-functional-requirements.md"
+    },
+    {
+      "digest": "ef8f5d6fae2fc0650da3eb0aa60ad421c05eae2aa963f55b0effc2101b771cb6",
+      "file": "input-capsule/ef8f5d6fae2fc0650da3eb0aa60ad421c05eae2aa963f55b0effc2101b771cb6.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/05-business-rules.md"
+    },
+    {
+      "digest": "f074d1cc7e5900eb432e4bfd070d18d6d747ee654c8e48fa7f74ae78abdcb504",
+      "file": "input-capsule/f074d1cc7e5900eb432e4bfd070d18d6d747ee654c8e48fa7f74ae78abdcb504.json",
+      "role": "formalization-output/architecture-bundle",
+      "summary": "factory.formalization-architecture-bundle.v1"
+    },
+    {
+      "digest": "f41291cd9b51a1ee92806100c162bd09694231ee42430ba0fbad2ca01ab7b3f3",
+      "file": "input-capsule/f41291cd9b51a1ee92806100c162bd09694231ee42430ba0fbad2ca01ab7b3f3.json",
+      "role": "discovery-output/readiness-assessment",
+      "summary": "factory.discovery-readiness-assessment.v2"
+    }
+  ],
+  "runId": "elite-8"
+}

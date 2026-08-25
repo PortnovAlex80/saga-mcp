@@ -1,0 +1,37 @@
+{
+  "contentDigest": "91d5c96f9504f8e5c89b8c34641b305b46c292c602fb6b111cb02e258fc12724",
+  "payload": {
+    "acceptanceCriterionKeys": [
+      "45:AC-13",
+      "46:AC-14"
+    ],
+    "authorExecutionId": "worker-execution:323ebcef-ce8d-428c-a8d5-032c9d8dc4e5",
+    "authorSubmissionDigest": "23e9f8232097d9d07a1a9c722811516a35408357cdf166104375ee415562117c",
+    "authorSubmissionRef": "managed-node-submission:13",
+    "baseCommit": "9e489ed322b218b7c1150bf469988e78d57126e6",
+    "changedFiles": [
+      "src/upgrades.ts",
+      "tests/upgrades.test.ts"
+    ],
+    "findings": [
+      "PASS src/upgrades.ts,tests/upgrades.test.ts: AC-13 satisfied — purchaseUpgrade applies upgrade stats and deducts credits when player has sufficient funds. All four upgrade types tested with exact credit/stat assertions.",
+      "PASS src/upgrades.ts,tests/upgrades.test.ts: AC-14 satisfied — purchaseUpgrade returns insufficient_credits rejection and leaves state unchanged. Tests cover boundary, all types, immutability.",
+      "INFO src/upgrades.ts: unknown upgrade types map to reason insufficient_credits rather than a distinct error. Not blocking (outside AC scope) but could mask caller bugs.",
+      "INFO: vitest globals not configured — pre-existing infrastructure gap owned by impl-foundation-and-galaxy. Deferred.",
+      "PASS: Change scope verified — diff contains only src/upgrades.ts and tests/upgrades.test.ts. No unrelated expansion.",
+      "PASS: Source commit on declared author branch. Tree and commit SHA match implementation product."
+    ],
+    "processRunId": 3,
+    "projectRepositoryId": 1,
+    "reviewedBranch": "saga/task/21/execution/149874fb69979a5602db",
+    "reviewedSourceCommit": "862095271a04a76e3e6700cdd5fcbc33c6008a83",
+    "reviewedSourceTree": "865c75c3df838466ae87ebd9fada507edddce9b1",
+    "reviewerExecutionId": "worker-execution:1557ba87-8ea9-45ad-be0a-19f20689a46c",
+    "reviewerWorkerId": "worker:721efe76-288e-42be-9c23-a33b7282c8c6",
+    "subject_candidate_set_ref": "candidate-set/3/solution-development@1.4.4/development-implementation/589e3e5022d693d6be13877e/eba9487ba69ade9cc8b72ebb8b6083df5b6e5b114172f3035c530b47d2383130/author",
+    "verdict": "approved",
+    "workItemKey": "impl-upgrades"
+  },
+  "payloadHash": "91d5c96f9504f8e5c89b8c34641b305b46c292c602fb6b111cb02e258fc12724",
+  "schemaId": "factory.development-review-verdict.v1"
+}

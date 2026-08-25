@@ -1,0 +1,10 @@
+{
+  "contentDigest": "e2bf341142f65ab18331433e1bbcb77a7b996eb95151197adf3cde0b678a6167",
+  "payload": {
+    "findings": [],
+    "subject_candidate_set_ref": "candidate-set/2/solution-formalization@1.0.0/formalization-use-cases/singleton/4a27fa16291ea1120c60127ef9e33cc8ec377987bd962d065ba7c992ba8a6056/author",
+    "verdict": "approved"
+  },
+  "payloadHash": "e2bf341142f65ab18331433e1bbcb77a7b996eb95151197adf3cde0b678a6167",
+  "schemaId": "factory.review-verdict.v1"
+}

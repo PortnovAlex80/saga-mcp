@@ -1,0 +1,6244 @@
+{
+  "finalOutcome": {
+    "certificates": [
+      {
+        "authority": "discovery-settlement-policy",
+        "decision": "go",
+        "moduleRefKey": "product-discovery@3.0.2",
+        "reasonCodes": [
+          "GO_READY_AND_GROUNDED"
+        ]
+      },
+      {
+        "authority": "formalization_settlement_policy",
+        "decision": "formalized",
+        "moduleRefKey": "solution-formalization@1.0.0",
+        "reasonCodes": []
+      }
+    ],
+    "lifecycleStatus": "completed",
+    "receiptTerminalStatus": "failed",
+    "runTerminalEvent": {
+      "cycles": 3,
+      "error": null,
+      "final_stage": "solution-development",
+      "outcome": "completed",
+      "product_outcome": "failed",
+      "stage_outcome": "failed",
+      "stage_outcome_authority": null,
+      "status": "completed",
+      "terminal_status": "failed"
+    },
+    "stageOutcomes": [
+      {
+        "authority": "discovery-settlement-policy",
+        "localOutcome": "go",
+        "moduleRefKey": "product-discovery@3.0.2",
+        "stageId": "initial-discovery"
+      },
+      {
+        "authority": "formalization_settlement_policy",
+        "localOutcome": "formalized",
+        "moduleRefKey": "solution-formalization@1.0.0",
+        "stageId": "solution-formalization"
+      },
+      {
+        "authority": null,
+        "localOutcome": "failed",
+        "moduleRefKey": "solution-development@1.4.4",
+        "stageId": "solution-development"
+      }
+    ],
+    "terminalReceiptCount": 1,
+    "terminalStatus": "failed"
+  },
+  "mandatoryTransitions": [
+    {
+      "evidence": {
+        "certificateHash": "53cd870f12aaae70da26c079c24dd396d8fc3d46bd7faebd52c65afac0e2f709",
+        "transitionKeyNormalized": "lifecycle:stage-run:1:outcome"
+      },
+      "from": "initial-discovery",
+      "outcome": "go",
+      "to": "solution-formalization"
+    },
+    {
+      "evidence": {
+        "certificateHash": "65f6ec50cb1893187ff97ff6f59d35fd5ed44ab0dbaa2514e8cc691866e01bbc",
+        "transitionKeyNormalized": "lifecycle:stage-run:2:outcome"
+      },
+      "from": "solution-formalization",
+      "outcome": "formalized",
+      "to": "solution-development"
+    },
+    {
+      "evidence": {
+        "certificateHash": null,
+        "transitionKeyNormalized": "lifecycle:stage-run:3:outcome"
+      },
+      "from": "solution-development",
+      "outcome": "failed",
+      "to": "terminal:failed"
+    }
+  ],
+  "normalization": {
+    "excluded": [
+      "timestamps",
+      "pids",
+      "db row ids (processRunId inside workplace refs; task ids become stable labels)",
+      "random uuids (worker/execution/gate/decision/obligation refs become per-stream ordinals)",
+      "content digests of volatile payloads",
+      "ordering of independent parallel workplaces/executions (per-stream sequences only)"
+    ],
+    "retained": [
+      "event kind sequence per stream",
+      "obligation lifecycle (created -> claimed -> settled)",
+      "gate decisions (phase, verdict, repair target)",
+      "check receipts (provider, outcome)",
+      "effect transitions (state machine)",
+      "terminal proofs (typed outcome)",
+      "worker supervision outcomes"
+    ],
+    "streamModel": "lifecycle | exec:<reservation-order-label> | workplace:<module>/<cell>/<workKey> | effect:<node>. Cross-stream ordering is intentionally not compared (independent parallelism); within-stream order is normative."
+  },
+  "oracle": "SYSTEM behavior under known actor responses — normalized trace comparison, not product quality (SPEC-v1.md)",
+  "permittedAlternatives": [
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "worker.spawn",
+      "observed": 39
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "worker.exit",
+      "observed": 38
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "worker.done",
+      "observed": 53
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "execution.reserved",
+      "observed": 39
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "assignment.claimed",
+      "observed": 39
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "obligation.created",
+      "observed": 158
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "obligation.claimed",
+      "observed": 54
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "obligation.settled",
+      "observed": 54
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "gate.created",
+      "observed": 24
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "gate.state",
+      "observed": 72
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "gate.check_receipt",
+      "observed": 48
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "gate.decision",
+      "observed": 24
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "effect.transition",
+      "observed": 0
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "recovery.memory_delivered",
+      "observed": 18
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "supervision.reaped",
+      "observed": 1
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "invariant.classification",
+      "observed": 0
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "invariant.recovered",
+      "observed": 0
+    },
+    {
+      "cardinality": "0..N per run (structural rules enforced by expected-invariants.json)",
+      "eventKind": "engine.exit",
+      "observed": 3
+    }
+  ],
+  "runId": "elite-8",
+  "streams": {
+    "exec#1": [
+      {
+        "exec": "exec#1",
+        "journalLine": 3,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "discovery.work#1"
+      },
+      {
+        "exec": "exec#1",
+        "exitCode": 0,
+        "journalLine": 26,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "discovery.work#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#10": [
+      {
+        "exec": "exec#10",
+        "journalLine": 216,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#4"
+      },
+      {
+        "exec": "exec#10",
+        "exitCode": 0,
+        "journalLine": 241,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#4",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#11": [
+      {
+        "exec": "exec#11",
+        "journalLine": 239,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#11",
+        "exitCode": 1,
+        "journalLine": 242,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#12": [
+      {
+        "exec": "exec#12",
+        "journalLine": 246,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#12",
+        "exitCode": 1,
+        "journalLine": 247,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#13": [
+      {
+        "exec": "exec#13",
+        "journalLine": 251,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#13",
+        "exitCode": 1,
+        "journalLine": 252,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#14": [
+      {
+        "exec": "exec#14",
+        "journalLine": 256,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#14",
+        "exitCode": 1,
+        "journalLine": 257,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#15": [
+      {
+        "exec": "exec#15",
+        "journalLine": 261,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#15",
+        "exitCode": 1,
+        "journalLine": 262,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#16": [
+      {
+        "exec": "exec#16",
+        "journalLine": 266,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#16",
+        "exitCode": 1,
+        "journalLine": 267,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#17": [
+      {
+        "exec": "exec#17",
+        "journalLine": 271,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#17",
+        "exitCode": 1,
+        "journalLine": 272,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#18": [
+      {
+        "exec": "exec#18",
+        "journalLine": 276,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#18",
+        "exitCode": 1,
+        "journalLine": 277,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#19": [
+      {
+        "exec": "exec#19",
+        "journalLine": 281,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#19",
+        "exitCode": 1,
+        "journalLine": 282,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#2": [
+      {
+        "exec": "exec#2",
+        "journalLine": 25,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "discovery.assess#1"
+      },
+      {
+        "exec": "exec#2",
+        "exitCode": 0,
+        "journalLine": 55,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "discovery.assess#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#20": [
+      {
+        "exec": "exec#20",
+        "journalLine": 286,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#20",
+        "exitCode": 1,
+        "journalLine": 287,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#21": [
+      {
+        "exec": "exec#21",
+        "journalLine": 291,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#21",
+        "exitCode": 1,
+        "journalLine": 292,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#22": [
+      {
+        "exec": "exec#22",
+        "journalLine": 296,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#22",
+        "exitCode": 1,
+        "journalLine": 297,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#23": [
+      {
+        "exec": "exec#23",
+        "journalLine": 301,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#23",
+        "exitCode": 1,
+        "journalLine": 302,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#24": [
+      {
+        "exec": "exec#24",
+        "journalLine": 306,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#24",
+        "exitCode": 1,
+        "journalLine": 307,
+        "kind": "worker.exit",
+        "outcome": "exited_before_worker_done",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "workerDoneReceived": false
+      }
+    ],
+    "exec#25": [
+      {
+        "exec": "exec#25",
+        "journalLine": 311,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "action": "lost",
+        "exec": "exec#25",
+        "journalLine": 312,
+        "kind": "supervision.reaped",
+        "reason": "OS process is not alive",
+        "released": true,
+        "seq": 2,
+        "task": "formalization.acceptance#1"
+      }
+    ],
+    "exec#26": [
+      {
+        "exec": "exec#26",
+        "journalLine": 318,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#26",
+        "exitCode": 0,
+        "journalLine": 336,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#27": [
+      {
+        "exec": "exec#27",
+        "journalLine": 335,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#5"
+      },
+      {
+        "exec": "exec#27",
+        "exitCode": 0,
+        "journalLine": 360,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#5",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#28": [
+      {
+        "exec": "exec#28",
+        "journalLine": 358,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#28",
+        "exitCode": 0,
+        "journalLine": 378,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#29": [
+      {
+        "exec": "exec#29",
+        "journalLine": 377,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#6"
+      },
+      {
+        "exec": "exec#29",
+        "exitCode": 0,
+        "journalLine": 411,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#6",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#3": [
+      {
+        "exec": "exec#3",
+        "journalLine": 54,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.product#1"
+      },
+      {
+        "exec": "exec#3",
+        "exitCode": 0,
+        "journalLine": 73,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.product#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#30": [
+      {
+        "exec": "exec#30",
+        "journalLine": 410,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.reconcile#1"
+      },
+      {
+        "exec": "exec#30",
+        "exitCode": 0,
+        "journalLine": 454,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.reconcile#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#31": [
+      {
+        "exec": "exec#31",
+        "journalLine": 432,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#7"
+      },
+      {
+        "exec": "exec#31",
+        "exitCode": 0,
+        "journalLine": 467,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#7",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#32": [
+      {
+        "exec": "exec#32",
+        "journalLine": 466,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.architecture#1"
+      },
+      {
+        "exec": "exec#32",
+        "exitCode": 0,
+        "journalLine": 485,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.architecture#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#33": [
+      {
+        "exec": "exec#33",
+        "journalLine": 484,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#8"
+      },
+      {
+        "exec": "exec#33",
+        "exitCode": 0,
+        "journalLine": 524,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#8",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#34": [
+      {
+        "exec": "exec#34",
+        "journalLine": 522,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#34",
+        "exitCode": 0,
+        "journalLine": 544,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "planning.decomposition#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#35": [
+      {
+        "exec": "exec#35",
+        "journalLine": 547,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#35",
+        "exitCode": 0,
+        "journalLine": 567,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "planning.decomposition#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#36": [
+      {
+        "exec": "exec#36",
+        "journalLine": 570,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#36",
+        "exitCode": 0,
+        "journalLine": 590,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "planning.decomposition#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#37": [
+      {
+        "exec": "exec#37",
+        "journalLine": 593,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#37",
+        "exitCode": 0,
+        "journalLine": 613,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "planning.decomposition#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#38": [
+      {
+        "exec": "exec#38",
+        "journalLine": 616,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#38",
+        "exitCode": 0,
+        "journalLine": 636,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "planning.decomposition#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#39": [
+      {
+        "exec": "exec#39",
+        "journalLine": 639,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "exec": "exec#39",
+        "exitCode": null,
+        "exitCodeSource": "late_backfill_pending",
+        "journalLine": 664,
+        "kind": "worker.exit",
+        "observer": "worker-supervision",
+        "outcome": "receipt_authoritative_settlement",
+        "physicalExitObserved": false,
+        "seq": 2,
+        "settlement": "adr-087-terminal-drain",
+        "task": "planning.decomposition#1",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#4": [
+      {
+        "exec": "exec#4",
+        "journalLine": 72,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#1"
+      },
+      {
+        "exec": "exec#4",
+        "exitCode": 0,
+        "journalLine": 106,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#5": [
+      {
+        "exec": "exec#5",
+        "journalLine": 104,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.use-cases#1"
+      },
+      {
+        "exec": "exec#5",
+        "exitCode": 0,
+        "journalLine": 124,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.use-cases#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#6": [
+      {
+        "exec": "exec#6",
+        "journalLine": 123,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#2"
+      },
+      {
+        "exec": "exec#6",
+        "exitCode": 0,
+        "journalLine": 157,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#2",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#7": [
+      {
+        "exec": "exec#7",
+        "journalLine": 156,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#7",
+        "exitCode": 0,
+        "journalLine": 175,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#8": [
+      {
+        "exec": "exec#8",
+        "journalLine": 174,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.review#3"
+      },
+      {
+        "exec": "exec#8",
+        "exitCode": 0,
+        "journalLine": 199,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.review#3",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec#9": [
+      {
+        "exec": "exec#9",
+        "journalLine": 197,
+        "kind": "worker.spawn",
+        "seq": 1,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "exec": "exec#9",
+        "exitCode": 0,
+        "journalLine": 217,
+        "kind": "worker.exit",
+        "seq": 2,
+        "task": "formalization.acceptance#1",
+        "taskStatusAfter": "done",
+        "workerDoneReceived": true
+      }
+    ],
+    "exec:exec#1": [
+      {
+        "exec": "exec#1",
+        "journalLine": 4,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "discovery.work#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#10": [
+      {
+        "exec": "exec#10",
+        "journalLine": 219,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#4",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#10",
+        "journalLine": 221,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#4",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#10",
+        "journalLine": 240,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#4",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#2": [
+      {
+        "exec": "exec#2",
+        "journalLine": 27,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "discovery.assess#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#26": [
+      {
+        "exec": "exec#26",
+        "journalLine": 319,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.acceptance#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#27": [
+      {
+        "exec": "exec#27",
+        "journalLine": 338,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#5",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#27",
+        "journalLine": 340,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#5",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#27",
+        "journalLine": 359,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#5",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#28": [
+      {
+        "exec": "exec#28",
+        "journalLine": 361,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.acceptance#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#29": [
+      {
+        "exec": "exec#29",
+        "journalLine": 380,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#6",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#29",
+        "journalLine": 382,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#6",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#29",
+        "journalLine": 399,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#6",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#3": [
+      {
+        "exec": "exec#3",
+        "journalLine": 56,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.product#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#30": [
+      {
+        "exec": "exec#30",
+        "journalLine": 413,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.reconcile#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#30",
+        "journalLine": 415,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.reconcile#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#30",
+        "journalLine": 433,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.reconcile#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#31": [
+      {
+        "exec": "exec#31",
+        "journalLine": 435,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#7",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#31",
+        "journalLine": 437,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#7",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#31",
+        "journalLine": 455,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#7",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#32": [
+      {
+        "exec": "exec#32",
+        "journalLine": 468,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.architecture#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#33": [
+      {
+        "exec": "exec#33",
+        "journalLine": 487,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#8",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#33",
+        "journalLine": 489,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#8",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#33",
+        "journalLine": 523,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#8",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#34": [
+      {
+        "exec": "exec#34",
+        "journalLine": 526,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#34",
+        "journalLine": 528,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#34",
+        "journalLine": 543,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#35": [
+      {
+        "exec": "exec#35",
+        "journalLine": 549,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#35",
+        "journalLine": 551,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#35",
+        "journalLine": 566,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#36": [
+      {
+        "exec": "exec#36",
+        "journalLine": 572,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#36",
+        "journalLine": 574,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#36",
+        "journalLine": 589,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#37": [
+      {
+        "exec": "exec#37",
+        "journalLine": 595,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#37",
+        "journalLine": 597,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#37",
+        "journalLine": 612,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#38": [
+      {
+        "exec": "exec#38",
+        "journalLine": 618,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#38",
+        "journalLine": 620,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#38",
+        "journalLine": 635,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#39": [
+      {
+        "exec": "exec#39",
+        "journalLine": 641,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#39",
+        "journalLine": 643,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "planning.decomposition#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#4": [
+      {
+        "exec": "exec#4",
+        "journalLine": 75,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#4",
+        "journalLine": 77,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#1",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#4",
+        "journalLine": 105,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#5": [
+      {
+        "exec": "exec#5",
+        "journalLine": 107,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.use-cases#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#6": [
+      {
+        "exec": "exec#6",
+        "journalLine": 126,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#2",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#6",
+        "journalLine": 128,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#2",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#6",
+        "journalLine": 150,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#2",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#7": [
+      {
+        "exec": "exec#7",
+        "journalLine": 158,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.acceptance#1",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#8": [
+      {
+        "exec": "exec#8",
+        "journalLine": 177,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.review#3",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#8",
+        "journalLine": 179,
+        "kind": "worker.done",
+        "seq": 2,
+        "stop": true,
+        "task": "formalization.review#3",
+        "verdict": "approved"
+      },
+      {
+        "exec": "exec#8",
+        "journalLine": 198,
+        "kind": "worker.done",
+        "seq": 3,
+        "stop": true,
+        "task": "formalization.review#3",
+        "verdict": "approved"
+      }
+    ],
+    "exec:exec#9": [
+      {
+        "exec": "exec#9",
+        "journalLine": 200,
+        "kind": "worker.done",
+        "seq": 1,
+        "stop": true,
+        "task": "formalization.acceptance#1",
+        "verdict": "approved"
+      }
+    ],
+    "lifecycle": [
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 45,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 1,
+        "sourceKind": "process-settled"
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 46,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 2,
+        "sourceKind": "process-settled"
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 48,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "process-settled"
+      },
+      {
+        "journalLine": 49,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 4
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 50,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 5,
+        "sourceKind": "process-settled"
+      },
+      {
+        "journalLine": 51,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 6
+      },
+      {
+        "code": 2,
+        "journalLine": 313,
+        "kind": "engine.exit",
+        "productOutcome": null,
+        "reason": "paused",
+        "seq": 7,
+        "terminalStatus": null
+      },
+      {
+        "code": 2,
+        "journalLine": 314,
+        "kind": "engine.exit",
+        "productOutcome": null,
+        "reason": "paused",
+        "seq": 8,
+        "terminalStatus": null
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 513,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 9,
+        "sourceKind": "process-settled"
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 514,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 10,
+        "sourceKind": "process-settled"
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 516,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 11,
+        "sourceKind": "process-settled"
+      },
+      {
+        "journalLine": 517,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 12
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 518,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 13,
+        "sourceKind": "process-settled"
+      },
+      {
+        "journalLine": 519,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 14
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 658,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 15,
+        "sourceKind": "process-settled"
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 659,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 16,
+        "sourceKind": "process-settled"
+      },
+      {
+        "journalLine": 660,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 17
+      },
+      {
+        "handoffKind": "route-lifecycle",
+        "journalLine": 661,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "lifecycle-orchestrator",
+        "path": "appendFenced",
+        "seq": 18,
+        "sourceKind": "process-settled"
+      },
+      {
+        "cycles": 3,
+        "error": null,
+        "finalStage": "solution-development",
+        "journalLine": 662,
+        "kind": "run.terminal",
+        "outcome": "completed",
+        "productOutcome": "failed",
+        "seq": 19,
+        "stageOutcome": "failed",
+        "stageOutcomeAuthority": null,
+        "status": "completed",
+        "terminalStatus": "failed"
+      },
+      {
+        "journalLine": 663,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 20
+      },
+      {
+        "code": 0,
+        "journalLine": 665,
+        "kind": "engine.exit",
+        "productOutcome": "failed",
+        "reason": "completed",
+        "seq": 21,
+        "terminalStatus": "failed"
+      }
+    ],
+    "workplace:product-discovery@3.0.2/discovery-proposal/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 1,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "discovery.work#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#1",
+        "executorKind": "claude-cli",
+        "journalLine": 2,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "discovery.work#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 5,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 6,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 7,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 8,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 9,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "discovery.proposal.final",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 10,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 11,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 12,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 13,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "discovery.proposal-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 14,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 15,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 16,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 17,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 15,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 18,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 16
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 19,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 17,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 20,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 18
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 21,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 19,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 22,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      }
+    ],
+    "workplace:product-discovery@3.0.2/discovery-readiness/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 23,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "discovery.assess#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#2",
+        "executorKind": "claude-cli",
+        "journalLine": 24,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "discovery.assess#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 28,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 29,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 30,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 31,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 32,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "discovery.readiness.final",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 33,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 34,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 35,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 36,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "discovery.readiness-contract.v1",
+        "providerVersion": "1.1.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 37,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 38,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 39,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 40,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 15,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 41,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 16
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 42,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 17,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 43,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 18
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 44,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 19,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 47,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      }
+    ],
+    "workplace:solution-development@1.4.4/development-plan-task-graph/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 520,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#34",
+        "executorKind": "claude-cli",
+        "journalLine": 521,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 525,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 527,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 4
+      },
+      {
+        "journalLine": 529,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 530,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 531,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 532,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 8
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 533,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 9,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 534,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 10,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 535,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 536,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 537,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 13
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 538,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 14
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 539,
+        "kind": "gate.state",
+        "seq": 15,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 540,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 16,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 541,
+        "kind": "gate.state",
+        "seq": 17,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 542,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 18
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 545,
+        "kind": "assignment.claimed",
+        "seq": 19,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#35",
+        "executorKind": "claude-cli",
+        "journalLine": 546,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 20,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 548,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 550,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 22
+      },
+      {
+        "journalLine": 552,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 553,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 554,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 555,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 26
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 556,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 27,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 557,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 28,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 7,
+        "gate": "gate#2",
+        "journalLine": 558,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 559,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 560,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 31
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 561,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 32
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 562,
+        "kind": "gate.state",
+        "seq": 33,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 563,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 34,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 564,
+        "kind": "gate.state",
+        "seq": 35,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 565,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 36
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 568,
+        "kind": "assignment.claimed",
+        "seq": 37,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#36",
+        "executorKind": "claude-cli",
+        "journalLine": 569,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 38,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 571,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 39,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 573,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 40
+      },
+      {
+        "journalLine": 575,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 41
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 576,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 42,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 577,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 43,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 578,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#6",
+        "seq": 44
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 579,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 45,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 580,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 46,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 11,
+        "gate": "gate#3",
+        "journalLine": 581,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 47
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 582,
+        "kind": "gate.state",
+        "seq": 48,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 583,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 49
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 584,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 50
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 585,
+        "kind": "gate.state",
+        "seq": 51,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#3",
+        "gate": "gate#3",
+        "journalLine": 586,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 52,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 587,
+        "kind": "gate.state",
+        "seq": 53,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 588,
+        "kind": "obligation.settled",
+        "obligation": "obligation#6",
+        "seq": 54
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 591,
+        "kind": "assignment.claimed",
+        "seq": 55,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#37",
+        "executorKind": "claude-cli",
+        "journalLine": 592,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 56,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 594,
+        "kind": "obligation.created",
+        "obligation": "obligation#7",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 57,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 596,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#7",
+        "seq": 58
+      },
+      {
+        "journalLine": 598,
+        "kind": "obligation.settled",
+        "obligation": "obligation#7",
+        "seq": 59
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 599,
+        "kind": "obligation.created",
+        "obligation": "obligation#8",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 60,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 600,
+        "kind": "obligation.created",
+        "obligation": "obligation#8",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 61,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 601,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#8",
+        "seq": 62
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 602,
+        "kind": "obligation.created",
+        "obligation": "obligation#8",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 63,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 603,
+        "kind": "obligation.created",
+        "obligation": "obligation#8",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 64,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 15,
+        "gate": "gate#4",
+        "journalLine": 604,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 65
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 605,
+        "kind": "gate.state",
+        "seq": 66,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 606,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 67
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 607,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 68
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 608,
+        "kind": "gate.state",
+        "seq": 69,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#4",
+        "gate": "gate#4",
+        "journalLine": 609,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 70,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 610,
+        "kind": "gate.state",
+        "seq": 71,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 611,
+        "kind": "obligation.settled",
+        "obligation": "obligation#8",
+        "seq": 72
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 614,
+        "kind": "assignment.claimed",
+        "seq": 73,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#38",
+        "executorKind": "claude-cli",
+        "journalLine": 615,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 74,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 617,
+        "kind": "obligation.created",
+        "obligation": "obligation#9",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 75,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 619,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#9",
+        "seq": 76
+      },
+      {
+        "journalLine": 621,
+        "kind": "obligation.settled",
+        "obligation": "obligation#9",
+        "seq": 77
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 622,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 78,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 623,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 79,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 624,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#10",
+        "seq": 80
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 625,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 81,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 626,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 82,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 19,
+        "gate": "gate#5",
+        "journalLine": 627,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 83
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 628,
+        "kind": "gate.state",
+        "seq": 84,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 629,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 85
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 630,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 86
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 631,
+        "kind": "gate.state",
+        "seq": 87,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#5",
+        "gate": "gate#5",
+        "journalLine": 632,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 88,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 633,
+        "kind": "gate.state",
+        "seq": 89,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 634,
+        "kind": "obligation.settled",
+        "obligation": "obligation#10",
+        "seq": 90
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 637,
+        "kind": "assignment.claimed",
+        "seq": 91,
+        "task": "planning.decomposition#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#39",
+        "executorKind": "claude-cli",
+        "journalLine": 638,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 92,
+        "task": "planning.decomposition#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 640,
+        "kind": "obligation.created",
+        "obligation": "obligation#11",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 93,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 642,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#11",
+        "seq": 94
+      },
+      {
+        "journalLine": 644,
+        "kind": "obligation.settled",
+        "obligation": "obligation#11",
+        "seq": 95
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 645,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 96,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 646,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 97,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 647,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#12",
+        "seq": 98
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 648,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 99,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 649,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 100,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "development.plan-task-graph.final",
+        "expectedWorkplaceRevision": 23,
+        "gate": "gate#6",
+        "journalLine": 650,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 101
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 651,
+        "kind": "gate.state",
+        "seq": 102,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 652,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 103
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 653,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "development.task-graph-contract.v1",
+        "providerVersion": "1.2.0",
+        "seq": 104
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 654,
+        "kind": "gate.state",
+        "seq": 105,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#6",
+        "gate": "gate#6",
+        "journalLine": 655,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 106,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 656,
+        "kind": "gate.state",
+        "seq": 107,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 657,
+        "kind": "obligation.settled",
+        "obligation": "obligation#12",
+        "seq": 108
+      }
+    ],
+    "workplace:solution-formalization@1.0.0/formalization-acceptance-contract/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 154,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#7",
+        "executorKind": "claude-cli",
+        "journalLine": 155,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 159,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 160,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 161,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 162,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 163,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.author",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 164,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 165,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 166,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 167,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.acceptance-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 168,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 169,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 170,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 171,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 15
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 172,
+        "kind": "assignment.claimed",
+        "seq": 16,
+        "task": "formalization.review#3",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#8",
+        "executorKind": "claude-cli",
+        "journalLine": 173,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 17,
+        "task": "formalization.review#3"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 176,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 18,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 178,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 19
+      },
+      {
+        "journalLine": 180,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 181,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 182,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 22,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 183,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 184,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 185,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.final",
+        "expectedWorkplaceRevision": 6,
+        "gate": "gate#2",
+        "journalLine": 186,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 26
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 187,
+        "kind": "gate.state",
+        "seq": 27,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 188,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 28
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 189,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 190,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 191,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 31,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 192,
+        "kind": "gate.state",
+        "seq": 32,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 193,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 33
+      },
+      {
+        "attemptCount": 4,
+        "journalLine": 194,
+        "kind": "recovery.memory_delivered",
+        "seq": 34,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 195,
+        "kind": "assignment.claimed",
+        "seq": 35,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#9",
+        "executorKind": "claude-cli",
+        "journalLine": 196,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 36,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 201,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 37,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 202,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 38,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 203,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 39
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 204,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 40,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 205,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 41,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.author",
+        "expectedWorkplaceRevision": 10,
+        "gate": "gate#3",
+        "journalLine": 206,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 42
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 207,
+        "kind": "gate.state",
+        "seq": 43,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 208,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 44
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 209,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.acceptance-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 45
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 210,
+        "kind": "gate.state",
+        "seq": 46,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#3",
+        "gate": "gate#3",
+        "journalLine": 211,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 47,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#3",
+        "journalLine": 212,
+        "kind": "gate.state",
+        "seq": 48,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 213,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 49
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 214,
+        "kind": "assignment.claimed",
+        "seq": 50,
+        "task": "formalization.review#4",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#10",
+        "executorKind": "claude-cli",
+        "journalLine": 215,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 51,
+        "task": "formalization.review#4"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 218,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 52,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 220,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 53
+      },
+      {
+        "journalLine": 222,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 54
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 223,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 55,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 224,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 56,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 225,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#6",
+        "seq": 57
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 226,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 58,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 227,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 59,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.final",
+        "expectedWorkplaceRevision": 13,
+        "gate": "gate#4",
+        "journalLine": 228,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 60
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 229,
+        "kind": "gate.state",
+        "seq": 61,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 230,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 62
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 231,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 63
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 232,
+        "kind": "gate.state",
+        "seq": 64,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#4",
+        "gate": "gate#4",
+        "journalLine": 233,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 65,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#4",
+        "journalLine": 234,
+        "kind": "gate.state",
+        "seq": 66,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 235,
+        "kind": "obligation.settled",
+        "obligation": "obligation#6",
+        "seq": 67
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 236,
+        "kind": "recovery.memory_delivered",
+        "seq": 68,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 237,
+        "kind": "assignment.claimed",
+        "seq": 69,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#11",
+        "executorKind": "claude-cli",
+        "journalLine": 238,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 70,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 243,
+        "kind": "recovery.memory_delivered",
+        "seq": 71,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 244,
+        "kind": "assignment.claimed",
+        "seq": 72,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#12",
+        "executorKind": "claude-cli",
+        "journalLine": 245,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 73,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 248,
+        "kind": "recovery.memory_delivered",
+        "seq": 74,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 249,
+        "kind": "assignment.claimed",
+        "seq": 75,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#13",
+        "executorKind": "claude-cli",
+        "journalLine": 250,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 76,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 253,
+        "kind": "recovery.memory_delivered",
+        "seq": 77,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 254,
+        "kind": "assignment.claimed",
+        "seq": 78,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#14",
+        "executorKind": "claude-cli",
+        "journalLine": 255,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 79,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 258,
+        "kind": "recovery.memory_delivered",
+        "seq": 80,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 259,
+        "kind": "assignment.claimed",
+        "seq": 81,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#15",
+        "executorKind": "claude-cli",
+        "journalLine": 260,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 82,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 263,
+        "kind": "recovery.memory_delivered",
+        "seq": 83,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 264,
+        "kind": "assignment.claimed",
+        "seq": 84,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#16",
+        "executorKind": "claude-cli",
+        "journalLine": 265,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 85,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 268,
+        "kind": "recovery.memory_delivered",
+        "seq": 86,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 269,
+        "kind": "assignment.claimed",
+        "seq": 87,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#17",
+        "executorKind": "claude-cli",
+        "journalLine": 270,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 88,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 273,
+        "kind": "recovery.memory_delivered",
+        "seq": 89,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 274,
+        "kind": "assignment.claimed",
+        "seq": 90,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#18",
+        "executorKind": "claude-cli",
+        "journalLine": 275,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 91,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 278,
+        "kind": "recovery.memory_delivered",
+        "seq": 92,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 279,
+        "kind": "assignment.claimed",
+        "seq": 93,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#19",
+        "executorKind": "claude-cli",
+        "journalLine": 280,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 94,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 283,
+        "kind": "recovery.memory_delivered",
+        "seq": 95,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 284,
+        "kind": "assignment.claimed",
+        "seq": 96,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#20",
+        "executorKind": "claude-cli",
+        "journalLine": 285,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 97,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 288,
+        "kind": "recovery.memory_delivered",
+        "seq": 98,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 289,
+        "kind": "assignment.claimed",
+        "seq": 99,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#21",
+        "executorKind": "claude-cli",
+        "journalLine": 290,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 100,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 293,
+        "kind": "recovery.memory_delivered",
+        "seq": 101,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 294,
+        "kind": "assignment.claimed",
+        "seq": 102,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#22",
+        "executorKind": "claude-cli",
+        "journalLine": 295,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 103,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 298,
+        "kind": "recovery.memory_delivered",
+        "seq": 104,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 299,
+        "kind": "assignment.claimed",
+        "seq": 105,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#23",
+        "executorKind": "claude-cli",
+        "journalLine": 300,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 106,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 303,
+        "kind": "recovery.memory_delivered",
+        "seq": 107,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 304,
+        "kind": "assignment.claimed",
+        "seq": 108,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#24",
+        "executorKind": "claude-cli",
+        "journalLine": 305,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 109,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 308,
+        "kind": "recovery.memory_delivered",
+        "seq": 110,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 309,
+        "kind": "assignment.claimed",
+        "seq": 111,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#25",
+        "executorKind": "claude-cli",
+        "journalLine": 310,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 112,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "attemptCount": 5,
+        "journalLine": 315,
+        "kind": "recovery.memory_delivered",
+        "seq": 113,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 316,
+        "kind": "assignment.claimed",
+        "seq": 114,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#26",
+        "executorKind": "claude-cli",
+        "journalLine": 317,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 115,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 320,
+        "kind": "obligation.created",
+        "obligation": "obligation#7",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 116,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 321,
+        "kind": "obligation.created",
+        "obligation": "obligation#7",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 117,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 322,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#7",
+        "seq": 118
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 323,
+        "kind": "obligation.created",
+        "obligation": "obligation#7",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 119,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 324,
+        "kind": "obligation.created",
+        "obligation": "obligation#7",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 120,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.author",
+        "expectedWorkplaceRevision": 63,
+        "gate": "gate#5",
+        "journalLine": 325,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 121
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 326,
+        "kind": "gate.state",
+        "seq": 122,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 327,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 123
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 328,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.acceptance-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 124
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 329,
+        "kind": "gate.state",
+        "seq": 125,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#5",
+        "gate": "gate#5",
+        "journalLine": 330,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 126,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#5",
+        "journalLine": 331,
+        "kind": "gate.state",
+        "seq": 127,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 332,
+        "kind": "obligation.settled",
+        "obligation": "obligation#7",
+        "seq": 128
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 333,
+        "kind": "assignment.claimed",
+        "seq": 129,
+        "task": "formalization.review#5",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#27",
+        "executorKind": "claude-cli",
+        "journalLine": 334,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 130,
+        "task": "formalization.review#5"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 337,
+        "kind": "obligation.created",
+        "obligation": "obligation#8",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 131,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 339,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#8",
+        "seq": 132
+      },
+      {
+        "journalLine": 341,
+        "kind": "obligation.settled",
+        "obligation": "obligation#8",
+        "seq": 133
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 342,
+        "kind": "obligation.created",
+        "obligation": "obligation#9",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 134,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 343,
+        "kind": "obligation.created",
+        "obligation": "obligation#9",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 135,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 344,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#9",
+        "seq": 136
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 345,
+        "kind": "obligation.created",
+        "obligation": "obligation#9",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 137,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 346,
+        "kind": "obligation.created",
+        "obligation": "obligation#9",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 138,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.final",
+        "expectedWorkplaceRevision": 66,
+        "gate": "gate#6",
+        "journalLine": 347,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 139
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 348,
+        "kind": "gate.state",
+        "seq": 140,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 349,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 141
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 350,
+        "kind": "gate.check_receipt",
+        "outcome": "failed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 142
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 351,
+        "kind": "gate.state",
+        "seq": 143,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#6",
+        "gate": "gate#6",
+        "journalLine": 352,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": "author",
+        "seq": 144,
+        "verdict": "repair_required"
+      },
+      {
+        "gate": "gate#6",
+        "journalLine": 353,
+        "kind": "gate.state",
+        "seq": 145,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 354,
+        "kind": "obligation.settled",
+        "obligation": "obligation#9",
+        "seq": 146
+      },
+      {
+        "attemptCount": 6,
+        "journalLine": 355,
+        "kind": "recovery.memory_delivered",
+        "seq": 147,
+        "task": "formalization.acceptance#1",
+        "toStatus": "in_progress"
+      },
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 356,
+        "kind": "assignment.claimed",
+        "seq": 148,
+        "task": "formalization.acceptance#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#28",
+        "executorKind": "claude-cli",
+        "journalLine": 357,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 149,
+        "task": "formalization.acceptance#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 362,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 150,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 363,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 151,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 364,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#10",
+        "seq": 152
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 365,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 153,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 366,
+        "kind": "obligation.created",
+        "obligation": "obligation#10",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 154,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.author",
+        "expectedWorkplaceRevision": 70,
+        "gate": "gate#7",
+        "journalLine": 367,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 155
+      },
+      {
+        "gate": "gate#7",
+        "journalLine": 368,
+        "kind": "gate.state",
+        "seq": 156,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#7",
+        "journalLine": 369,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 157
+      },
+      {
+        "gate": "gate#7",
+        "journalLine": 370,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.acceptance-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 158
+      },
+      {
+        "gate": "gate#7",
+        "journalLine": 371,
+        "kind": "gate.state",
+        "seq": 159,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#7",
+        "gate": "gate#7",
+        "journalLine": 372,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 160,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#7",
+        "journalLine": 373,
+        "kind": "gate.state",
+        "seq": 161,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 374,
+        "kind": "obligation.settled",
+        "obligation": "obligation#10",
+        "seq": 162
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 375,
+        "kind": "assignment.claimed",
+        "seq": 163,
+        "task": "formalization.review#6",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#29",
+        "executorKind": "claude-cli",
+        "journalLine": 376,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 164,
+        "task": "formalization.review#6"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 379,
+        "kind": "obligation.created",
+        "obligation": "obligation#11",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 165,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 381,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#11",
+        "seq": 166
+      },
+      {
+        "journalLine": 383,
+        "kind": "obligation.settled",
+        "obligation": "obligation#11",
+        "seq": 167
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 384,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 168,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 385,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 169,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 386,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#12",
+        "seq": 170
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 387,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 171,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 388,
+        "kind": "obligation.created",
+        "obligation": "obligation#12",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 172,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-acceptance-contract.final",
+        "expectedWorkplaceRevision": 73,
+        "gate": "gate#8",
+        "journalLine": 389,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 173
+      },
+      {
+        "gate": "gate#8",
+        "journalLine": 390,
+        "kind": "gate.state",
+        "seq": 174,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#8",
+        "journalLine": 391,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 175
+      },
+      {
+        "gate": "gate#8",
+        "journalLine": 392,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 176
+      },
+      {
+        "gate": "gate#8",
+        "journalLine": 393,
+        "kind": "gate.state",
+        "seq": 177,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#8",
+        "gate": "gate#8",
+        "journalLine": 394,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 178,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#8",
+        "journalLine": 395,
+        "kind": "gate.state",
+        "seq": 179,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 396,
+        "kind": "obligation.created",
+        "obligation": "obligation#13",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 180,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 397,
+        "kind": "obligation.settled",
+        "obligation": "obligation#12",
+        "seq": 181
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 398,
+        "kind": "obligation.created",
+        "obligation": "obligation#13",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 182,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 400,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#13",
+        "seq": 183
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 401,
+        "kind": "obligation.created",
+        "obligation": "obligation#13",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 184,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 402,
+        "kind": "obligation.created",
+        "obligation": "obligation#14",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 185,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 403,
+        "kind": "obligation.settled",
+        "obligation": "obligation#13",
+        "seq": 186
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 404,
+        "kind": "obligation.created",
+        "obligation": "obligation#14",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 187,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 405,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#14",
+        "seq": 188
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 406,
+        "kind": "obligation.created",
+        "obligation": "obligation#14",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 189,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 407,
+        "kind": "obligation.settled",
+        "obligation": "obligation#14",
+        "seq": 190
+      }
+    ],
+    "workplace:solution-formalization@1.0.0/formalization-architecture-contract/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 464,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "formalization.architecture#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#32",
+        "executorKind": "claude-cli",
+        "journalLine": 465,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "formalization.architecture#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 469,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 470,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 471,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 472,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 473,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-architecture-contract.author",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 474,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 475,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 476,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 477,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.srs-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 478,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 479,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 480,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 481,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 15
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 482,
+        "kind": "assignment.claimed",
+        "seq": 16,
+        "task": "formalization.review#8",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#33",
+        "executorKind": "claude-cli",
+        "journalLine": 483,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 17,
+        "task": "formalization.review#8"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 486,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 18,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 488,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 19
+      },
+      {
+        "journalLine": 490,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 491,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 492,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 22,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 493,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 494,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 495,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-architecture-contract.final",
+        "expectedWorkplaceRevision": 6,
+        "gate": "gate#2",
+        "journalLine": 496,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 26
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 497,
+        "kind": "gate.state",
+        "seq": 27,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 498,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 28
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 499,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 500,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 501,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 31,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 502,
+        "kind": "gate.state",
+        "seq": 32,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 503,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 33,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 504,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 34
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 505,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 35,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 506,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 36
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 507,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 37,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 508,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 38,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 509,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 39
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 510,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 40,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 511,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 41
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 512,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 42,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 515,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 43
+      }
+    ],
+    "workplace:solution-formalization@1.0.0/formalization-product-contract/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 52,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "formalization.product#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#3",
+        "executorKind": "claude-cli",
+        "journalLine": 53,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "formalization.product#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 57,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 58,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 59,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 60,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 61,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-product-contract.author",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 62,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 63,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 64,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 65,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.product-contract.v1",
+        "providerVersion": "2.0.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 66,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 67,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 68,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 69,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 15
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 70,
+        "kind": "assignment.claimed",
+        "seq": 16,
+        "task": "formalization.review#1",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#4",
+        "executorKind": "claude-cli",
+        "journalLine": 71,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 17,
+        "task": "formalization.review#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 74,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 18,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 76,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 19
+      },
+      {
+        "journalLine": 78,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 79,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 80,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 22,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 81,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 82,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 83,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-product-contract.final",
+        "expectedWorkplaceRevision": 6,
+        "gate": "gate#2",
+        "journalLine": 84,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 26
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 85,
+        "kind": "gate.state",
+        "seq": 27,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 86,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 28
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 87,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 88,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 89,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 31,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 90,
+        "kind": "gate.state",
+        "seq": 32,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 91,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 33,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 92,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 34
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 93,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 35,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 94,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 36
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 95,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 37,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 96,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 38,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 97,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 39
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 98,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 40,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 99,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 41
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 100,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 42,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 101,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 43
+      }
+    ],
+    "workplace:solution-formalization@1.0.0/formalization-reconciliation/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 408,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "formalization.reconcile#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#30",
+        "executorKind": "claude-cli",
+        "journalLine": 409,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "formalization.reconcile#1"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 412,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 414,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 4
+      },
+      {
+        "journalLine": 416,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 417,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 418,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 419,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 8
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 420,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 9,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 421,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 10,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-reconciliation.author",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 422,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 423,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 424,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 13
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 425,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.reconciliation.v1",
+        "providerVersion": "2.0.0",
+        "seq": 14
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 426,
+        "kind": "gate.state",
+        "seq": 15,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 427,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 16,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 428,
+        "kind": "gate.state",
+        "seq": 17,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 429,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 18
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 430,
+        "kind": "assignment.claimed",
+        "seq": 19,
+        "task": "formalization.review#7",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#31",
+        "executorKind": "claude-cli",
+        "journalLine": 431,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 20,
+        "task": "formalization.review#7"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 434,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 436,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 22
+      },
+      {
+        "journalLine": 438,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 439,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 440,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 441,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 26
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 442,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 27,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 443,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 28,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-reconciliation.final",
+        "expectedWorkplaceRevision": 6,
+        "gate": "gate#2",
+        "journalLine": 444,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 445,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 446,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 31
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 447,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 32
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 448,
+        "kind": "gate.state",
+        "seq": 33,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 449,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 34,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 450,
+        "kind": "gate.state",
+        "seq": 35,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 451,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 36,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 452,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 37
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 453,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 38,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 456,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 39
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 457,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 40,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 458,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 41,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 459,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 42
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 460,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 43,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 461,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#6",
+        "seq": 44
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 462,
+        "kind": "obligation.created",
+        "obligation": "obligation#6",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 45,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 463,
+        "kind": "obligation.settled",
+        "obligation": "obligation#6",
+        "seq": 46
+      }
+    ],
+    "workplace:solution-formalization@1.0.0/formalization-use-cases/singleton": [
+      {
+        "casFenced": true,
+        "from": "todo",
+        "journalLine": 102,
+        "kind": "assignment.claimed",
+        "seq": 1,
+        "task": "formalization.use-cases#1",
+        "to": "in_progress"
+      },
+      {
+        "exec": "exec#5",
+        "executorKind": "claude-cli",
+        "journalLine": 103,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "executing",
+        "seq": 2,
+        "task": "formalization.use-cases#1"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 108,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 3,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 109,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 4,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 110,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#1",
+        "seq": 5
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 111,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 6,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 112,
+        "kind": "obligation.created",
+        "obligation": "obligation#1",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 7,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-use-cases.author",
+        "expectedWorkplaceRevision": 3,
+        "gate": "gate#1",
+        "journalLine": 113,
+        "kind": "gate.created",
+        "phase": "author",
+        "seq": 8
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 114,
+        "kind": "gate.state",
+        "seq": 9,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 115,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 10
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 116,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.submission-validator.formalization.use-cases.v1",
+        "providerVersion": "2.0.0",
+        "seq": 11
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 117,
+        "kind": "gate.state",
+        "seq": 12,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#1",
+        "gate": "gate#1",
+        "journalLine": 118,
+        "kind": "gate.decision",
+        "phase": "author",
+        "repairTargetRole": null,
+        "seq": 13,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#1",
+        "journalLine": 119,
+        "kind": "gate.state",
+        "seq": 14,
+        "state": "terminal"
+      },
+      {
+        "journalLine": 120,
+        "kind": "obligation.settled",
+        "obligation": "obligation#1",
+        "seq": 15
+      },
+      {
+        "casFenced": true,
+        "from": "review",
+        "journalLine": 121,
+        "kind": "assignment.claimed",
+        "seq": 16,
+        "task": "formalization.review#2",
+        "to": "review_in_progress"
+      },
+      {
+        "exec": "exec#6",
+        "executorKind": "claude-cli",
+        "journalLine": 122,
+        "kind": "execution.reserved",
+        "modelRoute": {
+          "effort": "high",
+          "model": "glm-4.6",
+          "provider": "zai"
+        },
+        "phase": "reviewing",
+        "seq": 17,
+        "task": "formalization.review#2"
+      },
+      {
+        "handoffKind": "close-presentation",
+        "journalLine": 125,
+        "kind": "obligation.created",
+        "obligation": "obligation#2",
+        "ownerCapability": "presentation-closure",
+        "path": "appendFenced",
+        "seq": 18,
+        "sourceKind": "final-presentation-committed"
+      },
+      {
+        "journalLine": 127,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#2",
+        "seq": 19
+      },
+      {
+        "journalLine": 129,
+        "kind": "obligation.settled",
+        "obligation": "obligation#2",
+        "seq": 20
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 130,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 21,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 131,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 22,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "journalLine": 132,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#3",
+        "seq": 23
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 133,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 24,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "handoffKind": "run-gate",
+        "journalLine": 134,
+        "kind": "obligation.created",
+        "obligation": "obligation#3",
+        "ownerCapability": "gate-run-driver",
+        "path": "appendFenced",
+        "seq": 25,
+        "sourceKind": "candidate-set-sealed"
+      },
+      {
+        "checkPlan": "formalization-use-cases.final",
+        "expectedWorkplaceRevision": 6,
+        "gate": "gate#2",
+        "journalLine": 135,
+        "kind": "gate.created",
+        "phase": "final",
+        "seq": 26
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 136,
+        "kind": "gate.state",
+        "seq": 27,
+        "state": "checking"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 137,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.product-contract.v1",
+        "providerVersion": "1.0.0",
+        "seq": 28
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 138,
+        "kind": "gate.check_receipt",
+        "outcome": "passed",
+        "provider": "factory.review-verdict.v1",
+        "providerVersion": "1.1.0",
+        "seq": 29
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 139,
+        "kind": "gate.state",
+        "seq": 30,
+        "state": "decided"
+      },
+      {
+        "decision": "decision#2",
+        "gate": "gate#2",
+        "journalLine": 140,
+        "kind": "gate.decision",
+        "phase": "final",
+        "repairTargetRole": null,
+        "seq": 31,
+        "verdict": "accepted"
+      },
+      {
+        "gate": "gate#2",
+        "journalLine": 141,
+        "kind": "gate.state",
+        "seq": 32,
+        "state": "terminal"
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 142,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 33,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 143,
+        "kind": "obligation.settled",
+        "obligation": "obligation#3",
+        "seq": 34
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 144,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 35,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "journalLine": 145,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#4",
+        "seq": 36
+      },
+      {
+        "handoffKind": "run-effects",
+        "journalLine": 146,
+        "kind": "obligation.created",
+        "obligation": "obligation#4",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 37,
+        "sourceKind": "gate-accepted"
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 147,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 38,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 148,
+        "kind": "obligation.settled",
+        "obligation": "obligation#4",
+        "seq": 39
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 149,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 40,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 151,
+        "kind": "obligation.claimed",
+        "leaseFence": 2,
+        "obligation": "obligation#5",
+        "seq": 41
+      },
+      {
+        "handoffKind": "record-final-acceptance",
+        "journalLine": 152,
+        "kind": "obligation.created",
+        "obligation": "obligation#5",
+        "ownerCapability": "production-cell-node-executor",
+        "path": "appendFenced",
+        "seq": 42,
+        "sourceKind": "effects-settled"
+      },
+      {
+        "journalLine": 153,
+        "kind": "obligation.settled",
+        "obligation": "obligation#5",
+        "seq": 43
+      }
+    ]
+  }
+}

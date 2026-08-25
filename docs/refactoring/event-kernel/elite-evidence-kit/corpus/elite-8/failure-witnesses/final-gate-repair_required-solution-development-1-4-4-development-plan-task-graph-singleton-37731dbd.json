@@ -1,0 +1,38 @@
+{
+  "decision": {
+    "checkPlan": "development.plan-task-graph.final",
+    "phase": "final",
+    "repairTargetRole": "author",
+    "verdict": "repair_required"
+  },
+  "failedChecks": [
+    {
+      "diagnostics": [
+        {
+          "code": "implementation-scope-overlap",
+          "digest": "f97cae8bd6062e7bde7e5112a1937d685d0888e3b75c55e04d416c0767395ca4",
+          "message": "1 same-repository implementation item pair(s) overlap without a dependency order — add a dependency path in ONE direction for each computed pair: 'core-foundation' <-> 'universe-model' (overlapping scopes: left [tests/], right [tests/unit/models/])",
+          "subjectRef": "candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/b967485ed66942adba0993885fee38810143034f6c0f0a89a53f4a48f81bbe1f/author"
+        },
+        {
+          "code": "implementation-coverage-gap",
+          "digest": "3e69486d4acef588df07b6b6e400d3db9649d405914edfefb762509fd2df8005",
+          "message": "required implementation coverage does not equal the accepted AC scope; missing AC criterion keys: [27:AC-14] (codes: AC-14); extra AC criterion keys: []",
+          "subjectRef": "candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/b967485ed66942adba0993885fee38810143034f6c0f0a89a53f4a48f81bbe1f/author"
+        },
+        {
+          "code": "srs-module-uncovered",
+          "digest": "7f343ac90b94280ddf678d97e2b6e179c6d519d1a40c4518ee93715c9eab27e3",
+          "message": "SRS §2.2 module 'server-core' declares file(s) [routes.js] that no implementation item's changeScopes cover; SRS §2.2 module 'game-engine' declares file(s) [GameEngine.js, GameState.js] that no implementation item's changeScopes cover; SRS §2.2 module 'universe-model' declares file(s) [Universe.js, System.js, Station.js] that no implementation item's changeScopes cover; SRS §2.2 module 'player-model' declares file(s) [Player.js, Ship.js, Cargo.js] that no implementation item's changeScopes cover; SRS §2.2 module 'trading-system' declares file(s) [Market.js, Commodity.js] that no implementation item's changeScopes cover; SRS §2.2 module 'navigation-system' declares file(s) [Navigation.js, JumpSystem.js] that no implementation item's changeScopes cover; SRS §2.2 module 'combat-system' declares file(s) [Combat.js, CombatAI.js, Weapon.js] that no implementation item's changeScopes cover; SRS §2.2 module 'upgrade-system' declares file(s) [UpgradeSystem.js, Module.js] that no implementation item's changeScopes cover; SRS §2.2 module 'save-load-system' declares file(s) [SaveLoad.js, SaveFormat.js] that no implementation item's changeScopes cover; SRS §2.2 module 'progression-system' declares file(s) [Progression.js, RatingSystem.js] that no implementation item's changeScopes cover; SRS §2.2 module 'rendering-system' declares file(s) [Renderer.js, CanvasRenderer.js, Effects.js] that no implementation item's changeScopes cover; SRS §2.2 module 'ui-controller' declares file(s) [UIController.js, ScreenManager.js] that no implementation item's changeScopes cover; declared changeScopes [package.json, public/css/styles.css, public/index.html, server.js, src/core/GameEngine.js, src/core/GameState.js, src/models/Cargo.js, src/models/Player.js, src/models/Ship.js, src/models/Station.js, src/models/System.js, src/models/Universe.js, src/rendering/CanvasRenderer.js, src/rendering/Effects.js, src/rendering/Renderer.js, src/rendering/UI.js, src/server/routes.js, src/systems/CombatAI.js, src/systems/CombatSystem.js, src/systems/Commodity.js, src/systems/JumpSystem.js, src/systems/Market.js, src/systems/Module.js, src/systems/NavigationSystem.js, src/systems/ProgressionSystem.js, src/systems/RatingSystem.js, src/systems/SaveFormat.js, src/systems/SaveLoadSystem.js, src/systems/TradingSystem.js, src/systems/UpgradeSystem.js, src/systems/Weapon.js, src/ui/InputHandler.js, src/ui/ScreenManager.js, src/ui/UIController.js, tests/, tests/integration/combat-flow.test.js, tests/integration/navigation-flow.test.js, tests/integration/save-load.test.js, tests/integration/trading-flow.test.js, tests/property/fuel-invariants.test.js, tests/property/trading-invariants.test.js, tests/smoke/startup.test.js, tests/unit/models/, tests/unit/rendering/Renderer.test.js, tests/unit/systems/CombatSystem.test.js, tests/unit/systems/NavigationSystem.test.js, tests/unit/systems/ProgressionSystem.test.js, tests/unit/systems/TradingSystem.test.js, tests/unit/systems/UpgradeSystem.test.js]. Every SRS §2.2 module file must lie inside at least one implementation item's changeScopes.",
+          "subjectRef": "candidate-set/3/solution-development@1.4.4/development-plan-task-graph/singleton/b967485ed66942adba0993885fee38810143034f6c0f0a89a53f4a48f81bbe1f/author"
+        }
+      ],
+      "outcome": "failed",
+      "provider": "development.task-graph-contract.v1",
+      "providerVersion": "1.2.0"
+    }
+  ],
+  "kind": "gate-refusal",
+  "note": "Minimal fragment: the failing check receipts (with decoded diagnostics), the gate decision they produced, and the workplace they refused. Reproduces the observed defect/refusal.",
+  "workplace": "solution-development@1.4.4/development-plan-task-graph/singleton"
+}

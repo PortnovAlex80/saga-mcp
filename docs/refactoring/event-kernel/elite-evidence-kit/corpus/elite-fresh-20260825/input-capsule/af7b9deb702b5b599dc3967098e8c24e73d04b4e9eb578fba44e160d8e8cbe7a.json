@@ -1,0 +1,91 @@
+{
+  "authority": "formalization_settlement_policy",
+  "certificateHash": "0d340a35731b7fd153b19960a29d3ff165d9c03e07b3b3f30bbcfae37681d730",
+  "certificatePayload": {
+    "decision": "formalized",
+    "inputHash": "f1bc546a985a81cc0046b54f3668011e1296427aca01cc22b2317a72bcb0f129",
+    "payload": {
+      "acceptanceBaselineHash": "aa924b4b1238728fcae00074620574f9421e78c98c8778b24303d15f1e344750",
+      "bundleHash": "034aa8cf7356dc7ac9e53052712f34a6eceb82ae99e853bfb317ead643d17b40",
+      "decision": "formalized",
+      "discoveryCertificateHash": "acb6a7e4013e97b2cf12905212f8fe90741bde6dc16fee9eab9b9bac79683cbc",
+      "discoveryCertificateRef": "certificate:1",
+      "inputHash": "f1bc546a985a81cc0046b54f3668011e1296427aca01cc22b2317a72bcb0f129",
+      "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+      "reasonCodes": [],
+      "schemaVersion": "factory.solution-contract-certificate.generic.v1",
+      "warrantRef": {
+        "constraintRegisterDigest": "fd24487945f3f052bfcd2d0940706a61c745d35bdf0eab9f323c1ffbbb912eac",
+        "constraintRegisterRef": "constraint-register:fd24487945f3f052bfcd2d0940706a61c745d35bdf0eab9f323c1ffbbb912eac",
+        "discoveryCertificateHash": "acb6a7e4013e97b2cf12905212f8fe90741bde6dc16fee9eab9b9bac79683cbc",
+        "dispositions": {
+          "ord-c-001": {
+            "disposition": "accepted"
+          },
+          "ord-c-002": {
+            "disposition": "accepted"
+          },
+          "ord-c-003": {
+            "disposition": "accepted"
+          },
+          "ord-c-004": {
+            "disposition": "accepted"
+          },
+          "ord-c-005": {
+            "disposition": "accepted"
+          },
+          "ord-c-006": {
+            "disposition": "accepted"
+          },
+          "ord-c-007": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Price fluctuation algorithms and scarcity modeling are implementation design decisions deferred to the development phase.",
+            "unblockCriterion": "Development team selects and implements a market pricing algorithm."
+          },
+          "ord-c-008": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Ship upgrade cost balance is a gameplay tuning decision deferred to development.",
+            "unblockCriterion": "Development team defines upgrade costs and validates economic balance through playtesting."
+          },
+          "ord-c-009": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Visual effect implementation details are design decisions deferred to development.",
+            "unblockCriterion": "Development team implements hyperspace jump and parallax effects within the 60fps performance budget."
+          },
+          "ord-c-010": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Save/load persistence mechanism selection is a technical design decision deferred to development.",
+            "unblockCriterion": "Development team selects a persistence mechanism (e.g., localStorage) and implements save/load."
+          },
+          "ord-c-011": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Pirate AI behavior patterns are gameplay design decisions deferred to development.",
+            "unblockCriterion": "Development team defines pirate AI states and behaviors that provide engaging combat within XS scope."
+          },
+          "ord-c-012": {
+            "disposition": "accepted"
+          },
+          "ord-c-013": {
+            "disposition": "accepted"
+          }
+        },
+        "dispositionsDigest": "8e94904027f3eed8c94f417981f93ba11af685dcd9844419dc7a96aeaa59c3cf",
+        "formalizationCaseDigest": "e98704733ef3160e8fec01dac18bb5fbcafa725152d8c990238007f8e2d5bec6"
+      }
+    },
+    "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+    "reasonCodes": [],
+    "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+  },
+  "decision": "formalized",
+  "inputHash": "f1bc546a985a81cc0046b54f3668011e1296427aca01cc22b2317a72bcb0f129",
+  "moduleRefKey": "solution-formalization@1.0.0",
+  "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+  "reasonCodes": [],
+  "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+}

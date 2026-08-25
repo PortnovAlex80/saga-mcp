@@ -1,0 +1,612 @@
+{
+  "commands": [
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#1",
+      "payloadHash": "83b7931c2f1929271b8f8e7ff8802f01127ff70cbc512eaf7edd617ef46d2fe0",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 1,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "discovery.work#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#2",
+      "payloadHash": "06c16d08d0beddb28af42b1e209a53cfc8cb65e3fbbab73be1fdccdfcd5a57b7",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 2,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "discovery.assess#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#3",
+      "payloadHash": "284a2c0dfe2409ee557d4e0f7fd8b8e6029b7c4402fcabe6567d883a02cca9b2",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 3,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.product#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#4",
+      "payloadHash": "6e36ac7e2648d66df038bd7d694b9ca8795ef9bbe0fa766da0142c918f2a32bd",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 4,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#5",
+      "payloadHash": "634b00d96782776fd2882cc1d914528643eb90c5b9ac8a2584dac646e8f0e457",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 5,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.use-cases#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#6",
+      "payloadHash": "1c5eb9ba397aa2f2be6371149b0863b2da2474088f5a117bea3e64c8514f9eec",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 6,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#2"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#7",
+      "payloadHash": "109382898685dfa487df6723f387798df9bcfd90706e3d839c91fd611da75346",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 7,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#8",
+      "payloadHash": "3668aa0341edb5d4b51344e114b7b8a46968169eb608b7e821d225f33d98ae61",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 8,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#3"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#9",
+      "payloadHash": "3cfb4f1988e06eec33cd4310548a1f06c37af14a6637bbe9ca38ebed88a8245c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 7,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#10",
+      "payloadHash": "1f8bdb0722f9fc28dacceb93cd8060f9188a3054df17347d16ee335dd9d1ad24",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 9,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#11",
+      "payloadHash": "rel-40949c8a",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#12",
+      "payloadHash": "rel-4d47fa02",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#13",
+      "payloadHash": "rel-f4285202",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#14",
+      "payloadHash": "rel-6e327703",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#15",
+      "payloadHash": "rel-90273252",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#16",
+      "payloadHash": "rel-76f9ed7a",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#17",
+      "payloadHash": "rel-55df09e4",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#18",
+      "payloadHash": "rel-470cf18d",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#19",
+      "payloadHash": "rel-38f0e915",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#20",
+      "payloadHash": "rel-cac96af9",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#21",
+      "payloadHash": "rel-6fa77326",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#22",
+      "payloadHash": "rel-a25ff969",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#23",
+      "payloadHash": "rel-50d0f2a0",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#24",
+      "payloadHash": "rel-fdbffcbf",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#25",
+      "payloadHash": "rel-0ffca705",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": false,
+        "restoredStatus": "blocked"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#26",
+      "payloadHash": "84f9949c2d0c43d35bb76798972a6eefa30e57bf4d6a781a61db8f3955bcbba8",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 7,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#27",
+      "payloadHash": "5cb1a30a01ce4cb08e32e87117566c675ca3e32b7d31df40a4651d932282912a",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 10,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#28",
+      "payloadHash": "7e132ad0a51d990240d0a5e4eba9e0b2de1f9f414950a2955e4613a23fb75554",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 7,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#29",
+      "payloadHash": "550cb93110ad3e96081ce8ef4803fe0034c50c8c3f8a57ddab5da8636bbf3518",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 11,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#6"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#30",
+      "payloadHash": "ef8a539002273d2d0cfaa4623c8302af752ccc283f3fe0a5eac4a6e39d29a3ce",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 12,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.reconcile#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#31",
+      "payloadHash": "98fb065bb5a2bb88d62cea83bebdd2cfc52ca1f697e01dbeab370809cf4a8795",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 13,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#7"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#32",
+      "payloadHash": "4354ecf69c3681b64b8268dd9ec8dce6c710d4a0979a71ddaee07f560c0df5cd",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 14,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.architecture#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#33",
+      "payloadHash": "45de4bd15fdce5d96cbc4b7040baed24d8677f2d26fd34e050cd1f46b50438b4",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 15,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#8"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#34",
+      "payloadHash": "236d62126d614130f0dd881c4bbf1e696beec19a5fb960860d111274feeda07b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#35",
+      "payloadHash": "df74cc2cbfea5b835c15bcb009d4c434f3f5f5b6a96bc2b371a97f359288fb13",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#36",
+      "payloadHash": "a3a416432a4a15b74f1a6192cf4cd0328a94a8708989b286d3a6acfad772e61b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#36",
+      "payloadHash": "rel-500a4794",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#37",
+      "payloadHash": "6787c5265b50475626ddd0c81b39b78710f9f89a5613877cc4916a26dd29184c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#38",
+      "payloadHash": "162c9a7d3f9e30a9cab55f0b20e6a43233c65ba633682d538adc6094e40f234b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#39",
+      "payloadHash": "57a5197cb4c28e6f16632a52ca6fcd0bb735a0311a4225ba830dd84103320bfe",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    }
+  ]
+}

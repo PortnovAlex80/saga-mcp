@@ -1,0 +1,46 @@
+{
+  "installations": [
+    {
+      "name": "product-discovery",
+      "packageDigest": "701649925ae0ceda341ba787622055af445fa29a11919618d86017cafb9212eb",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\70\\7016\\701649925ae0ceda341ba787622055af445fa29a11919618d86017cafb9212eb",
+      "version": "3.0.2"
+    },
+    {
+      "name": "solution-formalization",
+      "packageDigest": "df7e8ba35ec52691297f4d38d4431523069d26210b6fc4022dbc317ef198218d",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\df\\df7e\\df7e8ba35ec52691297f4d38d4431523069d26210b6fc4022dbc317ef198218d",
+      "version": "1.0.0"
+    },
+    {
+      "name": "solution-development",
+      "packageDigest": "a68abbd4752ce16c7910e2acb17a484572187b5b396d0401b690c6fa0de20762",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\a6\\a68a\\a68abbd4752ce16c7910e2acb17a484572187b5b396d0401b690c6fa0de20762",
+      "version": "1.4.4"
+    },
+    {
+      "name": "solution-development-managed",
+      "packageDigest": "eeb9772f3d313f7592086c38fbb604b98fee89d29258f13c826a9ea943bc84fa",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\ee\\eeb9\\eeb9772f3d313f7592086c38fbb604b98fee89d29258f13c826a9ea943bc84fa",
+      "version": "1.1.0"
+    },
+    {
+      "name": "solution-development-verification-continuation",
+      "packageDigest": "343ebb1205bfa0cbd2bf72dd1e584529e13d53c7c06dce5d6d39a91aa93b7539",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\34\\343e\\343ebb1205bfa0cbd2bf72dd1e584529e13d53c7c06dce5d6d39a91aa93b7539",
+      "version": "1.0.0"
+    },
+    {
+      "name": "delivery-release",
+      "packageDigest": "e579e5d41b34e317e7b14a5f76f562cea698f47989534dafac25ecb11c21a765",
+      "status": "active",
+      "storeLocation": "D:\\Development\\saga-mcp-ELITE7\\.factory-sandboxes\\elite8-db\\package-store\\e5\\e579\\e579e5d41b34e317e7b14a5f76f562cea698f47989534dafac25ecb11c21a765",
+      "version": "1.0.0"
+    }
+  ]
+}

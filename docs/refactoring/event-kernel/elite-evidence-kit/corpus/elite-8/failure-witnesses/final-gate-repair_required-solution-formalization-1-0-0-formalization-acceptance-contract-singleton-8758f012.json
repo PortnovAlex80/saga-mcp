@@ -1,0 +1,50 @@
+{
+  "decision": {
+    "checkPlan": "formalization-acceptance-contract.final",
+    "phase": "final",
+    "repairTargetRole": "author",
+    "verdict": "repair_required"
+  },
+  "failedChecks": [
+    {
+      "diagnostics": [
+        {
+          "code": "review-finding:unscoped",
+          "digest": "d833d51321cacb263908d04c10078866ce3c70e9ac6226777f2380faca298627",
+          "message": "AC-1 (Game Initialization) document claims derivation from UC-1 and FR-1, but actual traces show derivation from UC-6 (Save Game State) and FR-3 (Commodity Trading System). Document 'Derived From' sections do not match trace graph."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "62130ae3484ac3f1df96366040d2cf01c57612590a79f862c4732171d3abf724",
+          "message": "AC-2 (Hyperspace Jump) document claims derivation from UC-2 and FR-2, but actual traces show derivation from UC-7 (Load Game State) and FR-3. Document 'Derived From' sections do not match trace graph."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "d7f51a595513f140f0498d6503fbf3a1b2489cfe765d588121e565795deda7fd",
+          "message": "AC-3 (Commodity Purchase) document claims derivation from UC-3 and FR-3, but actual traces show derivation from UC-8 (View Elite Rating) and FR-3, RULE-1. Document 'Derived From' sections do not match trace graph."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "c493b200097fb7ca31c84206ec6444e90acc052f7d1583db534886165b0c6e44",
+          "message": "AC-4 (Commodity Sale) document claims derivation from UC-3 and FR-3, but actual traces show derivation from UC-8 and FR-3. Missing RULE derivation claimed in document."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "312ce9d49dfc3b03a8d0f9b3a5c4b35239e1c72f210919c4bba466a7fdd25aa3",
+          "message": "Systematic traceability inconsistency: The acceptance criteria document's 'Derived From' sections and traceability matrix (lines 18-671) do not match the actual trace links in the MCP trace graph. All 15 AC artifacts have trace derivations that differ from what the document claims. The trace graph is the authoritative source for lineage; the document must be corrected to match the actual traces or the traces must be corrected to match the document content."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "97bb20c02924bf4055c9d36cf5fcfd4229787398aa867d198af2595d4f6d8c1e",
+          "message": "All 15 AC artifacts have identical content_hash (0d227a63762c7d7f0609e80ac65669a3155545b52dc94aba4b910f118728eab7), suggesting they may share the same source file. Each AC should have unique content corresponding to its individual acceptance criterion."
+        }
+      ],
+      "outcome": "failed",
+      "provider": "factory.review-verdict.v1",
+      "providerVersion": "1.1.0"
+    }
+  ],
+  "kind": "gate-refusal",
+  "note": "Minimal fragment: the failing check receipts (with decoded diagnostics), the gate decision they produced, and the workplace they refused. Reproduces the observed defect/refusal.",
+  "workplace": "solution-formalization@1.0.0/formalization-acceptance-contract/singleton"
+}

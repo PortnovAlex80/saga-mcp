@@ -1,0 +1,310 @@
+{
+  "details": {},
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {},
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-001: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-001 (material) \"Exact pricing algorithms for commodity market dynamics\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-001",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-002: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-002 (material) \"Specific combat balance and enemy AI behavior parameters\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-002",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-003: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-003 (material) \"Precise visual effects implementation details (particle systems, shaders)\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-003",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-004: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-004 (material) \"Optimal canvas/WebGL rendering approach for the target hardware\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-004",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-005: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-005 (material) \"Exact save/load format and storage mechanism (localStorage vs files)\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-005",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-006: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-006 (execution) \"the delivered product is synthesized and assembled as one whole that is runnable locally\" kind 'synthesis' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: accepted (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-006",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_CONSTRAINT_UNDISPOSED:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-007: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+            ]
+          },
+          "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-007 (execution) \"an ordered smoke test performs the install step, then the start step, then reaches the running product\" kind 'ordered-smoke' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: accepted (waived is typed-unavailable on v2 — propose in prose only)",
+          "path": "ord-c-007",
+          "severity": "error",
+          "subjectRef": "artifact:1"
+        }
+      ],
+      "policyId": "submission-validation:formalization.product-contract.v1",
+      "reasonCode": "FORMALIZATION_CONSTRAINT_UNDISPOSED",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "bf391eb7567964d7ac8441c736950d192bc0de328ff62dcf5be6b29a90d907fc",
+          "kind": "artifact",
+          "ref": "artifact:1",
+          "schema": "brief"
+        }
+      ],
+      "summary": "Submission preflight formalization.product-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": null,
+        "code": "brief",
+        "content_hash": "bf391eb7567964d7ac8441c736950d192bc0de328ff62dcf5be6b29a90d907fc",
+        "id": 1,
+        "path": "docs/requirements/REQ-001/01-brief.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "brief"
+      }
+    ],
+    "observedSetDigest": "d710c0539f3d37acda3b8b3a3761d2c8f56fd91d73eb480f0e0acec39b5c4915",
+    "origin": {
+      "executionId": "worker-execution:22340f92-68f8-415c-a5e7-1df769911a3f",
+      "inputSnapshotHash": "bdbd18851ae08b3544c9cb06297e5d2fecb06b9e5dd117153b62409b863c2d0f",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-product-contract",
+      "processRunId": 2,
+      "taskId": 3,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+    },
+    "rejectionDigest": "b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0",
+    "rejectionRef": "submission-validation-rejection:b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": null,
+      "id": "formalization.product-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": "ord-c-001",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-001 (material) \"Exact pricing algorithms for commodity market dynamics\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-001: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-002",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-002 (material) \"Specific combat balance and enemy AI behavior parameters\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-002: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-003",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-003 (material) \"Precise visual effects implementation details (particle systems, shaders)\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-003: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-004",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-004 (material) \"Optimal canvas/WebGL rendering approach for the target hardware\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-004: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-005",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-005 (material) \"Exact save/load format and storage mechanism (localStorage vs files)\" kind 'open-question' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: resolved+evidenceRef | deferred+reason+owner+unblockCriterion (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-005: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-006",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-006 (execution) \"the delivered product is synthesized and assembled as one whole that is runnable locally\" kind 'synthesis' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: accepted (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-006: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-007",
+      "artifactId": 1,
+      "artifactType": "brief",
+      "existingTargets": [],
+      "message": "FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED: Constraint ord-c-007 (execution) \"an ordered smoke test performs the install step, then the start step, then reaches the running product\" kind 'ordered-smoke' entry is not disposed — react per ID with { \"disposition\": ... } from the grammar: accepted (waived is typed-unavailable on v2 — propose in prose only)",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-007: FORMALIZATION_CONSTRAINT_DISPOSITION_UNDISPOSED"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-product-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": null,
+      "code": "brief",
+      "content_hash": "bf391eb7567964d7ac8441c736950d192bc0de328ff62dcf5be6b29a90d907fc",
+      "id": 1,
+      "path": "docs/requirements/REQ-001/01-brief.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "brief"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_CONSTRAINT_UNDISPOSED",
+  "rejectionDigest": "b1c123206e9c115828534c8fde237749749eb9beffa447faeb250b8ab27287a0",
+  "task": "formalization.product#1",
+  "validatorId": "formalization.product-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-product-contract/singleton"
+}

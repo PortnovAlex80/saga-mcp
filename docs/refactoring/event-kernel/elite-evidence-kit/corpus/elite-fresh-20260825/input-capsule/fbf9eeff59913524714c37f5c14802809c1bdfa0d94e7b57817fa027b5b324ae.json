@@ -1,0 +1,92 @@
+{
+  "certificateRef": "certificate:2",
+  "executorKind": "generic-flow",
+  "idempotencyKey": "lifecycle:1:stage-run:2",
+  "inputHash": "d6c13ab1507331917869ed75df7f2e93a8483022d3291bd983d0bb52a5060024",
+  "inputSnapshot": {
+    "discoveryCertificateHash": "acb6a7e4013e97b2cf12905212f8fe90741bde6dc16fee9eab9b9bac79683cbc",
+    "discoveryCertificateRef": "certificate:1",
+    "discoveryEpicId": 1,
+    "discoveryOutcome": "go",
+    "discoveryProposalHash": "59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+    "discoveryProposalPayload": {
+      "assumptions": [
+        "Player has Chrome browser installed",
+        "Node.js environment is available on the local machine",
+        "The game logic can be implemented entirely in JavaScript/TypeScript",
+        "Canvas/WebGL is sufficient for the required visual effects",
+        "Simple commodity market price variation algorithms are acceptable",
+        "Pirate AI can be basic and still provide engaging combat"
+      ],
+      "candidate_scope": "Minimum useful scope: a playable browser-based game with at least 8 star systems, one station per system, a simple commodity trading market, basic hyperspace travel (fuel consumption, pirate encounters), ship-to-ship combat (player lasers vs AI), ship upgrades (cargo, laser, shields, fuel), and save/load functionality. The frontend must be a single-page canvas/WebGL application with visual effects (parallax starfield, hyperspace jump, laser combat), and the server must expose a /healthz endpoint.",
+      "evidence_refs": [
+        "Initiative objective: Elite-style single-player space trading and combat game with a rich browser frontend",
+        "Initiative constraints: one-command startup, TypeScript backend, Chrome client feel",
+        "Context metadata: complexity XS, type web-app",
+        "Trusted provider bindings: saga-real-model-worker, development.verification-product-contract.v2, development.readiness-profile-monotonicity.v1, factory.local-runnability.v1, factory.accessible-counter-sandbox-check.v1, factory.authorized-verification-observer.v1, factory.documentation-completeness.v1"
+      ],
+      "observed_context": "Factory-initiated initiative with XS complexity and web-app type. The project requires a local Node.js server that serves the frontend, with Chrome as the target browser. No external CDN dependencies allowed—must be fully offline. The game must start immediately after `npm install && npm start` with no manual build steps. Evidence from the initiative specifies: 8+ named star systems with per-system price variation, fuel-consuming hyperspace jumps with pirate-encounter risk, ship upgrades (cargo capacity, laser, shields, fuel tank), save/load functionality, and unit tests for core game mechanics. Performance target is 60fps on a 2020 laptop.",
+      "order_constraints": [
+        {
+          "class": "execution",
+          "evidence_ref": "initiative.constraints",
+          "text": "one-command `npm install && npm start`"
+        },
+        {
+          "class": "material",
+          "evidence_ref": "initiative.constraints",
+          "text": "TypeScript backend"
+        },
+        {
+          "class": "human",
+          "evidence_ref": "initiative.constraints",
+          "text": "Chrome client feel"
+        },
+        {
+          "class": "execution",
+          "evidence_ref": "initiative.constraints",
+          "text": "local run required"
+        },
+        {
+          "class": "human",
+          "evidence_ref": "initiative.constraints",
+          "text": "human acceptance after local start"
+        },
+        {
+          "class": "execution",
+          "evidence_ref": "initiative.constraints",
+          "text": "deployment excluded"
+        }
+      ],
+      "problem_statement": "A desire exists to create an Elite-inspired single-player space trading and combat game playable in a web browser. The game should deliver a complete single-page experience with parallax starfield, hyperspace jumps, station docking, ship management (shields, fuel, cargo, credits), commodity trading with dynamic pricing, and arcade laser combat with visual effects.",
+      "rationale": "The initiative is well-bounded with clear constraints and a specific technology stack (Node.js server, Chrome frontend, TypeScript, no external dependencies). The scope is appropriate for XS complexity, and the functional requirements are understood (8+ systems, trading, combat, upgrades, save/load). Visual polish expectations are reasonable for a browser-based game. The verification requirements (unit tests, browser smoke test, /healthz) are standard and achievable. No evidence suggests technical infeasibility or missing critical information.",
+      "recommended_outcome": "go",
+      "risks": [
+        "Performance risk: 60fps target on 2020 laptop with full visual effects",
+        "Complexity risk: Implementing engaging combat AI within XS scope",
+        "Integration risk: Ensuring smooth offline operation with no CDN dependencies",
+        "Acceptance risk: Human acceptance after local start may require subjective visual polish"
+      ],
+      "stakeholders_or_actors": [
+        "Player: Single human user who opens localhost:port in Chrome and expects immediate gameplay",
+        "Factory system: Requires one-command startup, local runnability, and offline capability",
+        "Verification providers: Require unit tests for pricing/jump/combat/save-load logic, browser smoke test, and /healthz endpoint"
+      ],
+      "unknowns": [
+        "Exact commodity market mechanics (price fluctuation algorithms, scarcity modeling)",
+        "Detailed balance of ship upgrade costs vs. profitability",
+        "Specific visual effect implementation details (hyperspace jump, parallax depth)",
+        "Save/load persistence mechanism (localStorage, file system, etc.)",
+        "Specific pirate AI behavior patterns"
+      ]
+    },
+    "discoveryProposalRef": "product:factory.discovery-proposal.v1:59fea1ab1ca1ad39a5a1a55c25fb82eea2c602e46104b5d41888c616d786f7a3",
+    "formalizationEpicId": 1,
+    "initiatedBy": "factory-start",
+    "initiativeSubject": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz.",
+    "schemaVersion": "factory.formalization-case.v1"
+  },
+  "moduleRefKey": "solution-formalization@1.0.0",
+  "outputRef": "formalization-solution-contract:1",
+  "projectedStage": "formalization"
+}

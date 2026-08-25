@@ -1,0 +1,1411 @@
+{
+  "details": {
+    "actualAcCodes": [],
+    "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+    "baselineSnapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13",
+    "canonicalDecisionLogExample": "## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|----------------|-------------------------|-----------|------|\n| 1 | Modular monolith | local | layered monolith, services | Fits bounded local scope | 2026-08-11 |",
+    "canonicalExample": "## §D2 AC Map\n```yaml\n- ac: AC-1\n  title: Exact frozen AC title\n  module: core\n  files: [src/core.ts]\n  invariants: [INV-1]\n  test_layers: [L0]\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n```",
+    "d2Enums": {
+      "ac_kind": [
+        "implementation",
+        "verification"
+      ],
+      "criticality": [
+        "blocker",
+        "degradable",
+        "nice_to_have"
+      ],
+      "pattern": [
+        "A",
+        "B"
+      ]
+    },
+    "decisionLogRepresentation": "one §12 Decision Log heading followed by either a markdown table with the six canonical columns or one or more `### Decision N` subsections",
+    "expectedAcCodes": [
+      "AC-1",
+      "AC-2",
+      "AC-3",
+      "AC-4",
+      "AC-5",
+      "AC-6",
+      "AC-7",
+      "AC-8",
+      "AC-9",
+      "AC-10",
+      "AC-11",
+      "AC-12",
+      "AC-13",
+      "AC-14",
+      "AC-15"
+    ],
+    "observedSrsFileHash": "6216fd61442368c4b994c1819a155067be0c37fe93c20cb65b6be1b33fdf1cd6",
+    "representation": "one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block",
+    "requiredD2Fields": [
+      "ac",
+      "title",
+      "module",
+      "files",
+      "invariants",
+      "test_layers",
+      "pattern",
+      "depends_on",
+      "ac_kind",
+      "criticality"
+    ],
+    "requiredDecisionLogColumns": [
+      "#",
+      "Decision",
+      "Source/profile",
+      "Alternatives considered",
+      "Rationale",
+      "Date"
+    ],
+    "srsArtifactId": 29
+  },
+  "feedback": {
+    "issue": {
+      "acceptanceCriteria": [
+        "Repair every structured gap against the exact frozen input and pinned contract.",
+        "Re-read persisted artifacts and traces, then call worker_done again.",
+        "Exactly one worker_done call may be accepted; rejected preflights are non-terminal."
+      ],
+      "allowedChanges": [
+        "Current node output artifacts and their declared trace links only."
+      ],
+      "context": {
+        "actualAcCodes": [],
+        "baselineHash": "5200ca617e809cd23f16ba8192c711665f62fa192bb3709e48908a64384644b8",
+        "baselineSnapshotHash": "8b00c681bc09c7c2ba5202f75480e279c4873706ea42b58df711f1026455ab13",
+        "canonicalDecisionLogExample": "## §12 Decision Log\n\n| # | Decision | Source/profile | Alternatives considered | Rationale | Date |\n|---|----------|----------------|-------------------------|-----------|------|\n| 1 | Modular monolith | local | layered monolith, services | Fits bounded local scope | 2026-08-11 |",
+        "canonicalExample": "## §D2 AC Map\n```yaml\n- ac: AC-1\n  title: Exact frozen AC title\n  module: core\n  files: [src/core.ts]\n  invariants: [INV-1]\n  test_layers: [L0]\n  pattern: A\n  depends_on: []\n  ac_kind: implementation\n  criticality: blocker\n```",
+        "d2Enums": {
+          "ac_kind": [
+            "implementation",
+            "verification"
+          ],
+          "criticality": [
+            "blocker",
+            "degradable",
+            "nice_to_have"
+          ],
+          "pattern": [
+            "A",
+            "B"
+          ]
+        },
+        "decisionLogRepresentation": "one §12 Decision Log heading followed by either a markdown table with the six canonical columns or one or more `### Decision N` subsections",
+        "expectedAcCodes": [
+          "AC-1",
+          "AC-2",
+          "AC-3",
+          "AC-4",
+          "AC-5",
+          "AC-6",
+          "AC-7",
+          "AC-8",
+          "AC-9",
+          "AC-10",
+          "AC-11",
+          "AC-12",
+          "AC-13",
+          "AC-14",
+          "AC-15"
+        ],
+        "observedSrsFileHash": "6216fd61442368c4b994c1819a155067be0c37fe93c20cb65b6be1b33fdf1cd6",
+        "representation": "one explicit §D2 AC Map/Decomposition heading with exactly one fenced YAML block",
+        "requiredD2Fields": [
+          "ac",
+          "title",
+          "module",
+          "files",
+          "invariants",
+          "test_layers",
+          "pattern",
+          "depends_on",
+          "ac_kind",
+          "criticality"
+        ],
+        "requiredDecisionLogColumns": [
+          "#",
+          "Decision",
+          "Source/profile",
+          "Alternatives considered",
+          "Rationale",
+          "Date"
+        ],
+        "srsArtifactId": 29
+      },
+      "disposition": "repair",
+      "findings": [
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:decision-log-columns",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "decision-log-columns",
+            "requiredTargetTypes": [
+              "§12 Decision Log"
+            ]
+          },
+          "message": "§12 Decision Log table has 5 columns, need ≥6",
+          "path": null,
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [
+            {
+              "id": -1,
+              "type": "§D2"
+            }
+          ],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:d2-representation",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "d2-representation",
+            "requiredTargetTypes": [
+              "§D2"
+            ]
+          },
+          "message": "Exactly one explicit `§D2 AC Map/Decomposition` heading is required; `D.2 AC-2` is not that section.",
+          "path": "<section>",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-1"
+            ]
+          },
+          "message": "Frozen AC-1 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-1",
+          "severity": "error",
+          "subjectRef": "artifact:14"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-2"
+            ]
+          },
+          "message": "Frozen AC-2 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-2",
+          "severity": "error",
+          "subjectRef": "artifact:15"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-3"
+            ]
+          },
+          "message": "Frozen AC-3 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-3",
+          "severity": "error",
+          "subjectRef": "artifact:16"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-4"
+            ]
+          },
+          "message": "Frozen AC-4 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-4",
+          "severity": "error",
+          "subjectRef": "artifact:17"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-5"
+            ]
+          },
+          "message": "Frozen AC-5 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-5",
+          "severity": "error",
+          "subjectRef": "artifact:18"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-6"
+            ]
+          },
+          "message": "Frozen AC-6 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-6",
+          "severity": "error",
+          "subjectRef": "artifact:19"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-7"
+            ]
+          },
+          "message": "Frozen AC-7 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-7",
+          "severity": "error",
+          "subjectRef": "artifact:20"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-8"
+            ]
+          },
+          "message": "Frozen AC-8 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-8",
+          "severity": "error",
+          "subjectRef": "artifact:21"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-9"
+            ]
+          },
+          "message": "Frozen AC-9 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-9",
+          "severity": "error",
+          "subjectRef": "artifact:22"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-10"
+            ]
+          },
+          "message": "Frozen AC-10 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-10",
+          "severity": "error",
+          "subjectRef": "artifact:23"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-11"
+            ]
+          },
+          "message": "Frozen AC-11 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-11",
+          "severity": "error",
+          "subjectRef": "artifact:24"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-12"
+            ]
+          },
+          "message": "Frozen AC-12 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-12",
+          "severity": "error",
+          "subjectRef": "artifact:25"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-13"
+            ]
+          },
+          "message": "Frozen AC-13 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-13",
+          "severity": "error",
+          "subjectRef": "artifact:26"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-14"
+            ]
+          },
+          "message": "Frozen AC-14 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-14",
+          "severity": "error",
+          "subjectRef": "artifact:27"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:represented_by",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "represented_by",
+            "requiredTargetTypes": [
+              "§D2 stanza ac: AC-15"
+            ]
+          },
+          "message": "Frozen AC-15 is missing from §D2. Use the exact frozen AC code once.",
+          "path": "AC-15",
+          "severity": "error",
+          "subjectRef": "artifact:28"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-001"
+            ]
+          },
+          "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-001",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-002"
+            ]
+          },
+          "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-002",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-003"
+            ]
+          },
+          "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-003",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-004"
+            ]
+          },
+          "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-004",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-005"
+            ]
+          },
+          "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-005",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-006"
+            ]
+          },
+          "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-006",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        },
+        {
+          "actual": [],
+          "code": "FORMALIZATION_SRS_INCOMPLETE:covers_constraint",
+          "evidenceRefs": [
+            "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504"
+          ],
+          "expected": {
+            "minimum": 1,
+            "relation": "covers_constraint",
+            "requiredTargetTypes": [
+              "ord-c-007"
+            ]
+          },
+          "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+          "path": "ord-c-007",
+          "severity": "error",
+          "subjectRef": "artifact:29"
+        }
+      ],
+      "policyId": "submission-validation:formalization.srs-contract.v1",
+      "reasonCode": "FORMALIZATION_SRS_INCOMPLETE",
+      "schemaVersion": "factory.recovery-issue.v1",
+      "subjectRefs": [
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:14",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:15",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:16",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:17",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:18",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:19",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:20",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:21",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:22",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:23",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:24",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:25",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:26",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:27",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+          "kind": "artifact",
+          "ref": "artifact:28",
+          "schema": "AC"
+        },
+        {
+          "contentHash": "6216fd61442368c4b994c1819a155067be0c37fe93c20cb65b6be1b33fdf1cd6",
+          "kind": "artifact",
+          "ref": "artifact:29",
+          "schema": "SRS"
+        }
+      ],
+      "summary": "Submission preflight formalization.srs-contract.v1@1.1.0 rejected the current node output."
+    },
+    "observedArtifacts": [
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-1",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 14,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-1",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-2",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 15,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-2",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-3",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 16,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-3",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-4",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 17,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-5",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 18,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-6",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 19,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-7",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 20,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-8",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 21,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-9",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 22,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-10",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 23,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-11",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 24,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-12",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 25,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-12",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-13",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 26,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-13",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-14",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 27,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-14",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "code": "AC-15",
+        "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+        "id": 28,
+        "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+        "project_repository_id": 1,
+        "status": "accepted",
+        "storage_kind": "file_backed",
+        "type": "AC"
+      },
+      {
+        "accepted_hash": null,
+        "code": "SRS",
+        "content_hash": "6216fd61442368c4b994c1819a155067be0c37fe93c20cb65b6be1b33fdf1cd6",
+        "id": 29,
+        "path": "docs/requirements/REQ-001/06-SRS.md",
+        "project_repository_id": 1,
+        "status": "draft",
+        "storage_kind": "file_backed",
+        "type": "SRS"
+      }
+    ],
+    "observedSetDigest": "3e76b1b535138a0aef532a4b3703907fed90f24f2a980c7e1fbab2fb17be8efb",
+    "origin": {
+      "executionId": "worker-execution:3df74cfa-89ab-4c4d-ba75-33eb02b55c96",
+      "inputSnapshotHash": "8eaaea70788651e639b2c811abb7228e2965449965453d13c2c76709d9174875",
+      "moduleRef": "solution-formalization@1.0.0",
+      "nodeId": "define-architecture-contract",
+      "processRunId": 2,
+      "taskId": 14,
+      "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+    },
+    "rejectionDigest": "edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504",
+    "rejectionRef": "submission-validation-rejection:edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504",
+    "resumeStep": "Read this file first, repair the existing node output in place, update its registered hash, and retry worker_done.",
+    "schemaVersion": "factory.submission-validation-recovery-feedback.v1",
+    "validator": {
+      "contractRef": {
+        "digest": "4ebcd19cb53a7ffc000456e0196e2eef006123317d42eaad1754ffc6e21c23c7",
+        "version": "2.2"
+      },
+      "id": "formalization.srs-contract.v1",
+      "version": "1.1.0"
+    }
+  },
+  "gaps": [
+    {
+      "artifactCode": null,
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "§12 Decision Log table has 5 columns, need ≥6",
+      "missing": {
+        "minimum": 1,
+        "relation": "decision-log-columns",
+        "requiredTargetTypes": [
+          "§12 Decision Log"
+        ]
+      }
+    },
+    {
+      "artifactCode": "<section>",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [
+        {
+          "id": -1,
+          "type": "§D2"
+        }
+      ],
+      "message": "Exactly one explicit `§D2 AC Map/Decomposition` heading is required; `D.2 AC-2` is not that section.",
+      "missing": {
+        "minimum": 1,
+        "relation": "d2-representation",
+        "requiredTargetTypes": [
+          "§D2"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-1",
+      "artifactId": 14,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-1 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-1"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-2",
+      "artifactId": 15,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-2 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-2"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-3",
+      "artifactId": 16,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-3 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-3"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-4",
+      "artifactId": 17,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-4 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-4"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-5",
+      "artifactId": 18,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-5 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-5"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-6",
+      "artifactId": 19,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-6 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-6"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-7",
+      "artifactId": 20,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-7 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-7"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-8",
+      "artifactId": 21,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-8 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-8"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-9",
+      "artifactId": 22,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-9 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-9"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-10",
+      "artifactId": 23,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-10 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-10"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-11",
+      "artifactId": 24,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-11 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-11"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-12",
+      "artifactId": 25,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-12 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-12"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-13",
+      "artifactId": 26,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-13 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-13"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-14",
+      "artifactId": 27,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-14 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-14"
+        ]
+      }
+    },
+    {
+      "artifactCode": "AC-15",
+      "artifactId": 28,
+      "artifactType": "AC",
+      "existingTargets": [],
+      "message": "Frozen AC-15 is missing from §D2. Use the exact frozen AC code once.",
+      "missing": {
+        "minimum": 1,
+        "relation": "represented_by",
+        "requiredTargetTypes": [
+          "§D2 stanza ac: AC-15"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-001",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-001 (material: Exact pricing algorithms for commodity market dynamics) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-001"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-002",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-002 (material: Specific combat balance and enemy AI behavior parameters) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-002"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-003",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-003 (material: Precise visual effects implementation details (particle systems, shaders)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-003"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-004",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-004 (material: Optimal canvas/WebGL rendering approach for the target hardware) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-004"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-005",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-005 (material: Exact save/load format and storage mechanism (localStorage vs files)) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-005"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-006",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-006 (execution: the delivered product is synthesized and assembled as one whole that is runnable locally) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-006"
+        ]
+      }
+    },
+    {
+      "artifactCode": "ord-c-007",
+      "artifactId": 29,
+      "artifactType": "SRS",
+      "existingTargets": [],
+      "message": "Constraint ord-c-007 (execution: an ordered smoke test performs the install step, then the start step, then reaches the running product) is covered by no §D2 stanza: add covered_constraint_ids to the stanza that carries it (or waive it in the brief with a reason).",
+      "missing": {
+        "minimum": 1,
+        "relation": "covers_constraint",
+        "requiredTargetTypes": [
+          "ord-c-007"
+        ]
+      }
+    }
+  ],
+  "moduleRef": "solution-formalization@1.0.0",
+  "nodeId": "define-architecture-contract",
+  "observedArtifacts": [
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-1",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 14,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-1",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-2",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 15,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-2",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-3",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 16,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-3",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-4",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 17,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-4",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-5",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 18,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-5",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-6",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 19,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-6",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-7",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 20,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-7",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-8",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 21,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-8",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-9",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 22,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-9",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-10",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 23,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-10",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-11",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 24,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-11",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-12",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 25,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-12",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-13",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 26,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-13",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-14",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 27,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-14",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "code": "AC-15",
+      "content_hash": "62ee82c61d15b4339b2f8cfa2e1dc68ecddadeb5535a581e45700201f08700ae",
+      "id": 28,
+      "path": "docs/requirements/REQ-001/03-acceptance-criteria.md#AC-15",
+      "project_repository_id": 1,
+      "status": "accepted",
+      "storage_kind": "file_backed",
+      "type": "AC"
+    },
+    {
+      "accepted_hash": null,
+      "code": "SRS",
+      "content_hash": "6216fd61442368c4b994c1819a155067be0c37fe93c20cb65b6be1b33fdf1cd6",
+      "id": 29,
+      "path": "docs/requirements/REQ-001/06-SRS.md",
+      "project_repository_id": 1,
+      "status": "draft",
+      "storage_kind": "file_backed",
+      "type": "SRS"
+    }
+  ],
+  "rejectionCode": "FORMALIZATION_SRS_INCOMPLETE",
+  "rejectionDigest": "edc3fe53ad7d99ae35b0ba6d7a2cc2fa6ef5d5c597ff77747eea56cb737f3504",
+  "task": "formalization.architecture#1",
+  "validatorId": "formalization.srs-contract.v1",
+  "validatorVersion": "1.1.0",
+  "workplace": "solution-formalization@1.0.0/formalization-architecture-contract/singleton"
+}
