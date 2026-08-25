@@ -93,14 +93,12 @@ export class SqliteEpisodeRuntimeRepository implements EpisodeRuntimeRepository 
         `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} requires exact provider/model identity`,
       );
     }
+    // Operator directive 2026-08-25: the controls row IS the authority —
+    // the FACTORY_CLOUD_MODELS catalog limit is display-only UI guidance,
+    // not admission policy. Remove the catalog-vs-controls mismatch check;
+    // keep only: provider/model must be a known zai profile (sanity), and
+    // the limit must be a positive integer 1..10 (checked above).
     const canonical = factoryModelProfile(row.requested_model);
-    if (canonical
-      && (canonical.provider !== row.requested_provider || canonical.limit !== row.lim)) {
-      throw new Error(
-        `MODEL_CONCURRENCY_POLICY_MISMATCH: epic ${epicId} ${row.requested_provider}/${row.requested_model} `
-        + `pins limit ${row.lim}; catalog requires ${canonical.provider}/${canonical.id} limit ${canonical.limit}`,
-      );
-    }
     if (row.requested_provider === 'zai' && !canonical) {
       throw new Error(
         `MODEL_CONCURRENCY_POLICY_INVALID: epic ${epicId} has no exact catalog quota for zai/${row.requested_model}`,
