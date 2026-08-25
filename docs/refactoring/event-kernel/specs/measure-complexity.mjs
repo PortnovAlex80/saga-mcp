@@ -15,6 +15,23 @@
  *     COMPLEXITY_DIMENSION_UNMEASURABLE_BEFORE_KERNEL) until the measured
  *     artifact exists. They never silently pass.
  *
+ * Lawful/bypass split (operator review item 3, budget revision rev2): the
+ * dimensions that count SQL statements against new-kernel aggregates
+ * (authority.decisionReaderStatements, authority.decisionWriterStatements,
+ * authority.projectionAuthorityReads) split every count into
+ *   lawful — statements inside the owning repository file of the aggregate
+ *            whose tables they touch (src/workflow-kernel/persistence/
+ *            <aggregate>-repository.ts, the EK-3 sole-writer repositories),
+ *   bypass — the same statements anywhere else.
+ * The target binds on bypass == 0; lawful is bounded by the repository-count
+ * dimensions instead. Before src/workflow-kernel exists the vector already
+ * emits the split columns with bypass = frozen-census total, lawful = 0 (no
+ * lawful owner exists on the predecessor tree), so --check binds on the
+ * bypass column the moment the kernel lands. The aggregate->table-prefix map
+ * and projection-table set are declared in complexity-budget.json
+ * (lawfulRepositoryConvention) and re-proved against the frozen universe
+ * (aggregates) and frozen census (PROJECTION class) on every run.
+ *
  * Determinism contract (plan: "Run deterministic measurements twice on the same
  * tree and require the same complexity vector"): no clock, no randomness, no
  * absolute paths in the output, every directory iteration sorted, canonical
@@ -157,7 +174,75 @@ const MANDATED_DIMENSIONS = [
   ['top-level package count cap (24)', 'structure.topLevelPackageCount'],
 ];
 
-function validateBudget(budget) {
+/* ------------------------------------------------------------------ */
+/* Lawful-repository convention (budget revision rev2)                  */
+/* ------------------------------------------------------------------ */
+
+const kebabCase = (name) => name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
+function ownerRepositoryFile(aggregate) {
+  return `src/workflow-kernel/persistence/${kebabCase(aggregate)}-repository.ts`;
+}
+
+function tableBelongsTo(table, prefix) {
+  return table === prefix || table === `${prefix}s` || table.startsWith(`${prefix}_`);
+}
+
+function validateLawfulRepositoryConvention(budget, { universeAggregates, censusProjectionTables }) {
+  const problems = [];
+  const conv = budget.lawfulRepositoryConvention;
+  if (!conv || typeof conv !== 'object') {
+    return ['lawfulRepositoryConvention block is missing from complexity-budget.json (budget revision rev2 requires it)'];
+  }
+  for (const key of ['repositoryFilePattern', 'aggregateTablePrefixes', 'tableBelongsRule', 'projectionTables', 'kernelScope', 'scannedScopes']) {
+    if (conv[key] === undefined) problems.push(`lawfulRepositoryConvention: missing required key "${key}"`);
+  }
+  if (problems.length) return problems;
+  if (String(conv.repositoryFilePattern) !== 'src/workflow-kernel/persistence/<aggregate>-repository.ts') {
+    problems.push('lawfulRepositoryConvention.repositoryFilePattern must be exactly src/workflow-kernel/persistence/<aggregate>-repository.ts');
+  }
+  const prefixEntries = Object.entries(conv.aggregateTablePrefixes);
+  if (prefixEntries.length === 0) problems.push('lawfulRepositoryConvention.aggregateTablePrefixes must not be empty');
+  for (const [aggregate, prefix] of prefixEntries) {
+    if (!/^[a-z][a-z0-9_]*$/.test(String(prefix))) {
+      problems.push(`lawfulRepositoryConvention.aggregateTablePrefixes.${aggregate}: prefix "${prefix}" must be a lowercase snake_case identifier`);
+    }
+  }
+  // The declared aggregate set must be EXACTLY the frozen universe's aggregates.
+  const declared = [...prefixEntries.map(([a]) => a)].sort();
+  const frozen = [...universeAggregates].sort();
+  if (declared.length !== frozen.length || declared.some((a, i) => a !== frozen[i])) {
+    problems.push(
+      `lawfulRepositoryConvention.aggregateTablePrefixes keys [${declared.join(', ')}] must exactly equal the frozen universe aggregates [${frozen.join(', ')}] (transition-universe.json aggregates[].name)`,
+    );
+  }
+  // Prefixes must be unique and pairwise non-colliding under the boundary rule.
+  const prefixes = prefixEntries.map(([, p]) => String(p)).sort();
+  if (new Set(prefixes).size !== prefixes.length) problems.push('lawfulRepositoryConvention.aggregateTablePrefixes: duplicate prefixes are forbidden');
+  for (const p1 of prefixes) {
+    for (const p2 of prefixes) {
+      if (p1 !== p2 && tableBelongsTo(p1, p2)) {
+        problems.push(`lawfulRepositoryConvention.aggregateTablePrefixes: prefix "${p1}" collides with prefix "${p2}" under the boundary rule`);
+      }
+    }
+  }
+  // The declared projection-table set must be EXACTLY the census PROJECTION class ...
+  const declaredProj = [...conv.projectionTables].sort();
+  const frozenProj = [...censusProjectionTables].sort();
+  if (declaredProj.length !== frozenProj.length || declaredProj.some((t, i) => t !== frozenProj[i])) {
+    problems.push(
+      `lawfulRepositoryConvention.projectionTables [${declaredProj.join(', ')}] must exactly equal the frozen census PROJECTION class [${frozenProj.join(', ')}] (authority-census.json tables[t].tableClass === 'PROJECTION')`,
+    );
+  }
+  // ... and no projection table may belong to an aggregate (no dual classification).
+  for (const table of conv.projectionTables) {
+    const owner = prefixEntries.find(([, p]) => tableBelongsTo(String(table), String(p)));
+    if (owner) problems.push(`lawfulRepositoryConvention: projection table "${table}" also belongs to aggregate ${owner[0]} — dual classification is forbidden`);
+  }
+  return problems;
+}
+
+function validateBudget(budget, frozenAnchors) {
   const problems = [];
   if (!Array.isArray(budget.dimensions) || budget.dimensions.length === 0) {
     problems.push('dimensions array is missing or empty');
@@ -211,6 +296,7 @@ function validateBudget(budget) {
   if (budget.waivers && (budget.waivers.active ?? 0) !== 0) {
     problems.push('active complexity waivers are forbidden (plan EK-1/EK-13)');
   }
+  problems.push(...validateLawfulRepositoryConvention(budget, frozenAnchors));
   return problems;
 }
 
@@ -265,6 +351,253 @@ function countVerdicts(sites) {
   }
   return tally;
 }
+
+/* ------------------------------------------------------------------ */
+/* Direct-SQL ownership scan (lawful/bypass split, budget rev2)         */
+/*                                                                     */
+/* Reduced, self-contained form of the WP-01 census lexer: extracts    */
+/* complete string/template literals (escape-aware, `${...}`           */
+/* substitutions replaced by " ? "), keeps those that start a SQL      */
+/* data statement (select/insert/update/delete/with/replace), splits   */
+/* complete statements on top-level semicolons (quote/comment-aware),  */
+/* and records verb + tables read + tables written per statement.      */
+/* Deterministic: sorted file iteration only, no clock, no paths in    */
+/* output. DDL (CREATE/ALTER/DROP) is out of scope: the EK-3           */
+/* declarative schema bootstrap is a separate sanctioned surface.      */
+/* ------------------------------------------------------------------ */
+
+const SQL_DATA_START_RE = /^\s*(select|insert|update|delete|with|replace)\b/i;
+
+function lexStringLiterals(src) {
+  const literals = [];
+  let i = 0;
+  const n = src.length;
+  let line = 1;
+  const push = (value, startLine) => { if (value.trim()) literals.push({ value, line: startLine }); };
+  while (i < n) {
+    const c = src[i];
+    if (c === '\n') { line += 1; i += 1; continue; }
+    if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i += 1; continue; }
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') line += 1; i += 1; }
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      const startLine = line;
+      const quote = c;
+      let value = '';
+      i += 1;
+      while (i < n) {
+        const d = src[i];
+        if (d === '\\') {
+          const nx = src[i + 1] ?? '';
+          if (nx === 'n') value += '\n';
+          else if (nx === 't') value += '\t';
+          else value += nx;
+          if (nx === '\n') line += 1;
+          i += 2;
+          continue;
+        }
+        if (d === quote) { i += 1; break; }
+        if (d === '\n') line += 1;
+        value += d;
+        i += 1;
+      }
+      push(value, startLine);
+      continue;
+    }
+    if (c === '`') {
+      const startLine = line;
+      let value = '';
+      i += 1;
+      while (i < n) {
+        const d = src[i];
+        if (d === '\\') {
+          const nx = src[i + 1] ?? '';
+          value += nx;
+          if (nx === '\n') line += 1;
+          i += 2;
+          continue;
+        }
+        if (d === '`') { i += 1; break; }
+        if (d === '$' && src[i + 1] === '{') {
+          i += 2;
+          let depth = 1;
+          while (i < n && depth > 0) {
+            const e = src[i];
+            if (e === '{') depth += 1;
+            else if (e === '}') { depth -= 1; if (depth === 0) break; }
+            if (e === '\n') line += 1;
+            i += 1;
+          }
+          i += 1;
+          value += ' ? ';
+          continue;
+        }
+        if (d === '\n') line += 1;
+        value += d;
+        i += 1;
+      }
+      push(value, startLine);
+      continue;
+    }
+    i += 1;
+  }
+  return literals;
+}
+
+function splitSqlStatements(sql) {
+  const out = [];
+  let cur = '';
+  let i = 0;
+  const n = sql.length;
+  while (i < n) {
+    const c = sql[i];
+    if (c === "'") {
+      cur += c;
+      i += 1;
+      while (i < n) {
+        cur += sql[i];
+        if (sql[i] === "'" && sql[i + 1] === "'") { cur += "'"; i += 2; continue; }
+        if (sql[i] === "'") { i += 1; break; }
+        i += 1;
+      }
+      continue;
+    }
+    if (c === '-' && sql[i + 1] === '-') { while (i < n && sql[i] !== '\n') { cur += sql[i]; i += 1; } continue; }
+    if (c === '/' && sql[i + 1] === '*') {
+      cur += '/*';
+      i += 2;
+      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) { cur += sql[i]; i += 1; }
+      cur += '*/';
+      i += 2;
+      continue;
+    }
+    if (c === ';') { out.push(cur); cur = ''; i += 1; continue; }
+    cur += c;
+    i += 1;
+  }
+  if (cur.trim()) out.push(cur);
+  return out;
+}
+
+const SQL_IDENT = '[A-Za-z_][A-Za-z0-9_]*';
+
+function sqlVerbOf(stmt) {
+  const m = stmt.match(SQL_DATA_START_RE);
+  if (!m) return null;
+  const v = m[1].toUpperCase();
+  if (v === 'WITH') {
+    const tail = stmt.replace(/^\s*with\b/i, '');
+    const m2 = tail.match(/\)\s*(select|insert|update|delete)\b/i);
+    return `WITH_${m2 ? m2[1].toUpperCase() : 'SELECT'}`;
+  }
+  return v;
+}
+
+function sqlTablesOf(stmt) {
+  const reads = new Set();
+  const writes = new Set();
+  const rx = (re) => { for (const m of stmt.matchAll(re)) reads.add(m[1]); };
+  const wx = (re) => { for (const m of stmt.matchAll(re)) writes.add(m[1]); };
+  wx(new RegExp(`\\binsert\\s+(?:or\\s+\\w+\\s+)?into\\s+(?:${SQL_IDENT}\\.)?(${SQL_IDENT})`, 'ig'));
+  wx(new RegExp(`\\bupdate\\s+(?:or\\s+\\w+\\s+)?(?:${SQL_IDENT}\\.)?(${SQL_IDENT})\\s+set`, 'ig'));
+  wx(new RegExp(`\\bdelete\\s+from\\s+(?:${SQL_IDENT}\\.)?(${SQL_IDENT})`, 'ig'));
+  wx(new RegExp(`\\breplace\\s+into\\s+(?:${SQL_IDENT}\\.)?(${SQL_IDENT})`, 'ig'));
+  rx(new RegExp(`\\bfrom\\s+(?:${SQL_IDENT}\\.)?(${SQL_IDENT})`, 'ig'));
+  rx(new RegExp(`\\bjoin\\s+(?:${SQL_IDENT}\\.)?(${SQL_IDENT})`, 'ig'));
+  const clean = (t) => t.replace(/[`"[]]/g, '').trim();
+  const filter = (set) => [...set].map(clean).filter((t) => /^[a-z][a-z0-9_]*$/.test(t) && !/^(select|values|with|dual)$/i.test(t));
+  return { reads: filter(reads), writes: filter(writes) };
+}
+
+function scanDirectSql() {
+  const statements = [];
+  for (const scope of ['src', 'scripts', 'tracker-view']) {
+    for (const p of listFiles(path.join(REPO_ROOT, scope), PROD_SOURCE)) {
+      const rel = REL(path.relative(REPO_ROOT, p));
+      if (/(^|\/)node_modules\//.test(rel)) continue;
+      const src = readFileSync(p, 'utf8');
+      for (const lit of lexStringLiterals(src)) {
+        if (!SQL_DATA_START_RE.test(lit.value)) continue;
+        if (!(lit.value.length >= 8 && /\b(from|into|set|values|table)\b/i.test(lit.value))) continue;
+        for (const stmt of splitSqlStatements(lit.value)) {
+          if (!stmt.trim()) continue;
+          const verb = sqlVerbOf(stmt);
+          if (!verb) continue;
+          const { reads, writes } = sqlTablesOf(stmt);
+          statements.push({ file: rel, line: lit.line, verb, reads, writes });
+        }
+      }
+    }
+  }
+  return statements;
+}
+
+const WRITE_VERBS = new Set(['INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'WITH_INSERT', 'WITH_UPDATE', 'WITH_DELETE']);
+
+function owningAggregatesOf(tables, prefixEntries) {
+  const owners = new Set();
+  for (const table of tables) {
+    for (const [aggregate, prefix] of prefixEntries) {
+      if (tableBelongsTo(table, String(prefix))) owners.add(aggregate);
+    }
+  }
+  return [...owners].sort();
+}
+
+/**
+ * Split direct-SQL statements touching aggregate-owned tables into
+ * lawful (inside the owning repository file of every involved aggregate)
+ * vs bypass (anywhere else). `aspect` selects which table set and verb
+ * family counts: 'read' (read tables, any non-DDL statement that reads
+ * aggregate tables — catches embedded SELECTs inside write statements
+ * too) or 'write' (write targets of write-family statements).
+ */
+function ownershipSplit(statements, aspect, prefixEntries) {
+  const result = { lawful: 0, bypass: 0, total: 0, byAggregate: {}, bypassSites: [] };
+  for (const st of statements) {
+    const tables = aspect === 'read' ? st.reads : st.writes;
+    if (aspect === 'write' && !WRITE_VERBS.has(st.verb)) continue;
+    if (tables.length === 0) continue;
+    const involved = owningAggregatesOf(tables, prefixEntries);
+    if (involved.length === 0) continue;
+    const lawful = involved.every((aggregate) => st.file === ownerRepositoryFile(aggregate));
+    result.total += 1;
+    result.lawful += lawful ? 1 : 0;
+    result.bypass += lawful ? 0 : 1;
+    for (const aggregate of involved) {
+      const rec = result.byAggregate[aggregate] ??= { lawful: 0, bypass: 0 };
+      rec[lawful ? 'lawful' : 'bypass'] += 1;
+    }
+    if (!lawful) result.bypassSites.push(`${st.file}:${st.line}`);
+  }
+  const sorted = {
+    lawful: result.lawful,
+    bypass: result.bypass,
+    total: result.total,
+    byAggregate: Object.fromEntries(Object.keys(result.byAggregate).sort().map((k) => [k, result.byAggregate[k]])),
+    bypassSites: [...new Set(result.bypassSites)].sort().slice(0, 50),
+    bypassSitesTruncated: result.bypassSites.length > 50,
+  };
+  return sorted;
+}
+
+/** Kernel-scope direct-SQL reads of declared projection tables (hard-target class). */
+function projectionReadSplit(statements, projectionTables, kernelScopePrefix) {
+  const projection = new Set(projectionTables);
+  const sites = [];
+  for (const st of statements) {
+    if (!st.file.startsWith(kernelScopePrefix)) continue;
+    if (!st.reads.some((t) => projection.has(t))) continue;
+    sites.push(`${st.file}:${st.line}`);
+  }
+  const unique = [...new Set(sites)].sort();
+  return { lawful: 0, bypass: unique.length, total: unique.length, bypassSites: unique.slice(0, 50), bypassSitesTruncated: unique.length > 50 };
+}
+
 
 function scanWorkshopNameLiterals() {
   // Kernel scope = production sources under src/ EXCLUDING the workshop-owned
@@ -371,20 +704,77 @@ const MEASURES = {
   },
   'authority.decisionReaderStatements': {
     measure: (ctx) => {
-      const s = censusReaderStats(ctx.census);
-      return { value: s.decision, detail: { totalReaders: s.total, deleteClassDecisionReads: s.decisionDelete } };
+      if (!ctx.kernelPresent) {
+        const s = censusReaderStats(ctx.census);
+        return {
+          value: s.decision,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            split: { lawful: 0, bypass: s.decision, total: s.decision },
+            splitNote: 'pre-kernel: no owning repository exists, so every census decision read is bypass (lawful = 0); the split columns are emitted now so --check binds on bypass the moment src/workflow-kernel lands',
+            totalReaders: s.total,
+            deleteClassDecisionReads: s.decisionDelete,
+          },
+        };
+      }
+      const split = ownershipSplit(ctx.sqlScan, 'read', ctx.convention.prefixEntries);
+      return {
+        value: split.bypass,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          split,
+          splitNote: 'binding value is the bypass column; lawful (SQL inside the owning repository files) is bounded by authority.mutableOwnerFanInFiles / authority.mutableOwnerAggregates, not by this dimension',
+        },
+      };
     },
   },
   'authority.projectionAuthorityReads': {
     measure: (ctx) => {
-      const s = censusReaderStats(ctx.census);
-      return { value: s.decisionDelete };
+      if (!ctx.kernelPresent) {
+        const s = censusReaderStats(ctx.census);
+        return {
+          value: s.decisionDelete,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            split: { lawful: 0, bypass: s.decisionDelete, total: s.decisionDelete },
+            splitNote: 'pre-kernel: all DELETE-class decision reads are bypass; lawful is structurally 0 for this dimension (a projection has no owning repository and no lawful kernel read)',
+          },
+        };
+      }
+      const split = projectionReadSplit(ctx.sqlScan, ctx.convention.projectionTables, 'src/workflow-kernel/');
+      return {
+        value: split.bypass,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          split,
+          splitNote: 'binding value is the bypass column: kernel-scope direct-SQL reads of declared projection tables; presentation-scope reads outside src/workflow-kernel are legal (disposable read models)',
+        },
+      };
     },
   },
   'authority.decisionWriterStatements': {
     measure: (ctx) => {
-      const s = censusWriterStats(ctx.census);
-      return { value: s.total, detail: { byScope: s.byScope } };
+      if (!ctx.kernelPresent) {
+        const s = censusWriterStats(ctx.census);
+        return {
+          value: s.total,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            split: { lawful: 0, bypass: s.total, total: s.total },
+            splitNote: 'pre-kernel: no owning repository exists, so every census direct write is bypass (lawful = 0)',
+            byScope: s.byScope,
+          },
+        };
+      }
+      const split = ownershipSplit(ctx.sqlScan, 'write', ctx.convention.prefixEntries);
+      return {
+        value: split.bypass,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          split,
+          splitNote: 'binding value is the bypass column; lawful (SQL inside the owning repository files) is bounded by authority.mutableOwnerFanInFiles / authority.mutableOwnerAggregates, not by this dimension',
+        },
+      };
     },
   },
   /* --- protocol vocabularies (typed kinds absent on the predecessor tree) --- */
@@ -679,8 +1069,40 @@ function canonicalize(value) {
   return value;
 }
 
+function frozenAnchorsOf() {
+  const censusData = census();
+  const universeData = universe();
+  return {
+    universeAggregates: universeData.aggregates.map((a) => a.name),
+    censusProjectionTables: Object.entries(censusData.tables)
+      .filter(([, rec]) => rec.tableClass === 'PROJECTION')
+      .map(([table]) => table)
+      .sort(),
+    censusData,
+    universeData,
+  };
+}
+
+function buildContext(budget, kernelPresent) {
+  const conv = budget.lawfulRepositoryConvention;
+  let scanCache = null;
+  return {
+    census: census(),
+    universe: universe(),
+    kernelPresent,
+    convention: {
+      prefixEntries: Object.entries(conv.aggregateTablePrefixes),
+      projectionTables: [...conv.projectionTables].sort(),
+    },
+    get sqlScan() {
+      if (!scanCache) scanCache = scanDirectSql();
+      return scanCache;
+    },
+  };
+}
+
 function buildVector(budget, { manifest, digests }, { kernelPresent }) {
-  const ctx = { census: census(), universe: universe() };
+  const ctx = buildContext(budget, kernelPresent);
   const predecessorContext = {
     adr097Violations: ctx.census.predecessorInputs.adr097Violations.length,
     adr053NineSeams: ctx.census.predecessorInputs.adr053NineSeams.length,
@@ -717,7 +1139,7 @@ function buildVector(budget, { manifest, digests }, { kernelPresent }) {
   }
   const bindingEntries = entries.filter((e) => e.binding);
   return {
-    schemaVersion: 'ek1.complexity-vector.v1',
+    schemaVersion: 'ek1.complexity-vector.v2',
     generatedBy: 'docs/refactoring/event-kernel/specs/measure-complexity.mjs',
     tree: {
       kernelPresent,
@@ -757,7 +1179,8 @@ function main() {
 
   const { manifest, digests } = verifyFrozenInputs();
   const budget = readJson(BUDGET_PATH);
-  const problems = validateBudget(budget);
+  const anchors = frozenAnchorsOf();
+  const problems = validateBudget(budget, anchors);
   if (problems.length > 0) {
     fail(1, `COMPLEXITY_BUDGET_INVALID (${problems.length} problems):\n  - ${problems.join('\n  - ')}`);
   }
@@ -768,7 +1191,8 @@ function main() {
       `COMPLEXITY_BUDGET_SELFTEST_OK: ${budget.dimensions.length} dimensions, ` +
         `${MANDATED_DIMENSIONS.length}/${MANDATED_DIMENSIONS.length} mandated groups covered, ` +
         `${manifest.inputs.length}/${manifest.inputs.length} frozen-input digests verified, ` +
-        `waivers: 0, kernelPresent: ${kernelPresent}\n`,
+        `waivers: 0, kernelPresent: ${kernelPresent}, ` +
+        `lawful-owner convention: ${anchors.universeAggregates.length} aggregates / ${anchors.censusProjectionTables.length} projection tables verified against frozen inputs\n`,
     );
     return;
   }
@@ -784,7 +1208,7 @@ function main() {
     if (impl.requires === 'admission-schemas' && admissionSchemaPaths().length < 2) {
       requireAdmissionSchemas(); // prints the loud failure and exits 2
     }
-    const ctx = { census: census(), universe: universe() };
+    const ctx = buildContext(budget, kernelPresent);
     const result = impl.measure(ctx);
     const measured = canonicalize(result.value);
     process.stdout.write(`${JSON.stringify({ id: dimensionId, status: 'MEASURED', measured, target: dim.target, conjunctivePass: compareAgainstTarget(measured, dim.target), detail: result.detail ?? null }, null, 2)}\n`);
