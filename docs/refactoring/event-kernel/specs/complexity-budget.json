@@ -62,6 +62,52 @@
     "splitContract": "For every dimension that counts SQL statements against new-kernel aggregates (authority.decisionReaderStatements, authority.decisionWriterStatements, authority.projectionAuthorityReads): lawful = statements inside the owning repository file of an aggregate whose tables they touch; bypass = the same statements anywhere else. The target binds on bypass == 0; the lawful column is unconstrained by these dimensions (bounded instead by authority.mutableOwnerFanInFiles max 1 writer file per table and authority.mutableOwnerAggregates exact 13 authority kinds). Before src/workflow-kernel exists the vector emits bypass = frozen-census total, lawful = 0 (no lawful owner exists on the predecessor tree), so --check binds on the bypass column the moment the kernel lands. Adding a projection table name is a recorded tightening; removing one reopens EK-1.",
     "revisionPolicy": "Adding an aggregate or an aggregate table prefix reopens EK-1 (authority-topology delta); renaming a prefix is a budget revision requiring an independent-verifier-approved measured complexity delta before code is written."
   },
+  "kernelCompositionConvention": {
+    "kernelScope": "src/workflow-kernel/**",
+    "declarationScope": "src/workflow-kernel/domain/**",
+    "soleImplementationStems": {
+      "composition.obligationConsumerImplementations": "obligation-consumer",
+      "roles.bindingAuthorities": "role-binding",
+      "prompts.assemblers": "assembler"
+    },
+    "schedulerFilePattern": "(scheduler|flow-executor|flow-engine|handler-registry)",
+    "relationKindLiteral": "relation:<PascalName>",
+    "nonAggregateAuthorityLiteral": "authority:<PascalName>",
+    "relationNames": [
+      "ProtocolMetadata",
+      "FactoryRun",
+      "LifecycleRun",
+      "StageRun",
+      "ProcessRun",
+      "NodeRun",
+      "WorkItem",
+      "WorkItemDependency",
+      "Workplace",
+      "WorkIntent",
+      "ActivityAttempt",
+      "PromptAssemblyReceipt",
+      "WorkplaceProductionRevision",
+      "CandidateSet",
+      "GateDecision",
+      "EffectReceipt",
+      "CellFinalAcceptance",
+      "WorkflowEvent",
+      "TransitionObligation",
+      "TypedWait",
+      "TerminalProof",
+      "KanbanCard"
+    ],
+    "nonAggregateAuthorityNames": [
+      "Planning",
+      "InstalledWorkshopManifest",
+      "TargetOwnerCapability",
+      "Input"
+    ],
+    "convention": "The successor-tree binding conventions for the eight census-frozen dimensions (budget rev3). (1) Sole implementation surfaces are identified by frozen basename stems inside src/workflow-kernel/**: the obligation consumer, the role-binding compiler and the prompt/context assembler each live in exactly ONE production file whose basename contains the frozen stem. (2) Workshop-owned scheduler implementations are production files ANYWHERE in the scanned scopes (src/**, scripts/**, tracker-view/**) whose basename matches the frozen schedulerFilePattern. (3) Relation kinds and non-aggregate authority kinds are declared as namespaced kind literals in src/workflow-kernel/domain/** ('relation:<PascalName>' resp. 'authority:<PascalName>'), the same declaration style the protocol vocabularies use. (4) Aggregate owner repositories are the lawfulRepositoryConvention repository files under src/workflow-kernel/persistence/.",
+    "derivation": "relationNames is re-proved on every driver run against the plan's '## Target logical model' table (docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md; the plan's law: 'The new schema must contain exactly the logical relations below') and cross-checked against the frozen universe: every frozen-universe aggregate except CognitionTransport must be one of the 22 (CognitionTransport is the universe's own sanctioned exception — 'replaceable transport behind the provider-send obligation (not an aggregate owner)', transition-universe.json aggregates[CognitionTransport]) and must NOT appear in relationNames. nonAggregateAuthorityNames is re-proved to exactly equal the frozen universe's nonAggregateAuthorities names. The stems and the scheduler pattern are frozen HERE (this budget is the spec-frozen authority for the counted surface names, mirroring lawfulRepositoryConvention).",
+    "bindingContract": "Before src/workflow-kernel exists the eight re-bound dimensions emit the frozen-census/universe value as the non-binding predecessor baseline column with the kernel-scope column 0/target-only (the established fail-loudly discipline: a dimension whose measured artifact does not exist never silently passes). Once src/workflow-kernel exists the same commands measure the live tree and the targets bind: authority.mutableOwnerFanInFiles = maximum per-aggregate distinct direct-SQL writer files (max 1, the owning repository); authority.mutableOwnerAggregates = repository files under src/workflow-kernel/persistence/ matching *-repository.ts plus distinct authority:<Name> literals in the declaration scope (exact 13 = 9 + 4); authority.authoritativeRelationKinds = distinct relation:<Name> literals in the declaration scope (exact 22); the three sole-implementation stems count files (exact 1 each); workshops.ownedSchedulerImplementations = schedulerFilePattern files anywhere (max 0); debt.temporaryLegacySurfaces = frozen-census delete-disposition writer statements whose file still exists under production paths (ratchets to 0 exactly when the EK-8 legacy-zero deletion completes).",
+    "revisionPolicy": "Renaming a stem, the scheduler pattern or a literal prefix is a budget revision requiring an independent-verifier-approved measured complexity delta before code is written; adding a relation or a non-aggregate authority reopens EK-1 (authority-topology delta); removing one is a recorded tightening."
+  },
   "revisions": [
     {
       "id": "rev2-operator-review-items-3-4",
@@ -71,6 +117,18 @@
       "changes": [
         "lawfulRepositoryConvention block added; the three SQL-counting authority dimensions split into lawful/bypass columns and now bind on bypass == 0 (lawful bounded by the repository-count dimensions instead)",
         "structure.phaseCount and structure.topLevelPackageCount target.kind exact -> max per plan line 'The execution structure is capped at the 14 named phases EK-0 through EK-13 and the 24 top-level work packages listed below' (docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md, Bounded successor complexity checklist)"
+      ]
+    },
+    {
+      "id": "rev3-stop-gate-residual-dimensions",
+      "branch": "ek1/fix-complexity-residual-dims",
+      "baseIntegrationSha": "65e11f1478c3caede383408d5562dc808808645d",
+      "operatorReview": "EK-1 stop-gate follow-up (same defect class as operator review item 3 / rev2): the eight census-frozen dimensions left residual (COMPLEXITY-BUDGET.md §7 item 4) measure only the frozen predecessor census/universe inputs and therefore can never go green on a kernel tree",
+      "changes": [
+        "kernelCompositionConvention block added (sole implementation stems, scheduler file pattern, relation/authority kind literals, frozen relation-name and non-aggregate-authority lists re-proved against the plan's Target logical model table and the frozen universe on every run)",
+        "the eight residual dimensions re-bound to successor-tree measurements: mutableOwnerFanInFiles -> maximum per-aggregate distinct direct-SQL writer files; mutableOwnerAggregates -> persistence repository files + authority:<Name> literals (exact 13); authoritativeRelationKinds -> relation:<Name> literals (exact 22); obligationConsumerImplementations / bindingAuthorities / assemblers -> sole-stem file counts in kernel scope (exact 1 each); ownedSchedulerImplementations -> schedulerFilePattern files anywhere (max 0); temporaryLegacySurfaces -> delete-manifest statements whose file still exists (ratchet to 0 at EK-8)",
+        "authority.authoritativeRelationKinds target exact 54 -> exact 22: the 49 obligation kinds + 5 wait kinds stay pinned by protocol.obligationKinds and protocol.waitKinds (no freeze lost); this dimension now counts the plan's Target logical model relations — exactly 22 per the plan's table, cross-checked against the frozen universe (every universe aggregate except the sanctioned transport boundary CognitionTransport is one of the 22)",
+        "pre-kernel measured values unchanged (the frozen-census baseline stays the non-binding diagnostic column; kernel-scope column 0/target-only); vector schema bumped to ek1.complexity-vector.v3"
       ]
     }
   ],
@@ -134,10 +192,16 @@
         "kind": "max",
         "value": 1,
         "enforcedFrom": "EK-3",
-        "finalGate": "EK-13"
+        "finalGate": "EK-13",
+        "detail": "successor binding (rev3): fan-in of aggregate A = the number of DISTINCT production files issuing direct-SQL write statements whose write targets belong to A (lawfulRepositoryConvention.aggregateTablePrefixes); the sole lawful writer file is A's repository, so the maximum over the nine aggregates must be <= 1. Pre-kernel the census worst table (tasks, 25 writer files) is emitted as the non-binding baseline column with the kernel-scope column 0/target-only"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: frozen-census writer fan-in (diagnostic; kernel-scope column 0/target-only). Post-kernel: live direct-SQL scan of src/**, scripts/**, tracker-view/**, write aspect, grouped per aggregate",
+        "successorMode": "per-aggregate distinct writer-file sets; measured value = maximum fan-in over the nine aggregates (0 when an aggregate is not directly written)",
+        "binding": "target max 1 binds the moment src/workflow-kernel exists; a second file writing any table of an aggregate (including the owning repository of a DIFFERENT aggregate) turns the dimension red"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.mutableOwnerFanInFiles",
-      "rationale": "ADR-097 violation 6 ('second writers') is the systemic defect: no mutable fact today has a single writer module. The successor caps writer fan-in at exactly one repository per mutable aggregate; anything above 1 reintroduces the recoding-boundary treadmill ADR-053 diagnosed.",
+      "rationale": "ADR-097 violation 6 ('second writers') is the systemic defect: no mutable fact today has a single writer module. The successor caps writer fan-in at exactly one repository per mutable aggregate; anything above 1 reintroduces the recoding-boundary treadmill ADR-053 diagnosed. Rev3 re-bound the measurement to the successor tree (per-aggregate writer-file fan-in in the live SQL scan) so the cap is enforceable post-cutover instead of permanently quoting the frozen census.",
       "accountableWorkPackage": "WP-06"
     },
     {
@@ -157,10 +221,15 @@
         "value": 13,
         "enforcedFrom": "EK-2",
         "finalGate": "EK-13",
-        "detail": "exactly 9 owner aggregates (FactoryRun, LifecycleRun, StageRun, ProcessRun, NodeRun, Workplace, ActivityAttempt, WorkItem, CognitionTransport) + 4 non-aggregate authorities (Planning, InstalledWorkshopManifest, + the two enumerated in transition-universe.json nonAggregateAuthorities)"
+        "detail": "exactly 9 owner aggregates (FactoryRun, LifecycleRun, StageRun, ProcessRun, NodeRun, Workplace, ActivityAttempt, WorkItem, CognitionTransport) + 4 non-aggregate authorities (Planning, InstalledWorkshopManifest, TargetOwnerCapability, Input — the frozen universe's nonAggregateAuthorities). Successor binding (rev3): the 9 owner aggregates are counted as the *-repository.ts files under src/workflow-kernel/persistence/ (a rogue repository file not matching a frozen aggregate counts as an extra owner), the 4 non-aggregate authorities as distinct authority:<Name> kind literals declared in src/workflow-kernel/domain/**"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: frozen-census fact families (diagnostic; kernel-scope column 0/target-only). Post-kernel: repository files in src/workflow-kernel/persistence/ matching *-repository.ts + distinct authority:<Name> literals in the kernelCompositionConvention declaration scope",
+        "successorMode": "measured value = repository-file count + distinct non-aggregate authority literal count; every repository file must map to a lawfulRepositoryConvention aggregate and every literal to a frozen non-aggregate authority name",
+        "binding": "target exact 13 binds the moment src/workflow-kernel exists; a missing repository, a missing authority literal, a rogue repository or an undeclared authority literal each turn the dimension red"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.mutableOwnerAggregates",
-      "rationale": "The authority topology is not a free variable: it was derived twice (forward WP-02, reverse WP-03), reconciled with zero silently accepted differences, and frozen. Adding an aggregate is a complexity delta that reopens EK-1.",
+      "rationale": "The authority topology is not a free variable: it was derived twice (forward WP-02, reverse WP-03), reconciled with zero silently accepted differences, and frozen. Adding an aggregate is a complexity delta that reopens EK-1. Rev3 re-bound the measurement to the successor tree (repository files + declared authority kinds) so the frozen 9+4 topology is verified against the kernel instead of permanently quoting the predecessor's 16 disputed fact families.",
       "accountableWorkPackage": "WP-05"
     },
     {
@@ -177,13 +246,18 @@
       },
       "target": {
         "kind": "exact",
-        "value": 54,
+        "value": 22,
         "enforcedFrom": "EK-2",
         "finalGate": "EK-13",
-        "detail": "exactly 49 obligation kinds + 5 TypedWait kinds per the frozen transition universe (with PROTOCOL-DECISIONS-FROZEN D1-D12 applied); the universe validator already proves two-way creation/consumption with zero orphans"
+        "detail": "exactly the 22 relations of the plan's '## Target logical model' table (ProtocolMetadata, FactoryRun, LifecycleRun, StageRun, ProcessRun, NodeRun, WorkItem, WorkItemDependency, Workplace, WorkIntent, ActivityAttempt, PromptAssemblyReceipt, WorkplaceProductionRevision, CandidateSet, GateDecision, EffectReceipt, CellFinalAcceptance, WorkflowEvent, TransitionObligation, TypedWait, TerminalProof, KanbanCard) — the plan's law: 'The new schema must contain exactly the logical relations below'. The frozen list is re-proved against the plan table and cross-checked against the frozen universe on every driver run (every universe aggregate except the sanctioned transport boundary CognitionTransport is one of the 22; KanbanCard is the census PROJECTION class). Successor binding (rev3): measured as distinct relation:<PascalName> kind literals declared in src/workflow-kernel/domain/**"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: the predecessor's one generic obligation row kind (diagnostic; kernel-scope column 0/target-only). Post-kernel: distinct relation:<Name> kind literals in the kernelCompositionConvention declaration scope (src/workflow-kernel/domain/**)",
+        "successorMode": "measured value = the count of distinct declared relation kinds; the detail carries the sorted names plus missing/extra diffs against the frozen 22-name list, so an undeclared, renamed or 23rd relation each turn the dimension red",
+        "binding": "target exact 22 binds the moment src/workflow-kernel exists; the 49 obligation kinds + 5 wait kinds stay separately pinned by protocol.obligationKinds and protocol.waitKinds (the rev1/rev2 reading of this dimension double-counted those two vocabularies; no freeze is lost by the re-target)"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension authority.authoritativeRelationKinds",
-      "rationale": "The predecessor has one narrow, generic handoff substrate covering only the EC-8 five-handoff path; every other cross-owner edge is implicit (shared tables, projections, recency reads). The successor makes the relation set explicit, finite and exactly the reconciled universe: 54 kinds, no more without an approved delta.",
+      "rationale": "The predecessor has one narrow, generic handoff substrate covering only the EC-8 five-handoff path; every other cross-owner edge is implicit (shared tables, projections, recency reads). The successor makes the relation set explicit, finite and exactly the plan's Target logical model: 22 relations, no more without an approved delta. Rev3 re-targeted the dimension from the (redundant) 49+5 handoff-kind count to the schema relation count the plan's table actually freezes; the handoff kinds remain pinned by their own protocol dimensions.",
       "accountableWorkPackage": "WP-05"
     },
     {
@@ -460,10 +534,15 @@
         "value": 1,
         "enforcedFrom": "EK-4",
         "finalGate": "EK-13",
-        "detail": "one stateless, replaceable obligation consumer claiming by CAS lease + fence, completing obligations only in the transaction that commits the target result (plan EK-4)"
+        "detail": "one stateless, replaceable obligation consumer claiming by CAS lease + fence, completing obligations only in the transaction that commits the target result (plan EK-4). Successor binding (rev3): measured as production files under src/workflow-kernel/** whose basename stem contains the frozen stem 'obligation-consumer' (kernelCompositionConvention.soleImplementationStems)"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: the census's non-ledger obligation manipulation sites (diagnostic; kernel-scope column 0/target-only). Post-kernel: kernel-scope production files whose basename stem contains 'obligation-consumer'",
+        "successorMode": "measured value = the count of such files; a duplicate (e.g. obligation-consumer-v2.ts) or a split implementation turns the dimension red",
+        "binding": "target exact 1 binds the moment src/workflow-kernel exists; obligation manipulation outside the one consumer is additionally caught by the bypass columns of the authority dimensions"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension composition.obligationConsumerImplementations",
-      "rationale": "A second consumer is a second scheduler with its own race semantics. The predecessor already deletes obligations from a restore script — proof that consumers multiplied exactly where incidents happened.",
+      "rationale": "A second consumer is a second scheduler with its own race semantics. The predecessor already deletes obligations from a restore script — proof that consumers multiplied exactly where incidents happened. Rev3 re-bound the measurement to the kernel scope so the hard target 'one obligation-consumer protocol' is a live file count instead of a frozen census quotation.",
       "accountableWorkPackage": "WP-07"
     },
     {
@@ -483,10 +562,15 @@
         "value": 1,
         "enforcedFrom": "EK-1",
         "finalGate": "EK-13",
-        "detail": "one role-binding compilation path: the WP-17 compiler resolves each protocol role + semantic profile to exactly one content-addressed CanonicalRoleContract; WorkIntent/ActivityAttempt pin ref+digest; no dispatcher, runner, prompt builder or tracker re-infers it"
+        "detail": "one role-binding compilation path: the WP-17 compiler resolves each protocol role + semantic profile to exactly one content-addressed CanonicalRoleContract; WorkIntent/ActivityAttempt pin ref+digest; no dispatcher, runner, prompt builder or tracker re-infers it. Successor binding (rev3): measured as production files under src/workflow-kernel/** whose basename stem contains the frozen stem 'role-binding' (kernelCompositionConvention.soleImplementationStems)"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: the census's 12 role-resolution sites (diagnostic; kernel-scope column 0/target-only). Post-kernel: kernel-scope production files whose basename stem contains 'role-binding'",
+        "successorMode": "measured value = the count of such files — the number of role-binding resolution paths in kernel scope; a second compilation path turns the dimension red",
+        "binding": "target exact 1 binds the moment src/workflow-kernel exists; role inference from mutable task columns outside the compiler is additionally caught by route.conditionKeyUniverse and the EK-2 mutation corpus"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension roles.bindingAuthorities",
-      "rationale": "Twelve selection chains, six of which read mutable task columns — the exact fallback class the CanonicalRoleContract law forbids. One compilation path with digest pinning makes role selection deterministic and replayable.",
+      "rationale": "Twelve selection chains, six of which read mutable task columns — the exact fallback class the CanonicalRoleContract law forbids. One compilation path with digest pinning makes role selection deterministic and replayable. Rev3 re-bound the measurement to the kernel scope so the hard target 'one role-binding compilation path' is a live file count instead of a frozen census quotation.",
       "accountableWorkPackage": "WP-17"
     },
     {
@@ -506,10 +590,15 @@
         "value": 1,
         "enforcedFrom": "EK-8",
         "finalGate": "EK-13",
-        "detail": "one assembler producing the complete request (initial prompt + every context source) under the PromptBudgetProfile, emitting an immutable PromptAssemblyReceipt per provider request"
+        "detail": "one assembler producing the complete request (initial prompt + every context source) under the PromptBudgetProfile, emitting an immutable PromptAssemblyReceipt per provider request. Successor binding (rev3): measured as production files under src/workflow-kernel/** whose basename stem contains the frozen stem 'assembler' (kernelCompositionConvention.soleImplementationStems — the WP-18 accountant path)"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: the census's 10 prompt/context assembly sites (diagnostic; kernel-scope column 0/target-only). Post-kernel: kernel-scope production files whose basename stem contains 'assembler'",
+        "successorMode": "measured value = the count of such files — prompt/context assemblers in kernel scope; a second assembly site turns the dimension red",
+        "binding": "target exact 1 binds the moment src/workflow-kernel exists; prompt accounting outside the one assembler is additionally caught by prompts.cumulativeAccountants and the PromptAssemblyReceipt law"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension prompts.assemblers",
-      "rationale": "Ten uncoordinated assembly sites are why the 436 KB planner request (Elite-3) was invisible until it failed. One assembler with one receipt makes every request accounted.",
+      "rationale": "Ten uncoordinated assembly sites are why the 436 KB planner request (Elite-3) was invisible until it failed. One assembler with one receipt makes every request accounted. Rev3 re-bound the measurement to the kernel scope so the hard target 'one assembler' is a live file count instead of a frozen census quotation.",
       "accountableWorkPackage": "WP-18"
     },
     {
@@ -621,10 +710,15 @@
         "value": 0,
         "enforcedFrom": "EK-5",
         "finalGate": "EK-13",
-        "detail": "zero scheduler implementations owned by workshop code: module flows execute only as kernel obligations; the semantic packages keep their effects/schemas/prompts/checks"
+        "detail": "zero scheduler implementations owned by workshop code: module flows execute only as kernel obligations; the semantic packages keep their effects/schemas/prompts/checks. Successor binding (rev3): measured as production files ANYWHERE in the scanned scopes (src/**, scripts/**, tracker-view/**) whose basename matches the frozen schedulerFilePattern '(scheduler|flow-executor|flow-engine|handler-registry)' — the predecessor-observed shapes generic-flow-executor.ts / kernel-handler-registry.ts included"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: R17's 27 installed module-flow edges executed through workshop-owned flow logic (diagnostic; live-scan column 0/target-only). Post-kernel: schedulerFilePattern file count over the live production scopes",
+        "successorMode": "measured value = the number of matching production files anywhere on the tree; any surviving or newly added workshop-owned flow engine turns the dimension red",
+        "binding": "target 0 binds the moment src/workflow-kernel exists and ratchets to zero as the process-module flow logic is deleted (the generic-flow-executor/kernel-handler-registry pair is exactly this class)"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension workshops.ownedSchedulerImplementations",
-      "rationale": "R17 already re-typed the entire class: workshop-declared flows become one kernel-owned obligation kind. Any scheduler left in workshop code is a second orchestration authority.",
+      "rationale": "R17 already re-typed the entire class: workshop-declared flows become one kernel-owned obligation kind. Any scheduler left in workshop code is a second orchestration authority. Rev3 re-bound the measurement to a live tree scan so the hard target 'zero workshop-owned schedulers' can actually go green after EK-5 instead of permanently quoting R17's 27 edges.",
       "accountableWorkPackage": "WP-07"
     },
     {
@@ -673,10 +767,15 @@
         "value": 0,
         "enforcedFrom": "EK-8",
         "finalGate": "EK-13",
-        "detail": "after the EK-8 hard cutover: zero reachable legacy production runtime, schema, compatibility adapter, migration helper, dual-read/dual-write flag or old-schema import path; enforced by the EK-8 legacy-zero ratchet"
+        "detail": "after the EK-8 hard cutover: zero reachable legacy production runtime, schema, compatibility adapter, migration helper, dual-read/dual-write flag or old-schema import path; enforced by the EK-8 legacy-zero ratchet. Successor binding (rev3): measured as the frozen census's delete-disposition writer statements whose file still exists under production paths (src/**, scripts/**, tracker-view/**) — the deletion manifest is frozen, so the count is a monotone ratchet that reaches exactly 0 when the last delete-classed legacy file is gone"
+      },
+      "bindingSemantics": {
+        "population": "pre-kernel: the census's 97 delete-disposition writer statements (the manifest count, non-binding diagnostic). Post-kernel: the same manifest statements, counted iff their file still exists on the live tree",
+        "successorMode": "measured value = delete-manifest statements on still-present files (97 across 34 files at the freeze; deleting or fully declassifying a legacy file drops its statements from the count)",
+        "binding": "target 0 binds the moment src/workflow-kernel exists as the legacy-zero ratchet; during EK-2..EK-7 the coexisting legacy tree keeps the dimension red by design, and it must reach exactly 0 in the same change that routes startup to the new schema (plan EK-3/EK-8)"
       },
       "measurementCommand": "node docs/refactoring/event-kernel/specs/measure-complexity.mjs --dimension debt.temporaryLegacySurfaces",
-      "rationale": "During EK-2..EK-7 the legacy tree coexists by design, so this dimension is tracked, not zero; it must reach exactly zero in the same change that routes startup to the new schema (plan EK-3/EK-8), and EK-13 re-measures zero with no waiver.",
+      "rationale": "During EK-2..EK-7 the legacy tree coexists by design, so this dimension is tracked, not zero; it must reach exactly zero in the same change that routes startup to the new schema (plan EK-3/EK-8), and EK-13 re-measures zero with no waiver. Rev3 re-bound the measurement from the static census total to a file-presence ratchet over the frozen deletion manifest so the count actually falls as EK-8 deletes the legacy surface.",
       "accountableWorkPackage": "WP-12"
     },
     {

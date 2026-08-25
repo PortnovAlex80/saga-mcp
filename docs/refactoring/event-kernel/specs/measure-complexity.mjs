@@ -32,6 +32,37 @@
  * (lawfulRepositoryConvention) and re-proved against the frozen universe
  * (aggregates) and frozen census (PROJECTION class) on every run.
  *
+ * Post-kernel binding for the census-frozen dimensions (budget revision
+ * rev3, EK-1 stop-gate follow-up): the eight dimensions that previously
+ * measured ONLY the frozen census/universe (mutableOwnerFanInFiles,
+ * mutableOwnerAggregates, authoritativeRelationKinds,
+ * obligationConsumerImplementations, bindingAuthorities, assemblers,
+ * ownedSchedulerImplementations, temporaryLegacySurfaces) now emit the
+ * frozen value as the non-binding predecessor baseline column while
+ * src/workflow-kernel is absent (kernel-scope column 0/target-only) and
+ * switch to live successor-tree measurements once it exists, per the
+ * kernelCompositionConvention block in complexity-budget.json:
+ *   - mutableOwnerFanInFiles     -> maximum per-aggregate distinct direct-SQL
+ *                                   writer files (max 1: the repository);
+ *   - mutableOwnerAggregates     -> persistence *-repository.ts files +
+ *                                   distinct authority:<Name> literals in
+ *                                   src/workflow-kernel/domain/** (exact 13);
+ *   - authoritativeRelationKinds -> distinct relation:<Name> literals in the
+ *                                   declaration scope (exact 22, the plan's
+ *                                   Target logical model table, re-proved
+ *                                   against the plan document + frozen
+ *                                   universe on every run);
+ *   - obligationConsumerImplementations / bindingAuthorities / assemblers
+ *                                -> sole-stem file counts in kernel scope
+ *                                   (exact 1 each);
+ *   - ownedSchedulerImplementations -> schedulerFilePattern file count
+ *                                   anywhere in the production scopes (max 0);
+ *   - temporaryLegacySurfaces    -> frozen deletion-manifest statements whose
+ *                                   file still exists (ratchet to 0 at EK-8).
+ * The frozen relation-name list and non-aggregate-authority list are
+ * re-proved against the plan's target-model table and the frozen universe
+ * on every run, so the declared conventions cannot drift.
+ *
  * Determinism contract (plan: "Run deterministic measurements twice on the same
  * tree and require the same complexity vector"): no clock, no randomness, no
  * absolute paths in the output, every directory iteration sorted, canonical
@@ -179,6 +210,7 @@ const MANDATED_DIMENSIONS = [
 /* ------------------------------------------------------------------ */
 
 const kebabCase = (name) => name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+const kebabToPascal = (name) => name.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 
 function ownerRepositoryFile(aggregate) {
   return `src/workflow-kernel/persistence/${kebabCase(aggregate)}-repository.ts`;
@@ -242,6 +274,100 @@ function validateLawfulRepositoryConvention(budget, { universeAggregates, census
   return problems;
 }
 
+/* ------------------------------------------------------------------ */
+/* Kernel-composition convention (budget revision rev3)                 */
+/* ------------------------------------------------------------------ */
+
+const MANDATED_STEM_DIMENSIONS = [
+  'composition.obligationConsumerImplementations',
+  'roles.bindingAuthorities',
+  'prompts.assemblers',
+];
+
+function validateKernelCompositionConvention(budget, { universeAggregates, universeNonAggregateAuthorities, planRelationNames }) {
+  const problems = [];
+  const conv = budget.kernelCompositionConvention;
+  if (!conv || typeof conv !== 'object') {
+    return ['kernelCompositionConvention block is missing from complexity-budget.json (budget revision rev3 requires it)'];
+  }
+  for (const key of ['kernelScope', 'declarationScope', 'soleImplementationStems', 'schedulerFilePattern', 'relationNames', 'nonAggregateAuthorityNames']) {
+    if (conv[key] === undefined) problems.push(`kernelCompositionConvention: missing required key "${key}"`);
+  }
+  if (problems.length) return problems;
+  if (String(conv.kernelScope) !== 'src/workflow-kernel/**') {
+    problems.push('kernelCompositionConvention.kernelScope must be exactly src/workflow-kernel/**');
+  }
+  if (String(conv.declarationScope) !== 'src/workflow-kernel/domain/**') {
+    problems.push('kernelCompositionConvention.declarationScope must be exactly src/workflow-kernel/domain/**');
+  }
+  // Sole implementation stems: exactly the three mandated hard-target dimensions.
+  const stemEntries = Object.entries(conv.soleImplementationStems);
+  const stemIds = [...stemEntries.map(([id]) => id)].sort();
+  const mandatedStemIds = [...MANDATED_STEM_DIMENSIONS].sort();
+  if (stemIds.length !== mandatedStemIds.length || stemIds.some((id, i) => id !== mandatedStemIds[i])) {
+    problems.push(
+      `kernelCompositionConvention.soleImplementationStems keys [${stemIds.join(', ')}] must exactly equal the mandated sole-implementation dimensions [${mandatedStemIds.join(', ')}]`,
+    );
+  }
+  for (const [id, stem] of stemEntries) {
+    if (!/^[a-z][a-z0-9-]*$/.test(String(stem))) {
+      problems.push(`kernelCompositionConvention.soleImplementationStems.${id}: stem "${stem}" must be a lowercase kebab-case identifier`);
+    }
+  }
+  // Scheduler pattern: must compile and must not be anchored to a path.
+  try {
+    const rx = new RegExp(String(conv.schedulerFilePattern), 'i');
+    if (rx.source === '(?:)') problems.push('kernelCompositionConvention.schedulerFilePattern must not be empty');
+  } catch (err) {
+    problems.push(`kernelCompositionConvention.schedulerFilePattern does not compile: ${err.message}`);
+  }
+  // The frozen relation list must be EXACTLY the plan's Target logical model table.
+  const declaredRelations = [...conv.relationNames].sort();
+  const planRelations = [...planRelationNames].sort();
+  if (declaredRelations.length !== planRelations.length || declaredRelations.some((r, i) => r !== planRelations[i])) {
+    problems.push(
+      `kernelCompositionConvention.relationNames [${declaredRelations.join(', ')}] must exactly equal the plan's Target logical model relations [${planRelations.join(', ')}] (docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md '## Target logical model')`,
+    );
+  }
+  // Cross-check against the frozen universe: every aggregate except the
+  // sanctioned transport boundary must be one of the relations, and the
+  // transport boundary must NOT be (its own universe entry marks it "not an
+  // aggregate owner" — a replaceable transport, not a logical relation).
+  const relations = new Set(conv.relationNames);
+  for (const aggregate of universeAggregates) {
+    if (aggregate === 'CognitionTransport') {
+      if (relations.has(aggregate)) problems.push('kernelCompositionConvention.relationNames must not contain CognitionTransport (the frozen universe marks it the replaceable transport boundary, not a logical relation)');
+      continue;
+    }
+    if (!relations.has(aggregate)) problems.push(`kernelCompositionConvention.relationNames must contain the frozen universe aggregate ${aggregate}`);
+  }
+  // The frozen non-aggregate authority list must be EXACTLY the universe's.
+  const declaredAuth = [...conv.nonAggregateAuthorityNames].sort();
+  const universeAuth = [...universeNonAggregateAuthorities].sort();
+  if (declaredAuth.length !== universeAuth.length || declaredAuth.some((a, i) => a !== universeAuth[i])) {
+    problems.push(
+      `kernelCompositionConvention.nonAggregateAuthorityNames [${declaredAuth.join(', ')}] must exactly equal the frozen universe nonAggregateAuthorities [${universeAuth.join(', ')}] (transition-universe.json)`,
+    );
+  }
+  // Dimension cross-checks: the exact targets must equal the frozen lists.
+  const relationDim = (budget.dimensions || []).find((d) => d.id === 'authority.authoritativeRelationKinds');
+  if (relationDim && relationDim.target?.value !== conv.relationNames.length) {
+    problems.push(`authority.authoritativeRelationKinds target.value (${relationDim.target?.value}) must equal kernelCompositionConvention.relationNames.length (${conv.relationNames.length})`);
+  }
+  const aggregatesDim = (budget.dimensions || []).find((d) => d.id === 'authority.mutableOwnerAggregates');
+  const expectedAuthorityKinds = Object.keys(budget.lawfulRepositoryConvention?.aggregateTablePrefixes || {}).length + conv.nonAggregateAuthorityNames.length;
+  if (aggregatesDim && aggregatesDim.target?.value !== expectedAuthorityKinds) {
+    problems.push(`authority.mutableOwnerAggregates target.value (${aggregatesDim.target?.value}) must equal lawfulRepositoryConvention aggregates + kernelCompositionConvention.nonAggregateAuthorityNames (${expectedAuthorityKinds})`);
+  }
+  for (const id of MANDATED_STEM_DIMENSIONS) {
+    const dim = (budget.dimensions || []).find((d) => d.id === id);
+    if (dim && (dim.target?.kind !== 'exact' || dim.target?.value !== 1)) {
+      problems.push(`${id}: the sole-implementation stem dimensions must keep target kind exact with value 1`);
+    }
+  }
+  return problems;
+}
+
 function validateBudget(budget, frozenAnchors) {
   const problems = [];
   if (!Array.isArray(budget.dimensions) || budget.dimensions.length === 0) {
@@ -297,6 +423,7 @@ function validateBudget(budget, frozenAnchors) {
     problems.push('active complexity waivers are forbidden (plan EK-1/EK-13)');
   }
   problems.push(...validateLawfulRepositoryConvention(budget, frozenAnchors));
+  problems.push(...validateKernelCompositionConvention(budget, frozenAnchors));
   return problems;
 }
 
@@ -598,6 +725,116 @@ function projectionReadSplit(statements, projectionTables, kernelScopePrefix) {
   return { lawful: 0, bypass: unique.length, total: unique.length, bypassSites: unique.slice(0, 50), bypassSitesTruncated: unique.length > 50 };
 }
 
+/* ------------------------------------------------------------------ */
+/* Successor-tree scans (kernelCompositionConvention, budget rev3)      */
+/* ------------------------------------------------------------------ */
+
+const PLAN_PATH = path.join(REPO_ROOT, 'docs', 'plans', 'EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md');
+
+/** The plan's '## Target logical model' relation table (frozen 22 names). */
+function planTargetModelRelations() {
+  const plan = readFileSync(PLAN_PATH, 'utf8');
+  const section = plan.slice(plan.indexOf('## Target logical model'));
+  if (!section || section === plan) return [];
+  const table = section.slice(0, section.indexOf('##', 1));
+  return [...table.matchAll(/^\| `([A-Z][A-Za-z0-9]*)` \|/gm)].map((m) => m[1]);
+}
+
+/** Sorted production-source file paths (repo-relative) under src/workflow-kernel/. */
+function kernelScopeRelativeFiles() {
+  return listFiles(KERNEL_ROOT, PROD_SOURCE)
+    .map((p) => REL(path.relative(REPO_ROOT, p)))
+    .sort();
+}
+
+/** Kernel-scope production files whose basename stem contains the frozen stem. */
+function countKernelFilesByStem(stem) {
+  const rx = new RegExp(stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  return kernelScopeRelativeFiles().filter((rel) => rx.test(path.basename(rel).replace(/\.(ts|mjs|js)$/, '')));
+}
+
+/** Distinct names declared as namespaced kind literals in the declaration scope. */
+function declaredKindNames(prefix) {
+  const files = kernelVocabFiles(); // src/workflow-kernel/domain/**
+  if (files.length === 0) return [];
+  const names = new Set();
+  const rx = new RegExp(`${prefix}([A-Z][A-Za-z0-9]*)`, 'g');
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(rx)) names.add(m[1]);
+  }
+  return [...names].sort();
+}
+
+/** Repository files under src/workflow-kernel/persistence/ matching *-repository.ts. */
+function persistenceRepositoryFiles() {
+  return kernelScopeRelativeFiles()
+    .filter((rel) => rel.startsWith('src/workflow-kernel/persistence/') && /-repository\.ts$/.test(rel));
+}
+
+/** Maximum per-aggregate distinct direct-SQL writer files (write aspect). */
+function aggregateWriterFanIn(statements, prefixEntries) {
+  const filesByAggregate = {};
+  for (const [aggregate] of prefixEntries) filesByAggregate[aggregate] = new Set();
+  for (const st of statements) {
+    if (!WRITE_VERBS.has(st.verb)) continue;
+    if (st.writes.length === 0) continue;
+    for (const aggregate of owningAggregatesOf(st.writes, prefixEntries)) {
+      filesByAggregate[aggregate].add(st.file);
+    }
+  }
+  const perAggregate = {};
+  let maxFanIn = 0;
+  let worstAggregate = null;
+  for (const [aggregate, files] of Object.entries(filesByAggregate).sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const sortedFiles = [...files].sort();
+    perAggregate[aggregate] = { writerFiles: sortedFiles.length, files: sortedFiles.slice(0, 10), filesTruncated: sortedFiles.length > 10 };
+    if (sortedFiles.length > maxFanIn) { maxFanIn = sortedFiles.length; worstAggregate = aggregate; }
+  }
+  return { maxFanIn, worstAggregate, perAggregate };
+}
+
+/** Production files anywhere in the scanned scopes matching the scheduler pattern. */
+function scanSchedulerFiles(pattern) {
+  const rx = new RegExp(pattern, 'i');
+  const files = [];
+  for (const scope of ['src', 'scripts', 'tracker-view']) {
+    for (const p of listFiles(path.join(REPO_ROOT, scope), PROD_SOURCE)) {
+      const rel = REL(path.relative(REPO_ROOT, p));
+      if (/(^|\/)node_modules\//.test(rel)) continue;
+      if (rx.test(path.basename(rel))) files.push(rel);
+    }
+  }
+  return files.sort();
+}
+
+/**
+ * The frozen deletion-manifest ratchet: census delete-disposition writer
+ * statements, counted iff their file still exists on the live tree.
+ */
+function deleteManifestRatchet(c) {
+  const statementsPerFile = {};
+  for (const rec of Object.values(c.tables)) {
+    for (const w of rec.writers || []) {
+      if (w.disposition === 'delete') statementsPerFile[w.file] = (statementsPerFile[w.file] || 0) + 1;
+    }
+  }
+  let statementsPresent = 0;
+  const filesPresent = [];
+  for (const file of Object.keys(statementsPerFile).sort()) {
+    if (existsSync(path.join(REPO_ROOT, file))) {
+      statementsPresent += statementsPerFile[file];
+      filesPresent.push(file);
+    }
+  }
+  return {
+    statementsPresent,
+    filesTotal: Object.keys(statementsPerFile).length,
+    filesPresentCount: filesPresent.length,
+    filesPresent: filesPresent.slice(0, 50),
+    filesTruncated: filesPresent.length > 50,
+  };
+}
+
 
 function scanWorkshopNameLiterals() {
   // Kernel scope = production sources under src/ EXCLUDING the workshop-owned
@@ -655,8 +892,7 @@ function measureRoutePolicy() {
 }
 
 function measurePlanStructure() {
-  const planPath = path.join(REPO_ROOT, 'docs', 'plans', 'EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md');
-  const plan = readFileSync(planPath, 'utf8');
+  const plan = readFileSync(PLAN_PATH, 'utf8');
   const phases = [...plan.matchAll(/^## Phase (EK-\d+)/gm)].map((m) => m[1]);
   const packages = [...plan.matchAll(/^\| (WP-[\w]+) \|/gm)].map((m) => m[1]);
   return { phases: phases.length, phaseIds: phases, topLevelPackages: packages.length };
@@ -689,17 +925,99 @@ const MEASURES = {
   /* --- authority ------------------------------------------------- */
   'authority.mutableOwnerFanInFiles': {
     measure: (ctx) => {
-      const s = censusWriterStats(ctx.census);
-      return { value: s.maxFanIn, detail: { worstTable: s.maxFanInTable } };
+      if (!ctx.kernelPresent) {
+        const s = censusWriterStats(ctx.census);
+        return {
+          value: s.maxFanIn,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: s.maxFanIn,
+            kernelScope: 0,
+            targetOnly: true,
+            worstTable: s.maxFanInTable,
+            note: 'pre-kernel: the census worst-table writer fan-in is the non-binding baseline column; the kernel-scope column is 0/target-only until src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const fan = aggregateWriterFanIn(ctx.sqlScan, ctx.convention.prefixEntries);
+      return {
+        value: fan.maxFanIn,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: censusWriterStats(ctx.census).maxFanIn,
+          perAggregateFanIn: fan.perAggregate,
+          worstAggregate: fan.worstAggregate,
+          note: 'binding value: maximum per-aggregate distinct direct-SQL writer files; the sole lawful writer of an aggregate is its repository file (lawfulRepositoryConvention)',
+        },
+      };
     },
   },
   'authority.mutableOwnerAggregates': {
-    measure: (ctx) => ({ value: ctx.census.factFamilies.length, detail: { successorKinds: ctx.universe.counts.aggregates + ctx.universe.counts.nonAggregateAuthorities } }),
+    measure: (ctx) => {
+      if (!ctx.kernelPresent) {
+        return {
+          value: ctx.census.factFamilies.length,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: ctx.census.factFamilies.length,
+            kernelScope: 0,
+            targetOnly: true,
+            successorKinds: ctx.universe.counts.aggregates + ctx.universe.counts.nonAggregateAuthorities,
+            note: 'pre-kernel: the census fact-family count is the non-binding baseline column; the kernel-scope column is 0/target-only until src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const repositories = persistenceRepositoryFiles();
+      const conventionAggregates = new Set(ctx.convention.prefixEntries.map(([a]) => a));
+      const rogueRepositories = repositories.filter((rel) => !conventionAggregates.has(kebabToPascal(path.basename(rel).replace(/-repository\.ts$/, ''))));
+      const authorityLiterals = declaredKindNames('authority:');
+      const frozenAuthorities = new Set(ctx.convention.nonAggregateAuthorityNames);
+      return {
+        value: repositories.length + authorityLiterals.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: ctx.census.factFamilies.length,
+          repositoryFiles: repositories.length,
+          repositoryFileNames: repositories,
+          rogueRepositoryFiles: rogueRepositories,
+          nonAggregateAuthorityLiterals: authorityLiterals,
+          missingAuthorityLiterals: [...frozenAuthorities].filter((a) => !authorityLiterals.includes(a)).sort(),
+          unexpectedAuthorityLiterals: authorityLiterals.filter((a) => !frozenAuthorities.has(a)),
+          note: 'binding value: persistence *-repository.ts files + distinct authority:<Name> literals in the declaration scope (kernelCompositionConvention); exact 9 + 4',
+        },
+      };
+    },
   },
   'authority.authoritativeRelationKinds': {
     measure: (ctx) => {
-      const obligationTables = Object.values(ctx.census.tables).filter((t) => t.family === 'obligation').length;
-      return { value: 1, detail: { note: 'one generic obligation row kind', obligationFamilyTables: obligationTables } };
+      if (!ctx.kernelPresent) {
+        const obligationTables = Object.values(ctx.census.tables).filter((t) => t.family === 'obligation').length;
+        return {
+          value: 1,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: 1,
+            kernelScope: 0,
+            targetOnly: true,
+            note: 'one generic obligation row kind',
+            obligationFamilyTables: obligationTables,
+            targetNote: 'pre-kernel: the kernel-scope column is 0/target-only until src/workflow-kernel lands; the successor target is the plan Target logical model relation count (rev3)',
+          },
+        };
+      }
+      const declared = declaredKindNames('relation:');
+      const frozen = ctx.convention.relationNames;
+      return {
+        value: declared.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: 1,
+          declaredRelationKinds: declared,
+          missingRelationKinds: frozen.filter((r) => !declared.includes(r)),
+          unexpectedRelationKinds: declared.filter((r) => !frozen.includes(r)),
+          note: 'binding value: distinct relation:<Name> kind literals in the declaration scope; must equal the frozen 22-name list (plan Target logical model, re-proved every run)',
+        },
+      };
     },
   },
   'authority.decisionReaderStatements': {
@@ -805,24 +1123,92 @@ const MEASURES = {
   },
   'composition.obligationConsumerImplementations': {
     measure: (ctx) => {
+      if (!ctx.kernelPresent) {
+        const obl = ctx.census.tables.factory_transition_obligations;
+        const readerFiles = [...new Set((obl.readers || []).map((r) => r.file))];
+        const outsideLedger = readerFiles.filter((f) => !f.includes('transition-obligation-ledger'));
+        // + operator-soft-stop (writer outside the ledger) + scripts/restore-from-checkpoint.mjs (writer)
+        const sites = [...outsideLedger, 'src/app/operator-soft-stop.ts', 'scripts/restore-from-checkpoint.mjs'];
+        return {
+          value: sites.length,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: sites.length,
+            kernelScope: 0,
+            targetOnly: true,
+            nonLedgerSites: sites.sort(),
+            note: 'pre-kernel: the census non-ledger obligation sites are the non-binding baseline column; the kernel-scope column is 0/target-only until src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const files = countKernelFilesByStem(ctx.convention.stems['composition.obligationConsumerImplementations']);
       const obl = ctx.census.tables.factory_transition_obligations;
-      const readerFiles = [...new Set((obl.readers || []).map((r) => r.file))];
-      const outsideLedger = readerFiles.filter((f) => !f.includes('transition-obligation-ledger'));
-      // + operator-soft-stop (writer outside the ledger) + scripts/restore-from-checkpoint.mjs (writer)
-      const sites = [...outsideLedger, 'src/app/operator-soft-stop.ts', 'scripts/restore-from-checkpoint.mjs'];
-      return { value: sites.length, detail: { nonLedgerSites: sites.sort() } };
+      const predecessorSites = [...new Set((obl.readers || []).map((r) => r.file))].filter((f) => !f.includes('transition-obligation-ledger')).length + 2;
+      return {
+        value: files.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: predecessorSites,
+          implementationFiles: files,
+          note: 'binding value: kernel-scope production files whose basename stem contains the frozen stem (kernelCompositionConvention.soleImplementationStems); exact 1',
+        },
+      };
     },
   },
   /* --- roles ------------------------------------------------------ */
   'roles.bindingAuthorities': {
-    measure: (ctx) => ({
-      value: ctx.census.roleResolutionSites.length,
-      detail: countVerdicts(ctx.census.roleResolutionSites),
-    }),
+    measure: (ctx) => {
+      if (!ctx.kernelPresent) {
+        return {
+          value: ctx.census.roleResolutionSites.length,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: ctx.census.roleResolutionSites.length,
+            kernelScope: 0,
+            targetOnly: true,
+            ...countVerdicts(ctx.census.roleResolutionSites),
+            note: 'pre-kernel: the census role-resolution sites are the non-binding baseline column; the kernel-scope column is 0/target-only until src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const files = countKernelFilesByStem(ctx.convention.stems['roles.bindingAuthorities']);
+      return {
+        value: files.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: ctx.census.roleResolutionSites.length,
+          resolutionPathFiles: files,
+          note: 'binding value: kernel-scope production files whose basename stem contains the frozen stem — the role-binding resolution paths; exact 1 (the WP-17 compiler)',
+        },
+      };
+    },
   },
   /* --- prompts ---------------------------------------------------- */
   'prompts.assemblers': {
-    measure: (ctx) => ({ value: ctx.census.promptAssemblySites.length }),
+    measure: (ctx) => {
+      if (!ctx.kernelPresent) {
+        return {
+          value: ctx.census.promptAssemblySites.length,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: ctx.census.promptAssemblySites.length,
+            kernelScope: 0,
+            targetOnly: true,
+            note: 'pre-kernel: the census prompt-assembly sites are the non-binding baseline column; the kernel-scope column is 0/target-only until src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const files = countKernelFilesByStem(ctx.convention.stems['prompts.assemblers']);
+      return {
+        value: files.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: ctx.census.promptAssemblySites.length,
+          assemblerFiles: files,
+          note: 'binding value: kernel-scope production files whose basename stem contains the frozen stem — prompt/context assemblers; exact 1 (the WP-18 accountant path)',
+        },
+      };
+    },
   },
   'prompts.cumulativeAccountants': {
     measure: (ctx) => {
@@ -860,9 +1246,28 @@ const MEASURES = {
   'workshops.ownedSchedulerImplementations': {
     measure: (ctx) => {
       const edges = universeModuleFlowEdges(ctx.universe);
+      if (!ctx.kernelPresent) {
+        return {
+          value: edges,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: edges,
+            kernelScope: 0,
+            targetOnly: true,
+            note: 'module-flow edges executed through workshop-owned flow logic (generic-flow-executor + installed manifests); R17 re-types them as kernel obligation:advanceProcessFlow; pre-kernel the R17 count is the non-binding baseline column (rev3)',
+          },
+        };
+      }
+      const files = scanSchedulerFiles(ctx.convention.schedulerFilePattern);
       return {
-        value: edges,
-        detail: { note: 'module-flow edges executed through workshop-owned flow logic (generic-flow-executor + installed manifests); R17 re-types them as kernel obligation:advanceProcessFlow' },
+        value: files.length,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: edges,
+          schedulerFiles: files.slice(0, 50),
+          schedulerFilesTruncated: files.length > 50,
+          note: 'binding value: production files anywhere in src/scripts/tracker-view whose basename matches the frozen schedulerFilePattern — workshop-owned schedulers must not exist post-cutover (kernelCompositionConvention)',
+        },
       };
     },
   },
@@ -876,9 +1281,35 @@ const MEASURES = {
       const s = censusWriterStats(ctx.census);
       const recency = ctx.census.predecessorInputs.frozenRecencyAllowlist.files.length;
       const sanctioned = ctx.census.predecessorInputs.sanctionedTaskWriters.files.length;
+      if (!ctx.kernelPresent) {
+        return {
+          value: s.deleteDisposition,
+          detail: {
+            mode: 'predecessor-census-diagnostic',
+            predecessorBaseline: s.deleteDisposition,
+            deleteDispositionWriters: s.deleteDisposition,
+            recencyAllowlistFiles: recency,
+            sanctionedTaskWriterFiles: sanctioned,
+            note: 'pre-kernel: the manifest count (97 delete-disposition statements) is the non-binding diagnostic column; the file-presence ratchet binds once src/workflow-kernel lands (rev3)',
+          },
+        };
+      }
+      const ratchet = deleteManifestRatchet(ctx.census);
       return {
-        value: s.deleteDisposition,
-        detail: { deleteDispositionWriters: s.deleteDisposition, recencyAllowlistFiles: recency, sanctionedTaskWriterFiles: sanctioned },
+        value: ratchet.statementsPresent,
+        detail: {
+          mode: 'successor-tree-live-scan',
+          predecessorBaseline: s.deleteDisposition,
+          deletionManifestStatementsTotal: s.deleteDisposition,
+          deletionManifestStatementsStillPresent: ratchet.statementsPresent,
+          deletionManifestFilesTotal: ratchet.filesTotal,
+          deletionManifestFilesStillPresent: ratchet.filesPresentCount,
+          stillPresentFiles: ratchet.filesPresent,
+          stillPresentFilesTruncated: ratchet.filesTruncated,
+          recencyAllowlistFiles: recency,
+          sanctionedTaskWriterFiles: sanctioned,
+          note: 'binding value: frozen deletion-manifest statements whose file still exists under production paths; ratchets to exactly 0 when the EK-8 legacy-zero deletion completes',
+        },
       };
     },
   },
@@ -1074,6 +1505,8 @@ function frozenAnchorsOf() {
   const universeData = universe();
   return {
     universeAggregates: universeData.aggregates.map((a) => a.name),
+    universeNonAggregateAuthorities: universeData.nonAggregateAuthorities.map((a) => a.name),
+    planRelationNames: planTargetModelRelations(),
     censusProjectionTables: Object.entries(censusData.tables)
       .filter(([, rec]) => rec.tableClass === 'PROJECTION')
       .map(([table]) => table)
@@ -1085,6 +1518,7 @@ function frozenAnchorsOf() {
 
 function buildContext(budget, kernelPresent) {
   const conv = budget.lawfulRepositoryConvention;
+  const comp = budget.kernelCompositionConvention;
   let scanCache = null;
   return {
     census: census(),
@@ -1093,6 +1527,10 @@ function buildContext(budget, kernelPresent) {
     convention: {
       prefixEntries: Object.entries(conv.aggregateTablePrefixes),
       projectionTables: [...conv.projectionTables].sort(),
+      stems: comp.soleImplementationStems,
+      schedulerFilePattern: String(comp.schedulerFilePattern),
+      relationNames: [...comp.relationNames].sort(),
+      nonAggregateAuthorityNames: [...comp.nonAggregateAuthorityNames].sort(),
     },
     get sqlScan() {
       if (!scanCache) scanCache = scanDirectSql();
@@ -1139,7 +1577,7 @@ function buildVector(budget, { manifest, digests }, { kernelPresent }) {
   }
   const bindingEntries = entries.filter((e) => e.binding);
   return {
-    schemaVersion: 'ek1.complexity-vector.v2',
+    schemaVersion: 'ek1.complexity-vector.v3',
     generatedBy: 'docs/refactoring/event-kernel/specs/measure-complexity.mjs',
     tree: {
       kernelPresent,
@@ -1192,7 +1630,8 @@ function main() {
         `${MANDATED_DIMENSIONS.length}/${MANDATED_DIMENSIONS.length} mandated groups covered, ` +
         `${manifest.inputs.length}/${manifest.inputs.length} frozen-input digests verified, ` +
         `waivers: 0, kernelPresent: ${kernelPresent}, ` +
-        `lawful-owner convention: ${anchors.universeAggregates.length} aggregates / ${anchors.censusProjectionTables.length} projection tables verified against frozen inputs\n`,
+        `lawful-owner convention: ${anchors.universeAggregates.length} aggregates / ${anchors.censusProjectionTables.length} projection tables verified against frozen inputs, ` +
+        `kernel-composition convention: ${anchors.planRelationNames.length} plan target-model relations / ${anchors.universeNonAggregateAuthorities.length} non-aggregate authorities / ${Object.keys(budget.kernelCompositionConvention.soleImplementationStems).length} sole-implementation stems verified against the plan document and frozen inputs\n`,
     );
     return;
   }
