@@ -22,6 +22,14 @@ import {
   makeOneContainerAcceptanceHandler,
 } from '../factory-e2e/w9-happy-handlers.mjs';
 import { coverageToken } from './coverage-kernel.mjs';
+import {
+  DEVELOPMENT_RESILIENCE_SCENARIOS,
+  buildDevelopmentResilienceRuntimeCase,
+} from './development-resilience-pack.mjs';
+import {
+  DEVELOPMENT_RESTART_SCENARIOS,
+  buildRestartRuntimeCase,
+} from './development-restart-proof.mjs';
 
 export const DEVELOPMENT_STAGE = 'solution-development';
 export const FORMALIZATION_STAGE = 'solution-formalization';
@@ -194,7 +202,7 @@ function positiveSpineCoverage() {
   ];
 }
 
-export const DEVELOPMENT_SCENARIOS = Object.freeze([
+const DEVELOPMENT_SPINE_SCENARIOS = Object.freeze([
   Object.freeze({
     schemaVersion: 'factory.proof.kernel-scenario.v1',
     id: 'development/happy-verified',
@@ -267,6 +275,14 @@ export const DEVELOPMENT_SCENARIOS = Object.freeze([
   }),
 ]);
 
+// The composed pack: spine + resilience/restart/satisfiability corpus
+// (development-resilience-pack.mjs + the restart proof module).
+export const DEVELOPMENT_SCENARIOS = Object.freeze([
+  ...DEVELOPMENT_SPINE_SCENARIOS,
+  ...DEVELOPMENT_RESILIENCE_SCENARIOS,
+  ...DEVELOPMENT_RESTART_SCENARIOS,
+]);
+
 // EXHAUSTIVE by construction (operator completion order 2026-08-22): the
 // required universe is the union of EVERY declared scenario's coverageItems.
 // A landed obligation can never silently fall out of the denominator — new
@@ -289,41 +305,56 @@ export const DEVELOPMENT_REQUIRED_UNIVERSE = Object.freeze([
 
 
 export const DEVELOPMENT_PENDING_UNIVERSE = Object.freeze([
-  // STRONG cap invariant stays pending (operator review 2026-08-22): the
-  // demonstrated proof is peak<=cap over a 3-runnable graph; exact peak==cap
-  // emergence is timing-dependent in this harness, so 'limits-parallel-
-  // runnable' is NOT claimed proven. The weak 'never-exceeded' form is
-  // demonstrated above.
+  // STRONG cap invariant stays pending (operator review 2026-08-22, sharpened
+  // W2 2026-08-25): the demonstrated proof is peak<=cap over a 3-runnable
+  // graph. Exact peak==cap emergence is STRUCTURALLY unreachable in the
+  // CanonicalFast lane — the in-process scripted executor completes the whole
+  // worker lifecycle synchronously inside executor.start()
+  // (FRESH_HARNESS_ASYNC_HANDLER_UNSUPPORTED), so no two implementations can
+  // ever overlap regardless of the limiter; the durable reservation window
+  // would need the strict spawn lane (K2-B..D), which the Development pack
+  // does not host yet. The weak 'never-exceeded' form is demonstrated above.
   'D2:fanout-scheduling:concurrency-cap-limits-parallel-runnable',
-  // Found live by the delivery restart proof (2026-08-22): a replayed
-  // git-change work item carries the capsule's original commitSha, but the
-  // fresh execution's desk froze a NEW effective base — the implementation-
-  // scope check's merge-base discipline then rejects the replay. Cross-
-  // lifecycle replay semantics for desk-bound git-change cells is an open
-  // Development-universe item, NOT a delivery concern.
-  'restart:development:git-change-desk-replay',
-  'D2:sibling-isolation:accepted-sibling-conserved-during-repair',
-  'D3:claim-monotonicity:silent-narrowing-rejected',
-  'D4:review:changes-returns-to-same-workplace-author',
-  'D4:git-effect:integration-only-after-final-acceptance',
-  'D4:git-effect:redrive-idempotent',
-  'D5:freeze:frozen-candidate-content-addressed-and-immutable',
-  'D6:readiness:declared-source-mismatch-rejected',
+  // The bind kernel's stale-readiness-hash variant is not reachable through
+  // a lawful full drive: exactly ONE readiness manifest can be accepted per
+  // run (no lawful second manifest exists — the readiness gate has no
+  // repair_required route), so a stale hash can only arise CROSS-lifecycle
+  // (a replayed continuation binding a prior run's readiness) — the D10
+  // continuation seam below. The same exactness discipline IS demonstrated
+  // at the gate level (readiness-source-mismatch scenario) and at the
+  // merge-base discipline (restart proof's typed desk-replay receipts).
   'D7:bind:stale-readiness-hash-failed',
-  'D8:verification:evidence-pins-exact-candidate-hash',
-  'D8:verification:upstream-defect-routes-to-settlement',
-  // CC-GAP-8 terminal accounting (declared, honest-pending): the criterion-key
-  // ledger must record explicit terminal facts with provenance on terminal
-  // routes — environment uncertainty (unknown, ADR-089) and explicit
-  // human-required attribution stay mechanically distinct from product
-  // failure and never masquerade as executed.
+  // CC-GAP-8 terminal accounting, honest residue: terminal-unknown requires
+  // an ADR-089 substrate-precondition diagnostic (LOCAL_RUNNABILITY_DOCKER_*
+  // / warrant-blocked-environment) to reach settlement, and the only lawful
+  // full-drive producer (a declared docker image with the daemon down) is
+  // environment-conditional — on a docker-up host the same drive settles
+  // product-failed instead of unknown. The classification itself is unit-
+  // proven against the real recorder (tests/modules/development/
+  // verification-ledger.test.mjs); a deterministic causal drive needs a
+  // doubled substrate seam, which the canonical overlay allowlist does not
+  // host.
   'D8:verification:terminal-accounting-unknown',
+  // terminal-human-required needs a settlement that runs while another
+  // workplace of the same run is parked human-required; on the current flow
+  // every human_required verdict routes complete-blocked directly (the
+  // emitter — not settle-development), so the settlement-input builder's
+  // openHumanGateIds path is not reachable through a lawful base-module
+  // drive. Unit-proven in verification-ledger.test.mjs (attribution
+  // fail-closed); causal demonstration lands with the continuation/hosted
+  // human-gate work.
   'D8:verification:terminal-accounting-human-required',
-  'D9:settlement:blocked-and-failed-outcomes',
+  // D10 continuation/replan (honest residue): the managed continuation
+  // entry point is engine-CLI machinery (scripts/factory.mjs redevelop —
+  // capsule-hash-pinned, abandon-shaped parent, package-store copy; see
+  // docs/factory-run/stage23-devtest/TRACKER.md runbook). The fresh-harness
+  // canonical drive hosts idea-based launches only; hosting the continuation
+  // capsule entry is the W3/capsule-qualification path (DEVELOPMENT-CAPSULE-
+  // QUALIFICATION-PLAN D6/D10), not this pack. The supersede drain itself is
+  // unit-proven (replan-supersede.ts) and the REG-28 settlement drain added
+  // in this change mirrors its shape.
   'D10:continuation:managed-source-author-no-git-authority',
   'D10:replan:superseded-tasks-not-claimable',
-  'restart:development:idempotent-redrive',
-  'feedback:development:exact-repairs-and-absent-does-not',
 ]);
 
 export const DEVELOPMENT_PLATFORM_FAULT_EDGES = Object.freeze([
@@ -413,6 +444,11 @@ function buildScopeFaultHandlers() {
 const byId = new Map(DEVELOPMENT_SCENARIOS.map(scenario => [scenario.id, scenario]));
 
 export function buildDevelopmentRuntimeCase(id) {
+  if (id === 'development/restart-idempotency') {
+    return buildRestartRuntimeCase(id);
+  }
+  const resilience = buildDevelopmentResilienceRuntimeCase(id);
+  if (resilience !== null) return resilience;
   const scenario = byId.get(id);
   if (!scenario) {
     throw new Error(`DEVELOPMENT_SCENARIO_UNKNOWN: ${id}; known=${[...byId.keys()].join(',')}`);

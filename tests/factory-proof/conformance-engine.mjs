@@ -43,7 +43,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
 const EVIDENCE_ROOT = path.join(HERE, '..', 'factory-evidence');
 const HARVEST = process.argv.includes('--harvest');
-const DRIVE_TIMEOUT_MS = Number(process.env.CONFORMANCE_DRIVE_TIMEOUT_MS ?? 300_000);
+// W2 (2026-08-25): the Development universe now hosts production-sized
+// drives (the 59-card satisfiability scenarios run ~5 min each; the
+// three-start restart proof ~7 min) — the per-drive ceiling must admit
+// them or the harvest kills them at 300s.
+const DRIVE_TIMEOUT_MS = Number(process.env.CONFORMANCE_DRIVE_TIMEOUT_MS ?? 900_000);
 
 const WORKSHOPS = [
   {
@@ -113,6 +117,12 @@ function harvest() {
           encoding: 'utf8',
           windowsHide: true,
           timeout: DRIVE_TIMEOUT_MS,
+          // W2: production-scale drives print evidence bundles whose
+          // rawDurableTrace alone is multiple MB (59 workplaces + their
+          // executions/submissions/receipts). spawnSync's default 1MB
+          // maxBuffer TERMINATES the child (SIGTERM, no-evidence) — the
+          // bundle must fit or the harvest lies about the drive.
+          maxBuffer: 256 * 1024 * 1024,
         },
       );
       const bundle = parseBundle(child.stdout);

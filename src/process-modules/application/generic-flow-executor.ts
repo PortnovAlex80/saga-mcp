@@ -157,6 +157,14 @@ export interface GenericFlowExecutorOptions {
   adoptedNodeResults?: AdoptedNodeResultPort;
   /** ADR-053: ProcessRun terminalization atomically emits RouteLifecycle. */
   transitionObligations: TransitionObligationIntegrator;
+  /**
+   * REG-28 kanban-drain-at-terminal: invoked INSIDE the settlement
+   * transaction, after the terminal outcome write — anonymous todo/queued
+   * workplaces of the settled run are cancelled (typed waits are never
+   * touched). Absent ⇒ no drain (legacy compositions keep their behavior;
+   * the canonical composition root always provides it).
+   */
+  settleDrain?: (processRunId: number, outcome: string) => void;
 }
 
 /**
@@ -424,6 +432,10 @@ export class GenericFlowExecutor implements ProcessModuleExecutor {
           settlementDigest: processSettlementDigest(runResult),
           subjectRef: `process-run:${context.processRunId}`,
         });
+        // REG-28: the board the settled run leaves behind may contain no
+        // anonymous todo/queued card — same transaction as the terminal
+        // write, so a half-settled board is never observable.
+        this.opts.settleDrain?.(context.processRunId, terminal.outcome);
       });
 
       return runResult;

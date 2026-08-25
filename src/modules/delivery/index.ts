@@ -179,6 +179,7 @@ export function registerDelivery(
     nodeRunRepo: sharedDeps.nodeRunRepo,
     certificateRepo: sharedDeps.certificateRepo,
     transitionObligations: sharedDeps.transitionObligations,
+    settleDrain: sharedDeps.settleDrain,
     nodeExecutors: sharedDeps.nodeExecutors,
     recoveryCaseRepo: sharedDeps.recoveryCaseRepo,
     resolveNodeProducts: sharedDeps.resolveNodeProducts,

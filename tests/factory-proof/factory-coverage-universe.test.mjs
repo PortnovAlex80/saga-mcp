@@ -64,8 +64,8 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
   // exact pins the 2026-08-22 operator review restored — do NOT shrink them:
   // landing new scenarios may only MOVE tokens (pending→required) or ADD
   // tokens, never delete.
-  assert.equal(universe.totals.universeTokens, 201,
-    '178 (2026-08-22 operator review) + 23 tokens admitted with the documentation workshop (13 declared-required spine + 10 honestly-pending fault/recovery tokens, 2026-08-24 ADR-096 gate item 4). U only grows.');
+  assert.equal(universe.totals.universeTokens, 204,
+    '178 (2026-08-22 operator review) + 23 tokens admitted with the documentation workshop (13 declared-required spine + 10 honestly-pending fault/recovery tokens, 2026-08-24 ADR-096 gate item 4) + 3 W2 production-scale satisfiability tokens (SAT decided, cycle-UNSAT typed witness, SRS-identity UNSAT terminal) and the W2 universe restoration/split corrections. U only grows.');
   for (const w of universe.perWorkshop) {
     // every required token must be declared by a scenario — else landing
     // claims are lies
@@ -84,15 +84,29 @@ test('MONOTONIC UNIVERSE: landed obligations live in required, never vanish from
 });
 
 test('SPINE means an honest pending ledger — the exact global uncovered set is ratcheted', () => {
-  assert.equal(universe.totals.pendingTotal, 31,
-    '31 pending: development 19 (incl. the STRONG cap invariant and the 2 CC-GAP-8 terminal-accounting tokens, honestly undemonstrated) + delivery 2 + documentation 10 (2026-08-24 admission: repair/fence/idempotency/crash families + the documented render spine pending the pdfkit engine decision)');
-  assert.equal(universe.globalUncovered.length, 31);
+  // W2 (2026-08-25) shrank development's pending ledger 19 → 6 (each residue
+  // carrying its precise reason in the pack source); the ratchet may only
+  // shrink by landing demonstrations. The documentation workshop's 10 honest
+  // pending tokens (admission 2026-08-24) join the global pending ledger.
+  assert.equal(universe.totals.pendingTotal, 18,
+    '18 pending: development 6 (strong cap, bind stale-hash, the 2 CC-GAP-8 '
+    + 'terminal-accounting tokens, 2 D10 continuation/replan — all honestly '
+    + 'undemonstrable in the current harness) + delivery 2 + documentation 10 '
+    + '(repair/fence/idempotency/crash families declared-not-driven)');
+  assert.equal(universe.globalUncovered.length, 18);
   const dev = universe.perWorkshop.find(w => w.workshop === 'development');
   const dl = universe.perWorkshop.find(w => w.workshop === 'delivery');
-  assert.equal(dev.pendingSize, 19,
-    'D2 sibling-isolation, D3 claim-monotonicity, D4–D10, restarts, feedback + the desk-replay seam + the 2 CC-GAP-8 terminal-accounting tokens');
-  assert.equal(dev.requiredUniverseSize, 18,
-    'landed: D2 order, D2 cap, D2 fanin, D3 impl-scope, contract-partition packaging-invariant — moved to required, still in U');
+  assert.equal(dev.pendingSize, 6,
+    'the six honest residues: strong cap (structurally unreachable in the '
+    + 'in-process lane), bind stale-hash (cross-lifecycle continuation seam), '
+    + 'terminal-accounting unknown + human-required (substrate/human-gate '
+    + 'seams not hosted by a lawful base-module drive), D10 continuation '
+    + '+ replan (engine-CLI redevelop entry)');
+  assert.equal(dev.requiredUniverseSize, 34,
+    'landed W2: D2 sibling-isolation, D3 claim-monotonicity, D4 review/git-effect'
+    + ' x2, D5 freeze, D6 readiness-mismatch, D8 evidence-pins + upstream-defect,'
+    + ' D9 blocked/failed, restart x2, feedback — plus the 3 new '
+    + 'production-scale satisfiability tokens');
   assert.equal(dl.pendingSize, 2,
     'K4 crash-after-effect + restart:delivery:idempotent-settlement '
     + '(BLOCKED_BY restart:development:git-change-desk-replay — an upstream '
@@ -115,7 +129,7 @@ test('inter-workshop aggregate exists: shared cross-cutting tokens', () => {
 });
 
 test('universe totals are ratcheted', () => {
-  assert.equal(universe.totals.universeTokens, 201);
+  assert.equal(universe.totals.universeTokens, 204);
   assert.equal(universe.totals.platformFaultEdges, 8,
     'K4-owned platform fault edges (1 discovery + 5 formalization + 2 development)');
 });
@@ -126,5 +140,5 @@ test('report renders the honest table', () => {
   assert.match(text, /\| development \| SPINE \|/);
   assert.match(text, /\| delivery \| SPINE \|/);
   assert.match(text, /\| documentation \| SPINE \|/);
-  assert.match(text, /global uncovered: 31/);
+  assert.match(text, /global uncovered: 18/);
 });

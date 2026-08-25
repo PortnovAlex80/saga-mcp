@@ -65,4 +65,10 @@ export interface ModuleSharedDeps {
   readonly workplaceProductPort: WorkplaceProductPort;
   readonly adoptedNodeResults?: AdoptedNodeResultPort;
   readonly transitionObligations: TransitionObligationIntegrator;
+  /**
+   * REG-28 kanban-drain-at-terminal: wired by the composition root into
+   * every module's GenericFlowExecutor — drains anonymous todo/queued
+   * workplaces inside the settlement transaction.
+   */
+  readonly settleDrain?: (processRunId: number, outcome: string) => void;
 }

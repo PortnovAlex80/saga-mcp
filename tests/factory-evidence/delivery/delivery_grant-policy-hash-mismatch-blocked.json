@@ -22,7 +22,7 @@
     "CanonicalFast"
   ],
   "composition": {
-    "fingerprint": "371a6d30319da22bee219b3299f39ee7d792253a5de0333babe2456c35c3acf8",
+    "fingerprint": "1efdadc794c20769859278501d56c300dbfa2e68734db2b13e94f5d21068e68e",
     "overlayKeys": [
       "delivery.providers",
       "lifecycleDefinition",
@@ -30,14 +30,14 @@
       "workerExecutorFactory"
     ],
     "sections": {
-      "lifecycle": "afd751e1a90ab593b6d20d4bd7741262f0481e37f01b3c4f149a1ae7a840aef4",
-      "modules": "9f920b96567f58e8d17c08f8f87a9acf228b5908ff56c895e8f0e0d74696a874",
-      "providers": "e9a5a60ea2d588d73f9dc79514d2a14d81cb09225f13400e90a293f9846dc54f",
+      "lifecycle": "ff4f5c9bdc051a58a6cb0d2e0c0d2cea0920d96c6bfbb2158ae8684d6ff15005",
+      "modules": "13aab873989bf02071532e8d3e5e1c45ceefda9962a0aec1da775fcd5b93a2a4",
+      "providers": "83b3cf87c5075dd11d03e0e2b9a93f34f2c501b5554596af82a6dcc676f259aa",
       "overlay": "e77d79560ea8ecd8ca47c3b558ebe3245060ad7b63f72af7edfe55ae4bce6fb8"
     }
   },
-  "installationFingerprint": "3ff10ecc5256b1abb650f852cfd2632e64bf2d21b0397f0906458e5421a3ea18",
-  "durableTraceDigest": "abd45b7dabe1107f4fbc6217dafb2ba7b2074cbd3c931fdf193ef24ffbc42712",
+  "installationFingerprint": "ff6a591780805e9d8682b69178fc94d7599e829d53cbbd271c31ad0512b4405b",
+  "durableTraceDigest": "0fb2329ba0a6abfa2200d4fbff35f296dd1a9e5bdbede0cd08d58c0f267adef6",
   "normalizedTrace": {
     "acceptedAuthorityHeads": [],
     "artifacts": [],
@@ -48,6 +48,7 @@
     "cellEffectRepairIssues": [],
     "checkReceipts": [],
     "deliveryEffectActions": [],
+    "developmentVerificationLedger": [],
     "effectReceipts": [],
     "finalAcceptances": [],
     "gateDecisions": [],
@@ -112,5 +113,34 @@
   },
   "mutationCoverage": null,
   "counterexample": null,
-  "bundleDigest": "ed2fb348a9ec72594dbb6d0d43e77cdc25ddd50efe5f7713b3f8a8fbd6bcbe95"
+  "rawDurableTrace": {
+    "observedAt": "2026-08-25T00:25:54.279Z",
+    "lifecycleRuns": [],
+    "stageRuns": [],
+    "processTransitions": [],
+    "processRuns": [],
+    "processOutcomeCertificates": [],
+    "managedSubmissions": [],
+    "submissionValidationRejections": [],
+    "artifacts": [],
+    "artifactTraces": [],
+    "workIntents": [],
+    "workplaces": [],
+    "candidateSets": [],
+    "gateDecisions": [],
+    "checkReceipts": [],
+    "finalAcceptances": [],
+    "acceptedAuthorityHeads": [],
+    "cellEffectReceipts": [],
+    "cellEffectAttempts": [],
+    "cellEffectRepairIssues": [],
+    "effectReceipts": [],
+    "deliveryEffectActions": [],
+    "transitionObligations": [],
+    "recoveryEpochs": [],
+    "workerExecutions": [],
+    "processProducts": [],
+    "developmentVerificationLedger": []
+  },
+  "bundleDigest": "7c5778eaf321bb6afd7596346f0b2b074e948a6810362d48f06b872532db13a8"
 }
