@@ -1,0 +1,23 @@
+{
+  "kind": "provider-model-limit-table.example",
+  "illustrativeOnly": true,
+  "note": "ILLUSTRATIVE example table (WP-16 part 3). Real production limit tables are pinned at EK-8. Conservative 128K-class/200K-class numbers for the FACTORY_CLOUD_MODELS catalog ids glm-5.2 and glm-4.7; the exact version string is an example route pin. The digest field is computed by validate-prompt-budget.mjs over the canonicalized rows array (sorted keys, no whitespace) and must stay consistent.",
+  "table": {
+    "kind": "provider-model-limit-table",
+    "rows": [
+      {
+        "provider": "zai",
+        "model": "glm-5.2",
+        "version": "catalog-2026-08-24",
+        "contextLimitTokens": 131072
+      },
+      {
+        "provider": "zai",
+        "model": "glm-4.7",
+        "version": "catalog-2026-08-24",
+        "contextLimitTokens": 204800
+      }
+    ]
+  },
+  "computedRowsDigest": "sha256:60636c3052f3644af7bf638ec9bb2e86ab8f9f968a13a2d883446aaccd0c2c52"
+}
