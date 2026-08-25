@@ -6,6 +6,10 @@
 (validated closed-vocabulary by
 `docs/refactoring/event-kernel/tools/validate-census.mjs` — see
 "Reproduction").
+**Addendum (WP-01b, operator review item 7):** the non-SQL authority surfaces
+(filesystem writes, process control, environment variables, in-memory
+singletons, network/IPC) are machine-enumerated in
+`docs/refactoring/event-kernel/authority-census-nonsql.json` — see §11.
 **Role:** specification/analysis only. No production file under `src/**` was
 modified, and no behavior changed.
 
@@ -253,10 +257,11 @@ The production role/skill selection chain today:
 1. Reader/writer attribution is statement- and file-level; a method-precise
    call graph would refine decision-reader lists without changing any
    classification.
-2. Non-SQL authority surfaces (module-level composition handles, the
-   process-global effect registry named by ADR-053) are carried qualitatively
-   in family records; they need the EK-8 legacy-zero ratchet, not SQL
-   scanning.
+2. Non-SQL authority surfaces were originally carried only qualitatively in
+   family records (the WP-01 residual named by operator review item 7). The
+   WP-01b addendum (§11) upgrades the five non-SQL surface classes to
+   machine-classified rows; the remaining qualitative boundary of that
+   addendum is stated precisely in §11.7.
 3. Engine supervisor and factory scripts are included as production operator
    surfaces; testbed/bootstrap harness scripts are out of scope (diagnostic
    tooling).
@@ -276,6 +281,9 @@ node docs/refactoring/event-kernel/tools/census-builder.mjs
 
 # closed-vocabulary + zero-unclassified gate (re-scans the tree fresh)
 node docs/refactoring/event-kernel/tools/validate-census.mjs
+
+# non-SQL addendum (§11): five scripted surface sweeps, self-validating
+node docs/refactoring/event-kernel/tools/census-nonsql-builder.mjs
 ```
 
 The census build is deterministic: two consecutive `census-builder.mjs` runs
@@ -291,7 +299,156 @@ lists to be present. Exit 0 on the base tree.
 
 ## 10. Verdict
 
-The census is complete for all WP-01 fact families with zero unclassified
-readers or writers. The machine artifact is the EK-1/EK-13 re-runnable
-baseline: the same command must later yield one owner per mutable fact and no
-unclassified decision read.
+What is machine-proven at this SHA, jointly by the two artifacts:
+
+1. **SQL surface (this census, `authority-census.json`):** zero unclassified
+   SQL readers or writers — every table-touch of every complete SQL statement
+   in the scanned scopes is enumerated and classified (2041 fresh-scan
+   table-touch checks), across all WP-01 fact families.
+2. **Non-SQL surface classes (§11 addendum,
+   `authority-census-nonsql.json`):** zero unclassified sites in the five
+   scripted classes — filesystem writes (165 rows), process control (131),
+   environment variables (71), in-memory singletons (61), network/IPC (163) —
+   every sweep hit classified from the closed vocabulary.
+
+What is **not** claimed: method-precise call-graph attribution (statement-
+and file-level here); closure- or instance-scoped persistent state beyond the
+declared rows of §11.4; the one CLI-supplied dynamic env indirection of
+§11.6; and the out-of-scope exclusions of §11.5 (browser client assets,
+one-shot script state, frozen constant vocabularies, `dist/` build output).
+These boundaries are enumerated, not glossed.
+
+The machine artifact is the EK-1/EK-13 re-runnable baseline: the same
+commands must later yield one owner per mutable fact and no unclassified
+decision read.
+
+---
+
+## 11. Addendum (WP-01b) — non-SQL authority surfaces, machine-classified
+
+**Work package:** WP-01b (EK-1 stop-gate) — closes operator review item 7:
+"census is complete only for found SQL constructs; filesystem, processes,
+environment, in-memory state, singletons/caches stayed qualitative —
+'zero unclassified authority access' is stronger than the proof."
+**Machine artifact:** `docs/refactoring/event-kernel/authority-census-nonsql.json`
+**Pipeline (re-runnable):**
+`docs/refactoring/event-kernel/tools/census-nonsql-builder.mjs` +
+`census-nonsql-overlays.mjs`. The same scopes as the SQL census
+(`src/**`, `tracker-view/**`, `scripts/**`, 563 files) are swept by five
+scripted extractors; every raw hit is classified by ordered closed-vocabulary
+rules; an unmatched hit fails the build with exit 1.
+
+### 11.1 The five classes and their EK target mapping
+
+| Class | Rows | EK target mapping (disposition summary) |
+|---|---:|---|
+| filesystem-write | 165 | repo/worktree/desk/workspace writes → RepositoryDesk effect-owned commands; package store → installed-manifest content (retain); engine log/heartbeat → supervisor-owned launch markers; journals stay diagnostic |
+| process-control | 131 | engine spawn/brake/watchdog → engine supervisor observe-only + typed StartEngine/stop commands; git invocations → RepositoryDesk git effects; worker spawn/termination → ActivityAttempt lifecycle commands |
+| env-var | 71 | decision-altering names (41) → pinned build manifest / installed composition / PromptBudgetProfile / route policy; operational names (22) stay host parameters; exported-to-child (8) → per-attempt pinned launch manifest |
+| in-memory-singleton | 61 | effect registry + registries → installed-manifest content; composition/DB/route handles → composition-owned; id allocation → aggregate-owned counters |
+| network-ipc | 163 | POST write gateways (tracker + docs-graph) → typed kernel ingress; GET routes → diagnostic query surface; LM Studio probe → pinned route policy; hook stdio → bounded hook receipt |
+
+### 11.2 Method
+
+Comment-aware code-line extraction (a char-walk sibling of the SQL scanner's
+lexer: comments dropped, string literals preserved, line numbers kept), then
+per class:
+
+- **filesystem writes:** every `node:fs` / `node:fs/promises` mutating API,
+  attributed through each file's real import bindings (a local helper named
+  `truncate` is not an fs write); `openSync` counts only with a write-flag
+  literal (`'w'`, `'wx'`, `'a'`, …) on the line.
+- **process control:** `child_process` APIs attributed through import
+  bindings plus inline `require('node:child_process')` (so `db.exec` never
+  matches); OS kill primitives (`process.kill`, `taskkill`, `SIGKILL`) and
+  detach markers (`detached: true`, `.unref()`).
+- **environment variables:** `process.env.NAME`, dynamic
+  `process.env[CONST]` (resolved through a same-file const map),
+  helper-mediated reads (a local function indexing `process.env[param]`
+  called with a literal), parameterized `env.NAME` loader reads, and
+  child-env writes (`childEnv.NAME = …`). One row per NAME with every read
+  site attached and an envRole split (41 decision-altering / 22 operational /
+  8 exported-to-child).
+- **in-memory singletons:** column-0 module-level mutable `let` handles,
+  empty mutable `Map`/`Set` containers (generics-aware), class-instance
+  singletons, `globalThis` writes; frozen literal-initialized constant
+  vocabularies are machine-separated into a per-file aggregate (39 containers
+  in 28 files) as non-state.
+- **network/IPC:** HTTP servers and every router literal (method+pathname
+  pairs in both routers, including method-unspecified branches), server-side
+  HTTP clients, spawn `stdio` pipe options, `process.stdin/stdout` surfaces,
+  MCP `type:'stdio'` server declarations.
+
+### 11.3 Named surfaces the qualitative census only mentioned — now rows
+
+The process-global effect registry
+(`src/process-modules/application/post-acceptance-effects.ts:313`,
+AUTHORITATIVE-WRITE → effect kernel EffectReceipts), the composition-root
+handles (`src/app/composition-root.ts:247-249`), the process-global DB handle
+(`src/db.ts:16`), the per-runtime DB cache
+(`src/worker-executions.ts:118`), the dispatcher's injected route resolver
+(`src/tools/dispatcher.ts:53` — the WP-16 site-7 spawn-side authority), the
+in-process execution-id counter
+(`src/process-modules/application/execution-context-assembler.ts:436`,
+AUTHORITATIVE-WRITE → aggregate-owned counter), the workshop binding cache,
+the supervision single-flight guard, and the LM Studio route-table state.
+
+### 11.4 Sweep boundary: closure- and instance-scoped state
+
+The singleton sweep is column-0 (module level). Persistent state hidden in
+closures or instance fields is enumerated **by declaration** (rows with
+`origin: "declared"`): the LM Studio model/online state
+(`tracker-view/model-management.mjs:162-163`), the worker-launcher
+reservation→pid idempotency map
+(`src/infrastructure/workers/claude-worker-launcher.ts:37`), and the engine
+administration liveness cache
+(`src/infrastructure/engine/engine-administration.ts:73`). Beyond these
+declared rows, undiscovered closure state remains the one qualitative
+residue of this class; the EK-8 legacy-zero ratchet still owns the final
+check.
+
+### 11.5 Closed exclusions (reviewable, in the JSON `exclusions`)
+
+Browser client assets (embedded `fetch` in HTML templates and `public/*.js`
+— client code, relative-URL targets); one-shot script module state; frozen
+constant-vocabulary containers (see the per-file aggregate in the JSON);
+`dist/` build output (written by the build, not by scanned production
+sources; the runtime-consumed `dist/orchestrate-cli.js` spawn target is
+covered by the engine-spawn rows and pinned by the EK-11 build digest).
+
+### 11.6 Known dynamic-env residue
+
+Exactly one `process.env[variable]` read whose name is not statically
+resolvable: `src/checkpoints/capture-cli.ts:71` (CLI-supplied env
+indirection). Recorded in the JSON `unresolvedDynamicEnvReads`, classified as
+operator tooling input.
+
+### 11.7 What this addendum does and does not prove
+
+Proven: within the scanned scopes, every swept non-SQL site of the five
+classes is enumerated and classified — `counts.unclassified === 0` — and the
+build is deterministic (two consecutive runs produce a byte-identical JSON,
+sha256 recorded in §11.8). Not proven: completeness for state shapes outside
+the sweep grammar (closure/instance state beyond the declared rows), and any
+surface outside the three scopes (e.g. `tools/`, ELITE9, host-level
+tooling). Those boundaries are stated here rather than absorbed into the
+"zero unclassified" claim.
+
+### 11.8 Reproduction
+
+```bash
+# rebuild the non-SQL census (self-validating: closed vocabulary + zero unclassified)
+node docs/refactoring/event-kernel/tools/census-nonsql-builder.mjs
+
+# raw sweep hits for review
+node docs/refactoring/event-kernel/tools/census-nonsql-builder.mjs --dump-sweeps
+```
+
+Deterministic: two consecutive runs produce a byte-identical
+`authority-census-nonsql.json`
+(sha256 `c3077d3d2dc7fd67723e7d5a2c623a30cb1ab44c9750305b31482e8efc65ad22`
+at the addendum SHA; base `65e11f1478c3caede383408d5562dc808808645d`). Totals:
+165 filesystem-write rows, 131 process-control
+rows, 71 env-var rows (49 DECISION-INPUT / 22 DIAGNOSTIC), 61
+in-memory-singleton rows, 163 network-ipc rows — 591 classified rows, 0
+unclassified.
