@@ -37,7 +37,7 @@ tracker or the plan. One row per bounded work package.
 | WP-11D | Discovery semantic package conversion | WP-09, WP-17 | subagent | **DONE** | merge after fbc54b86 | discovery 74/74; ingress via bootstrap+importCapsule; manifest-only identity | workshops/discovery/** | refused-receipt durability + revision payload digest (WP-12 schema deltas) |
 | WP-11F | Formalization semantic package conversion | WP-09, WP-17 | unassigned | NOT STARTED | — | — | Formalization package paths | — |
 | WP-11V | Development semantic package finalization | WP-08, WP-09, WP-17 | unassigned | NOT STARTED | — | — | Development package paths | — |
-| WP-11L | Delivery semantic package conversion | WP-09, WP-17 | unassigned | NOT STARTED | — | — | Delivery package paths | — |
+| WP-11L | Delivery semantic package conversion | WP-09, WP-17 | subagent | **DONE** | merge after 87d304a1 | delivery 55/55; approval pause = TypedWait + D12 disposition; local-only policy enforced | workshops/delivery/** | re-release already-applied at run scope (EK-8 decision); recordHumanDecision node edge frozen-vocab-only |
 | WP-12 | Hard cutover + legacy deletion | WP-10, WP-11*, WP-16..18 | unassigned | NOT STARTED | — | — | entrypoint routing + deletion manifest execution | — |
 | WP-13A | Scenario contract/model comparison/minimizer | WP-05 | unassigned | NOT STARTED | — | — | workflow test-engine core | — |
 | WP-13B | Actors, fault scheduler, production-size fixtures | WP-07, WP-18 | unassigned | NOT STARTED | — | — | actor/fault test paths | — |
