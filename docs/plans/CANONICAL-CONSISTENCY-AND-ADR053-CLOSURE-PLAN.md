@@ -7,8 +7,8 @@
 > (frozen build receipt `a5108835f2fd` @ `37ce4c00`; scripted legs 8/8 green;
 > real canary-1 PASSED terminal runnable-local exit 0; canary-2 running).
 > ADR-053 verdict: decision ACCEPTED, closure IN-PROGRESS (EC-10 open until
-> the canary evidence review). saga4 is 163 commits ahead of origin (push is
-> the listed remainder). Evidence:
+> the canary evidence review). saga4 == origin/saga4 at `50e6a8c0` (synced
+> 2026-08-25). Evidence:
 > `docs/factory-run/stage22-elite9/DISCOVERY-PHASE6-CLOSURE.md`,
 > `docs/verification/ADR-053-CLOSURE-MATRIX-2026-08-25.md`,
 > `docs/factory-run/qualification-adr096/SNAPSHOT-CORPUS-REPORT.md`,
