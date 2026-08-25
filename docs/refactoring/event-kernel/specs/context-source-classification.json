@@ -1,0 +1,206 @@
+{
+  "spec": "EK-1/context-source-classification",
+  "frozenBy": "WP-16 part 3 (branch ek1/wp16-prompt-budget, base 21ba0816)",
+  "authority": "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md, 'Bounded prompt and context envelope' + EK-1 'Successor admission specifications' (prove every prompt/context source is classified as mandatory inline, bounded summary, content-addressed reference, bounded tool result or forbidden duplication).",
+  "closedVocabulary": ["mandatory-inline", "bounded-summary", "content-addressed-reference", "bounded-tool-result", "forbidden-duplication"],
+  "classLaws": {
+    "mandatory-inline": "The layer travels inline in the exact admitted request. It may never disappear through silent truncation; its normalized layer digest must be present in every PromptAssemblyReceipt for attempts whose role contract requires it. Bounded by its layer budget (maxStaticTokens / maxDynamicTokens); static members that cannot fit fail installation/admission rather than being trimmed.",
+    "bounded-summary": "A bounded summary travels inline under an explicit token bound (its layer budget plus per-item bounds where declared); the full material it summarizes is available by content-addressed reference. Omission order for optional members is deterministic and recorded in the receipt.",
+    "content-addressed-reference": "Only a reference (content://... + digest) plus a bounded pointer/summary travels inline. Full material is read back in bounded chunks on demand; raw bytes are never recopied into the request.",
+    "bounded-tool-result": "A retained tool result travels inline only under maxToolResultTokens and a deterministic retention/truncation policy; overflow spills to a content-addressed reference and the receipt records the spill.",
+    "forbidden-duplication": "Duplicating this material into the request is forbidden. The enforcing boundary refuses admission (typed pre-spawn overflow) when the assembled envelope contains it; the replacement column names what travels instead."
+  },
+  "sources": [
+    {
+      "id": "CS-01",
+      "source": "initial prompt frame (identity block, hard rules)",
+      "class": "mandatory-inline",
+      "censusSites": ["PA-1"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "140-590 (buildPrompt identity + hard-rules layers)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 single assembler)",
+      "enforcingBoundary": "admitProviderRequest requires the frame layer digest in the receipt; maxStaticTokens bounds it; a frame that cannot fit fails installation/admission, it is never trimmed",
+      "budgetField": "maxStaticTokens",
+      "noSilentOmission": true
+    },
+    {
+      "id": "CS-02",
+      "source": "protocol skill (cognition instructions of the protocol role)",
+      "class": "mandatory-inline",
+      "binding": "content-addressed in CanonicalRoleContract (protocolSkillRef + digest); inline transport of the pinned bytes",
+      "censusSites": ["PA-1"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "protocol skill inlined (full SKILL.md bytes)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) consuming the WP-17 CanonicalRoleContract compiler output",
+      "enforcingBoundary": "the receipt records the skill layer digest and it must equal the role-contract pin; maxStaticTokens bounds it; oversized pinned skills fail package installation/admission (static over-budget law)",
+      "budgetField": "maxStaticTokens",
+      "noSilentOmission": true
+    },
+    {
+      "id": "CS-03",
+      "source": "semantic skill (semantic profile: planner/implementer/reviewer/certifier)",
+      "class": "mandatory-inline",
+      "binding": "content-addressed in CanonicalRoleContract (semanticSkillRef + digest); inline transport of the pinned bytes",
+      "censusSites": ["PA-1"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "semantic/reviewer skill inlined (full SKILL.md bytes)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) consuming the WP-17 contract output",
+      "enforcingBoundary": "identical to CS-02 (digest equality against the role-contract pin; maxStaticTokens; static install-time failure)",
+      "budgetField": "maxStaticTokens",
+      "noSilentOmission": true
+    },
+    {
+      "id": "CS-04",
+      "source": "tool schemas (MCP config, allowedTools surface, execution tool catalog)",
+      "class": "mandatory-inline",
+      "censusSites": ["PA-3", "PA-4", "PA-9"],
+      "currentSites": [
+        { "file": "tracker-view/claude-runner.mjs", "lines": "860-963 (MCP config per spawn, --strict-mcp-config)" },
+        { "file": "tracker-view/claude-runner.mjs", "lines": "1376-1482 (spawn flags --allowedTools/--disallowedTools)" },
+        { "file": "src/application/execution-tool-catalog.ts", "lines": "1-80 (deterministic contract-derived listing)" }
+      ],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) over contract allowedToolRefs (WP-17)",
+      "enforcingBoundary": "the assembled tool-schema layer is counted by the accountant before send and bounded by maxStaticTokens; the surface is digest-pinned from the role contract (allowedToolRefs), never re-selected at spawn; hook-originated provider calls are forbidden",
+      "budgetField": "maxStaticTokens",
+      "noSilentOmission": true
+    },
+    {
+      "id": "CS-05",
+      "source": "write-authority block (exact effective change scopes)",
+      "class": "mandatory-inline",
+      "censusSites": ["PA-10"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "575-586 (buildWriteAuthorityBlock)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) from contract inputProductContracts/evidence obligations",
+      "enforcingBoundary": "scope-list completeness is an authority invariant: the layer digest is mandatory in the receipt (no silent omission); bounded by the contract-derived scope list itself and maxStaticTokens",
+      "budgetField": "maxStaticTokens",
+      "noSilentOmission": true
+    },
+    {
+      "id": "CS-06",
+      "source": "task projection (WorkItem/work definition as seen by the worker)",
+      "class": "bounded-summary",
+      "censusSites": ["PA-1"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "task projection JSON (full task row) layer" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 bounded projection builder)",
+      "enforcingBoundary": "the projection layer travels under maxDynamicTokens with a deterministic field budget; the immutable WorkItem definition is reachable as a content-addressed reference for chunked reads; the full mutable task row is not the transport form (see CS-14)",
+      "budgetField": "maxDynamicTokens",
+      "replacedRawForm": "full task-row JSON"
+    },
+    {
+      "id": "CS-07",
+      "source": "process workspace block (bounded variant: deaths list, feedback digests, patch pointer, provisioned paths)",
+      "class": "bounded-summary",
+      "censusSites": ["PA-7"],
+      "currentSites": [
+        { "file": "src/process-modules/application/process-execution-workspace.ts", "lines": "see file" },
+        { "file": "src/process-modules/application/pinned-workspace-materializer.ts", "lines": "see file" }
+      ],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) with process-module bounded materializers",
+      "enforcingBoundary": "every member of the block carries an explicit token bound under maxDynamicTokens; the Elite-3 class (436,283-byte planner request) is the encoded failure this bound exists to prevent; full histories fall to CS-11",
+      "budgetField": "maxDynamicTokens",
+      "incidentAnchor": "stage20-elite RUN-TRACKER:214 (436,283 bytes, 8 pre-tool shim retries)"
+    },
+    {
+      "id": "CS-08",
+      "source": "recovery history and feedback (bounded recovery memory, prior-deaths list, bounded recovery feedback)",
+      "class": "bounded-summary",
+      "censusSites": ["PA-1", "PA-6", "PA-10"],
+      "currentSites": [
+        { "file": "tracker-view/claude-runner.mjs", "lines": "recovery memory block (MAX_INLINE_PREVIOUS_FAILURES=5), prior-deaths list, recovery-feedback loud block" },
+        { "file": "src/lifecycle/task-recovery-memory.ts", "lines": "1-300 (materialize at claim into mutable task metadata)" },
+        { "file": "tracker-view/claude-runner.mjs", "lines": "buildRecoveryMemoryBlock" }
+      ],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18) over content-addressed attempt-history evidence",
+      "enforcingBoundary": "maxRecoveryTokens bounds the whole recovery layer; per-item bounds cap each failure/death/feedback item; verbatim unbounded accumulation across repair epochs is forbidden (CS-15); the underlying episodic memory is content-addressed (CS-11)",
+      "budgetField": "maxRecoveryTokens",
+      "currentBaselineBound": "MAX_INLINE_PREVIOUS_FAILURES=5 (count-only bound, no token bound - the successor closes this gap)"
+    },
+    {
+      "id": "CS-09",
+      "source": "hook additionalContext (PostToolUse structured-context injections)",
+      "class": "bounded-summary",
+      "censusSites": ["PA-5"],
+      "currentSites": [{ "file": "tracker-view/structured-context-hook.mjs", "lines": "1-120 (SAGA_AGENT_ASSISTANCE_BUDGET_CHARS=4000, per-block 800, stateVersion dedup, fail-closed {})" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 hook-context admission)",
+      "enforcingBoundary": "hook output is admitted into the exact next pre-send receipt under maxDynamicTokens; hook-originated provider calls are forbidden unless they use the same transport and admission command; oversized hook context must be refused pre-send without reaching the network (EK-12 preflight probe)",
+      "budgetField": "maxDynamicTokens",
+      "currentBaselineBound": "4000 chars total / 800 per block, fail-closed"
+    },
+    {
+      "id": "CS-10",
+      "source": "retained tool results (assistant/tool messages kept across loop turns inside one ActivityAttempt)",
+      "class": "bounded-tool-result",
+      "censusSites": ["PA-4"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "stream-json loop retention (opaque to the shim - the EK-12 blocker)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 instrumented transport retention policy)",
+      "enforcingBoundary": "maxToolResultTokens bounds retained results; deterministic retention/truncation order; overflow spills to a content-addressed reference recorded in the receipt; the transport must expose retained results to the accountant before the next send (EK-12 instrumented-transport requirement)",
+      "budgetField": "maxToolResultTokens"
+    },
+    {
+      "id": "CS-11",
+      "source": "large products and histories (accepted materials, full attempt/death histories, large tool outputs, episodic memory)",
+      "class": "content-addressed-reference",
+      "censusSites": ["PA-6", "PA-7"],
+      "currentSites": [
+        { "file": "src/lifecycle/task-recovery-memory.ts", "lines": "attempt_history in mutable task metadata (rewritten to evidence refs)" },
+        { "file": "src/process-modules/application/pinned-workspace-materializer.ts", "lines": "see file" }
+      ],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 reference grammar) + persistence repositories (WP-06)",
+      "enforcingBoundary": "content://... + digest references with bounded summaries and chunked reads; raw material is not recopied into any prompt; WorkplaceProductionRevision-backed materials are referenced by digest (ADR-053 material contracts)",
+      "accessMode": "chunked-read"
+    },
+    {
+      "id": "CS-12",
+      "source": "desk provisioning context (read-only desk block)",
+      "class": "content-addressed-reference",
+      "censusSites": ["PA-8"],
+      "currentSites": [{ "file": "src/infrastructure/workers/claude-worker-executor-factory.ts", "lines": "520-570" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 bounded desk reference)",
+      "enforcingBoundary": "bounded desk reference (content-addressed + bounded inline pointer); desk content itself never inlined wholesale",
+      "accessMode": "chunked-read"
+    },
+    {
+      "id": "CS-13",
+      "source": "previous-attempt patch pointer",
+      "class": "content-addressed-reference",
+      "censusSites": ["PA-1", "PA-7"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "previous-attempt patch pointer layer" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18)",
+      "enforcingBoundary": "the patch travels as digest + content reference; chunked read only on demand",
+      "accessMode": "chunked-read"
+    },
+    {
+      "id": "CS-14",
+      "source": "full mutable task row JSON (current transport form of the work definition)",
+      "class": "forbidden-duplication",
+      "censusSites": ["PA-1"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "task projection JSON (full task row) layer" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 admission-time detector)",
+      "enforcingBoundary": "admission refuses an envelope whose task-definition layer is the raw mutable row (detectable by layer digest mismatch against the bounded projection grammar); replacement: CS-06 bounded summary + CS-11 immutable WorkItem reference",
+      "replacement": "CS-06 + CS-11"
+    },
+    {
+      "id": "CS-15",
+      "source": "unbounded verbatim recovery/gate feedback accumulation across retries",
+      "class": "forbidden-duplication",
+      "censusSites": ["PA-1", "PA-7"],
+      "currentSites": [{ "file": "tracker-view/claude-runner.mjs", "lines": "recovery-feedback loud block (issue.findings verbatim)" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 admission-time bound)",
+      "enforcingBoundary": "maxRecoveryTokens is enforced at every admission; the Elite-3 snowball (feedback grew the request to 436,283 bytes) is structurally impossible because the identical envelope cannot be reissued and repair re-profiles the layer; replacement: CS-08 bounded feedback",
+      "replacement": "CS-08",
+      "incidentAnchor": "stage20-elite RUN-TRACKER:214"
+    },
+    {
+      "id": "CS-16",
+      "source": "raw workspace material recopied per prompt (full priorAttempt bodies, full machine-provisioned trees)",
+      "class": "forbidden-duplication",
+      "censusSites": ["PA-7"],
+      "currentSites": [{ "file": "src/process-modules/application/process-execution-workspace.ts", "lines": "priorAttempts/recoveryFeedback inline bodies" }],
+      "ownerPackage": "src/workflow-kernel/context-envelope/** (WP-18 admission-time detector)",
+      "enforcingBoundary": "the workspace layer must match the bounded-summary layer grammar (bounded members only); wholesale recopy is detectable by layer digest and refused pre-spawn; replacement: CS-07 + CS-11",
+      "replacement": "CS-07 + CS-11",
+      "incidentAnchor": "Elite-3/Elite-8 failure class"
+    }
+  ],
+  "coverage": {
+    "censusPromptAssemblySites": ["PA-1", "PA-2", "PA-3", "PA-4", "PA-5", "PA-6", "PA-7", "PA-8", "PA-9", "PA-10"],
+    "note": "PA-2 (SAGA_PROMPT_MAX_BYTES opt-in cap, 0/unset = UNLIMITED at claude-runner.mjs:581 @21ba0816) is not a context source; it is the replaced baseline mechanism whose successor law (positive-finite maxPromptBytes, no unlimited representation) is frozen in prompt-budget-profile.schema.json and context-envelope-semantics.md."
+  }
+}

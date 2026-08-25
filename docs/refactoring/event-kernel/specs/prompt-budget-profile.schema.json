@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saga.local/schemas/event-kernel/prompt-budget-profile.schema.json",
+  "title": "PromptBudgetProfile (EK-1 frozen admission specification)",
+  "description": "Freezes the PromptBudgetProfile value defined by the plan section 'Bounded prompt and context envelope' EXACTLY: the property set below is the plan's field list, nothing more, nothing less. Every limit is a positive finite integer; zero, missing and unsupported limits fail closed (there is no unbounded representation in this schema: no null, no Infinity, no negative sentinel, no optional limit). Adding, renaming or re-typing a property reopens EK-1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "providerModelLimitTableRef",
+    "providerContextLimitTokens",
+    "tokenCounterRef",
+    "maxProviderRequests",
+    "maxStaticTokens",
+    "maxDynamicTokens",
+    "maxRecoveryTokens",
+    "maxToolResultTokens",
+    "maxTotalInputTokens",
+    "maxCumulativeSessionInputTokens",
+    "reservedOutputTokens",
+    "providerOverheadReserveTokens",
+    "safetyMarginTokens",
+    "maxPromptBytes"
+  ],
+  "properties": {
+    "providerModelLimitTableRef": {
+      "$ref": "#/$defs/ProviderModelLimitTableRef",
+      "description": "Read-only lookup over the exact provider/model/version already pinned on ActivityAttempt. It cannot select, reroute, fallback or infer a route; the artifact it references carries no selection semantics (see $defs/ProviderModelLimitTable)."
+    },
+    "providerContextLimitTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Context-window limit in tokens for the exact pinned provider/model/version. MUST equal the contextLimitTokens of the limit-table row keyed by that exact triple; zero, missing row or any inequality fails closed."
+    },
+    "tokenCounterRef": {
+      "$ref": "#/$defs/TokenCounterRef",
+      "description": "Pinned counter contract: name and protocolVersion are frozen consts; the implementation is content-addressed. Counter drift (pinned digest != running digest) is a TOKEN_COUNTER_MISMATCH failure, never a silent recount."
+    },
+    "maxProviderRequests": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Upper bound on requestOrdinal for one ActivityAttempt. Admission law: requestOrdinal <= maxProviderRequests."
+    },
+    "maxStaticTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Per-request cap on static layers (initial prompt frame, protocol skill, semantic skill, tool schemas, write-authority block, desk pointer). Static over-budget workshop packages fail installation/admission."
+    },
+    "maxDynamicTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Per-request cap on dynamic semantic layers (task projection summary, workspace summary, hook additionalContext)."
+    },
+    "maxRecoveryTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Per-request cap on recovery layers (bounded recovery memory, prior-deaths list, bounded recovery feedback). Elite-3 law: accumulated gate feedback must never grow unboundedly across retries."
+    },
+    "maxToolResultTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Per-request cap on retained tool results carried into the request."
+    },
+    "maxTotalInputTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Per-request total input cap. Admission law: requestInputTokens <= min(maxTotalInputTokens, effectiveInputLimit) where effectiveInputLimit = providerContextLimitTokens - reservedOutputTokens - providerOverheadReserveTokens - safetyMarginTokens."
+    },
+    "maxCumulativeSessionInputTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Session cumulative cap. Admission law: cumulativeInputTokens + requestInputTokens <= maxCumulativeSessionInputTokens. Coherence law: >= min(maxTotalInputTokens, effectiveInputLimit)."
+    },
+    "reservedOutputTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Reserved output space inside the context window. The transport enforces maxOutputTokens <= reservedOutputTokens or refuses the provider/model when no conservative output bound can be enforced."
+    },
+    "providerOverheadReserveTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Reserve for provider-side request overhead not visible to the assembler."
+    },
+    "safetyMarginTokens": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Safety margin subtracted from the provider context limit before admission."
+    },
+    "maxPromptBytes": {
+      "$ref": "#/$defs/PositiveFiniteInteger",
+      "description": "Hard byte backstop over the fully serialized request. The successor of SAGA_PROMPT_MAX_BYTES with no unlimited representation: the baseline '?? 0 means UNLIMITED' behavior is forbidden."
+    }
+  },
+  "$defs": {
+    "PositiveFiniteInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "A positive finite limit. 0, negative, fractional, null, missing, numeric strings and non-number sentinels are all invalid; unboundedness is not representable."
+    },
+    "Sha256Digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content-addressed artifact digest, lowercase hex."
+    },
+    "ContentRef": {
+      "type": "string",
+      "pattern": "^content://[a-z0-9._/-]+$",
+      "description": "Content-addressed reference into the installed workshop manifest. Resolution is by digest, never by mutable path."
+    },
+    "ProviderModelLimitTableRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "digest", "digestAlgorithm"],
+      "properties": {
+        "ref": { "$ref": "#/$defs/ContentRef" },
+        "digest": { "$ref": "#/$defs/Sha256Digest" },
+        "digestAlgorithm": { "const": "sha256" }
+      },
+      "description": "Reference (with digest) to an immutable ProviderModelLimitTable artifact. The table is read-only input to admission; it never selects a route."
+    },
+    "ProviderModelLimitTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "rows"],
+      "properties": {
+        "kind": { "const": "provider-model-limit-table" },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider", "model", "version", "contextLimitTokens"],
+            "properties": {
+              "provider": { "type": "string", "minLength": 1, "not": { "enum": ["*"] } },
+              "model": { "type": "string", "minLength": 1, "not": { "enum": ["*"] } },
+              "version": { "type": "string", "minLength": 1, "not": { "enum": ["*"] } },
+              "contextLimitTokens": { "$ref": "#/$defs/PositiveFiniteInteger" }
+            }
+          }
+        }
+      },
+      "description": "Exact-key lookup artifact. Each row is keyed by the exact (provider, model, version) triple; wildcards ('*'), default rows, fallback chains, priority/order fields, eligibility rules and any route-selection field are structurally absent because additionalProperties is false everywhere and the key fields forbid '*'. Real production tables land at EK-8; examples under specs/examples/ are illustrative only."
+    },
+    "TokenCounterRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "protocolVersion",
+        "implementationRef",
+        "digest",
+        "digestAlgorithm",
+        "encoding"
+      ],
+      "properties": {
+        "name": { "const": "saga-token-counter-protocol" },
+        "protocolVersion": { "const": "1" },
+        "implementationRef": { "$ref": "#/$defs/ContentRef" },
+        "digest": { "$ref": "#/$defs/Sha256Digest" },
+        "digestAlgorithm": { "const": "sha256" },
+        "encoding": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identity of the deterministic byte-to-token encoding the implementation applies (e.g. a named BPE merge table). Part of the pin: counter + encoding drift is a mismatch failure."
+        }
+      },
+      "description": "The pinned token-counter contract. saga-token-counter-protocol v1 laws: (1) local pure function over the exact serialized request bytes, no network, clock or randomness; (2) identical bytes + identical pinned identity => identical counts on any machine; (3) counts the exact final serialized form admitted at the pre-send boundary; (4) identity is name+protocolVersion+encoding+implementation digest. Provider-reported usage is postflight evidence, never the admission oracle."
+    }
+  }
+}

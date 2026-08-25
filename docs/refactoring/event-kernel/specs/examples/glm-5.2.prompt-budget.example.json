@@ -1,0 +1,38 @@
+{
+  "kind": "prompt-budget-profile.example",
+  "illustrativeOnly": true,
+  "note": "ILLUSTRATIVE miniature valid profile for zai/glm-5.2 (128K-class context, conservative example numbers). Real production profiles and limit tables are pinned at EK-8. The wrapper (kind/note/pinnedRoute/tableFile) is example scaffolding consumed by validate-prompt-budget.mjs; only the profile object is a PromptBudgetProfile instance per prompt-budget-profile.schema.json.",
+  "pinnedRoute": {
+    "provider": "zai",
+    "model": "glm-5.2",
+    "version": "catalog-2026-08-24"
+  },
+  "tableFile": "provider-model-limit-table.example.json",
+  "profile": {
+    "providerModelLimitTableRef": {
+      "ref": "content://provider-model-limit-tables/factory-illustrative-2026-08",
+      "digest": "sha256:60636c3052f3644af7bf638ec9bb2e86ab8f9f968a13a2d883446aaccd0c2c52",
+      "digestAlgorithm": "sha256"
+    },
+    "providerContextLimitTokens": 131072,
+    "tokenCounterRef": {
+      "name": "saga-token-counter-protocol",
+      "protocolVersion": "1",
+      "implementationRef": "content://token-counters/saga-deterministic-bpe",
+      "digest": "sha256:0861d088b4406f5fb4a143f71a4505c14cc5b6f032d24bdf0a004d2ae724f27b",
+      "digestAlgorithm": "sha256",
+      "encoding": "illustrative-bpe-merge-table-v1"
+    },
+    "maxProviderRequests": 40,
+    "maxStaticTokens": 40000,
+    "maxDynamicTokens": 30000,
+    "maxRecoveryTokens": 8000,
+    "maxToolResultTokens": 12000,
+    "maxTotalInputTokens": 100000,
+    "maxCumulativeSessionInputTokens": 800000,
+    "reservedOutputTokens": 8192,
+    "providerOverheadReserveTokens": 2048,
+    "safetyMarginTokens": 4096,
+    "maxPromptBytes": 393216
+  }
+}
