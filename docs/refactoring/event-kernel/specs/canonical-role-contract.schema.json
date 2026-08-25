@@ -1,0 +1,714 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saga.invalid/event-kernel/specs/canonical-role-contract.schema.json",
+  "title": "CanonicalRoleContract (EK-1 frozen)",
+  "description": "Freezes the CanonicalRoleContract block of docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md ('Canonical role contract' section) EXACTLY. Every field of the plan block is present, in plan order, with the plan's comment semantics encoded as constraints. The root schema validates one CanonicalRoleContract instance. The installed workshop manifest contains one immutable binding value per launch kind (see $defs/Manifest).",
+  "$comment": "HARD BANS ENCODED STRUCTURALLY. (1) No free-form metadata or extension fields: additionalProperties is false at the root and in every sub-object, so adding a field or reference kind is a schema violation and reopens EK-1 per the plan. (2) No inline transition policy: the field set contains no transition vocabulary of any kind; Workplace alone owns role transitions. (3) No executable route policy: executorRoutePolicyRef is content-addressed and its referenced artifact must satisfy $defs/ExecutorRoutePolicyTable (finite declarative rules, condition keys from a closed enum, no hooks/code/default/rank). (4) Tracker profile is presentation-only: the artifact referenced by trackerProjectionProfileRef must satisfy $defs/TrackerProjectionProfile whose field set is presentation vocabulary only. Canonicalization and the contractDigest slot-fingerprint rule are specified in ROLE-CONTRACT-SPEC.md and implemented by validate-role-contract.mjs.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "ek.canonical-role-contract.ek1.v1"
+    },
+    "roleContractRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content address of this contract artifact. MUST equal \"sha256:\" + contractDigest (self-addressing; enforced by validate-role-contract.mjs)."
+    },
+    "protocolRole": {
+      "type": "string",
+      "enum": ["author", "reviewer"],
+      "description": "The only two Workplace roles. Planner/implementer/reviewer/certifier are semantic profiles, never protocol roles. The Workplace reducer alone owns transitions between these roles."
+    },
+    "semanticProfileRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content-addressed reference to the semantic profile artifact; the referenced artifact must satisfy $defs/SemanticProfileArtifact."
+    },
+    "protocolSkillRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Reusable physical execution protocol skill. Referenced artifact must satisfy $defs/SkillArtifact."
+    },
+    "protocolSkillDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "semanticSkillRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Domain-specific semantic skill. Referenced artifact must satisfy $defs/SkillArtifact."
+    },
+    "semanticSkillDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "executorRoutePolicyRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Sole provider/model selection authority. Static, content-addressed; the referenced artifact must satisfy $defs/ExecutorRoutePolicyTable (declarative eligibility table; never executable code or hooks; no task/status/workshop inference, transition, retry, tool, prompt or implicit-fallback semantics). Evaluated exactly once at activityAttempt.create."
+    },
+    "executorRoutePolicyDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "allowedCapabilityRefs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)*$"
+      },
+      "description": "Closed set of runtime capabilities this contract admits. Logical identifiers pinned transitively by the contract's own content address."
+    },
+    "allowedToolRefs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(:[a-zA-Z0-9._-]+)?$"
+      },
+      "description": "Closed allowlist of tool identities the launched actor may use. A skill cannot widen it."
+    },
+    "inputProductContracts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ContentRef"
+      },
+      "description": "Content-addressed product schemas the launch consumes as input evidence."
+    },
+    "outputProductContracts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/ContentRef"
+      },
+      "description": "Content-addressed product schemas the launched role may produce."
+    },
+    "evidenceObligations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^obligation:[a-z][a-zA-Z0-9.:-]*$"
+      },
+      "description": "Obligation kinds from the frozen transition universe whose completion receipts this contract's completion path must produce."
+    },
+    "completionCommandSchemaRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content-addressed JSON Schema of the completion command the actor must issue. Referenced artifact must satisfy $defs/CompletionCommandSchema."
+    },
+    "completionCommandSchemaDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "trackerProjectionProfileRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Presentation-only tracker profile. Referenced artifact must satisfy $defs/TrackerProjectionProfile; it can never authorize work, cognition, tools, completion, transition or budget."
+    },
+    "trackerProjectionProfileDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "promptBudgetProfileRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content-addressed PromptBudgetProfile for this contract. The artifact shape is frozen by the WP-16 part 3 deliverable (prompt-budget-profile.schema.json), not by this schema."
+    },
+    "promptBudgetProfileDigest": {
+      "$ref": "#/$defs/DigestHex"
+    },
+    "contractDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Slot fingerprint: sha256 over the canonical JSON of this contract with the contractDigest and roleContractRef properties removed (roleContractRef is derived from the digest as \"sha256:\"+contractDigest, so it cannot be covered by it; canonicalization specified in ROLE-CONTRACT-SPEC.md section 'Slot-fingerprint rule'). This is the value WorkIntent and ActivityAttempt pin as roleContractDigest."
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "roleContractRef",
+    "protocolRole",
+    "semanticProfileRef",
+    "protocolSkillRef",
+    "protocolSkillDigest",
+    "semanticSkillRef",
+    "semanticSkillDigest",
+    "executorRoutePolicyRef",
+    "executorRoutePolicyDigest",
+    "allowedCapabilityRefs",
+    "allowedToolRefs",
+    "inputProductContracts",
+    "outputProductContracts",
+    "evidenceObligations",
+    "completionCommandSchemaRef",
+    "completionCommandSchemaDigest",
+    "trackerProjectionProfileRef",
+    "trackerProjectionProfileDigest",
+    "promptBudgetProfileRef",
+    "promptBudgetProfileDigest",
+    "contractDigest"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "DigestHex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase sha256 hex digest of the canonical JSON of the referenced artifact."
+    },
+    "ContentRef": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Content-addressed reference."
+    },
+    "SkillArtifact": {
+      "title": "Skill artifact (cognition only)",
+      "description": "Shape of the artifacts referenced by protocolSkillRef and semanticSkillRef. A skill contains cognition instructions only: the field set makes transition, capability, tool, evidence or budget policy structurally impossible.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.skill-artifact.ek1.v1"
+        },
+        "skillId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "instructions": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["schemaVersion", "skillId", "instructions"],
+      "additionalProperties": false
+    },
+    "SemanticProfileArtifact": {
+      "title": "Semantic profile artifact",
+      "description": "Shape of the artifact referenced by semanticProfileRef. Declares which of the four frozen semantic profiles a contract instantiates.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.semantic-profile.ek1.v1"
+        },
+        "profileId": {
+          "type": "string",
+          "enum": ["planner", "implementer", "reviewer", "certifier"]
+        },
+        "definitionSummary": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["schemaVersion", "profileId", "definitionSummary"],
+      "additionalProperties": false
+    },
+    "ExecutorRoutePolicyTable": {
+      "title": "Executor route policy (declarative eligibility table)",
+      "description": "Shape of the artifact referenced by executorRoutePolicyRef. Finite declarative eligibility table; never executable code or hooks.",
+      "$comment": "Structural bans: additionalProperties false everywhere, so no default route, no priority/rank/order field, no fallback/else rule, no code/hook/command key can exist. Condition keys are closed to the three static protocol facts (launchKind, protocolRole, semanticProfile); task status, execution status, tags, assignment skill, tracker state and workshop-name inference are impossible because those keys do not exist. Selection law (semantic, enforced by validators because the launch-kind universe is finite): evaluating the table for one launch kind must yield EXACTLY ONE matching rule; a non-match or an ambiguous double match is a typed admission failure, never a fallback. transportKind is frozen to the single production cognition transport (opencode via the WP-18 instrumented transport); the claude CLI is forbidden by repo law.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.executor-route-policy.ek1.v1"
+        },
+        "tableId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]*$"
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "properties": {
+              "when": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": false,
+                "properties": {
+                  "launchKind": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(\\.[a-z0-9-]+)+$"
+                  },
+                  "protocolRole": {
+                    "type": "string",
+                    "enum": ["author", "reviewer"]
+                  },
+                  "semanticProfile": {
+                    "type": "string",
+                    "enum": ["planner", "implementer", "reviewer", "certifier"]
+                  }
+                }
+              },
+              "route": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["transportKind", "provider", "model"],
+                "properties": {
+                  "transportKind": {
+                    "type": "string",
+                    "enum": ["opencode"]
+                  },
+                  "provider": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "model": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "effort": {
+                    "type": ["string", "null"]
+                  }
+                }
+              }
+            },
+            "required": ["when", "route"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["schemaVersion", "tableId", "rules"],
+      "additionalProperties": false
+    },
+    "TrackerProjectionProfile": {
+      "title": "Tracker projection profile (presentation only)",
+      "description": "Shape of the artifact referenced by trackerProjectionProfileRef. The tracker displays contract references; it may not select a role, skill, tool set, completion command or prompt budget.",
+      "$comment": "The field set is presentation vocabulary only (label, board column grouping, detail sections). Cognition, tool, completion, transition and budget instructions are structurally impossible: there is no field that can carry them and additionalProperties is false.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.tracker-projection-profile.ek1.v1"
+        },
+        "profileId": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9.-]*$"
+        },
+        "display": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "boardColumn"],
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "boardColumn": {
+              "type": "string",
+              "enum": ["todo", "in-progress", "review", "repair", "waiting", "terminal"]
+            },
+            "detailSections": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              }
+            }
+          }
+        }
+      },
+      "required": ["schemaVersion", "profileId", "display"],
+      "additionalProperties": false
+    },
+    "CompletionCommandSchema": {
+      "title": "Completion command schema artifact",
+      "description": "Shape of the artifact referenced by completionCommandSchemaRef: a JSON Schema (draft 2020-12) whose root describes the completion command payload.",
+      "type": "object",
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "type": {
+          "type": "string",
+          "const": "object"
+        }
+      },
+      "required": ["$schema", "type"],
+      "additionalProperties": true
+    },
+    "CertifierOperatorContract": {
+      "title": "Certifier operator contract (frozen protocol decision D4)",
+      "description": "Binding decision for the certifier semantic profile per frozen decision D4: the terminal-claim verifier is lifecycleRun.verifyTerminalClaims, a LifecycleRun-owned command; the verifier is NOT an author/reviewer kernel role and is therefore NOT bound through a Workplace protocol role. The certifier profile is admitted as this pinned, content-addressed operator contract, resolved by its owning obligation (obligation:verifyTerminalClaims), not by workplace.admitWorkIntent.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.certifier-operator-contract.ek1.v1"
+        },
+        "operatorContractRef": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "MUST equal \"sha256:\" + contractDigest (self-addressing)."
+        },
+        "ownedCommand": {
+          "type": "string",
+          "const": "lifecycleRun.verifyTerminalClaims"
+        },
+        "ownerAggregate": {
+          "type": "string",
+          "const": "LifecycleRun"
+        },
+        "executableVerifierRefs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ContentRef"
+          },
+          "description": "Content-addressed executable verifiers this operator contract pins; every terminal lifecycle claim has an owned construction surface and an executable verifier."
+        },
+        "inputProductContracts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ContentRef"
+          },
+          "description": "TerminalLifecycleClaim and ConstructionSurface product schemas consumed."
+        },
+        "outputProductContracts": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ContentRef"
+          },
+          "description": "ExecutableVerifierResult product schema produced."
+        },
+        "evidenceObligations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^obligation:[a-z][a-zA-Z0-9.:-]*$"
+          }
+        },
+        "contractDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Same slot-fingerprint rule as the CanonicalRoleContract: sha256 over canonical JSON of this object with contractDigest and operatorContractRef removed (operatorContractRef = \"sha256:\"+contractDigest)."
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "operatorContractRef",
+        "ownedCommand",
+        "ownerAggregate",
+        "executableVerifierRefs",
+        "inputProductContracts",
+        "outputProductContracts",
+        "evidenceObligations",
+        "contractDigest"
+      ],
+      "additionalProperties": false
+    },
+    "ContractSlot": {
+      "title": "Role-contract slot (manifest binding state)",
+      "description": "The content-addressed slot one manifest row binds. At WP-16 freeze time every slot is in the deterministic pending placeholder state; the EK-8 workshop conversion replaces both values with the real content address and digest of the authored contract artifact. The placeholder is derived deterministically from the launch kind, so accidental duplicate or crossed pre-binding is detectable now.",
+      "type": "object",
+      "properties": {
+        "roleContractRef": {
+          "type": "string",
+          "pattern": "^(ek8:pending:[a-z0-9.-]+|sha256:[0-9a-f]{64})$"
+        },
+        "contractDigest": {
+          "type": "string",
+          "pattern": "^(pending-ek8|[0-9a-f]{64})$"
+        }
+      },
+      "required": ["roleContractRef", "contractDigest"],
+      "additionalProperties": false
+    },
+    "ManifestBinding": {
+      "title": "Workplace launch-kind binding row",
+      "description": "One row per Workplace launch kind: exactly one protocol role times one semantic profile for one workshop cell kind. Zero fallback, zero duplicate binding.",
+      "type": "object",
+      "properties": {
+        "launchKind": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+\\.(implementation|planning)\\.(author|reviewer)$"
+        },
+        "bindingClass": {
+          "type": "string",
+          "const": "workplace"
+        },
+        "workshop": {
+          "type": "string",
+          "enum": ["discovery", "formalization", "development", "delivery", "documentation"]
+        },
+        "cellKind": {
+          "type": "string",
+          "enum": ["implementation", "planning"]
+        },
+        "protocolRole": {
+          "type": "string",
+          "enum": ["author", "reviewer"]
+        },
+        "semanticProfile": {
+          "type": "string",
+          "enum": ["planner", "implementer", "reviewer"]
+        },
+        "slot": {
+          "$ref": "#/$defs/ContractSlot"
+        }
+      },
+      "required": [
+        "launchKind",
+        "bindingClass",
+        "workshop",
+        "cellKind",
+        "protocolRole",
+        "semanticProfile",
+        "slot"
+      ],
+      "additionalProperties": false
+    },
+    "OperatorContractBinding": {
+      "title": "Lifecycle operator launch-kind binding row (certifier per D4)",
+      "description": "The single non-Workplace launch kind: the certifier semantic profile bound to the lifecycleRun.verifyTerminalClaims operator contract. protocolRole is deliberately absent: per frozen D4 the verifier is not an author/reviewer kernel role.",
+      "type": "object",
+      "properties": {
+        "launchKind": {
+          "type": "string",
+          "const": "lifecycle.certification.certifier"
+        },
+        "bindingClass": {
+          "type": "string",
+          "const": "lifecycleOperator"
+        },
+        "ownerAggregate": {
+          "type": "string",
+          "const": "LifecycleRun"
+        },
+        "ownedCommand": {
+          "type": "string",
+          "const": "lifecycleRun.verifyTerminalClaims"
+        },
+        "semanticProfile": {
+          "type": "string",
+          "const": "certifier"
+        },
+        "protocolRoleExemption": {
+          "type": "string",
+          "const": "D4: verifier is not an author/reviewer kernel role"
+        },
+        "operatorContractShapeRef": {
+          "type": "string",
+          "const": "#/$defs/CertifierOperatorContract"
+        },
+        "slot": {
+          "$ref": "#/$defs/ContractSlot"
+        }
+      },
+      "required": [
+        "launchKind",
+        "bindingClass",
+        "ownerAggregate",
+        "ownedCommand",
+        "semanticProfile",
+        "protocolRoleExemption",
+        "operatorContractShapeRef",
+        "slot"
+      ],
+      "additionalProperties": false
+    },
+    "Manifest": {
+      "title": "Complete role-contract manifest (EK-1 frozen)",
+      "description": "The complete manifest table: every protocol-role x semantic-profile pair that the five workshops and the kernel need, each mapped to exactly one content-addressed role-contract slot. One row per launch kind; zero fallback; zero duplicate binding.",
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "ek.role-contract-manifest.ek1.v1"
+        },
+        "workPackage": {
+          "type": "string",
+          "const": "WP-16"
+        },
+        "protocolBasis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "transitionUniverseRef",
+            "protocolDecisionsRef",
+            "planRef",
+            "authorityCensusRef"
+          ],
+          "properties": {
+            "transitionUniverseRef": {
+              "type": "string",
+              "description": "Content/git identity of the frozen transition universe the launch kinds were derived from."
+            },
+            "protocolDecisionsRef": {
+              "type": "string",
+              "description": "Identity of docs/refactoring/event-kernel/PROTOCOL-DECISIONS-FROZEN.md (D1-D12)."
+            },
+            "planRef": {
+              "type": "string",
+              "description": "Identity of the greenfield refactoring plan (Canonical role contract section)."
+            },
+            "authorityCensusRef": {
+              "type": "string",
+              "description": "Identity of the WP-01 authority census (roleResolutionSites RR-1..RR-12)."
+            }
+          }
+        },
+        "roleUniverse": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "protocolRoles",
+            "semanticProfiles",
+            "actorBehaviors",
+            "dimensionalityLaw"
+          ],
+          "properties": {
+            "protocolRoles": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["author", "reviewer"]
+              }
+            },
+            "semanticProfiles": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["planner", "implementer", "reviewer", "certifier"]
+              }
+            },
+            "actorBehaviors": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["compliant", "repairing", "adversarial", "failed"]
+              }
+            },
+            "dimensionalityLaw": {
+              "type": "string",
+              "const": "protocolRole x semanticProfile x actorBehavior are orthogonal; only the (workshop, cellKind, protocolRole, semanticProfile) tuple selects a binding; actor behaviors never select a binding; repair is a transition, not a role"
+            }
+          }
+        },
+        "workshops": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["discovery", "formalization", "development", "delivery", "documentation"]
+          }
+        },
+        "planningCellWorkshops": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["discovery", "formalization", "development", "delivery", "documentation"]
+          },
+          "description": "Workshops that own planning cells. Frozen: only development (workItem.planGraph consumes the lifecycle planning facts; the planner skills live only in the development package)."
+        },
+        "fallbackPolicy": {
+          "type": "string",
+          "const": "none"
+        },
+        "forbiddenResolutionSources": {
+          "type": "array",
+          "minItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "tasks.status",
+              "task.tags",
+              "tasks.execution_skill",
+              "tasks.review_skill",
+              "execution.status",
+              "assignment.skill (mutable)",
+              "tracker/board state",
+              "global skill roots",
+              "latest/chronology/maxId selection"
+            ]
+          }
+        },
+        "legacyResolutionDisposition": {
+          "type": "array",
+          "minItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["site", "disposition"],
+            "properties": {
+              "site": {
+                "type": "string",
+                "pattern": "^RR-[0-9]+$"
+              },
+              "disposition": {
+                "type": "string",
+                "enum": ["DELETE", "REWRITE", "RETAIN-AND-MOVE"]
+              }
+            }
+          },
+          "description": "Traceability of the twelve WP-01 census role-resolution sites onto this manifest."
+        },
+        "bindings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/ManifestBinding"
+          }
+        },
+        "operatorContracts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "$ref": "#/$defs/OperatorContractBinding"
+          }
+        },
+        "manifestDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "sha256 over the canonical JSON of this manifest minus manifestDigest (same canonicalization as contractDigest)."
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "workPackage",
+        "protocolBasis",
+        "roleUniverse",
+        "workshops",
+        "planningCellWorkshops",
+        "fallbackPolicy",
+        "forbiddenResolutionSources",
+        "legacyResolutionDisposition",
+        "bindings",
+        "operatorContracts",
+        "manifestDigest"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
