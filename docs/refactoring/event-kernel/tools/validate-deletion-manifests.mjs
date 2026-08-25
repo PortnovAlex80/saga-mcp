@@ -161,36 +161,8 @@ const DELETED_SINCE_BASE = new Set([]);
 // Real manifest defects surfaced by this validator on the current tree —
 // coordinator amendments pending. Each: { code, includes, detail }.
 const KNOWN_GAPS = [
-  {
-    code: 'V1-STALE',
-    includes: '2026-08-28-failures',
-    detail: 'document §S classifies `tests/characterization/fixtures/2026-08-28-failures/**` but the tree has the fixtures at `tests/characterization/fixtures/2026-07-28-failures/` — the manifest row has the wrong date (8 fixture documents)',
-  },
-  {
-    code: 'V2-UNCLASSIFIED',
-    includes: '2026-07-28-failures',
-    detail: 'the 8 characterization fixture documents under tests/characterization/fixtures/2026-07-28-failures/ are the intended target of the mistyped §S row above — same single amendment',
-  },
-  {
-    code: 'V2-UNCLASSIFIED',
-    includes: 'src/infrastructure/workplace/git-integration-effect.ts',
-    detail: 'legacy §B.9 "Workplace repositories (24)" row writes the glob `infrastructure/workplace/sqlite-*.ts`, which matches only 21 of the 24 workplace repository files — git-integration-effect.ts, workplace-conformance-harness.ts and workplace-park-reasons.ts are named only in the row\'s unbackticked list and are therefore unclassified by the written glob',
-  },
-  {
-    code: 'V2-UNCLASSIFIED',
-    includes: 'src/infrastructure/workplace/workplace-conformance-harness.ts',
-    detail: 'same legacy §B.9 sqlite-* glob under-coverage as git-integration-effect.ts (see that entry)',
-  },
-  {
-    code: 'V2-UNCLASSIFIED',
-    includes: 'src/infrastructure/workplace/workplace-park-reasons.ts',
-    detail: 'same legacy §B.9 sqlite-* glob under-coverage as git-integration-effect.ts (see that entry)',
-  },
-  {
-    code: 'V2-UNCLASSIFIED',
-    includes: 'tests/MOCK-CLAUDE.md',
-    detail: 'tests/MOCK-CLAUDE.md (tracked at the manifest base SHA) is classified by NEITHER manifest — the document manifest\'s `git ls-files \'*.md\'` enumeration includes it but no row lists it; it needs a §S row (old mock-worker protocol documentation, DELETE class)',
-  },
+  // All gap entries resolved 2026-08-25 by the coordinator amendment commit
+  // (manifest date/coverage/count fixes landed together with this deletion).
 ];
 
 // --- git surfaces ------------------------------------------------------------
