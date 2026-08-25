@@ -695,8 +695,20 @@ export function createBoardRenderApi({
             });
             const d = await r.json();
             if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
-            showStatus(card, 'Решение записано. Завод продолжает работу — страница перезагрузится…', true);
-            setTimeout(() => location.reload(), 1500);
+            showStatus(card, 'Решение записано. Пробуждаю завод…', true);
+            // Wake the engine through the ONE public start gateway (the same
+            // ▶ path; it releases holds, sweeps frozen engines, spawns). A
+            // wake failure does NOT undo the durable resolution — the next ▶
+            // or supervisor cycle continues.
+            if (window.__sagaEpicId) {
+              try {
+                await fetch('/api/factory/start', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ epic_id: window.__sagaEpicId }),
+                });
+              } catch { /* the resolution is durable; a manual ▶ also works */ }
+            }
+            setTimeout(() => location.reload(), 1200);
           } catch (e) {
             showStatus(card, 'Ошибка: ' + e.message, false);
             setBusy(card, false);
@@ -726,8 +738,16 @@ export function createBoardRenderApi({
               });
               const d = await r.json();
               if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
-              showStatus(card, 'Ответ записан. Перезагрузка…', true);
-              setTimeout(() => location.reload(), 1500);
+              showStatus(card, 'Ответ записан. Пробуждаю завод…', true);
+              if (window.__sagaEpicId) {
+                try {
+                  await fetch('/api/factory/start', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ epic_id: window.__sagaEpicId }),
+                  });
+                } catch { /* the answer is durable; a manual ▶ also works */ }
+              }
+              setTimeout(() => location.reload(), 1200);
             } catch (e) {
               showStatus(card, 'Ошибка: ' + e.message, false);
               setBusy(card, false);
