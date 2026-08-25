@@ -1064,6 +1064,10 @@ audited truth:
 **Decision status:** Accepted — the cutover direction is normative and
 executed; execution vocabulary (`presenterRef`,
 `WorkplaceProductionRevision`, `AcceptedCandidateAuthority`) is the shipped
-code. **Closure state:** in-progress — closure requires the Phase-7 evidence
-(EC-10) per the closure plan §3.4; the closure registry tracks this
-separately and its `in-progress` value remains the truthful record.
+code. **Closure state: CLOSED (2026-08-25)** — the Phase-7 evidence review
+found the frozen-build scripted legs green and the clean real canary
+satisfied (canary-1 runnable-local, exit 0, zero intervention; receipt
+`a5108835f2fd` never drifted); no counterexample stands against the ten
+criteria. Evidence: `docs/verification/ADR-053-CLOSURE-MATRIX-2026-08-25.md`
+and `docs/factory-run/qualification-adr096/`. The 2026-08-25 morning state
+(closure in-progress pending EC-10) is superseded by this record.

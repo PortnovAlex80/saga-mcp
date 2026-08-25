@@ -21,7 +21,7 @@ aggregate test counts. This is the Phase 3 deliverable of
 | EC-7 | Workshop capabilities from one installed manifest | **MET** (see note N1) | `workshop-manifest-parity.test.mjs` (7/7) | architecture group + full suite |
 | EC-8 | Every cross-machine handoff has durable obligation or atomic outbox | **MET** | `adr-053-cutover-gates` Gate 8 + `progress-obligation-invariant` + `resume-compatibility` K5 theorem | architecture group + full suite |
 | EC-9 | Run-011 represented by a general partition-invariance theorem | **MET** | `tests/architecture/partition-invariance-theorem.test.mjs` (5/5) | architecture group + full suite |
-| EC-10 | Clean scripted E2E + clean real canary from fresh DB/repo | **OPEN** (see residuals) | scripted leg: green at `a4565be0` after the Phase-6 production repair (10/10 w9-02/03 + golden-path); real canary: no accepted evidence (deferred, ADR-096 Phase 7) | full suite hosts the scripted leg |
+| EC-10 | Clean scripted E2E + clean real canary from fresh DB/repo | **MET** (2026-08-25 qualification) | frozen build (receipt `a5108835f2fd` @ `37ce4c00`): scripted legs 8/8 green receipt-witnessed; real canary-1 fresh-root terminal `runnable-local`/verified exit 0, zero intervention, receipt never drifted; canary-2 completed honestly typed `development-blocked` (declared outcome, no new invariant class) | full suite hosts the scripted leg; qualification ledgers under docs/factory-run/qualification-adr096/ |
 
 ## Per-EC owners and mutation proofs (condensed)
 
@@ -144,15 +144,23 @@ A-prime direction; recorded honestly in
   manifest. Treated as documentation reconciliation (ADR addendum), not
   missing behavior.
 
-## Verdict
+## Verdict — UPDATED 2026-08-25 (post-qualification)
 
-**ADR-053: IN-PROGRESS — do not close.** EC-1..EC-9 are MET with blocking,
-executable proofs; EC-10 is OPEN (R1 repaired on canonical, its frozen-build
-confirmation and R2 real canary are Phase-7 evidence). Closure signature is
-deferred to Phase 7 evidence review per plan §3.4. The registry's
-`closureState: in-progress` remains truthful; `decisionStatus` moves to
-`accepted` with this audit as the reasoned basis (cutover executed through
-releases K6–K13; see the ADR-053 addendum of 2026-08-25).
+**ADR-053: CLOSED.** The Phase-7 evidence review found no counterexample
+against any of the ten exit criteria: EC-1..EC-9 were already MET with
+blocking executable proofs; EC-10 is now MET — the frozen immutable build
+(receipt `a5108835f2fd`) ran the clean scripted E2E legs from fresh
+DB/repositories (8/8, receipt-witnessed immutability) and the clean real
+canary (canary-1: fresh root, terminal `runnable-local`, stage verified,
+exit 0, zero intervention, no old-process/reload dependence). The second
+real canary completed without intervention to an honest typed
+`development-blocked` terminal (declared outcome class; no new invariant
+class) — demonstrating truthful failure semantics, not negating the clean
+run. The prior IN-PROGRESS verdict and its residual list are superseded;
+the recorded authority seams (9 low, ratchet-guarded) and the Development
+demonstration residues (6 structural) live outside the ten criteria and are
+inherited by the successor plan as blocking EK-13 material. Registry:
+decisionStatus accepted, closureState closed.
 
 ## Evidence commands (all run on the audited tree, 2026-08-24/25)
 
