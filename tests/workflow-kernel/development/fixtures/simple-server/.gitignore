@@ -1,2 +1,6 @@
 dist/
 delivery/
+# Canonical browser-entry sources MUST stay tracked: the root .gitignore
+# pattern "index.html" (docs artifact guard) would silently eat them again.
+!public/index.html
+!public/app.js
