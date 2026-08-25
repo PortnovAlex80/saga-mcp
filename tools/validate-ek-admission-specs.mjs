@@ -15,6 +15,17 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SPECS = path.join(ROOT, 'docs/refactoring/event-kernel/specs');
 const RECON = path.join(ROOT, 'docs/refactoring/event-kernel/reconciliation');
 const sha256 = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
+// Canonical JSON: recursive key-sort, compact stringify (the same rule
+// validate-role-contract.mjs uses). NEVER JSON.stringify with an array
+// replacer — the verifier's 2026-08-25 refutation proved it whitelists keys
+// at EVERY level and silently drops nested specification digests.
+function canonicalJson(value) {
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  if (value && typeof value === 'object') {
+    return '{' + Object.keys(value).sort().map((k) => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
 const run = (cmd, args) => {
   const r = execFileSync(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
   return r;
@@ -38,11 +49,17 @@ const specFiles = {
   promptBudgetSchema: path.join(SPECS, 'prompt-budget-profile.schema.json'),
   contextClassification: path.join(SPECS, 'context-source-classification.json'),
   promptValidator: path.join(SPECS, 'validate-prompt-budget.mjs'),
-  transitionUniverse: path.join(RECON, 'transition-universe.json'),
+  // EOL-SAFE source: hash the byte-frozen copy (specs/.gitattributes '* -text'),
+  // not the checkout-dependent reconciliation/ working-tree file (verifier
+  // finding S1: CRLF/LF divergence between checkout and committed blob).
+  transitionUniverse: path.join(SPECS, 'frozen-inputs', 'transition-universe.json'),
 };
 const digests = Object.fromEntries(Object.entries(specFiles).map(([k, f]) => [k, sha256(f)]));
 const selfDigest = sha256(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-const canonical = JSON.stringify({ digests, validator: selfDigest }, Object.keys({ digests, validator: selfDigest }).sort());
+// mutationCorpusDigest: subsumed by hashing the three validator scripts that
+// EMBED their mutation corpora (each RED corpus lives in the validator file);
+// recorded explicitly so the ACD formula is legible.
+const canonical = canonicalJson({ digests, validator: selfDigest });
 const admissionContractDigest = createHash('sha256').update(canonical).digest('hex');
 console.log(`[ek-admission] ALL GREEN`);
 console.log(JSON.stringify({ specificationDigests: digests, validatorDigest: selfDigest, admissionContractDigest }, null, 2));
