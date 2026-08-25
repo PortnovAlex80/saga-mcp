@@ -87,6 +87,18 @@ export class ActivityAttemptRepository {
     return this.loadHeads().find((head) => head.instanceId === instanceId);
   }
 
+  /**
+   * The CAS-fenced context-admission counters of one attempt (WP-07 seam:
+   * the application-layer admission command reads its oracle through the
+   * OWNING repository - never by summing receipt rows). Read-only.
+   */
+  loadContextCounters(instanceId: string): { contextRevision: number; nextRequestOrdinal: number; cumulativeInputTokens: number } | undefined {
+    const row = this.db.prepare(SELECT_COUNTERS).get(instanceId) as CounterRow | undefined;
+    return row === undefined
+      ? undefined
+      : { contextRevision: row.context_revision, nextRequestOrdinal: row.next_request_ordinal, cumulativeInputTokens: row.cumulative_input_tokens };
+  }
+
   /** The pinned role-contract reference/digest of one attempt (immutable). */
   loadRoleContractPin(instanceId: string): { roleContractRef: string; roleContractDigest: string; workIntentRef: string } | undefined {
     const row = this.db
