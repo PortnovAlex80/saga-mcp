@@ -466,6 +466,15 @@ const GROUPS = {
     concurrency: 1,
     note: 'R1 omnibus closure: execution hooks, carry-forward adversarial matrix, dispatcher-race test files, routing, tracker-view, docs-graph, restore-from-checkpoint, module-authoring/scenario kits, ADR registry, modules-ext, root singles. G2l keeps the whole repo orphan-free.',
   },
+  // EK-1 stop-gate (2026-08-25): the deletion-manifest guard and the admission-spec validator are BLOCKING.
+  'ek-manifest-guard': {
+    globs: ['tests/infrastructure/deletion-manifest-guard.test.mjs'],
+    note: 'EK-1/WP-04b deletion-manifest stop-gate — V1 existence, V2 no-new-unclassified, V3 consistency, V4 CREATE TABLE coverage; 3 killed mutations',
+  },
+  'ek-admission': {
+    globs: ['tests/infrastructure/ek-admission-validator.test.mjs'],
+    note: 'EK-1 admission-spec validator wrapper — validate:ek-admission-specs blocking in the matrix',
+  },
   // ADR-096 gate item 2 (W3, 2026-08-25): the K4 crash/fault edges are
   // BLOCKING. The four ADR-048 worker-boundary crash suites (exit before
   // product submission / exit after submission before worker_done / accepted

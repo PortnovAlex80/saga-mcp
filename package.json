@@ -59,7 +59,8 @@
     "coverage:factory": "node tests/factory-proof/factory-coverage-universe.mjs",
     "conformance:v1": "node tests/factory-proof/conformance-engine.mjs",
     "conformance:harvest": "node tests/factory-proof/conformance-engine.mjs --harvest",
-    "validate:ek-admission-specs": "node tools/validate-ek-admission-specs.mjs"
+    "validate:ek-admission-specs": "node tools/validate-ek-admission-specs.mjs",
+    "validate:deletion-manifests": "node docs/refactoring/event-kernel/tools/validate-deletion-manifests.mjs"
   },
   "keywords": [
     "mcp",

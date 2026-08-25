@@ -171,3 +171,15 @@ jobs:
         run: node tools/run-acceptance-matrix.mjs --group factory-proof
       - name: acceptance matrix coverage self-check
         run: node tools/run-acceptance-matrix.mjs --group matrix-coverage
+
+      - name: Matrix — EK-1 deletion-manifest stop-gate
+        # V1 existence / V2 no-new-unclassified / V3 consistency / V4 CREATE
+        # TABLE coverage over both deletion manifests; 3 killed mutations.
+        run: node tools/run-acceptance-matrix.mjs --group ek-manifest-guard
+
+      - name: Matrix — EK-1 admission-spec validator (blocking)
+        # The three successor admission specifications frozen by digest
+        # (admissionContractDigest binds complexity-budget, role-contract
+        # schema+manifest and prompt-budget profile; the array-replacer bug
+        # that emptied the digest binding is regression-guarded here).
+        run: node tools/run-acceptance-matrix.mjs --group ek-admission
