@@ -1,0 +1,2466 @@
+{
+  "schemaVersion": "ek.forward-graph.wp02.draft.v1",
+  "workPackage": "WP-02",
+  "derivation": "FORWARD-ONLY: derived exclusively from inputs (idea, capsule, operator commands, installed manifest, planning facts) and aggregate commands of the TARGET protocol. No reverse-graph material was constructed, read, or searched. No edge is derived from terminal-proof or effect-receipt requirements; terminal/effect nodes appear only as forward continuations of committed source facts.",
+  "base": {
+    "integrationBaseSha": "21ba0816e38ec1492b3acb4d21e7ccea49c6f5df",
+    "branch": "ek1/wp02-forward-graph",
+    "predecessorForwardMapFrozenAt": "586871adfeae77da0ca8af96232ef96d6b0ee7e4"
+  },
+  "grammar": {
+    "node": "{ aggregate, command, kind } - kind: input | aggregate-command | transport",
+    "edge": "{ from, obligation, to, evidenceRefs, waitPolicy } - from/to are node ids; flow-qualified edges carry flow:{module,fromNode,toNode}",
+    "waitPolicyValues": [
+      "immediate-obligation",
+      "same-transaction",
+      "operator-command",
+      "readiness-predicate",
+      "typed-wait:human",
+      "typed-wait:external",
+      "typed-wait:policy",
+      "bounded-retry",
+      "crash-redrive",
+      "external-result",
+      "static-input",
+      "fan-in",
+      "fan-out"
+    ],
+    "obligationNaming": "obligation:<sourceCommand>.<targetIntent> (proposed names; frozen by EK-1)"
+  },
+  "nodes": [
+    {
+      "id": "in.idea",
+      "aggregate": "Input",
+      "command": "idea",
+      "kind": "input",
+      "note": "operator idea input (idea_url or idea text) at factory start"
+    },
+    {
+      "id": "in.capsule",
+      "aggregate": "Input",
+      "command": "capsule",
+      "kind": "input",
+      "note": "content-addressed Discovery+Formalization capsule imported through public ingress"
+    },
+    {
+      "id": "in.operator",
+      "aggregate": "Input",
+      "command": "operatorCommand",
+      "kind": "input",
+      "note": "typed operator commands: start, stop, resume, continue, redevelop, abandon, retry, human-response, approval-decision"
+    },
+    {
+      "id": "in.manifest",
+      "aggregate": "Input",
+      "command": "workshopManifest",
+      "kind": "input",
+      "note": "installed immutable workshop manifest: CanonicalRoleContract + PromptBudgetProfile values, content-addressed; read-only binding source"
+    },
+    {
+      "id": "in.planningFacts",
+      "aggregate": "Input",
+      "command": "planningFacts",
+      "kind": "input",
+      "note": "idea/scope items/unknowns/lifecycle claims/cross-cutting constraints/integration surfaces carried by accepted upstream products (capsule)"
+    },
+    {
+      "id": "factoryRun.bootstrap",
+      "aggregate": "FactoryRun",
+      "command": "bootstrap",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.bootstrapped",
+      "note": "fresh-protocol database bootstrap; pins ProtocolMetadata identity + build/package digests; fail-closed on any non-empty foreign database"
+    },
+    {
+      "id": "factoryRun.importCapsule",
+      "aggregate": "FactoryRun",
+      "command": "importCapsule",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.capsuleImported",
+      "note": "public-ingress capsule import; typed refusals: corrupt bytes, foreign lineage, illegal parent state, active attempt, stale protocol"
+    },
+    {
+      "id": "factoryRun.start",
+      "aggregate": "FactoryRun",
+      "command": "start",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.started",
+      "note": "run identity + pinned capsule digests; creates the lifecycle bootstrap obligation; redevelop enters here with prior-terminal evidence"
+    },
+    {
+      "id": "factoryRun.requestStop",
+      "aggregate": "FactoryRun",
+      "command": "requestStop",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.stopRequested",
+      "note": "durable operator stop as command + evidence; consumption pauses, no state destruction"
+    },
+    {
+      "id": "factoryRun.resume",
+      "aggregate": "FactoryRun",
+      "command": "resume",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.resumed",
+      "note": "durable operator resume; redrives outstanding runnable obligations"
+    },
+    {
+      "id": "factoryRun.observeWatchdog",
+      "aggregate": "FactoryRun",
+      "command": "observeWatchdog",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.watchdogObserved",
+      "note": "observe-only supervision (heartbeat-freeze detection, budget watch); issues typed commands only, never repairs SQL; PROPOSED owner - see gap G3"
+    },
+    {
+      "id": "factoryRun.recordRunTerminalProof",
+      "aggregate": "FactoryRun",
+      "command": "recordRunTerminalProof",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:factoryRun.runTerminalProven",
+      "note": "final run TerminalProof bound to the lifecycle terminal evidence"
+    },
+    {
+      "id": "lifecycleRun.create",
+      "aggregate": "LifecycleRun",
+      "command": "create",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:lifecycleRun.created",
+      "note": "owns lifecycle state + revision; pins protocol version for the whole run"
+    },
+    {
+      "id": "lifecycleRun.createContinuation",
+      "aggregate": "LifecycleRun",
+      "command": "createContinuation",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:lifecycleRun.continuationCreated",
+      "note": "child lifecycle run for release continuation (authorized policy + operator grant) or development continuation (accepted-prefix); capsule-hash-pinned abandon-shaped parent"
+    },
+    {
+      "id": "lifecycleRun.routeOutcome",
+      "aggregate": "LifecycleRun",
+      "command": "routeOutcome",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:lifecycleRun.outcomeRouted",
+      "note": "consumes the route-lifecycle obligation of a settled stage; creates next StageRun or issues terminal proof; exact declared outcome route only"
+    },
+    {
+      "id": "lifecycleRun.issueTerminalProof",
+      "aggregate": "LifecycleRun",
+      "command": "issueTerminalProof",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:lifecycleRun.terminalProven",
+      "note": "TerminalProof for the lifecycle scope: runnable-local, released, approval-required, delivery-blocked, development-blocked, formalization-inconsistent, documented, blocked, failed"
+    },
+    {
+      "id": "lifecycleRun.cancel",
+      "aggregate": "LifecycleRun",
+      "command": "cancel",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:lifecycleRun.cancelled",
+      "note": "operator abandon; cancellation TerminalProof; dependants become explicitly unreachable"
+    },
+    {
+      "id": "stageRun.create",
+      "aggregate": "StageRun",
+      "command": "create",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:stageRun.created"
+    },
+    {
+      "id": "stageRun.activate",
+      "aggregate": "StageRun",
+      "command": "activate",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:stageRun.activated",
+      "note": "binds the installed process module and starts its ProcessRun"
+    },
+    {
+      "id": "stageRun.recordLocalOutcome",
+      "aggregate": "StageRun",
+      "command": "recordLocalOutcome",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:stageRun.localOutcomeRecorded",
+      "note": "commits the stage local outcome from the process outcome certificate; creates the route-lifecycle obligation"
+    },
+    {
+      "id": "processRun.create",
+      "aggregate": "ProcessRun",
+      "command": "create",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:processRun.created"
+    },
+    {
+      "id": "processRun.enterNode",
+      "aggregate": "ProcessRun",
+      "command": "enterNode",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:processRun.nodeEntered",
+      "note": "creates/enters the next NodeRun per the immutable module flow"
+    },
+    {
+      "id": "processRun.recordNodeTerminal",
+      "aggregate": "ProcessRun",
+      "command": "recordNodeTerminal",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:processRun.nodeTerminalRecorded",
+      "note": "admits exact node terminal evidence; decides next node or settle; fan-in over cell evidence at freeze/settle nodes"
+    },
+    {
+      "id": "processRun.settle",
+      "aggregate": "ProcessRun",
+      "command": "settle",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:processRun.settled",
+      "note": "computes the local outcome and issues the ProcessOutcomeCertificate in one transaction; settle is a certificate, not a manifest capability"
+    },
+    {
+      "id": "processRun.settleFailure",
+      "aggregate": "ProcessRun",
+      "command": "settleFailure",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:processRun.settleFailed",
+      "note": "truthful failure settlement (internal exception, dead node) with typed proof"
+    },
+    {
+      "id": "nodeRun.create",
+      "aggregate": "NodeRun",
+      "command": "create",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.created",
+      "note": "kernel / production-cell / human / provider node instance within the ProcessRun flow"
+    },
+    {
+      "id": "nodeRun.materializeCell",
+      "aggregate": "NodeRun",
+      "command": "materializeCell",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.cellMaterialized",
+      "note": "production-cell node materializes its Workplace(s); fan-out for workItems/verificationItems cells"
+    },
+    {
+      "id": "nodeRun.recordKernelResult",
+      "aggregate": "NodeRun",
+      "command": "recordKernelResult",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.kernelResultRecorded",
+      "note": "kernel-node deterministic result: resolve-task-graph, freeze-acceptance-baseline, freeze-integrated-candidate, bind-runnable-candidate, preflight-release"
+    },
+    {
+      "id": "nodeRun.recordCellAcceptance",
+      "aggregate": "NodeRun",
+      "command": "recordCellAcceptance",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.cellAcceptanceRecorded",
+      "note": "cell node completes from exact CellFinalAcceptance evidence"
+    },
+    {
+      "id": "nodeRun.recordHumanDecision",
+      "aggregate": "NodeRun",
+      "command": "recordHumanDecision",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.humanDecisionRecorded",
+      "note": "human node (approve-release): approval decision with durable typed wake"
+    },
+    {
+      "id": "nodeRun.recordProviderOutcome",
+      "aggregate": "NodeRun",
+      "command": "recordProviderOutcome",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.providerOutcomeRecorded",
+      "note": "external-provider nodes (publish-deploy publication, observe-release observation) with idempotent EffectReceipt"
+    },
+    {
+      "id": "nodeRun.settleUnreachable",
+      "aggregate": "NodeRun",
+      "command": "settleUnreachable",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.unreachableSettled",
+      "note": "dependant explicitly unreachable after a terminally failed predecessor; creates runnable settlement work"
+    },
+    {
+      "id": "nodeRun.fail",
+      "aggregate": "NodeRun",
+      "command": "fail",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:nodeRun.failed",
+      "note": "truthful node failure with typed reason"
+    },
+    {
+      "id": "workItem.planGraph",
+      "aggregate": "WorkItem",
+      "command": "planGraph",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workItem.graphPlanned",
+      "note": "creates immutable WorkItems + WorkItemDependency edges + explicit deferrals from the full idea/scope/unknown/claim/seam graph (never one-AC-one-card); readiness afterwards is a predicate, never a blocked->todo command"
+    },
+    {
+      "id": "workplace.materialize",
+      "aggregate": "Workplace",
+      "command": "materialize",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.materialized"
+    },
+    {
+      "id": "workplace.admitWorkIntent",
+      "aggregate": "Workplace",
+      "command": "admitWorkIntent",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.workIntentAdmitted",
+      "note": "immutable WorkIntent binding WorkItem, expected Workplace revision, input evidence, command and role-contract ref+digest; role=author (initial/repair/widened) or role=reviewer (pinned exact author set)"
+    },
+    {
+      "id": "workplace.recordContribution",
+      "aggregate": "Workplace",
+      "command": "recordContribution",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.contributionRecorded",
+      "note": "worker products admitted through public ingress; actor type (scripted/replay/real) invisible here"
+    },
+    {
+      "id": "workplace.sealProductionRevision",
+      "aggregate": "Workplace",
+      "command": "sealProductionRevision",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.productionRevisionSealed",
+      "materialFact": "WorkplaceProductionRevision",
+      "note": "immutable accepted production revision (ADR-053)"
+    },
+    {
+      "id": "workplace.presentCandidateSet",
+      "aggregate": "Workplace",
+      "command": "presentCandidateSet",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.candidateSetPresented",
+      "materialFact": "CandidateSet",
+      "note": "author or reviewer presentation bound to exactly one production revision"
+    },
+    {
+      "id": "workplace.runAuthorGate",
+      "aggregate": "Workplace",
+      "command": "runAuthorGate",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.authorGateDecided",
+      "materialFact": "GateDecision",
+      "note": "check plan over the author CandidateSet; verdict accepted | repair_required | human_required"
+    },
+    {
+      "id": "workplace.runFinalGate",
+      "aggregate": "Workplace",
+      "command": "runFinalGate",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.finalGateDecided",
+      "materialFact": "GateDecision",
+      "note": "final decision over the reviewer verdict set; verdict accepted | repair_required | human_required"
+    },
+    {
+      "id": "workplace.enterRepairWait",
+      "aggregate": "Workplace",
+      "command": "enterRepairWait",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.repairWaitEntered",
+      "note": "repair_required verdict or effect repair issue; same Workplace re-staffed with exact RecoveryIssue feedback"
+    },
+    {
+      "id": "workplace.rolloverRepairEpoch",
+      "aggregate": "Workplace",
+      "command": "rolloverRepairEpoch",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.repairEpochRolledOver",
+      "note": "epoch budget exhaustion -> rollover + exponential backoff; total cap / diagnosis-repeat / convergence ceiling -> truthful failure"
+    },
+    {
+      "id": "workplace.widenAuthorityScope",
+      "aggregate": "Workplace",
+      "command": "widenAuthorityScope",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.authorityScopeWidened",
+      "note": "scope insufficiency: grant -> widened frozen scope + re-staff; refuse (contention) -> truthful failure"
+    },
+    {
+      "id": "workplace.enterHumanWait",
+      "aggregate": "Workplace",
+      "command": "enterHumanWait",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.humanWaitEntered",
+      "note": "creates TypedWait(human) with exact durable wake source (operator human-response command)"
+    },
+    {
+      "id": "workplace.resolveHumanResponse",
+      "aggregate": "Workplace",
+      "command": "resolveHumanResponse",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.humanResponseResolved",
+      "note": "typed wake from a human wait; replaces legacy direct unpark writes"
+    },
+    {
+      "id": "workplace.settleEffect",
+      "aggregate": "Workplace",
+      "command": "settleEffect",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.effectSettled",
+      "materialFact": "EffectReceipt",
+      "note": "idempotent post-acceptance effect: git-integration | formalization-accept-products | replay-capture; outcomes success | repair_required | human_required | unknown"
+    },
+    {
+      "id": "workplace.recordFinalAcceptance",
+      "aggregate": "Workplace",
+      "command": "recordFinalAcceptance",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.finalAcceptanceRecorded",
+      "materialFact": "CellFinalAcceptance",
+      "note": "exact cell completion evidence; advances the accepted-authority head atomically"
+    },
+    {
+      "id": "workplace.closePresentation",
+      "aggregate": "Workplace",
+      "command": "closePresentation",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.presentationClosed",
+      "note": "every sealed presentation closes through a durable, fenced, idempotent obligation - no silent leak"
+    },
+    {
+      "id": "workplace.issueWorkplaceTerminalProof",
+      "aggregate": "Workplace",
+      "command": "issueWorkplaceTerminalProof",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:workplace.terminalProven",
+      "note": "TerminalProof for the workplace scope: success (accepted) or truthful failure"
+    },
+    {
+      "id": "activityAttempt.create",
+      "aggregate": "ActivityAttempt",
+      "command": "create",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:activityAttempt.created",
+      "note": "copies roleContractRef+digest from the exact WorkIntent; atomically verifies equality, installed-package digest, protocolRole and current Workplace transition; takes the lease"
+    },
+    {
+      "id": "activityAttempt.admitProviderRequest",
+      "aggregate": "ActivityAttempt",
+      "command": "admitProviderRequest",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:activityAttempt.providerRequestAdmitted",
+      "materialFact": "PromptAssemblyReceipt",
+      "note": "sole mutable owner of context admission; CAS on contextRevision; validates every envelope limit; on admission advances ordinal/cumulative counters and creates the exact idempotent provider-send obligation; on refusal persists refused receipt without charging retry budget"
+    },
+    {
+      "id": "activityAttempt.recordProviderRefusal",
+      "aggregate": "ActivityAttempt",
+      "command": "recordProviderRefusal",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:activityAttempt.providerRefusalRecorded",
+      "note": "typed provider refusal; deterministic budget rejection never reissues the identical request"
+    },
+    {
+      "id": "activityAttempt.recordOutcome",
+      "aggregate": "ActivityAttempt",
+      "command": "recordOutcome",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:activityAttempt.outcomeRecorded",
+      "note": "worker result (tool calls/text/products) through the same production ingress; send/outcome evidence separate from admission receipts"
+    },
+    {
+      "id": "activityAttempt.classifyWorkerLoss",
+      "aggregate": "ActivityAttempt",
+      "command": "classifyWorkerLoss",
+      "kind": "aggregate-command",
+      "emits": "WorkflowEvent:activityAttempt.workerLossClassified",
+      "note": "distinguishes worker loss, provider refusal, malformed result, semantic rejection, effect uncertainty, policy terminal; crash after an un-idempotent external send becomes typed uncertainty"
+    },
+    {
+      "id": "cognition.sendProviderRequest",
+      "aggregate": "CognitionTransport",
+      "command": "sendProviderRequest",
+      "kind": "transport",
+      "note": "instrumented transport executes the provider-send obligation at the exact pinned provider/model; admission linearization immediately before final serialization/network send; enforces maxOutputTokens <= reservedOutputTokens"
+    }
+  ],
+  "edges": [
+    {
+      "id": "F001",
+      "from": "in.operator",
+      "obligation": "none (entrypoint operator command: start)",
+      "to": "factoryRun.bootstrap",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#fresh-protocol-only",
+        "docs/factory-map/forward-graph.v1.json#e01"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F002",
+      "from": "factoryRun.bootstrap",
+      "obligation": "none (same-run identity chain)",
+      "to": "factoryRun.start",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#fresh-protocol-only"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F003",
+      "from": "in.idea",
+      "obligation": "none (entrypoint input)",
+      "to": "factoryRun.start",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e01",
+        "docs/factory-map/forward-graph.v1.json#e02"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F004",
+      "from": "in.capsule",
+      "obligation": "none (public ingress input)",
+      "to": "factoryRun.importCapsule",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek5",
+        "docs/factory-map/forward-graph.v1.json#e01"
+      ],
+      "waitPolicy": "operator-command",
+      "note": "typed refusals: corrupt package bytes, foreign lineage, illegal parent state, active attempt, stale protocol"
+    },
+    {
+      "id": "F005",
+      "from": "factoryRun.importCapsule",
+      "obligation": "obligation: ingestCapsuleFacts (verified capsule/certificate/requirements/claims/module/base-repo digests)",
+      "to": "factoryRun.start",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek5"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F006",
+      "from": "in.operator",
+      "obligation": "none (operator command: redevelop after failed terminal; carry-forward)",
+      "to": "factoryRun.start",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e93"
+      ],
+      "waitPolicy": "operator-command",
+      "carryForward": "prior lifecycle TerminalProof(failed) is evidence, not authority for skipping ingress"
+    },
+    {
+      "id": "F007",
+      "from": "in.manifest",
+      "obligation": "none (immutable content-addressed binding source)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#canonical-role-contract"
+      ],
+      "waitPolicy": "static-input",
+      "note": "the manifest is resolved once at WorkIntent creation; attempts never re-resolve it"
+    },
+    {
+      "id": "F008",
+      "from": "in.planningFacts",
+      "obligation": "none (planning input: idea/scope/unknowns/claims/seams)",
+      "to": "workItem.planGraph",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#planning-and-idea-conservation",
+        "tests/factory-proof/development-scenario-pack.mjs#D0"
+      ],
+      "waitPolicy": "static-input"
+    },
+    {
+      "id": "F009",
+      "from": "factoryRun.start",
+      "obligation": "obligation: bootstrapLifecycleRun",
+      "to": "lifecycleRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e07",
+        "docs/factory-map/forward-graph.v1.json#e08",
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F010",
+      "from": "lifecycleRun.create",
+      "obligation": "obligation: enterStage(initial-discovery)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e08",
+        "docs/factory-map/forward-graph.v1.json#e09"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F011",
+      "from": "in.operator",
+      "obligation": "none (operator command: continue after approval-required)",
+      "to": "lifecycleRun.createContinuation",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e89"
+      ],
+      "waitPolicy": "operator-command",
+      "carryForward": "authorized release policy + operator grant + prior terminal evidence"
+    },
+    {
+      "id": "F012",
+      "from": "lifecycleRun.createContinuation",
+      "obligation": "obligation: enterStage(delivery-release, authorized)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e90"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F013",
+      "from": "in.operator",
+      "obligation": "none (operator command: continue after development-blocked)",
+      "to": "lifecycleRun.createContinuation",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e91"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F014",
+      "from": "lifecycleRun.createContinuation",
+      "obligation": "obligation: enterStage(solution-development, accepted-prefix)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e91"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "carryForward": "accepted prefix of the prior run becomes immutable input evidence"
+    },
+    {
+      "id": "F015",
+      "from": "in.operator",
+      "obligation": "none (operator command: abandon)",
+      "to": "lifecycleRun.cancel",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek6"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F016",
+      "from": "lifecycleRun.cancel",
+      "obligation": "none (cancellation proof commits with run settlement)",
+      "to": "factoryRun.recordRunTerminalProof",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek6"
+      ],
+      "waitPolicy": "same-transaction",
+      "proof": "cancellation"
+    },
+    {
+      "id": "F017",
+      "from": "in.operator",
+      "obligation": "none (operator command: stop)",
+      "to": "factoryRun.requestStop",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F018",
+      "from": "factoryRun.requestStop",
+      "obligation": "none (durable pause; obligations stay runnable but unconsumed)",
+      "to": "factoryRun.resume",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4"
+      ],
+      "waitPolicy": "typed-wait:policy(operator-stop)"
+    },
+    {
+      "id": "F019",
+      "from": "in.operator",
+      "obligation": "none (operator command: resume)",
+      "to": "factoryRun.resume",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F020",
+      "from": "factoryRun.observeWatchdog",
+      "obligation": "obligation: watchdogRestart (durable restart evidence; typed command only)",
+      "to": "factoryRun.resume",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e82"
+      ],
+      "waitPolicy": "typed-wait:policy(heartbeat-freeze)",
+      "note": "watchdog observes and commands; it never writes aggregate state directly"
+    },
+    {
+      "id": "F021",
+      "from": "factoryRun.observeWatchdog",
+      "obligation": "obligation: watchdogBudgetExhausted -> truthful failure",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e83"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "outcome": "failed"
+    },
+    {
+      "id": "F022",
+      "from": "stageRun.recordLocalOutcome",
+      "obligation": "obligation: routeLifecycle (declared outcome route)",
+      "to": "lifecycleRun.routeOutcome",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.route-lifecycle",
+        "docs/factory-map/forward-graph.v1.json#e14"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F023",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "obligation: enterStage(solution-formalization)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e15",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:settle->complete-go"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "outcome": "go|clarify|reject",
+      "note": "discovery routing is deliberately permissive: all three outcomes forward; idea strength recorded, not gated"
+    },
+    {
+      "id": "F024",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: failed)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e16",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:settle->complete-failed"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F025",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "obligation: enterStage(solution-development)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e26"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "outcome": "formalized",
+      "note": "exact D0 handoff: certificate ref/hash, solution contract, baseline hash, SRS projection, AC set"
+    },
+    {
+      "id": "F026",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: formalization-inconsistent)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e27",
+        "tests/factory-proof/obligation-contracts.mjs#frm.submission.reconciliation"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "formalization-inconsistent"
+    },
+    {
+      "id": "F027",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: failed)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e28"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F028",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "obligation: enterStage(delivery-release)",
+      "to": "stageRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e38",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-released"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "outcome": "verified",
+      "lifecycle": "product-delivery"
+    },
+    {
+      "id": "F029",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: runnable-local)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e39"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "runnable-local",
+      "lifecycle": "product-build"
+    },
+    {
+      "id": "F030",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: development-blocked)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e40",
+        "tests/factory-proof/development-scenario-pack.mjs#D9:settlement:blocked-and-failed-outcomes"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "development-blocked"
+    },
+    {
+      "id": "F031",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: failed)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e41"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F032",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: released)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e50",
+        "tests/factory-proof/delivery-scenario-pack.mjs#handoff:solution-development->delivery-release:verified"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "released"
+    },
+    {
+      "id": "F033",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: approval-required)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e51",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-approval-required"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "approval-required"
+    },
+    {
+      "id": "F034",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: delivery-blocked)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e52",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-blocked"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "delivery-blocked"
+    },
+    {
+      "id": "F035",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: failed)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e53",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-failed"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F036",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: documented)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:settle-documentation->complete-documented"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "documented"
+    },
+    {
+      "id": "F037",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: blocked)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:settle-documentation->complete-blocked"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "blocked"
+    },
+    {
+      "id": "F038",
+      "from": "lifecycleRun.routeOutcome",
+      "obligation": "none (terminal route: failed)",
+      "to": "lifecycleRun.issueTerminalProof",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:settle-documentation->complete-failed"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F039",
+      "from": "lifecycleRun.issueTerminalProof",
+      "obligation": "obligation: runSettlement (final run proof)",
+      "to": "factoryRun.recordRunTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e84",
+        "docs/factory-map/forward-graph.v1.json#e87"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F040",
+      "from": "lifecycleRun.issueTerminalProof",
+      "obligation": "obligation: replayCaptureSweep (certify replay capsule for cross-run reuse)",
+      "to": "workplace.settleEffect",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#effect.replay-capture",
+        "docs/factory-map/forward-graph.v1.json#e85"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "effect": "replay-capture",
+      "gap": "G2 run-level sweep placement not fully derivable from inputs; cell-level effect is certain"
+    },
+    {
+      "id": "F041",
+      "from": "stageRun.create",
+      "obligation": "none (stage activation in same aggregate)",
+      "to": "stageRun.activate",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e09"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F042",
+      "from": "stageRun.activate",
+      "obligation": "obligation: bindProcessModule (installed module identity)",
+      "to": "processRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e09",
+        "tests/factory-proof/factory-coverage-universe.mjs#WORKSHOPS"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F043",
+      "from": "processRun.create",
+      "obligation": "obligation: enterFirstNode(module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e09"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F044",
+      "from": "processRun.enterNode",
+      "obligation": "none (node instance commits with flow entry)",
+      "to": "nodeRun.create",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e09"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F045",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "none (settle certificate + stage outcome in one transaction)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.route-lifecycle"
+      ],
+      "waitPolicy": "same-transaction",
+      "note": "settle-process issues the ProcessOutcomeCertificate; it is a certificate, not a manifest capability"
+    },
+    {
+      "id": "F046",
+      "from": "processRun.settle",
+      "obligation": "obligation: recordStageOutcome(certificate evidence)",
+      "to": "stageRun.recordLocalOutcome",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.route-lifecycle"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F047",
+      "from": "nodeRun.fail",
+      "obligation": "obligation: propagateNodeFailure",
+      "to": "processRun.settleFailure",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#K4:settlement:internal-exception-complete-failed"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F048",
+      "from": "processRun.settleFailure",
+      "obligation": "none (failure outcome commits with proof)",
+      "to": "stageRun.recordLocalOutcome",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#K4:settlement:internal-exception-complete-failed"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed"
+    },
+    {
+      "id": "F049",
+      "from": "nodeRun.create",
+      "obligation": "obligation: materializeWorkplace",
+      "to": "workplace.materialize",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e54"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "nodeKind": "production-cell"
+    },
+    {
+      "id": "F050",
+      "from": "nodeRun.materializeCell",
+      "obligation": "obligation: materializeWorkplace xN (one per WorkItem)",
+      "to": "workplace.materialize",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#fanout:development-implementation:per-work-item-workplace",
+        "tests/factory-proof/development-scenario-pack.mjs#D2:fanout-scheduling:dependency-order-respected"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "fanOut": "workItems",
+      "node": "implement-work-items"
+    },
+    {
+      "id": "F051",
+      "from": "nodeRun.materializeCell",
+      "obligation": "obligation: materializeWorkplace xN (one per verification item)",
+      "to": "workplace.materialize",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#transition:verify-acceptance->settle-development",
+        "tests/factory-proof/development-scenario-pack.mjs#D8:verification:evidence-pins-exact-candidate-hash"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "fanOut": "verificationItems",
+      "node": "verify-acceptance"
+    },
+    {
+      "id": "F052",
+      "from": "workplace.materialize",
+      "obligation": "none (readiness is a predicate over exact predecessor CellFinalAcceptance + EffectReceipt evidence; there is no blocked->todo command)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision",
+        "tests/factory-proof/development-scenario-pack.mjs#D2:fanout-scheduling:dependency-order-respected"
+      ],
+      "waitPolicy": "readiness-predicate",
+      "waitPolicyDetail": "while predecessor evidence is incomplete the dependant holds a TypedWait(readiness) whose wake source is the predecessor obligation completion; a terminally failed predecessor never leaves a dead wake source (see unreachable edges)"
+    },
+    {
+      "id": "F053",
+      "from": "workplace.admitWorkIntent",
+      "obligation": "none (attempt creation verifies binding in same transaction)",
+      "to": "activityAttempt.create",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#canonical-role-contract"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F054",
+      "from": "activityAttempt.create",
+      "obligation": "obligation: launchAdmission (first PromptAssemblyReceipt paired with launch)",
+      "to": "activityAttempt.admitProviderRequest",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F055",
+      "from": "activityAttempt.admitProviderRequest",
+      "obligation": "obligation: providerSend (exact idempotent ordinal)",
+      "to": "cognition.sendProviderRequest",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "note": "linearization immediately before final request serialization/network send"
+    },
+    {
+      "id": "F056",
+      "from": "cognition.sendProviderRequest",
+      "obligation": "none (external boundary; worker returns typed results via the same public ingress)",
+      "to": "activityAttempt.recordOutcome",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek5"
+      ],
+      "waitPolicy": "external-result"
+    },
+    {
+      "id": "F057",
+      "from": "activityAttempt.admitProviderRequest",
+      "obligation": "none (refused receipt persists rejected envelope digest; no context or retry budget consumed)",
+      "to": "activityAttempt.recordProviderRefusal",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope"
+      ],
+      "waitPolicy": "same-transaction",
+      "refusal": "envelope exceeded | deterministic budget rejection (identical request never reissued)"
+    },
+    {
+      "id": "F058",
+      "from": "cognition.sendProviderRequest",
+      "obligation": "obligation: providerSend redrive (SAME obligation + ordinal; never a new admission)",
+      "to": "cognition.sendProviderRequest",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope"
+      ],
+      "waitPolicy": "crash-redrive",
+      "fault": "crash after admission/before send"
+    },
+    {
+      "id": "F059",
+      "from": "cognition.sendProviderRequest",
+      "obligation": "none (typed uncertainty; never a blind duplicate send)",
+      "to": "activityAttempt.classifyWorkerLoss",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope"
+      ],
+      "waitPolicy": "typed-wait:policy(send-uncertainty)",
+      "fault": "crash after un-idempotent external send/before outcome"
+    },
+    {
+      "id": "F060",
+      "from": "activityAttempt.classifyWorkerLoss",
+      "obligation": "obligation: retryAttempt (bounded retry for retryable substrate failures)",
+      "to": "activityAttempt.create",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4",
+        "tests/factory-proof/development-scenario-pack.mjs#D8:verification:terminal-accounting-unknown"
+      ],
+      "waitPolicy": "bounded-retry",
+      "fault": "worker loss | substrate unavailable (ADR-089 bounded retry -> typed unknown)"
+    },
+    {
+      "id": "F061",
+      "from": "activityAttempt.recordOutcome",
+      "obligation": "obligation: submitContribution (public ingress)",
+      "to": "workplace.recordContribution",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek5",
+        "tests/factory-contract/transition-conformance-scenarios.mjs#repair-loop"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F062",
+      "from": "workplace.recordContribution",
+      "obligation": "obligation: sealRevision",
+      "to": "workplace.sealProductionRevision",
+      "evidenceRefs": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision",
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#definition-of-complete"
+      ],
+      "waitPolicy": "same-transaction",
+      "material": "contribution -> production revision"
+    },
+    {
+      "id": "F063",
+      "from": "workplace.sealProductionRevision",
+      "obligation": "obligation: presentCandidates",
+      "to": "workplace.presentCandidateSet",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#definition-of-complete"
+      ],
+      "waitPolicy": "same-transaction",
+      "material": "production revision -> CandidateSet"
+    },
+    {
+      "id": "F064",
+      "from": "workplace.presentCandidateSet",
+      "obligation": "obligation: runGate(author phase)",
+      "to": "workplace.runAuthorGate",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.run-gate",
+        "docs/factory-map/forward-graph.v1.json#e59"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F065",
+      "from": "workplace.runAuthorGate",
+      "obligation": "obligation: openReviewerDesk (pinned exact author CandidateSet)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e60",
+        "tests/factory-proof/obligation-contracts.mjs#factory.review-verdict"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "gate": "author accepted + review declared",
+      "role": "reviewer",
+      "review": true
+    },
+    {
+      "id": "F066",
+      "from": "workplace.runAuthorGate",
+      "obligation": "none (authority commit isFinal)",
+      "to": "workplace.recordFinalAcceptance",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e65"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "author accepted, no review/effect"
+    },
+    {
+      "id": "F067",
+      "from": "workplace.runAuthorGate",
+      "obligation": "none (repair verdict commits recovery feedback)",
+      "to": "workplace.enterRepairWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e61",
+        "tests/factory-contract/transition-conformance-scenarios.mjs#repair-loop"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "repair_required",
+      "repair": true
+    },
+    {
+      "id": "F068",
+      "from": "workplace.runAuthorGate",
+      "obligation": "none (human verdict commits TypedWait)",
+      "to": "workplace.enterHumanWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e62"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "human_required"
+    },
+    {
+      "id": "F069",
+      "from": "workplace.presentCandidateSet",
+      "obligation": "obligation: runGate(final phase over reviewer verdict set)",
+      "to": "workplace.runFinalGate",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.run-gate",
+        "docs/factory-map/forward-graph.v1.json#e63",
+        "tests/factory-proof/obligation-contracts.mjs#factory.review-verdict"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "role": "reviewer presentation; verdict grammar approved|changes_requested|defect_proven"
+    },
+    {
+      "id": "F070",
+      "from": "workplace.runFinalGate",
+      "obligation": "obligation: runEffects (every declared effect completes with an exact receipt)",
+      "to": "workplace.settleEffect",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.run-effects",
+        "docs/factory-map/forward-graph.v1.json#e64"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "gate": "accepted + effect declared",
+      "effect": true
+    },
+    {
+      "id": "F071",
+      "from": "workplace.runFinalGate",
+      "obligation": "none (authority commit isFinal)",
+      "to": "workplace.recordFinalAcceptance",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e65"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "accepted, no effect"
+    },
+    {
+      "id": "F072",
+      "from": "workplace.runFinalGate",
+      "obligation": "none (repair verdict commits recovery feedback)",
+      "to": "workplace.enterRepairWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e61"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "repair_required",
+      "repair": true
+    },
+    {
+      "id": "F073",
+      "from": "workplace.runFinalGate",
+      "obligation": "none (human verdict commits TypedWait)",
+      "to": "workplace.enterHumanWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e62"
+      ],
+      "waitPolicy": "same-transaction",
+      "gate": "human_required"
+    },
+    {
+      "id": "F074",
+      "from": "workplace.settleEffect",
+      "obligation": "none (receipt + final acceptance in one transaction)",
+      "to": "workplace.recordFinalAcceptance",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e71",
+        "tests/factory-proof/obligation-contracts.mjs#handoff.record-final-acceptance"
+      ],
+      "waitPolicy": "same-transaction",
+      "effectOutcome": "success"
+    },
+    {
+      "id": "F075",
+      "from": "workplace.settleEffect",
+      "obligation": "none (immutable effect-repair RecoveryIssue)",
+      "to": "workplace.enterRepairWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e69"
+      ],
+      "waitPolicy": "same-transaction",
+      "effectOutcome": "repair_required",
+      "repair": true,
+      "note": "git-integration typed conflict is the canonical case"
+    },
+    {
+      "id": "F076",
+      "from": "workplace.settleEffect",
+      "obligation": "none (TypedWait human)",
+      "to": "workplace.enterHumanWait",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e70"
+      ],
+      "waitPolicy": "same-transaction",
+      "effectOutcome": "human_required"
+    },
+    {
+      "id": "F077",
+      "from": "workplace.settleEffect",
+      "obligation": "none (typed uncertainty; no automatic duplicate of a non-idempotent external effect)",
+      "to": "workplace.enterHumanWait",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4",
+        "tests/factory-proof/delivery-scenario-pack.mjs#K4:crash-after-effect-before-receipt"
+      ],
+      "waitPolicy": "typed-wait:external(effect-uncertainty)",
+      "effectOutcome": "unknown",
+      "gap": "K4 crash-after-effect-before-receipt declared pending in the predecessor corpus"
+    },
+    {
+      "id": "F078",
+      "from": "workplace.enterRepairWait",
+      "obligation": "obligation: requeueRepair (exact RecoveryIssue feedback; same Workplace re-staffed)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e72",
+        "tests/factory-contract/transition-conformance-scenarios.mjs#repair-loop",
+        "tests/factory-proof/obligation-contracts.mjs#dev.impl-claim-monotonicity"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "repair": true,
+      "condition": "below epoch budget"
+    },
+    {
+      "id": "F079",
+      "from": "workplace.enterRepairWait",
+      "obligation": "none (epoch rollover commits backoff deadline)",
+      "to": "workplace.rolloverRepairEpoch",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e73"
+      ],
+      "waitPolicy": "same-transaction",
+      "repair": true,
+      "condition": "epoch budget exhausted (onExhausted=requeue)"
+    },
+    {
+      "id": "F080",
+      "from": "workplace.rolloverRepairEpoch",
+      "obligation": "obligation: requeueAfterBackoff (durable deadline wake)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e74"
+      ],
+      "waitPolicy": "typed-wait:policy(backoff-deadline)",
+      "repair": true
+    },
+    {
+      "id": "F081",
+      "from": "workplace.rolloverRepairEpoch",
+      "obligation": "none (truthful failure proof)",
+      "to": "workplace.issueWorkplaceTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e75",
+        "tests/factory-proof/discovery-scenario-pack.mjs#recovery:discovery-proposal:retry-exhaustion-terminal"
+      ],
+      "waitPolicy": "same-transaction",
+      "repair": true,
+      "outcome": "failed",
+      "condition": "total attempt cap | diagnosis-repeat | convergence ceiling"
+    },
+    {
+      "id": "F082",
+      "from": "workplace.enterRepairWait",
+      "obligation": "none (scope-widening carve opens)",
+      "to": "workplace.widenAuthorityScope",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e76",
+        "tests/factory-proof/obligation-contracts.mjs#dev.impl-scope"
+      ],
+      "waitPolicy": "same-transaction",
+      "repair": true,
+      "condition": "same path-outside-authority key twice (scope insufficiency)"
+    },
+    {
+      "id": "F083",
+      "from": "workplace.widenAuthorityScope",
+      "obligation": "obligation: requeueWidened (widened frozen scope, same Workplace)",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e77"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "repair": true,
+      "condition": "grant"
+    },
+    {
+      "id": "F084",
+      "from": "workplace.widenAuthorityScope",
+      "obligation": "none (truthful failure proof)",
+      "to": "workplace.issueWorkplaceTerminalProof",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e78"
+      ],
+      "waitPolicy": "same-transaction",
+      "outcome": "failed",
+      "condition": "refuse (contention)"
+    },
+    {
+      "id": "F085",
+      "from": "workplace.enterHumanWait",
+      "obligation": "none (TypedWait(human); exact durable wake = operator human-response command)",
+      "to": "workplace.resolveHumanResponse",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e80",
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4"
+      ],
+      "waitPolicy": "typed-wait:human"
+    },
+    {
+      "id": "F086",
+      "from": "in.operator",
+      "obligation": "none (operator command: human-response)",
+      "to": "workplace.resolveHumanResponse",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ],
+      "waitPolicy": "operator-command"
+    },
+    {
+      "id": "F087",
+      "from": "workplace.resolveHumanResponse",
+      "obligation": "obligation: requeueRepair after human resolution",
+      "to": "workplace.admitWorkIntent",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "note": "replaces legacy operator unpark direct Workplace writes"
+    },
+    {
+      "id": "F088",
+      "from": "workplace.resolveHumanResponse",
+      "obligation": "obligation: resumeEffect after human resolution",
+      "to": "workplace.settleEffect",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F089",
+      "from": "workplace.recordFinalAcceptance",
+      "obligation": "obligation: closePresentation (durable, fenced, idempotent)",
+      "to": "workplace.closePresentation",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.close-presentation"
+      ],
+      "waitPolicy": "immediate-obligation"
+    },
+    {
+      "id": "F090",
+      "from": "workplace.recordFinalAcceptance",
+      "obligation": "obligation: completeCellNode (cell node terminal evidence)",
+      "to": "nodeRun.recordCellAcceptance",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e79",
+        "tests/factory-proof/obligation-contracts.mjs#handoff.record-final-acceptance"
+      ],
+      "waitPolicy": "same-transaction"
+    },
+    {
+      "id": "F091",
+      "from": "workplace.issueWorkplaceTerminalProof",
+      "obligation": "obligation: propagateCellFailure",
+      "to": "nodeRun.fail",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e75",
+        "docs/factory-map/forward-graph.v1.json#e78"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "outcome": "failed"
+    },
+    {
+      "id": "F092",
+      "from": "workplace.issueWorkplaceTerminalProof",
+      "obligation": "obligation: markDependantsUnreachable + runnable settlement work",
+      "to": "nodeRun.settleUnreachable",
+      "evidenceRefs": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision",
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#durable-handoff"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "unreachable": true,
+      "note": "dependants cannot remain pending behind a dead wake source; settlement becomes runnable"
+    },
+    {
+      "id": "F093",
+      "from": "nodeRun.recordKernelResult",
+      "obligation": "none (immutable WorkItem graph commits in the kernel node transaction)",
+      "to": "workItem.planGraph",
+      "evidenceRefs": [
+        "tests/factory-proof/obligation-contracts.mjs#dev.task-graph",
+        "tests/factory-proof/development-scenario-pack.mjs#transition:plan-task-graph->resolve-task-graph"
+      ],
+      "waitPolicy": "same-transaction",
+      "node": "resolve-task-graph",
+      "note": "validates unique item keys, non-empty, dependsOn refs resolve; rejects cycles/jointly-unsatisfiable/homeless/zero-obligation graphs"
+    },
+    {
+      "id": "F094",
+      "from": "workItem.planGraph",
+      "obligation": "obligation: instantiateDependantWorkplaces (dependency edges)",
+      "to": "workplace.materialize",
+      "evidenceRefs": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#planning-and-idea-conservation",
+        "tests/factory-proof/development-scenario-pack.mjs#fanout:development-implementation:per-work-item-workplace"
+      ],
+      "waitPolicy": "readiness-predicate",
+      "note": "explicit deferrals are planning facts with owner+reason; they create no instantiation obligation"
+    },
+    {
+      "id": "F095",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: freezeCandidate (fan-in: checks exact predecessor CellFinalAcceptance evidence of ALL implement cells)",
+      "to": "nodeRun.recordKernelResult",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e32",
+        "tests/factory-proof/development-scenario-pack.mjs#D5:freeze:frozen-candidate-content-addressed-and-immutable"
+      ],
+      "waitPolicy": "fan-in",
+      "node": "freeze-integrated-candidate"
+    },
+    {
+      "id": "F096",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "none (settlement fan-in: completion policy all-required-accepted | early-blocked)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#fanin:development-settlement:all-required-accepted",
+        "tests/factory-proof/development-scenario-pack.mjs#D2:fanin:completion-policy-all-blocks-early-fanin"
+      ],
+      "waitPolicy": "fan-in",
+      "node": "settle-development",
+      "outcomes": "verified|blocked|failed"
+    },
+    {
+      "id": "F097",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "none (readiness manifest binds sealed candidate)",
+      "to": "nodeRun.recordKernelResult",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e34",
+        "tests/factory-proof/development-scenario-pack.mjs#D6:readiness:declared-source-mismatch-rejected"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "node": "bind-runnable-candidate",
+      "note": "stale readiness hash is typed failure (D7 pending token; cross-lifecycle seam)"
+    },
+    {
+      "id": "F098",
+      "from": "processRun.enterNode",
+      "obligation": "none (TypedWait(human): approval decision pending)",
+      "to": "nodeRun.recordHumanDecision",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e43",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-approval-required"
+      ],
+      "waitPolicy": "typed-wait:human(approval-pending)",
+      "node": "approve-release"
+    },
+    {
+      "id": "F099",
+      "from": "in.operator",
+      "obligation": "none (operator command: approval decision)",
+      "to": "nodeRun.recordHumanDecision",
+      "evidenceRefs": [
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-released"
+      ],
+      "waitPolicy": "operator-command",
+      "node": "approve-release"
+    },
+    {
+      "id": "F100",
+      "from": "nodeRun.recordHumanDecision",
+      "obligation": "obligation: publishRelease",
+      "to": "nodeRun.recordProviderOutcome",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e45",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-released"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "decision": "approved",
+      "node": "publish-deploy"
+    },
+    {
+      "id": "F101",
+      "from": "nodeRun.recordHumanDecision",
+      "obligation": "none (settle approval-required)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e46",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-approval-required"
+      ],
+      "waitPolicy": "same-transaction",
+      "decision": "denied|pending",
+      "outcome": "approval-required"
+    },
+    {
+      "id": "F102",
+      "from": "nodeRun.recordProviderOutcome",
+      "obligation": "obligation: observeRelease (after idempotent publication EffectReceipt)",
+      "to": "nodeRun.recordProviderOutcome",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e47",
+        "tests/factory-proof/delivery-scenario-pack.mjs#effect.deploy"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "node": "publish-deploy -> observe-release"
+    },
+    {
+      "id": "F103",
+      "from": "nodeRun.recordProviderOutcome",
+      "obligation": "obligation: effectRedrive (idempotent effect action key; receipt or typed wait, never silent stall)",
+      "to": "nodeRun.recordProviderOutcome",
+      "evidenceRefs": [
+        "tests/factory-proof/delivery-scenario-pack.mjs#K4:crash-after-effect-before-receipt",
+        "tests/factory-proof/obligation-contracts.mjs#handoff.run-effects"
+      ],
+      "waitPolicy": "crash-redrive",
+      "fault": "crash after external mutation before receipt",
+      "gap": "declared pending in predecessor corpus"
+    },
+    {
+      "id": "F104",
+      "from": "nodeRun.recordKernelResult",
+      "obligation": "none (deferred mode settles deterministically approval-required)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e44",
+        "docs/factory-map/forward-graph.v1.json#e51"
+      ],
+      "waitPolicy": "same-transaction",
+      "node": "preflight-release (deferred delivery mode)",
+      "outcome": "approval-required",
+      "note": "a start-from-idea never carries release authority"
+    },
+    {
+      "id": "F105",
+      "from": "workplace.recordContribution",
+      "obligation": "obligation: upstreamDefect routes to settlement (typed; Development is never silently widened)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "tests/factory-proof/development-scenario-pack.mjs#D8:verification:upstream-defect-routes-to-settlement"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "node": "verify-acceptance cells"
+    },
+    {
+      "id": "F106",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e10",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:produce-proposal->assess-readiness"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "product-discovery",
+        "fromNode": "produce-proposal",
+        "toNode": "assess-readiness"
+      }
+    },
+    {
+      "id": "F107",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e12",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:assess-readiness->settle"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "product-discovery",
+        "fromNode": "assess-readiness",
+        "toNode": "settle"
+      }
+    },
+    {
+      "id": "F108",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e11",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:produce-proposal->complete-failed"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "product-discovery",
+        "fromNode": "produce-proposal",
+        "toNode": "settle(failed)"
+      },
+      "failure": true
+    },
+    {
+      "id": "F109",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e13",
+        "tests/factory-proof/discovery-scenario-pack.mjs#transition:assess-readiness->complete-failed"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "product-discovery",
+        "fromNode": "assess-readiness",
+        "toNode": "settle(failed)"
+      },
+      "failure": true
+    },
+    {
+      "id": "F110",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e18"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "define-product-contract",
+        "toNode": "model-use-cases"
+      }
+    },
+    {
+      "id": "F111",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e19"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "model-use-cases",
+        "toNode": "define-acceptance-contract"
+      }
+    },
+    {
+      "id": "F112",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e20"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "define-acceptance-contract",
+        "toNode": "reconcile-what"
+      }
+    },
+    {
+      "id": "F113",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e21"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "reconcile-what",
+        "toNode": "freeze-acceptance-baseline"
+      }
+    },
+    {
+      "id": "F114",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e22"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "freeze-acceptance-baseline",
+        "toNode": "define-architecture-contract"
+      }
+    },
+    {
+      "id": "F115",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e24"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "define-architecture-contract",
+        "toNode": "settle"
+      }
+    },
+    {
+      "id": "F116",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e23"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-formalization",
+        "fromNode": "freeze-acceptance-baseline",
+        "toNode": "settle(inconsistent|failed)"
+      },
+      "failure": true
+    },
+    {
+      "id": "F117",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e30",
+        "tests/factory-proof/development-scenario-pack.mjs#transition:plan-task-graph->resolve-task-graph"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "plan-task-graph",
+        "toNode": "resolve-task-graph"
+      }
+    },
+    {
+      "id": "F118",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e31"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "resolve-task-graph",
+        "toNode": "implement-work-items"
+      },
+      "fanOut": "workItems"
+    },
+    {
+      "id": "F119",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e32",
+        "tests/factory-proof/development-scenario-pack.mjs#transition:implement-work-items->freeze-integrated-candidate"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "implement-work-items",
+        "toNode": "freeze-integrated-candidate"
+      },
+      "fanIn": "all implement cells accepted"
+    },
+    {
+      "id": "F120",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e33"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "freeze-integrated-candidate",
+        "toNode": "certify-product-readiness"
+      }
+    },
+    {
+      "id": "F121",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e34",
+        "tests/factory-proof/development-scenario-pack.mjs#transition:certify-product-readiness->bind-runnable-candidate"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "certify-product-readiness",
+        "toNode": "bind-runnable-candidate"
+      }
+    },
+    {
+      "id": "F122",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e35"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "bind-runnable-candidate",
+        "toNode": "verify-acceptance"
+      },
+      "fanOut": "verificationItems"
+    },
+    {
+      "id": "F123",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e36",
+        "tests/factory-proof/development-scenario-pack.mjs#transition:verify-acceptance->settle-development"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "solution-development",
+        "fromNode": "verify-acceptance",
+        "toNode": "settle"
+      },
+      "fanIn": "all verification cells terminal"
+    },
+    {
+      "id": "F124",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e43"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "preflight-release",
+        "toNode": "approve-release"
+      }
+    },
+    {
+      "id": "F125",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e44"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "preflight-release",
+        "toNode": "settle(approval-required)"
+      },
+      "note": "deferred-mode short circuit"
+    },
+    {
+      "id": "F126",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e45"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "approve-release",
+        "toNode": "publish-deploy"
+      }
+    },
+    {
+      "id": "F127",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e46"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "approve-release",
+        "toNode": "settle(approval-required)"
+      },
+      "note": "denied/pending approval"
+    },
+    {
+      "id": "F128",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e47"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "publish-deploy",
+        "toNode": "observe-release"
+      }
+    },
+    {
+      "id": "F129",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "docs/factory-map/forward-graph.v1.json#e48"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "delivery-release",
+        "fromNode": "observe-release",
+        "toNode": "settle"
+      }
+    },
+    {
+      "id": "F130",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:assemble-documentation-case->author-documents"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "documentation-release",
+        "fromNode": "assemble-documentation-case",
+        "toNode": "author-documents"
+      }
+    },
+    {
+      "id": "F131",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.enterNode",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:author-documents->render-documentation-bundle"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "documentation-release",
+        "fromNode": "author-documents",
+        "toNode": "render-documentation-bundle"
+      }
+    },
+    {
+      "id": "F132",
+      "from": "processRun.recordNodeTerminal",
+      "obligation": "obligation: advanceProcessFlow (declared module flow)",
+      "to": "processRun.settle",
+      "evidenceRefs": [
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:render-documentation-bundle->settle-documentation"
+      ],
+      "waitPolicy": "immediate-obligation",
+      "flow": {
+        "module": "documentation-release",
+        "fromNode": "render-documentation-bundle",
+        "toNode": "settle"
+      }
+    }
+  ],
+  "typedWaits": [
+    {
+      "id": "W1",
+      "reason": "human gate verdict (author/final gate human_required)",
+      "wakeSource": "operator human-response command -> workplace.resolveHumanResponse",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e62",
+        "docs/factory-map/forward-graph.v1.json#e80"
+      ]
+    },
+    {
+      "id": "W2",
+      "reason": "delivery approval decision pending (approve-release)",
+      "wakeSource": "operator approval-decision command -> nodeRun.recordHumanDecision",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e43",
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-approval-required"
+      ]
+    },
+    {
+      "id": "W3",
+      "reason": "effect human_required / attempt stasis",
+      "wakeSource": "operator human-response command -> workplace.resolveHumanResponse -> workplace.settleEffect",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e70"
+      ]
+    },
+    {
+      "id": "W4",
+      "reason": "external substrate availability (warrant-blocked-environment; bounded in-check retry first)",
+      "wakeSource": "substrate re-probe obligation with deadline (typed unknown on exhaustion; never product-failed)",
+      "evidence": [
+        "tests/factory-proof/obligation-contracts.mjs#factory.local-runnability",
+        "tests/factory-proof/development-scenario-pack.mjs#D8:verification:terminal-accounting-unknown"
+      ]
+    },
+    {
+      "id": "W5",
+      "reason": "operator stop (durable pause)",
+      "wakeSource": "operator resume command -> factoryRun.resume",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek4"
+      ]
+    },
+    {
+      "id": "W6",
+      "reason": "repair epoch backoff window",
+      "wakeSource": "backoff deadline obligation -> requeueAfterBackoff",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e73",
+        "docs/factory-map/forward-graph.v1.json#e74"
+      ]
+    },
+    {
+      "id": "W7",
+      "reason": "dependency readiness (fan-in incomplete)",
+      "wakeSource": "predecessor obligation completion (exact CellFinalAcceptance/EffectReceipt evidence arrival); a terminally failed predecessor converts this wait into unreachable settlement - never a dead wake",
+      "evidence": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision",
+        "tests/factory-proof/development-scenario-pack.mjs#D2:fanout-scheduling:dependency-order-respected"
+      ]
+    },
+    {
+      "id": "W8",
+      "reason": "non-idempotent external send/effect uncertainty",
+      "wakeSource": "operator resolution command; never an automatic duplicate",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#bounded-prompt-and-context-envelope",
+        "tests/factory-proof/delivery-scenario-pack.mjs#K4:crash-after-effect-before-receipt"
+      ]
+    }
+  ],
+  "terminalProofs": [
+    {
+      "id": "P1",
+      "scope": "workplace",
+      "kind": "success",
+      "outcome": "terminal(accepted)",
+      "evidence": [
+        "tests/factory-proof/obligation-contracts.mjs#handoff.record-final-acceptance",
+        "docs/factory-map/forward-graph.v1.json#terminals"
+      ]
+    },
+    {
+      "id": "P2",
+      "scope": "workplace",
+      "kind": "failure",
+      "outcome": "terminal(failed): retry exhaustion | total cap | convergence ceiling | scope refusal | final verdict failed",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e75",
+        "docs/factory-map/forward-graph.v1.json#e78",
+        "tests/factory-proof/discovery-scenario-pack.mjs#recovery:discovery-proposal:retry-exhaustion-terminal"
+      ]
+    },
+    {
+      "id": "P3",
+      "scope": "lifecycle",
+      "kind": "success",
+      "outcome": "runnable-local | released | documented",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e39",
+        "docs/factory-map/forward-graph.v1.json#e50",
+        "tests/factory-proof/documentation-scenario-pack.mjs#transition:settle-documentation->complete-documented"
+      ]
+    },
+    {
+      "id": "P4",
+      "scope": "lifecycle",
+      "kind": "failure",
+      "outcome": "approval-required | delivery-blocked | development-blocked | formalization-inconsistent | blocked | failed",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e51",
+        "docs/factory-map/forward-graph.v1.json#e52",
+        "docs/factory-map/forward-graph.v1.json#e40",
+        "docs/factory-map/forward-graph.v1.json#e27",
+        "docs/factory-map/forward-graph.v1.json#e16"
+      ]
+    },
+    {
+      "id": "P5",
+      "scope": "lifecycle",
+      "kind": "cancellation",
+      "outcome": "operator abandon",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek6"
+      ]
+    },
+    {
+      "id": "P6",
+      "scope": "node/dependant",
+      "kind": "unreachable",
+      "outcome": "dependant of terminally failed predecessor; settlement runnable",
+      "evidence": [
+        "docs/architecture/decisions/097-event-projected-workflow-kernel.md#decision",
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#durable-handoff"
+      ]
+    },
+    {
+      "id": "P7",
+      "scope": "run",
+      "kind": "success/failure",
+      "outcome": "final run proof bound to lifecycle terminal evidence",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e87"
+      ]
+    }
+  ],
+  "uiCommandBindings": [
+    {
+      "operatorAction": "claim",
+      "targetCommand": "workplace.admitWorkIntent",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "review",
+      "targetCommand": "workplace.presentCandidateSet (reviewer) + workplace.runFinalGate",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "stop",
+      "targetCommand": "factoryRun.requestStop",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "resume",
+      "targetCommand": "factoryRun.resume",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "retry",
+      "targetCommand": "workplace.rolloverRepairEpoch / obligation redrive",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "human-response",
+      "targetCommand": "workplace.resolveHumanResponse",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek7"
+      ]
+    },
+    {
+      "operatorAction": "approval-decision",
+      "targetCommand": "nodeRun.recordHumanDecision",
+      "evidence": [
+        "tests/factory-proof/delivery-scenario-pack.mjs#transition:settle-delivery->complete-released"
+      ]
+    },
+    {
+      "operatorAction": "continue",
+      "targetCommand": "lifecycleRun.createContinuation",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e89",
+        "docs/factory-map/forward-graph.v1.json#e91"
+      ]
+    },
+    {
+      "operatorAction": "redevelop",
+      "targetCommand": "factoryRun.start (with prior-terminal evidence)",
+      "evidence": [
+        "docs/factory-map/forward-graph.v1.json#e93"
+      ]
+    },
+    {
+      "operatorAction": "abandon",
+      "targetCommand": "lifecycleRun.cancel",
+      "evidence": [
+        "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md#phase-ek6"
+      ]
+    }
+  ],
+  "outOfScope": [
+    {
+      "item": "KanbanCard projection build/rebuild",
+      "reason": "projection-only read model; never transition authority (ADR-097 governing rule 4/5); projector edges are not transition graph edges"
+    },
+    {
+      "item": "PromptAssemblyReceipt as a command",
+      "reason": "receipt is immutable evidence appended inside activityAttempt.admitProviderRequest; it is a fact of that command, not a separate command node"
+    },
+    {
+      "item": "Workshop semantic content (CheckPlans, payload schemas, check providers, prompt/skill bytes)",
+      "reason": "workshops supply semantics only; no kernel transition kind originates from a workshop (ADR-097 governing rule 7); their contracts appear as evidenceRefs on the edges they guard"
+    },
+    {
+      "item": "Legacy engine machinery as aggregates (launch tickets, engine host loop, dispatch drain, worker process spawn, MCP tool protocol)",
+      "reason": "replaced by the stateless obligation consumer + public ingress; worker spawn/protocol is the replaceable transport behind cognition.sendProviderRequest/activityAttempt"
+    },
+    {
+      "item": "Legacy tasks.status scheduling, dependency block/unblock commands, direct Workplace SQL writers (unpark, burial, supersession)",
+      "reason": "mandatory DELETE class per ADR-097 findings and the plan deletion-manifest policy; replaced by readiness predicates and typed commands"
+    },
+    {
+      "item": "Discovery normalizer/diagnosis-advisor skills, root test compositions, diagnostic scripts",
+      "reason": "dead/declarative-only strata in the predecessor forward map (§7); no flow nodes, no target commands"
+    },
+    {
+      "item": "Generic obligation-consumer redrive loop",
+      "reason": "the consumer is stateless and replaceable and redrives every runnable obligation; it is a mechanism over all edges, not one typed edge"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "G1",
+      "title": "Physical names not frozen",
+      "detail": "This draft proposes the typed command/event/obligation vocabulary semantically. The plan freezes physical names in EK-1; WP-16/EC coordination must pin exact identifiers before WP-05."
+    },
+    {
+      "id": "G2",
+      "title": "Run-level replay-capture sweep placement",
+      "detail": "Predecessor evidence shows replay-capture both as a cell-level post-acceptance effect (obligation-contracts effect.replay-capture) and as a lazy engine-exit certification sweep (forward-graph e85). Which target owner settles the run-scope capsule (FactoryRun settlement effect vs a certification Workplace) is not derivable from inputs and commands alone; both readings are represented by one edge to workplace.settleEffect and flagged here."
+    },
+    {
+      "id": "G3",
+      "title": "Watchdog/supervisor target ownership",
+      "detail": "Current watchdog/engine-supervisor is host machinery (e82/e83). The target law says watchdogs observe and issue typed commands only. The proposed factoryRun.observeWatchdog aggregate placement needs an EK-1 freeze decision; alternative is a pure observer with no aggregate."
+    },
+    {
+      "id": "G4",
+      "title": "Documentation workshop loop not demonstrated",
+      "detail": "Documentation spine is demonstrated 13/23 (conformance-report); repair/crash/fence/idempotency negatives are declared pending. The forward edges here are derived from the universal production-cell loop law plus declared tokens, not from demonstrated drives."
+    },
+    {
+      "id": "G5",
+      "title": "Development pending tokens",
+      "detail": "D2 concurrency-cap emergence (structural), D7 stale-readiness-hash (cross-lifecycle), D8 terminal-accounting unknown/human-required, D10 managed continuation/replan drain are lawful in production and unit-proven but not causally demonstrated in the predecessor corpus; edges included from topology + pending declarations with honest status."
+    },
+    {
+      "id": "G6",
+      "title": "Prompt/context admission semantics depth",
+      "detail": "admitProviderRequest edges are derived from plan laws only; the predecessor has no equivalent accountant. Exact overflow/repair/retry-charge semantics are EK-1 admission-spec (WP-18) property, not derivable here."
+    },
+    {
+      "id": "G7",
+      "title": "Unknown-to-obligation conservation command",
+      "detail": "The plan requires every Discovery unknown to become an open owned obligation that cannot disappear at a workshop boundary. The input side (capsule unknowns) is derivable; the exact target command that opens such an obligation (planner-side workItem.planGraph clause vs a dedicated kernel obligation kind) needs EK-1 freeze. Currently represented inside workItem.planGraph."
+    },
+    {
+      "id": "G8",
+      "title": "Settle node placement",
+      "detail": "Current evidence models settle as a per-module kernel node; target grammar maps it to processRun.settle. One EK-1 naming decision; no semantic gap."
+    },
+    {
+      "id": "G9",
+      "title": "Continuation capsule ingress mechanics",
+      "detail": "Redevelop/continue currently enter through engine-CLI machinery (capsule-hash-pinned, abandon-shaped parent, package-store copy). Target placement as lifecycleRun.createContinuation + capsule ingress is proposed from operator-command inputs; the D10 continuation token is still pending demonstration."
+    },
+    {
+      "id": "G10",
+      "title": "Effect-uncertainty crash windows demonstrated only partially",
+      "detail": "K4:git-effect crash-after-external-mutation-before-receipt and K4:crash-after-effect-before-receipt are declared platform fault edges; the Delivery one is pending. Idempotent-redrive semantics are lawful (obligation-contracts handoff.run-effects) but the crash-window demonstrations are incomplete in the predecessor corpus."
+    }
+  ],
+  "derivedFrom": [
+    "docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md (non-negotiable architecture laws; Planning and idea conservation; Target logical model; EK-1 transition and claim specification; EK-4 driver/fault semantics; EK-5 material chain; EK-6 planning/settlement; EK-7 operator commands)",
+    "docs/architecture/decisions/097-event-projected-workflow-kernel.md (canonical handoff grammar; eight governing rules; dependency readiness predicate; unreachable propagation)",
+    "tests/factory-proof/obligation-contracts.mjs (normative obligation ids: dev.*, discovery.*, factory.*, frm.submission.*, effect.*, handoff.*, docs.completeness, payload contracts)",
+    "tests/factory-proof/factory-coverage-universe.mjs (declared universe ledger: 204 tokens, 5 workshops, platform fault edges)",
+    "tests/factory-proof/discovery-scenario-pack.mjs + discovery-resilience-pack.mjs (Discovery universe tokens, retry-exhaustion, restart replay)",
+    "tests/factory-proof/formalization-scenario-pack.mjs + formalization-resilience-pack.mjs (Formalization chain, TARGET_META cells, reconciliation)",
+    "tests/factory-proof/development-scenario-pack.mjs + development-resilience-pack.mjs + development-restart-proof.mjs (D0-D10 tokens, fan-out/fan-in, effects, settlement)",
+    "tests/factory-proof/delivery-scenario-pack.mjs (Delivery topology, approval pause, publication effect, deferred mode)",
+    "tests/factory-proof/documentation-scenario-pack.mjs (Documentation chain, gates)",
+    "tests/factory-evidence/conformance-report.json (demonstrated vs declared coverage: 82 PASS bundles, honest pending residue)",
+    "docs/factory-map/FORWARD_GRAPH.md + docs/factory-map/forward-graph.v1.json (predecessor forward execution map frozen at 586871ad; forward lane ONLY - reverse/reconciliation files were NOT read)",
+    "tests/factory-contract/transition-conformance-scenarios.mjs (universal repair-loop theorem: candidate -> changes_requested -> feedback -> candidate -> approved)",
+    "tests/factory-e2e/w9-happy-handlers.mjs (workplace node/role inventory across workshops)",
+    "AGENTS.md (operative constraints; opencode-only, no claude CLI)"
+  ],
+  "counts": {
+    "nodes": 56,
+    "edges": 132,
+    "nodesPerAggregate": {
+      "Input": 5,
+      "FactoryRun": 7,
+      "LifecycleRun": 5,
+      "StageRun": 3,
+      "ProcessRun": 5,
+      "NodeRun": 8,
+      "WorkItem": 1,
+      "Workplace": 16,
+      "ActivityAttempt": 5,
+      "CognitionTransport": 1
+    },
+    "edgesPerKind": {
+      "structural": 87,
+      "carry-forward": 3,
+      "effect": 2,
+      "fan-out": 4,
+      "review": 1,
+      "repair": 9,
+      "unreachable": 1,
+      "flow": 23,
+      "fan-in": 2
+    },
+    "typedWaits": 8,
+    "terminalProofs": 7,
+    "flowEdges": 27,
+    "fanOutEdges": 4,
+    "fanInEdges": 2,
+    "repairEdges": 9,
+    "reviewEdges": 1,
+    "effectEdges": 6,
+    "unreachableEdges": 1,
+    "carryForwardEdges": 3,
+    "settlementEdges": 31
+  }
+}
