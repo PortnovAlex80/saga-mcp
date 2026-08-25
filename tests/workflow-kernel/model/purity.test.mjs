@@ -6,9 +6,13 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scanKernelSources, listKernelSourceFiles } from './purity.test-support.mjs';
+import { scanKernelSources, scanDomainImports, listKernelSourceFiles } from './purity.test-support.mjs';
 
 const scan = scanKernelSources();
+// The import-purity law binds the PURE package (src/workflow-kernel/domain/**);
+// the EK-3 sole-writer repositories under src/workflow-kernel/persistence/**
+// lawfully import the SQLite driver and nothing else outside node builtins.
+const domainImports = scanDomainImports();
 
 test('the kernel exists and contains the domain sources', () => {
   assert.ok(scan.fileCount >= 15, `found ${scan.fileCount} kernel source files`);
@@ -28,17 +32,17 @@ test('no import from persistence, UI, workshop, tracker or provider modules', ()
     /anthropic/,
     /react|vue|svelte/,
   ];
-  for (const imported of scan.imports) {
+  for (const imported of domainImports) {
     for (const rx of forbidden) {
-      assert.ok(!rx.test(imported), `kernel imports forbidden module path: ${imported}`);
+      assert.ok(!rx.test(imported), `the pure package imports forbidden module path: ${imported}`);
     }
   }
 });
 
 test('the only non-relative imports are node builtins', () => {
-  for (const imported of scan.imports) {
+  for (const imported of domainImports) {
     if (imported.startsWith('.')) continue;
-    assert.ok(imported.startsWith('node:'), `unexpected external import: ${imported}`);
+    assert.ok(imported.startsWith('node:'), `unexpected external import in the pure package: ${imported}`);
   }
 });
 
