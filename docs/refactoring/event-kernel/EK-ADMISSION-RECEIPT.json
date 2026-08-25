@@ -1,0 +1,38 @@
+{
+  "receiptKind": "ek-admission-receipt",
+  "receiptVersion": 1,
+  "issuedAt": "2026-08-25",
+  "ek1SourceSha": "1d33a9c8",
+  "admissionContractDigest": "d1d6f85763eb613dbeaea63912d4cc78773eccf68550ed4e57cee4a8ed591b15",
+  "specificationDigests": {
+    "complexityBudget": "see validate:ek-admission-specs output",
+    "complexityDriver": "see validate:ek-admission-specs output",
+    "roleContractSchema": "see validate:ek-admission-specs output",
+    "roleManifest": "see validate:ek-admission-specs output",
+    "roleValidator": "see validate:ek-admission-specs output",
+    "promptBudgetSchema": "see validate:ek-admission-specs output",
+    "contextClassification": "see validate:ek-admission-specs output",
+    "promptValidator": "see validate:ek-admission-specs output",
+    "transitionUniverse": "see validate:ek-admission-specs output"
+  },
+  "validatorDigest": "4d7bacf54f4fcfe77d90a543366e111a02bc7f776ffa89bc8546c5b7a9ac0834",
+  "deletionManifestDigest": "c9ab7456337fa75809e12f96fe81906437e284f791aa9bacda3a365af0d879ca",
+  "censusNonsqlBlob": "c3077d3d2dc7fd67723e7d5a2c623a30cb1ab44c9750305b31482e8efc65ad22",
+  "mutationCorpusDigest": "subsumed by validatorDigest (the three validator scripts embed their mutation corpora)",
+  "verification": {
+    "round1": "REFUTED — array-replacer bug: JSON.stringify dropped all nine spec digests from canonical form; ACD bound nothing (counterexample: cap 16384→999999, ACD unchanged)",
+    "round1Fix": "recursive key-sort canonicalJson (same rule as validate-role-contract.mjs); transition-universe hashed from byte-frozen copy",
+    "round2": "VERIFIED — counterexample re-executed: mutated ACD d10d1527… ≠ printed d1d6f857… (binding holds); all 8 tasks green; worktree clean"
+  },
+  "author": {
+    "identity": "coordinator + 3 spec subagents (WP-16a/b/c) + 2 fix subagents (complexity rev2+rev3, non-SQL census) + 1 guard subagent (deletion manifests)",
+    "specificationAuthorsBarredFrom": ["WP-05", "WP-17", "WP-18"]
+  },
+  "verifier": {
+    "identity": "independent verifier round 2 (separate agent; no spec authorship; barred from WP-05/WP-17/WP-18)",
+    "date": "2026-08-24",
+    "mode": "READ-ONLY",
+    "checks": "T1 validate×2 det. | T2 counterexample binding | T3 deletion manifests ALL GREEN | T4 census 591/5/0 | T5 matrix groups 5/5+1/1+33/33 | T6 selftest 36 dims | T7 3/8 dims sampled | T8 5 DELETE paths exist",
+    "verdict": "EK-1 EXIT: VERIFIED"
+  }
+}
