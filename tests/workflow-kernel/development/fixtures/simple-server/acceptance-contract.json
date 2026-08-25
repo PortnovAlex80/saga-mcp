@@ -1,0 +1,32 @@
+{
+  "kind": "simple-server.acceptance-contract.v1",
+  "product": "simple-server",
+  "description": "The acceptance contract OWNS the browser entry, static assets, bootstrap, build/start wiring and frontend/backend integration of the canonical simple product. Development must satisfy every surface below; a missing surface is a typed MISSING_INTEGRATION_SURFACE defect, never a silent pass.",
+  "browserEntry": "public/index.html",
+  "staticAssets": ["public/app.js"],
+  "apiSurfaces": [
+    { "route": "/healthz", "expect": { "status": "ok" } },
+    { "route": "/api/message", "expect": { "message": "hello from simple-server", "code": 7 }, "deterministic": true }
+  ],
+  "bootstrap": {
+    "buildCommand": "npm run build",
+    "buildScript": "scripts/build.mjs",
+    "startCommand": "npm run start",
+    "entrypoint": "src/server.js"
+  },
+  "integration": {
+    "frontendFetches": ["/api/message"],
+    "rendersInto": "#message",
+    "renderedShape": "message + code"
+  },
+  "verification": {
+    "unit": "test/unit.test.mjs",
+    "loopback": "verify/loopback.mjs",
+    "browserSmoke": "verify/browser-smoke.mjs"
+  },
+  "packaging": {
+    "input": "delivery/package-input.json",
+    "script": "scripts/package.mjs",
+    "externalDeployment": false
+  }
+}
