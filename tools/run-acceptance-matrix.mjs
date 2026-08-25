@@ -632,6 +632,27 @@ function expandGlob(pattern) {
   for (let i = 0; i < parts.length; i++) {
     const seg = parts[i];
     const isLast = i === parts.length - 1;
+    if (seg === '**') {
+      // Globstar: zero or more directory levels. The naive single-level
+      // reading silently dropped deeper suites — the merged
+      // tests/workflow-kernel/workshops/<name>/** files were unhosted until
+      // matrix-coverage caught it (2026-08-26). Replace the frontier with
+      // the full directory closure (each dir itself included) and let the
+      // tail segments match inside every level.
+      const closure = [];
+      const walk = (dir) => {
+        closure.push(dir);
+        let entries;
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+          if (entry.isDirectory()) walk(path.join(dir, entry.name));
+        }
+      };
+      for (const dir of current) walk(dir);
+      current = closure;
+      if (isLast) return current.sort();
+      continue;
+    }
     const re = seg.includes('*')
       ? new RegExp('^' + seg.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$')
       : null;
