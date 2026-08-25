@@ -5,15 +5,15 @@
   "ek1SourceSha": "1d33a9c8",
   "admissionContractDigest": "d1d6f85763eb613dbeaea63912d4cc78773eccf68550ed4e57cee4a8ed591b15",
   "specificationDigests": {
-    "complexityBudget": "see validate:ek-admission-specs output",
-    "complexityDriver": "see validate:ek-admission-specs output",
-    "roleContractSchema": "see validate:ek-admission-specs output",
-    "roleManifest": "see validate:ek-admission-specs output",
-    "roleValidator": "see validate:ek-admission-specs output",
-    "promptBudgetSchema": "see validate:ek-admission-specs output",
-    "contextClassification": "see validate:ek-admission-specs output",
-    "promptValidator": "see validate:ek-admission-specs output",
-    "transitionUniverse": "see validate:ek-admission-specs output"
+    "complexityBudget": "f9da8b1a434ec44f84b83d1a07b2a818f05ca06c97ec2283db40a39de155e91a",
+    "complexityDriver": "88af3676e1b9ca1c5934ef8db4463d30476c5809d80ad0043f6e1033dc31ccec",
+    "roleContractSchema": "1a359213fea576c7b4d392dc3aa2b29da2d73b7d7c5e6eb46ab96e2884588774",
+    "roleManifest": "4c8a0abab026a8197909c0706b1876cbab24a3aef09579ddf7330cea0a6df545",
+    "roleValidator": "b33bafd172d0f647111af20c161039029d6fa60ecbcf4cc881a1a6f18e5f5991",
+    "promptBudgetSchema": "e84a3c4a48507a77bfa6094652496df8f52a42e8418fa1386fc1857f67677f24",
+    "contextClassification": "6e166bfdda36abc2fa930b0a133725f7369092b0b325ee145f693c06ffc3ce2a",
+    "promptValidator": "76ea04d2bc6be42ef79f52ea0820fe5ea4e05d8b56525bcb5d5c910fa3f8e1bf",
+    "transitionUniverse": "6429c8b7aa474812df82cc053be114a097b6e3cc77c1a3b853d00b4c5297af84"
   },
   "validatorDigest": "4d7bacf54f4fcfe77d90a543366e111a02bc7f776ffa89bc8546c5b7a9ac0834",
   "deletionManifestDigest": "c9ab7456337fa75809e12f96fe81906437e284f791aa9bacda3a365af0d879ca",
@@ -26,7 +26,11 @@
   },
   "author": {
     "identity": "coordinator + 3 spec subagents (WP-16a/b/c) + 2 fix subagents (complexity rev2+rev3, non-SQL census) + 1 guard subagent (deletion manifests)",
-    "specificationAuthorsBarredFrom": ["WP-05", "WP-17", "WP-18"]
+    "specificationAuthorsBarredFrom": [
+      "WP-05",
+      "WP-17",
+      "WP-18"
+    ]
   },
   "verifier": {
     "identity": "independent verifier round 2 (separate agent; no spec authorship; barred from WP-05/WP-17/WP-18)",
