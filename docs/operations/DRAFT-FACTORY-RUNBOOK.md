@@ -191,3 +191,33 @@ digest. Raw evidence is stored under a build-addressed evidence root
 - Repair a live qualifying run; preserve evidence and restart from a new
   immutable kit instead.
 - Turn a blind retry on an uncertain external effect.
+
+## Incident: tracker-view zombie respawn (2026-08-25)
+
+**Симптом:** трекер на порту 4321 показывает старую БД; новые инстансы
+умирают мгновенно; браузер мигает вкладками каждые 2-3 секунды.
+
+**Корень:** auto-restart wrapper (`while true; do DB_PATH=<старый_путь>
+node tracker-view.mjs; sleep 3; done`) пережил свою задачу и продолжал
+респавнить трекер с зашитым старым путём к БД. Трекер имеет EADDRINUSE
+handler (строки 534-544) который taskkill'ает держатель порта и
+перебиндится — любой новый трекер с правильной БД убивался зомби.
+
+**Правила:**
+1. НИКОГДА не используйте while-true wrapper'ы для трекера — мёртвый
+   трекер видим, воскрешающий зомби — нет.
+2. Для смены БД: убейте процесс на порту, дождитесь освобождения,
+   запустите с новым DB_PATH. Проверьте что процесс не respawn'ится.
+3. `TRACKER_PORT` — no-op; порт читается из `PORT` (runtime-config:44).
+4. Для запрета открытия вкладки браузера: `TRACKER_NO_BROWSER=1`.
+
+**Правильный запуск:**
+```bash
+# убить старый
+netstat -ano | grep ":4321.*LISTEN"  # найти PID
+taskkill //F //PID <PID>
+# запустить новый (единственный, без wrapper)
+cd D:/Development/saga-mcp-SAGA4
+TRACKER_NO_BROWSER=1 DB_PATH=D:/Development/<новый-ран>/factory.sqlite \
+  PORT=4321 node tracker-view/tracker-view.mjs
+```
