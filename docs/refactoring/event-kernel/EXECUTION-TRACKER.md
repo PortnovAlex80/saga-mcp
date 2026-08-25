@@ -32,7 +32,7 @@ tracker or the plan. One row per bounded work package.
 | WP-17 | CanonicalRoleContract compiler + consumer port | WP-05 | unassigned | NOT STARTED | — | — | role compiler/resolver + fixtures | — |
 | WP-18 | Context envelope + receipt protocol | WP-07, WP-17 | unassigned | NOT STARTED | — | — | src/workflow-kernel/context-envelope/** | — |
 | WP-08 | Development/material vertical + capsule ingress | WP-07, WP-17, WP-18 | subagent | **DONE** | merge after 047cb2f3 | development 55/55; capsule 9-digest verify; 6 typed refusals; ADR-053 revision authority | development/** + simple-server corpus | reducer gap effect-uncertainty-waited (D12 edge, EK-1 amendment); WP-18 refused-receipt durability (EK-8); frontier shadowing openUnknownObligation (WP-09) |
-| WP-09 | Planning, dependency, aggregate settlement | WP-07 | unassigned | NOT STARTED | — | — | WorkItem/aggregate composition | — |
+| WP-09 | Planning, dependency, aggregate settlement | WP-07 | subagent | **DONE** | merge after afa59c17 | planning 42/42; 7 RED kills; topology bindings supplied to WP-07 lanes | planning/** | upstream-repair row discharge (universe lane refinement, EK-7+); multi-process-per-stage = WP-11* |
 | WP-10 | Kanban projection + command-only UI adapters | WP-08, WP-09, WP-17 | unassigned | NOT STARTED | — | — | projector/read API/UI | — |
 | WP-11D | Discovery semantic package conversion | WP-09, WP-17 | unassigned | NOT STARTED | — | — | Discovery package paths | — |
 | WP-11F | Formalization semantic package conversion | WP-09, WP-17 | unassigned | NOT STARTED | — | — | Formalization package paths | — |
