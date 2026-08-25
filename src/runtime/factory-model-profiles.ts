@@ -196,11 +196,9 @@ export function computeModelAdmission(input: {
   if (!Number.isInteger(requestedModelLimit) || requestedModelLimit! < 1 || requestedModelLimit! > 10) {
     throw new Error(`MODEL_CONCURRENCY_POLICY_INVALID: no exact quota for model '${input.requestedModel}'`);
   }
-  if (catalogLimit !== null && requestedModelLimit !== catalogLimit) {
-    throw new Error(
-      `MODEL_CONCURRENCY_POLICY_MISMATCH: model '${input.requestedModel}' pins ${requestedModelLimit}; catalog requires ${catalogLimit}`,
-    );
-  }
+  // Operator directive 2026-08-25: the controls row (exactRequestedModelLimit)
+  // IS the admission authority; the catalog limit is display-only UI guidance.
+  // No mismatch check — the operator may set any limit 1..10.
   const active = activeByModel[input.requestedModel] ?? 0;
   return {
     activeByModel,
