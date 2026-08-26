@@ -8,4 +8,4 @@ RUN npm ci --omit=dev
 COPY dist/ dist/
 COPY glama.json ./
 
-ENTRYPOINT ["node", "dist/index.js"]
+ENTRYPOINT ["node", "dist/workflow-kernel/composition/entry.js"]

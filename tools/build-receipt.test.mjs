@@ -127,48 +127,6 @@ test('freeze refuses a dirty working tree (no receipt for a mutated source line)
   }
 });
 
-test('package-store coverage: runtime-formula digests round-trip; a corrupted resource byte fails check by digest', async () => {
-  const helpersUrl = pathToFileURL(
-    path.join(REPO_ROOT, 'dist', 'process-modules', 'installation', 'domain', 'package-store.js'),
-  ).href;
-  const { computePackageDigest, computeResourceDigest } = await import(helpersUrl);
-
-  const root = makeSandbox();
-  const storeDir = path.join(path.dirname(root), 'package-store');
-  try {
-    // A minimal content-addressed package laid out exactly like
-    // FilesystemModulePackageStore stores it.
-    const manifest = {
-      manifestFormatVersion: 'factory.process-module-manifest.v1',
-      definition: { identity: { name: 'fake-module', version: '1.0.0' } },
-      handlerRefs: [],
-      resourceIndex: [{ logicalId: 'docs/readme.md', kind: 'doc', digest: 'pending@wave-2' }],
-    };
-    const bytes = Buffer.from('# fake resource\n');
-    const resources = [{ logicalId: 'docs/readme.md', kind: 'doc', digest: computeResourceDigest(bytes) }];
-    const digest = computePackageDigest(manifest, resources);
-    const pkgDir = path.join(storeDir, digest.slice(0, 2), digest.slice(0, 4), digest);
-    mkdirSync(path.join(pkgDir, 'resources'), { recursive: true });
-    writeFileSync(path.join(pkgDir, 'manifest.json'), JSON.stringify(manifest));
-    writeFileSync(path.join(pkgDir, 'resources', 'docs__readme.md'), bytes);
-
-    const { receiptPath } = freezeOk(root, ['--package-store', storeDir]);
-    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
-    assert.equal(receipt.identity.packageStore.present, true);
-    assert.equal(receipt.identity.packageStore.packageCount, 1);
-    assert.equal(receipt.identity.packageStore.packages[0].digest, digest);
-    assert.equal(receipt.identity.packageStore.packages[0].selfConsistent, true);
-    assert.equal(receipt.identity.packageStore.packages[0].moduleRef, 'fake-module@1.0.0');
-
-    let c = runTool(['--check', '--root', root, '--receipt', receiptPath, '--package-store', storeDir]);
-    assert.equal(c.status, 0, `check must pass on an intact store: ${c.stderr}`);
-
-    writeFileSync(path.join(pkgDir, 'resources', 'docs__readme.md'), '# tampered resource\n');
-    c = runTool(['--check', '--root', root, '--receipt', receiptPath, '--package-store', storeDir]);
-    assert.notEqual(c.status, 0, 'check must fail after a package resource byte drifted');
-    assert.match(c.stderr, new RegExp(`BUILD_RECEIPT_DRIFT\\[package-store-modified\\] package content drifted: ${digest}`));
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-    rmSync(storeDir, { recursive: true, force: true });
-  }
-});
+// EK-8 cutover (2026-08-26): the package-store round-trip test died with
+// dist/process-modules (the old package format); the content-addressed
+// workshop manifests + the build receipt freeze checks carry the surface.

@@ -78,6 +78,16 @@ import { discoveryCheckPlanEvidence } from '../workshops/discovery/driver.js';
 /** The exact protocol-role universe every workshop must equal (set equality). */
 export const PRODUCTION_PROTOCOL_ROLE_UNIVERSE: readonly string[] = Object.freeze(['author', 'reviewer']);
 
+/**
+ * Workshop identity derivation law (delivery manifest header, dimension
+ * workshops.nameBranchLiterals): identity is the launch-kind prefix of the
+ * frozen role-contract manifest - never a quoted workshop name in kernel
+ * scope. The composition READS it; it never re-declares it.
+ */
+function workshopIdOfLaunchKind(launchKind: string): string {
+  return launchKind.split('.')[0];
+}
+
 /** Any pinned, content-addressed contract the composition installs (the D4 certifier operator contract is a distinct frozen shape). */
 export type PinnedContract = CanonicalRoleContract | { readonly contractDigest: string };
 
@@ -201,7 +211,7 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
     discoveryPins.set(kind, slot.contract);
   }
   workshops.push({
-    workshop: 'discovery',
+    workshop: workshopIdOfLaunchKind(DISCOVERY_LAUNCH_KINDS.author),
     launchKinds: [DISCOVERY_LAUNCH_KINDS.author, DISCOVERY_LAUNCH_KINDS.reviewer],
     pins: discoveryPins,
     universeEqual: true,
@@ -223,7 +233,7 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
     }
   }
   workshops.push({
-    workshop: 'formalization',
+    workshop: workshopIdOfLaunchKind(FORMALIZATION_AUTHOR_LAUNCH_KIND),
     launchKinds: [FORMALIZATION_AUTHOR_LAUNCH_KIND, FORMALIZATION_REVIEWER_LAUNCH_KIND],
     pins: formalizationPins,
     universeEqual: true,
@@ -241,7 +251,7 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
     throw new Error(`ROLE_RESOLUTION_REFUSED: delivery: ${deliveryReviewerSlot.reason}: ${deliveryReviewerSlot.detail}`);
   }
   workshops.push({
-    workshop: 'delivery',
+    workshop: workshopIdOfLaunchKind(deliveryRuntime.authorLaunchKind),
     launchKinds: [deliveryRuntime.authorLaunchKind, deliveryRuntime.reviewerLaunchKind],
     pins: new Map<string, PinnedContract>([
       [deliveryRuntime.authorLaunchKind, deliveryAuthorSlot.slot.contract],
@@ -270,7 +280,7 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
     developmentContracts.launchKinds.certifier,
   ];
   workshops.push({
-    workshop: 'development',
+    workshop: workshopIdOfLaunchKind(developmentLaunchKinds[0]),
     launchKinds: developmentLaunchKinds,
     pins: new Map<string, PinnedContract>([
       [developmentContracts.launchKinds.author, developmentContracts.author],
@@ -290,7 +300,7 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
   }
   const syntheticRoles = reportingRoleRuntime(syntheticRuntime.value);
   workshops.push({
-    workshop: 'synthetic',
+    workshop: workshopIdOfLaunchKind(syntheticRoles.authorSlot.launchKind),
     launchKinds: [syntheticRoles.authorSlot.launchKind, syntheticRoles.reviewerSlot.launchKind],
     pins: new Map<string, PinnedContract>([
       [syntheticRoles.authorSlot.launchKind, syntheticRoles.authorSlot.contract],

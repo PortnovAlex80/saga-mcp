@@ -16,6 +16,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirnameOf(import.meta.url), '..', '..', '..', '..');
 const PACKAGE_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'formalization');
@@ -111,32 +112,24 @@ test('no quoted workshop-name literal in kernel scope (workshops.nameBranchLiter
 });
 
 test('the package is reachable ONLY from focused tests: no production entrypoint imports it', () => {
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      const source = codeOf(full);
-      if (/workshops\/formalization/.test(source)) {
-        offenders.push(full);
-      }
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/workshops/formalization');
   // Only this package's own sources may reference it (relative imports).
   const allowedRoot = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'formalization');
+  // EK-8 cutover repin: the ONE production composition is additionally the
+  // sole legal production importer (pre-cutover this was test-only reach).
+  const compositionRoot = join(REPO_ROOT, 'src', 'workflow-kernel', 'composition');
   for (const offender of offenders) {
     assert.ok(
-      offender.startsWith(allowedRoot),
-      `production path imports the focused-test workshop package: ${offender}`,
+      offender.startsWith(allowedRoot) || offender.startsWith(compositionRoot),
+      `production path outside the ONE composition imports the focused-test workshop package: ${offender}`,
     );
   }
+  assert.ok(offenders.some((offender) => offender.startsWith(compositionRoot)), 'the composition must import this package (the cutover landed)');
 });
 
 test('the kernel never conditions on workshop identity: no module-identity branch in kernel packages', () => {

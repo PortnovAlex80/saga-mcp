@@ -50,7 +50,10 @@ test('C1: composeProduction arms the ONE composition (five workshops installed, 
   const channel = await deterministicChannel();
   const a = composeProduction({ dbPath: freshDbPath(), channel });
   const b = composeProduction({ dbPath: freshDbPath(), channel });
-  assert.deepEqual(a.workshops.map((w) => w.workshop), ['discovery', 'formalization', 'delivery', 'development', 'synthetic']);
+  // Workshop identity is DERIVED from each manifest's launch-kind prefix
+  // (the nameBranchLiterals law): discovery/formalization/delivery/
+  // development + the synthetic reporting workshop.
+  assert.deepEqual(a.workshops.map((w) => w.workshop), ['discovery', 'formalization', 'delivery', 'development', 'reporting']);
   for (const workshop of a.workshops) {
     assert.equal(workshop.universeEqual, true, `${workshop.workshop} role universe must be exactly equal`);
     for (const launchKind of workshop.launchKinds) {

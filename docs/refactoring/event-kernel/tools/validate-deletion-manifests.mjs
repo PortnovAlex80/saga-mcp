@@ -690,6 +690,12 @@ const legacy = parseLegacy();
 const document = parseDocument();
 
 // --- V4: schema.ts CREATE TABLE coverage -------------------------------------
+// POST-CUTOVER (EK-8): the old DDL owner itself is DELETE-classified; its
+// presence on any tree is a red build (the fresh declarative schema lives
+// at src/workflow-kernel/persistence/schema.ts).
+if (POST_CUTOVER && (currFiles.has('src/schema.ts') || existsSync(SCHEMA_PATH))) {
+  red('V4-OLD-SCHEMA', 'src/schema.ts (the 91-table legacy DDL owner) exists — it is classified DELETE at the manifest base and must never return');
+}
 const schemaTables = [];
 if (existsSync(SCHEMA_PATH)) {
   const schema = readFileSync(SCHEMA_PATH, 'utf8');

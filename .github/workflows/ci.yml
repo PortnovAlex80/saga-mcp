@@ -27,204 +27,82 @@ jobs:
         run: npm run build
 
       - name: ESLint (blocking lint gate)
-        # CI-01: lint is a BLOCKING acceptance gate. Factory-completion active
-        # paths must be lint-clean (errors fail the build). Legacy debt is
-        # quarantined by the eslint flat-config ratchet (see eslint.config.mjs),
-        # NOT by continue-on-error here. No allow-failure / retries hide errors.
+        # CI-01: lint is a BLOCKING acceptance gate. No allow-failure /
+        # continue-on-error / retries hide errors.
         run: npx eslint src/
 
-      # ─────────────────────────────────────────────────────────────────────
-      # CI-02 — the deterministic Factory acceptance matrix.
+      # ------------------------------------------------------------------
+      # CI-02 - the deterministic acceptance matrix.
       #
-      # Replaces the blanket `npm test` (= `tsc && node --test`, which ran EVERY
-      # *.test.mjs — including FLAKY and pre-existing-RED files — so its exit
-      # code was never a trustworthy blocking signal). Each deterministic-green
-      # Factory suite is now its OWN blocking step, driven through
-      # tools/run-acceptance-matrix.mjs. No blanket run, no continue-on-error,
-      # no `|| true`, no retries that hide failures.
-      #
-      # Flaky / pre-existing-red suites are QUARANTINED — excluded from the
-      # blocking matrix with a documented reason (FLAKY / PRE-EXISTING-RED) in
-      # docs/factory/CI-02-ACCEPTANCE-MATRIX.md and enforced by the runner's
-      # quarantine table. The fresh W9 scripted E2E harness (cards W9-01..W9-04)
-      # is the deterministic successor for the flaky orchestrate-cli / replay
-      # driven suites; it is out of this matrix's scope until those cards land.
-      #
-      # Quarantined at CI-02 (single source of truth: tools/run-acceptance-matrix.mjs):
-      #   FLAKY            golden-path, parallel-git-desk, six factory-temporal
-      #                    L3 composition files (the four worker-boundary crash
-      #                    suites were de-quarantined 2026-08-25 into the
-      #                    blocking k4-fault-edges group — ADR-096 gate item 2)
-      #   PRE-EXISTING-RED development-task-graph-diagnostics,
-      #                    worker-done-completion-authority (deleted module),
-      #                    submission-validator-diagnostics (assertion drift),
-      #                    dispatcher-race/worktree-isolation.mjs (C5 cutover).
-      #
-      # The final matrix-coverage step machine-checks that no required
-      # deterministic suite is silently omitted and that no hidden failure is
-      # reintroduced (the CI-02 exit rule).
-      # ─────────────────────────────────────────────────────────────────────
+      # EK-8 HARD CUTOVER (WP-12, 2026-08-26): the matrix is the post-cutover
+      # set - the event-projected kernel suites, the 20-project corpus, the
+      # architecture ratchets (re-pinned), the surviving KEEP tooling tests
+      # and the EK guard groups. The legacy groups died with the purge; every
+      # step below is blocking, isolated, no hidden failures, no retries.
+      # ------------------------------------------------------------------
 
-      - name: Matrix — architecture invariants (ADR-053 gates, ratchets)
-        run: node tools/run-acceptance-matrix.mjs --group architecture
-
-      - name: Matrix — factory model
-        run: node tools/run-acceptance-matrix.mjs --group factory-model
-
-      - name: Matrix — readiness & fencing (C7 + LR local-readiness)
-        run: node tools/run-acceptance-matrix.mjs --group readiness-fencing
-
-      - name: Matrix — factory contract (C5 adversarial, production-cell)
-        run: node tools/run-acceptance-matrix.mjs --group factory-contract
-
-      - name: Matrix — process modules (LR-07 readiness binding)
-        run: node tools/run-acceptance-matrix.mjs --group process-modules
-
-      - name: Matrix — Discovery live v2 (ADR-095 Phase-2 hosting)
-        # ADR-095 Phase-2 blocker (a): the four proven LIVE Discovery v2
-        # suites were CI orphans (no blocking run-set, no quarantine), so
-        # ratchet 6 ("live v2 behavior") had no hosted executor. Hosting is a
-        # Phase-2 precondition. Exact-file group; removal guards G2i in the
-        # matrix-coverage step make de-hosting/deletion fail closed.
-        run: node tools/run-acceptance-matrix.mjs --group discovery-live-v2
-
-      - name: Matrix — Workshop desk coverage (STAGE-23 desk audit)
-        # 2026-08-24 desk-coverage audit (operator directive: walk every desk
-        # of every workshop and host its orphans): 33 desk-zone suites were
-        # committed but matched by NO group glob — CI never executed them
-        # (the CC-GAP-8 orphan class). Exact-file group; the G2k completeness
-        # ratchet in the matrix-coverage step fails when a desk-zone file is
-        # neither hosted nor quarantined.
-        run: node tools/run-acceptance-matrix.mjs --group desk-coverage
-
-      # R1 omnibus closure (2026-08-24 orphan research, operator-approved):
-      # every remaining repo orphan probed in isolation — 185/186 green and
-      # deterministic — hosted as four contention-isolated zone groups.
-      # G2l in the matrix-coverage step keeps the repo orphan-free: a new
-      # test file must be hosted (or quarantined/live-allowlisted) in the
-      # same commit it lands.
-      - name: Matrix — R1 omnibus (W9 deterministic E2E)
-        run: node tools/run-acceptance-matrix.mjs --group e2e-deterministic
-
-      # ADR-096 gate item 2 (2026-08-25): the K4 crash/fault edges are
-      # BLOCKING. The four ADR-048 worker-boundary crash suites were
-      # de-quarantined after per-file revalidation (green in isolation and in
-      # this exact group form) and hosted here; the measured non-zero
-      # mutation-kill floor runs inside the factory-proof group. Per-file
-      # removal guard G2t in the matrix-coverage step.
-      - name: Matrix — K4 fault edges (ADR-096 gate item 2)
-        run: node tools/run-acceptance-matrix.mjs --group k4-fault-edges
-
-      - name: Matrix — R1 omnibus (conveyor app zone)
-        run: node tools/run-acceptance-matrix.mjs --group conveyor-app
-
-      - name: Matrix — R1 omnibus (conveyor infra zone)
-        run: node tools/run-acceptance-matrix.mjs --group conveyor-infra
-
-      - name: Matrix — R1 omnibus (conveyor periphery zone)
-        run: node tools/run-acceptance-matrix.mjs --group conveyor-periphery
-
-      - name: Dispatcher race gate (concurrency safety)
-        # Concurrent worker_next must never double-claim a card. These are plain
-        # .mjs scripts (not auto-discovered by `node --test`), so they have their
-        # own explicit blocking command. The pre-existing-red
-        # worktree-isolation.mjs is EXCLUDED here: it is broken by the C5
-        # accepted-authority-head cutover (worker_next returns null because the
-        # test seeds tasks the pre-C5 way). W9 scripted E2E replaces it. See
-        # docs/factory/CI-02-ACCEPTANCE-MATRIX.md.
-        run: |
-          node tests/dispatcher-race/run.mjs &&
-          node tests/dispatcher-race/assign-race.mjs &&
-          node tests/dispatcher-race/isolation.mjs &&
-          node tests/dispatcher-race/review-verdict-race.mjs &&
-          node --test tests/dispatcher-race/parallel-concurrency.test.mjs tests/dispatcher-race/dispatch-loop-overlap.test.mjs tests/dispatcher-race/orchestrate-global-budget.test.mjs
-
-      - name: cgad-spec-lint unit suite
-        # CI-02: removed the hidden `|| true` self-check (it masked a real exit-2
-        # "file is not a database" failure — exactly the kind of hidden failure
-        # this card eliminates). The linter's own unit suite (30 cases) is the
-        # blocking check instead.
-        run: node --test tools/cgad-spec-lint.test.mjs
-
-      - name: Completion-evidence validation
-        # P0-02 evidence contract: every done/dfx task has non-empty evidence,
-        # no task is done while a dependency is not, DFX budget <= 3. CI-02 wires
-        # this into the acceptance matrix (per COMPLETION-EVIDENCE-CONTRACT.md).
-        run: node tools/validate-completion-evidence.mjs
-
-      - name: Matrix — CC proof-hosting registry (CC-U1 / ADR-092)
-        # Blocking proof-hosting closure: the CC closure proof-hosting manifest
-        # (tests/infrastructure/cc-proof-hosting-manifest.mjs) is validated in
-        # BOTH directions against the machine-readable matrix export and this
-        # file's --group invocations — a critical CC proof that is committed
-        # but not hosted in a CI-invoked group (the CC-GAP-8 orphan class), a
-        # group rename, a quarantine reclassification, or a stale pending row
-        # each fail closed.
-        run: node tools/run-acceptance-matrix.mjs --group cc-proof-registry
-
-      - name: Matrix — EK workflow-kernel suites
-        # The EK greenfield kernel tests (model, persistence, roles, engine,
-        # application, context envelope) merged by the 2026-08-24 waves. One
-        # hosting group so no kernel test file can be an orphan (G2p).
+      - name: Matrix - EK workflow-kernel suites
+        # The EK greenfield kernel + the EK-8 production composition tests:
+        # model, persistence, roles, engine, application, context envelope,
+        # development vertical, projection, workshops, composition laws.
         run: node tools/run-acceptance-matrix.mjs --group workflow-kernel
 
-      - name: Matrix — EK project-corpus suites
+      - name: Matrix - EK project-corpus suites
         # WP-13D: scripted project corpus + elite-kit replay tests.
         run: node tools/run-acceptance-matrix.mjs --group project-corpus
 
-      - name: Matrix — coverage & no-hidden-failure guard
-        # CI-02 self-check (runs last): asserts the matrix covers every required
-        # deterministic suite, quarantines the flaky / pre-existing-red files
-        # with reasons, and that ci.yml hides no failure (no `|| true`, no
-        # continue-on-error, no blanket npm test). This is the machine-checked
-        # form of the CI-02 exit rule.
-        run: node tools/run-acceptance-matrix.mjs --group factory-proof
-      - name: acceptance matrix coverage self-check
-        run: node tools/run-acceptance-matrix.mjs --group matrix-coverage
+      - name: Matrix - architecture invariants (ADR-053 gates, ratchets)
+        run: node tools/run-acceptance-matrix.mjs --group architecture
 
-      - name: Matrix — EK-1 deletion-manifest stop-gate
-        # V1 existence / V2 no-new-unclassified / V3 consistency / V4 CREATE
-        # TABLE coverage over both deletion manifests; 3 killed mutations.
+      - name: Matrix - kept tooling (ADR registry, build receipt, shim guards)
+        # The KEEP classes of the EK-8 purge.
+        run: node tools/run-acceptance-matrix.mjs --group kept-tooling
+
+      - name: cgad-spec-lint unit suite
+        run: node --test tools/cgad-spec-lint.test.mjs
+
+      - name: Completion-evidence validation
+        # P0-02 evidence contract over docs/factory/COMPLETION-LEDGER.md
+        # (pure doc validation; survived the purge).
+        run: node tools/validate-completion-evidence.mjs
+
+      - name: Matrix - CC proof-hosting registry (CC-U1 / ADR-092)
+        run: node tools/run-acceptance-matrix.mjs --group cc-proof-registry
+
+      - name: Matrix - EK-1 deletion-manifest stop-gate
+        # POST-CUTOVER shape (WP-12): V1 is inverted for DELETE - every
+        # classified-at-base DELETE file that still exists is V1-SURVIVOR red
+        # (resurrection is a red build); KEEP/RETAIN entries must exist.
         run: node tools/run-acceptance-matrix.mjs --group ek-manifest-guard
 
-      - name: Matrix — EK-1 admission-spec validator (blocking)
-        # The three successor admission specifications frozen by digest
-        # (admissionContractDigest binds complexity-budget, role-contract
-        # schema+manifest and prompt-budget profile; the array-replacer bug
-        # that emptied the digest binding is regression-guarded here).
+      - name: Matrix - EK-1 admission-spec validator (blocking)
         run: node tools/run-acceptance-matrix.mjs --group ek-admission
 
-      # ── WP-13C / EK-9 (2026-08-26): removal guards, mutation coverage and
-      # the elite-evidence-kit determinism smoke — all BLOCKING. Exact-file
-      # matrix groups (GAP-8 hosting pattern); G4d derives them from the
-      # machine-readable matrix export.
-      - name: Matrix — EK removal guards (WP-13C, pre-staging WP-12)
-        # RG1 §H/§I manifest cross-references exist today; RG2 the §A table
-        # inventory is creatable from production SQL; RG3 the WP-08
-        # EK8-DELETION-SET is cross-checked against the manifest (pinned
-        # findings, never silent edits); RG4 the legacy-zero tool wiring.
+      - name: Matrix - EK removal guards (WP-13C post-cutover shape)
+        # RG1 mandatory-DELETE members absent / residuals present; RG2 the
+        # old tables are NOT creatable; RG3 the deletion sets are executed;
+        # RG4 legacy-zero --strict exits 0.
         run: node tools/run-acceptance-matrix.mjs --group ek-removal-guard
 
-      - name: EK legacy-zero laws (pre-cutover --check report)
+      - name: EK legacy-zero laws (post-cutover --strict)
         # The five legacy-zero laws (every deletion-manifest entry absent;
         # production imports resolve only to the new runtime; forbidden old
         # table names absent from production SQL; no migration/adoption/
         # compatibility fallback; no workshop-owned scheduler/state DDL).
-        # --check honestly reports the pre-cutover counts and exits 0 today;
-        # WP-12 (the hard cutover) flips THIS step to --strict, from which
-        # any remaining legacy reference is a red build.
-        run: node tools/ek-legacy-zero.mjs --check
+        # WP-12 flipped THIS step from --check to --strict at the hard
+        # cutover: any surviving or resurrected legacy reference is a red
+        # build from that moment on.
+        run: node tools/ek-legacy-zero.mjs --strict
 
-      - name: Matrix — EK mutation coverage (kernel kill claims)
-        # The central mutation registry (tools/ek-mutation-coverage.mjs):
-        # every declared RED/GREEN kernel demonstration is applied as a real
-        # source patch in a temp workspace and must flip its suite red
-        # (baseline green -> patched red; zero survivors, zero anchor rot).
+      - name: Matrix - EK mutation coverage (kernel kill claims)
         run: node tools/run-acceptance-matrix.mjs --group ek-mutation-coverage
 
-      - name: Matrix — EK elite-evidence-kit determinism smoke
-        # The extractor runs twice against the committed synthetic fixture
-        # (tests/infrastructure/ek-fixtures/) and must produce byte-identical
-        # kits without touching the source — CI never points at the
-        # D:/Development elite run roots.
+      - name: Matrix - EK elite-evidence-kit determinism smoke
         run: node tools/run-acceptance-matrix.mjs --group ek-evidence-kit
+
+      - name: Matrix - coverage & no-hidden-failure guard
+        # CI-02 self-check (runs last): asserts the matrix covers every
+        # required deterministic suite, quarantines the pre-existing-red file
+        # with a reason, and that ci.yml hides no failure (no `|| true`, no
+        # continue-on-error, no blanket npm test).
+        run: node tools/run-acceptance-matrix.mjs --group matrix-coverage
