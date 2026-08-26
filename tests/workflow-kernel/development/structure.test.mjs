@@ -80,6 +80,11 @@ test('the vertical is reachable ONLY from focused tests: no production entrypoin
       }
       if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
       if (entry.name === 'codeOf') continue;
+      // Qualification tooling is NOT a production entrypoint: the WP-13D
+      // corpus drivers + elite-kit replay consume the vertical through its
+      // PUBLIC ingress by design (the plan assigns them that consumer role).
+      const rel = full.replaceAll('\\', '/');
+      if (rel.includes('/tools/project-corpus/') || rel.includes('/tools/elite-evidence-kit/')) continue;
       const source = codeOf(full);
       if (/workflow-kernel\/development/.test(source)) {
         offenders.push(full);

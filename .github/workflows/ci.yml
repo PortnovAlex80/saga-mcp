@@ -168,6 +168,10 @@ jobs:
         # hosting group so no kernel test file can be an orphan (G2p).
         run: node tools/run-acceptance-matrix.mjs --group workflow-kernel
 
+      - name: Matrix — EK project-corpus suites
+        # WP-13D: scripted project corpus + elite-kit replay tests.
+        run: node tools/run-acceptance-matrix.mjs --group project-corpus
+
       - name: Matrix — coverage & no-hidden-failure guard
         # CI-02 self-check (runs last): asserts the matrix covers every required
         # deterministic suite, quarantines the flaky / pre-existing-red files

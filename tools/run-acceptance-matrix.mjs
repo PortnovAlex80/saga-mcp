@@ -67,6 +67,11 @@ const GROUPS = {
   // (WP-18). One directory glob so NO kernel test file can ever be an
   // orphan (G2p) — the merges previously added files without hosting them
   // here, failing matrix-coverage.
+  // WP-13D (EK-9): the scripted project corpus suites + kit-replay tests.
+  'project-corpus': {
+    globs: ['tests/project-corpus/**/*.test.mjs'],
+    note: '20-project scripted corpus format + drivers + elite-kit replay',
+  },
   'workflow-kernel': {
     globs: ['tests/workflow-kernel/**/*.test.mjs'],
     note: 'EK event-projected kernel: model, persistence, roles, engine, application, context envelope',
