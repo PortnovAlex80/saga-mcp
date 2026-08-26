@@ -4,10 +4,9 @@
   "version": "2.0.0",
   "description": "Governance platform for parallel LLM coding agents. SQLite-backed, MCP-native, with contract-governed episode lifecycle, CGAD enforcement layer (18 lint rules), product discovery cycle (hypothesis → metric → observation → hit/kill), and 12 role skills.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/workflow-kernel/composition/index.js",
   "bin": {
-    "saga-mcp": "dist/index.js",
-    "saga-checkpoint": "dist/checkpoint-cli.js"
+    "saga-mcp": "dist/workflow-kernel/composition/entry.js"
   },
   "files": [
     "dist",
@@ -25,8 +24,8 @@
   "scripts": {
     "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc",
     "watch": "tsc --watch",
-    "start": "node dist/index.js",
-    "dev": "tsc && node dist/index.js",
+    "start": "node dist/workflow-kernel/composition/entry.js",
+    "dev": "tsc && node dist/workflow-kernel/composition/entry.js",
     "tracker": "node tracker-view/tracker-view.mjs",
     "docs-graph": "node tracker-view/docs-graph/server.mjs",
     "cgad-lint": "node tools/cgad-spec-lint.mjs",
