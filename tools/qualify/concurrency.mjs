@@ -275,6 +275,17 @@ async function proofDiamondCapTwo(series, evidenceDir) {
       settlementRefusal = String(error?.message ?? error);
       checks.push(redCheck('diamond-settle-second-successor', `KERNEL FINDING ${finding.id}: ${settlementRefusal}`));
     }
+    /* With both successor cells settled, the run-success ladder must fire
+     * from the CONCURRENT state. (2026-08-26: the kernel rung landed —
+     * recordNodeTerminal accepts a second in-flight terminal — so the
+     * remaining question is the ladder; a refusal here keeps the finding
+     * honestly red with the typed reason.) */
+    try {
+      conveyor.settleSuccessLadder(session, ids, options);
+    } catch (error) {
+      settlementRefusal = String(error?.message ?? error);
+      checks.push(redCheck('diamond-settles-green-from-barrier', `the success ladder refused after both cells settled: ${settlementRefusal.slice(0, 200)}`));
+    }
     const finalWorld = session.hydrateWorld().world;
     finding.observed = {
       barrierOpenWorkplaces: barrierObserved,
