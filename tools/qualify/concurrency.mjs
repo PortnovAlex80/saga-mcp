@@ -23,9 +23,9 @@
  */
 
 import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { writeFileSync } from 'node:fs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const dist = (relative) => import(pathToFileURL(join(REPO_ROOT, 'dist', relative)).href);
@@ -46,6 +46,7 @@ const CONCURRENT_PROJECTS = [
 
 function runChild(projectId, outPath) {
   return new Promise((resolveChild) => {
+    mkdirSync(dirname(outPath), { recursive: true });
     const child = spawn(process.execPath, [join(REPO_ROOT, 'tools', 'qualify', 'lib', 'one-project.mjs'), '--project', projectId, '--out', outPath], {
       cwd: REPO_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
