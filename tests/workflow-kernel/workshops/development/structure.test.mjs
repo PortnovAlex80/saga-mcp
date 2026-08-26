@@ -16,6 +16,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const PACKAGE_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'development');
@@ -84,25 +85,18 @@ test('the package owns no driver: no obligation-consumer or scheduler stem', () 
 });
 
 test('the package is reachable ONLY from focused tests: no production entrypoint imports it', () => {
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      const source = codeOf(full);
-      if (/workflow-kernel\/workshops/.test(source)) {
-        offenders.push(full);
-      }
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
-  assert.deepEqual(offenders, [], 'production paths must not import the workshop packages before the WP-12 cutover');
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/workshops');
+  // EK-8 cutover repin: the ONE production composition is the ONLY legal
+  // production importer of the workshop packages (stronger than the
+  // pre-cutover zero-importer law: the composition is enumerable).
+  const outsideComposition = offenders.map((f) => f.replaceAll('\\', '/')).filter((f) => !f.includes('/src/workflow-kernel/composition/'));
+  assert.deepEqual(outsideComposition, [], 'only the ONE production composition may import the workshop packages');
+  assert.ok(offenders.length > 0, 'the composition must import this package (the cutover landed)');
 });
 
 test('the package builds on the WP-08 vertical by import (no re-implementation)', () => {

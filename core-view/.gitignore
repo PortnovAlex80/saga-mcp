@@ -1,5 +1,0 @@
-# runtime artifacts of the running observer
-.core-view.pid
-
-# root .gitignore has a broad `index.html` rule; our app shell must be tracked
-!public/index.html

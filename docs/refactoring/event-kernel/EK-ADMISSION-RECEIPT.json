@@ -38,5 +38,13 @@
     "mode": "READ-ONLY",
     "checks": "T1 validate×2 det. | T2 counterexample binding | T3 deletion manifests ALL GREEN | T4 census 591/5/0 | T5 matrix groups 5/5+1/1+33/33 | T6 selftest 36 dims | T7 3/8 dims sampled | T8 5 DELETE paths exist",
     "verdict": "EK-1 EXIT: VERIFIED"
-  }
+  },
+  "amendments": [
+    {
+      "amendedAt": "2026-08-26",
+      "amender": "WP-12 (EK-8 hard cutover)",
+      "detail": "measure-complexity.mjs guarded for the post-cutover tree: the legacy skills/ tree and the factory-execution-routes.json + execution-route-resolver surfaces were DELETE-classified and executed; their dimensions measure the executed-cutover zero state (successor surfaces: installed-manifest skills and the role-contract route policy, measured by the kernel complexity vector). The original 2026-08-25 digests above remain the issuance record; the recomputed admissionContractDigest after this amendment is d1f9272c330f28c68a83d93f53d98ab9a529dcfb83a9f0b76a0ce47ab24a5048.",
+      "recomputedAdmissionContractDigest": "d1f9272c330f28c68a83d93f53d98ab9a529dcfb83a9f0b76a0ce47ab24a5048"
+    }
+  ]
 }

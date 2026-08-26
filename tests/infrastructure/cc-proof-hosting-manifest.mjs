@@ -48,48 +48,17 @@ export const CC_PROOF_HOSTING_MANIFEST = Object.freeze({
   registryGroup: 'cc-proof-registry',
   rows: Object.freeze([
     Object.freeze({
-      file: 'tests/modules/development/development-terminal-exit-accounting.test.mjs',
-      type: 'blocking',
-      group: 'process-modules',
-      origin: 'CC-GAP-8',
-      proof: 'terminal-exit accounting structural oracle: every reachable Development terminal exit is settlement-accounted or provably pre-ledger; RED/GREEN on the rejected df7359fa edges (exact-file hosting landed at 9301e8ff, pinned by coverage G2g)',
-    }),
-    Object.freeze({
-      file: 'tests/modules/development/verification-ledger.test.mjs',
-      type: 'blocking',
-      group: 'process-modules',
-      origin: 'CC-GAP-8',
-      proof: 'criterion-key verification ledger: explicit terminal-route facts, no unexplained pending rows, executed facts fail closed on a mismatched verificationItemKey, readonly read path never writes',
-    }),
-    Object.freeze({
-      file: 'tests/process-modules/run-terminal-journal-projection.test.mjs',
-      type: 'blocking',
-      group: 'process-modules',
-      origin: 'CC-GAP-2',
-      proof: 'run.terminal journal projection carries terminal_status/stage_outcome/product_outcome/stage_outcome_authority next to the unchanged operational channels; exactly-once paused guard preserved',
-    }),
-    Object.freeze({
       file: 'tests/infrastructure/cc-proof-hosting.test.mjs',
       type: 'blocking',
       group: 'cc-proof-registry',
       origin: 'CC-U1',
       proof: 'this proof-hosting registry itself: bidirectional manifest<->matrix<->CI closure plus the fail-closed mutation battery (missing file, duplicate, group rename, quarantine reclassification, CI omission, stale pending, registry-group widening)',
     }),
-    Object.freeze({
-      file: 'tests/app/launch-terminal-settlement.test.mjs',
-      type: 'blocking',
-      group: 'conveyor-app',
-      origin: 'CC-GAP-2',
-      proof: 'one pure launch-terminal settlement projection: launch/order/exit-code mapping byte-identical to the legacy inline CLI logic (backward-compat pin) plus the separated verdict channels (terminal_status/product_outcome) every settle surface exposes',
-      note: 'converted pending -> blocking 2026-08-24 per the row tracker protocol: the reviewed conveyor-app matrix group (CI-invoked) now hosts tests/app, and the suite is green in group (373/373) — the GAP-2 orphan hosting follow-up executed by the ADR-095 Phase-6 validation sweep.',
-    }),
-    Object.freeze({
-      file: 'tests/tracker-view/engine-status-launch-projection.test.mjs',
-      type: 'blocking',
-      group: 'conveyor-periphery',
-      origin: 'CC-GAP-2',
-      proof: 'tracker /api/factory/status last_launch joins the lifecycle run (COALESCE of launch/order pointer) and exposes the lifecycle verdict next to launch/order state; the board status line renders the verdict next to a settled-completed launch',
-      note: 'converted pending -> blocking 2026-08-24 per the row tracker protocol: the reviewed conveyor-periphery matrix group (CI-invoked) now hosts tests/tracker-view, and the suite is green in group (658 pass / 17 skipped / 0 fail) — the GAP-2 orphan hosting follow-up executed by the ADR-095 Phase-6 validation sweep.',
-    }),
   ]),
-});
+});// EK-8 cutover (WP-12, 2026-08-26): the four old-runtime CC proof rows died
+// with their suites and matrix groups (LEGACY-DELETION-MANIFEST secE). Their
+// invariant content is owned by the kernel settlement/terminal-proof suites
+// (workflow-kernel group) and the 20-project corpus. The registry row itself
+// (CC-U1) stays blocking in its own group - the closure proof must survive
+// the tree it guards.
+

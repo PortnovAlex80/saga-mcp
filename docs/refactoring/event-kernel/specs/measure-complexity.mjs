@@ -855,8 +855,14 @@ function scanWorkshopNameLiterals() {
 function scanStaticPromptAssets() {
   // Static prompt asset surface: skills/*/SKILL.md (the pinned protocol and
   // semantic skills inlined into worker prompts come from this universe).
+  // EK-8 (2026-08-26): the legacy skills/ tree was deleted (its cognition
+  // content is re-hosted as installed-manifest skill declarations); absent
+  // tree => zero surface, measured by the kernel complexity-check instead.
   const dir = path.join(REPO_ROOT, 'skills');
   const sizes = [];
+  if (!existsSync(dir)) {
+    return { fileCount: 0, maxFileBytes: 0, totalBytes: 0 };
+  }
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
     if (!entry.isDirectory()) continue;
     const f = path.join(dir, entry.name, 'SKILL.md');
@@ -870,11 +876,22 @@ function scanStaticPromptAssets() {
 }
 
 function measureRoutePolicy() {
+  // EK-8 (2026-08-26): the declarative route policy file and the legacy
+  // execution-route resolver were DELETE-classified and executed at the
+  // cutover; the successor route surface is the role-contract route policy
+  // (roles/compiler.ts, measured by the kernel complexity vector). Absent
+  // surfaces measure as the executed-cutover zero state.
   const policyPath = path.join(REPO_ROOT, 'factory-execution-routes.json');
+  if (!existsSync(policyPath)) {
+    return { rules: 0, hasDefault: false, serializedBytes: 0, conditionKeys: [], imperativeBranchSites: 0 };
+  }
   const raw = readFileSync(policyPath, 'utf8');
   const policy = JSON.parse(raw);
   // Condition-key universe actually implemented by the resolver interface.
   const resolverPath = path.join(REPO_ROOT, 'src', 'application', 'routing', 'execution-route-resolver.ts');
+  if (!existsSync(resolverPath)) {
+    return { rules: (policy.routes || []).length, hasDefault: policy.default !== undefined, serializedBytes: Buffer.byteLength(raw, 'utf8'), conditionKeys: [], imperativeBranchSites: 0 };
+  }
   const resolverSrc = readFileSync(resolverPath, 'utf8');
   const matchBlock = /match:\s*\{([\s\S]*?)\};/.exec(resolverSrc);
   const conditionKeys = matchBlock

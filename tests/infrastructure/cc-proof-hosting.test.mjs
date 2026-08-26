@@ -54,12 +54,17 @@ import {
 } from '../../tools/cc-proof-hosting-registry.mjs';
 import { CC_PROOF_HOSTING_MANIFEST } from './cc-proof-hosting-manifest.mjs';
 
-const GAP8_ACCOUNTING = 'tests/modules/development/development-terminal-exit-accounting.test.mjs';
-const GAP8_LEDGER = 'tests/modules/development/verification-ledger.test.mjs';
-const GAP2_JOURNAL = 'tests/process-modules/run-terminal-journal-projection.test.mjs';
-const GAP2_ORPHAN_SETTLEMENT = 'tests/app/launch-terminal-settlement.test.mjs';
-const GAP2_ORPHAN_TRACKER = 'tests/tracker-view/engine-status-launch-projection.test.mjs';
+// EK-8 cutover (WP-12, 2026-08-26): the old-runtime proof rows died with
+// their suites and matrix groups; the manifest carries the registry row
+// itself (the closure proof survives the tree it guards). The assertions
+// below pin the NEW hosting truth.
 const REGISTRY_TEST = 'tests/infrastructure/cc-proof-hosting.test.mjs';
+// The post-cutover invariant successors of the deleted CC proofs: kernel
+// material-chain/settlement suites + the corpus (hosted in CI-invoked
+// groups; asserted by R2 below).
+const SUCCESSOR_KERNEL_MATERIAL_CHAIN = 'tests/workflow-kernel/development/material-chain.test.mjs';
+const SUCCESSOR_KERNEL_ENGINE = 'tests/workflow-kernel/engine/scenario.test.mjs';
+const SUCCESSOR_CORPUS = 'tests/project-corpus/corpus.test.mjs';
 
 // --- real-repo facts --------------------------------------------------------
 
@@ -72,41 +77,39 @@ test('R1: the committed CC proof-hosting manifest validates against the live mat
   const result = validateProofHosting({ manifest: CC_PROOF_HOSTING_MANIFEST, matrix, ciInvokedGroups, fileExists });
   assert.deepEqual(result.violations, [],
     `CC proof-hosting violations:\n${result.violations.map((v) => `  [${v.code}] ${v.file ?? ''}: ${v.detail}`).join('\n')}`);
-  // 2026-08-24 GAP-2 conversion: the two ex-orphan rows became blocking
-  // (their reviewed conveyor groups host them), so blocking 4 -> 6 and the
-  // pending set reaches its terminal zero.
-  assert.equal(result.summary.blocking, 6);
+  // EK-8 cutover (2026-08-26): the four old-runtime proof rows died with
+  // their suites; the registry row itself is the sole blocking row and the
+  // pending set stays at its terminal zero.
+  assert.equal(result.summary.blocking, 1);
   assert.equal(result.summary.pending, 0);
 });
 
-test('R2: both GAP-8 proofs and the hosted GAP-2 projection are pinned blocking in the CI-invoked process-modules group (G2g surface preserved)', () => {
-  assert.ok(ciInvokedGroups.includes('process-modules'), 'ci.yml must invoke --group process-modules');
-  for (const f of [GAP8_ACCOUNTING, GAP8_LEDGER, GAP2_JOURNAL]) {
-    assert.ok(groupRunSet('process-modules').includes(f), `${f} must stay in the process-modules run-set`);
+test('R2: the EK-8 invariant successors of the old CC proofs are hosted in CI-invoked groups', () => {
+  // The deleted CC proofs (GAP-8 terminal accounting/ledger, GAP-2
+  // terminal projection/settlement) asserted old-runtime invariants. Their
+  // post-cutover equivalents live in the kernel suites and the corpus: the
+  // material chain (settlement-accounted terminal exits), the engine
+  // scenario comparison (expected-world proofs) and the 20-project corpus
+  // (terminal proofs over public commands). Same bite, new surface.
+  for (const g of ['workflow-kernel', 'project-corpus']) {
+    assert.ok(ciInvokedGroups.includes(g), `ci.yml must invoke --group ${g}`);
+  }
+  for (const f of [SUCCESSOR_KERNEL_MATERIAL_CHAIN, SUCCESSOR_KERNEL_ENGINE, SUCCESSOR_CORPUS]) {
+    assert.ok(groupRunSet('workflow-kernel').includes(f) || groupRunSet('project-corpus').includes(f),
+      `${f} must stay in a blocking CI-invoked run-set (the CC invariant successor)`);
+    assert.ok(fileExists(f), `${f} must exist on disk`);
   }
 });
 
-test('R3: the two former GAP-2 orphan terminal-projection proofs are BLOCKING, hosted in their pinned groups, and CI-invoked', () => {
-  // 2026-08-24 conversion (the row tracker protocol executed): the reviewed
-  // conveyor-app / conveyor-periphery matrix groups (both CI-invoked) now
-  // host the two ex-orphans, so the rows converted pending -> blocking. The
-  // oracle strength is preserved in the new direction: each row must exist,
-  // be blocking, pin its hosting group, the group must host the exact file,
-  // and ci.yml must invoke the group.
-  for (const f of [GAP2_ORPHAN_SETTLEMENT, GAP2_ORPHAN_TRACKER]) {
-    const row = CC_PROOF_HOSTING_MANIFEST.rows.find((r) => r.file === f);
-    assert.ok(row, `${f} must have a manifest row`);
-    assert.equal(row.type, 'blocking',
-      'the hosted critical proof must be a blocking row (the GAP-2 orphan hosting follow-up conversion)');
-    assert.ok(typeof row.group === 'string' && row.group.length > 0,
-      `${f} blocking row must pin its hosting group`);
+test('R3: the post-cutover manifest carries ONLY the registry row - no phantom rows over deleted trees', () => {
+  for (const row of CC_PROOF_HOSTING_MANIFEST.rows) {
+    assert.ok(fileExists(row.file), `manifest row names a deleted file: ${row.file}`);
     const g = matrix.groups[row.group];
     assert.ok(g, `matrix group '${row.group}' must exist`);
-    assert.ok(g.files.includes(f), `${f} must be hosted in its pinned group '${row.group}'`);
-    assert.ok(ciInvokedGroups.includes(row.group),
-      `ci.yml must invoke the pinned group '${row.group}'`);
-    assert.ok(fileExists(f), `${f} must exist on disk`);
+    assert.ok(ciInvokedGroups.includes(row.group), `ci.yml must invoke '${row.group}'`);
   }
+  assert.equal(CC_PROOF_HOSTING_MANIFEST.rows.filter((r) => r.type === 'blocking').length, 1,
+    'the registry row is the sole blocking row after the EK-8 purge');
 });
 
 test('R4: the registry group run-set equals the manifest blocking rows pinned to it (exact bijection, no widening)', () => {
@@ -128,8 +131,8 @@ test('R5: tests/factory-proof/proof-claims.mjs is untouched by this registry (AD
   for (const row of CC_PROOF_HOSTING_MANIFEST.rows) {
     assert.ok(!row.file.startsWith('tests/factory-proof/'),
       `CC manifest row must not sit on the K1-D proof-claims surface: ${row.file}`);
-    assert.ok(!groupRunSet('factory-proof').includes(row.file),
-      `CC manifest row must not be hosted in the factory-proof group: ${row.file}`);
+    assert.deepEqual(groupRunSet('factory-proof'), [],
+      'the factory-proof group died with the EK-8 purge; it must not reappear');
   }
 });
 
@@ -156,8 +159,8 @@ function expectCode(result, code, file = undefined) {
 
 test('m1: a proof file deleted from disk fails closed (ROW_FILE_MISSING)', () => {
   const result = validate(CC_PROOF_HOSTING_MANIFEST, matrix, ciInvokedGroups,
-    (f) => f !== GAP8_ACCOUNTING);
-  expectCode(result, 'ROW_FILE_MISSING', GAP8_ACCOUNTING);
+    (f) => f !== REGISTRY_TEST);
+  expectCode(result, 'ROW_FILE_MISSING', REGISTRY_TEST);
 });
 
 test('m2: a duplicated row fails closed (ROW_FILE_DUPLICATE)', () => {
@@ -168,49 +171,49 @@ test('m2: a duplicated row fails closed (ROW_FILE_DUPLICATE)', () => {
 
 test('m3: renaming the pinned group fails closed (GROUP_UNKNOWN) — and the renamed-away CI step is caught too', () => {
   const m = clone(CC_PROOF_HOSTING_MANIFEST);
-  m.rows = m.rows.map((r) => (r.group === 'process-modules' ? { ...r, group: 'process-modules-renamed' } : r));
+  m.rows = m.rows.map((r) => (r.group === 'cc-proof-registry' ? { ...r, group: 'cc-proof-registry-renamed' } : r));
   const result = validate(m);
-  expectCode(result, 'GROUP_UNKNOWN', GAP8_ACCOUNTING);
+  expectCode(result, 'GROUP_UNKNOWN', REGISTRY_TEST);
   // CI side of the rename: ci.yml still invokes the old name only.
   const matrixRenamed = clone(matrix);
-  matrixRenamed.groups['process-modules-renamed'] = matrixRenamed.groups['process-modules'];
-  delete matrixRenamed.groups['process-modules'];
-  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixRenamed, ciInvokedGroups), 'GROUP_UNKNOWN', GAP8_ACCOUNTING);
-  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixRenamed, [...ciInvokedGroups, 'process-modules']), 'CI_INVOKES_UNKNOWN_GROUP');
+  matrixRenamed.groups['cc-proof-registry-renamed'] = matrixRenamed.groups['cc-proof-registry'];
+  delete matrixRenamed.groups['cc-proof-registry'];
+  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixRenamed, ciInvokedGroups), 'GROUP_UNKNOWN', REGISTRY_TEST);
+  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixRenamed, [...ciInvokedGroups, 'cc-proof-registry']), 'CI_INVOKES_UNKNOWN_GROUP');
 });
 
 test('m4: dropping the proof from its group run-set fails closed (PROOF_NOT_HOSTED)', () => {
   const matrixMutated = clone(matrix);
-  matrixMutated.groups['process-modules'].files =
-    matrixMutated.groups['process-modules'].files.filter((f) => f !== GAP8_ACCOUNTING);
-  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixMutated), 'PROOF_NOT_HOSTED', GAP8_ACCOUNTING);
+  matrixMutated.groups['cc-proof-registry'].files =
+    matrixMutated.groups['cc-proof-registry'].files.filter((f) => f !== REGISTRY_TEST);
+  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixMutated), 'PROOF_NOT_HOSTED', REGISTRY_TEST);
 });
 
 test('m5: quarantining a blocking proof fails closed (PROOF_QUARANTINED — reclassification is not an honest drop)', () => {
   const matrixMutated = clone(matrix);
-  matrixMutated.groups['process-modules'].files =
-    matrixMutated.groups['process-modules'].files.filter((f) => f !== GAP8_ACCOUNTING);
+  matrixMutated.groups['cc-proof-registry'].files =
+    matrixMutated.groups['cc-proof-registry'].files.filter((f) => f !== REGISTRY_TEST);
   matrixMutated.quarantine.push({
-    path: GAP8_ACCOUNTING, kind: 'FLAKY', reason: 'dishonest reclassification to drop the CC-GAP-8 proof',
+    path: REGISTRY_TEST, kind: 'FLAKY', reason: 'dishonest reclassification to drop the registry proof',
   });
   const result = validate(CC_PROOF_HOSTING_MANIFEST, matrixMutated);
-  expectCode(result, 'PROOF_QUARANTINED', GAP8_ACCOUNTING);
-  expectCode(result, 'PROOF_NOT_HOSTED', GAP8_ACCOUNTING);
+  expectCode(result, 'PROOF_QUARANTINED', REGISTRY_TEST);
+  expectCode(result, 'PROOF_NOT_HOSTED', REGISTRY_TEST);
 });
 
 test('m6: CI omitting the pinned group invocation fails closed (GROUP_NOT_INVOKED_BY_CI)', () => {
-  const ci = ciInvokedGroups.filter((g) => g !== 'process-modules');
-  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrix, ci), 'GROUP_NOT_INVOKED_BY_CI', GAP8_ACCOUNTING);
+  const ci = ciInvokedGroups.filter((g) => g !== 'cc-proof-registry');
+  expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrix, ci), 'GROUP_NOT_INVOKED_BY_CI', REGISTRY_TEST);
 });
 
 test('m7: typing a HOSTED proof as pending fails closed (PENDING_ABSORBS_HOSTED — pending cannot absorb a blocking proof)', () => {
   const m = clone(CC_PROOF_HOSTING_MANIFEST);
-  const row = m.rows.find((r) => r.file === GAP8_ACCOUNTING);
+  const row = m.rows.find((r) => r.file === REGISTRY_TEST);
   row.type = 'pending';
   delete row.group;
   row.tracker = 'docs/plans/CONFORMANCE-CLOSURE-PLAN.md fake-tracker row';
   row.reason = 'reclassified pending to dodge the hosting proof — must stay red';
-  expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', GAP8_ACCOUNTING);
+  expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', REGISTRY_TEST);
 });
 
 test('m7b: a pending row whose file lands in a blocking run-set goes stale and fails closed', () => {
@@ -219,11 +222,11 @@ test('m7b: a pending row whose file lands in a blocking run-set goes stale and f
   // same validator code path): the blocking ex-orphan row is flipped to
   // pending while its file stays hosted in conveyor-app.
   const m = clone(CC_PROOF_HOSTING_MANIFEST);
-  const row = m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  const row = m.rows.find((r) => r.file === REGISTRY_TEST);
   row.type = 'pending';
   row.tracker = 'synthetic stale pending — must stay red';
   row.reason = 'reclassified pending to dodge the hosting proof — must stay red';
-  expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', GAP2_ORPHAN_SETTLEMENT);
+  expectCode(validate(m), 'PENDING_ABSORBS_HOSTED', REGISTRY_TEST);
 });
 
 test('m8: pending rows without tracker/reason fail closed (PENDING_TRACKER_MISSING / PENDING_REASON_MISSING)', () => {
@@ -232,31 +235,31 @@ test('m8: pending rows without tracker/reason fail closed (PENDING_TRACKER_MISSI
   // from the cloned matrix run-set, so ONLY the tracker/reason codes fire.
   const pendingIsolated = () => {
     const m = clone(CC_PROOF_HOSTING_MANIFEST);
-    const row = m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+    const row = m.rows.find((r) => r.file === REGISTRY_TEST);
     row.type = 'pending';
     row.reason = 'synthetic pending for the tracker/reason isolation';
     const matrixIsolated = clone(matrix);
     const g = matrixIsolated.groups[row.group];
-    matrixIsolated.groups[row.group] = { ...g, files: g.files.filter((f) => f !== GAP2_ORPHAN_SETTLEMENT) };
+    matrixIsolated.groups[row.group] = { ...g, files: g.files.filter((f) => f !== REGISTRY_TEST) };
     delete row.group;
     return { m, matrixIsolated };
   };
 
   const mNoTracker = pendingIsolated();
-  mNoTracker.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT).tracker = '';
-  expectCode(validate(mNoTracker.m, mNoTracker.matrixIsolated), 'PENDING_TRACKER_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  mNoTracker.m.rows.find((r) => r.file === REGISTRY_TEST).tracker = '';
+  expectCode(validate(mNoTracker.m, mNoTracker.matrixIsolated), 'PENDING_TRACKER_MISSING', REGISTRY_TEST);
 
   const mNoReason = pendingIsolated();
-  const b = mNoReason.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  const b = mNoReason.m.rows.find((r) => r.file === REGISTRY_TEST);
   b.tracker = 'docs/plans/CONFORMANCE-CLOSURE-PLAN.md fake-tracker row';
   b.reason = '';
-  expectCode(validate(mNoReason.m, mNoReason.matrixIsolated), 'PENDING_REASON_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  expectCode(validate(mNoReason.m, mNoReason.matrixIsolated), 'PENDING_REASON_MISSING', REGISTRY_TEST);
 
   const mBadTrackerPath = pendingIsolated();
-  const c = mBadTrackerPath.m.rows.find((r) => r.file === GAP2_ORPHAN_SETTLEMENT);
+  const c = mBadTrackerPath.m.rows.find((r) => r.file === REGISTRY_TEST);
   c.tracker = 'docs/plans/DOES-NOT-EXIST.md tracker path must exist';
   const trackerExists = (f) => f !== 'docs/plans/DOES-NOT-EXIST.md';
-  expectCode(validate(mBadTrackerPath.m, mBadTrackerPath.matrixIsolated, ciInvokedGroups, trackerExists), 'PENDING_TRACKER_PATH_MISSING', GAP2_ORPHAN_SETTLEMENT);
+  expectCode(validate(mBadTrackerPath.m, mBadTrackerPath.matrixIsolated, ciInvokedGroups, trackerExists), 'PENDING_TRACKER_PATH_MISSING', REGISTRY_TEST);
 });
 
 test('m9: an unregistered file joining the registry group fails closed (REGISTRY_GROUP_WIDENED)', () => {
@@ -267,7 +270,10 @@ test('m9: an unregistered file joining the registry group fails closed (REGISTRY
 
 test('m10: ci.yml invoking a group the matrix no longer defines fails closed (CI_INVOKES_UNKNOWN_GROUP)', () => {
   const matrixMutated = clone(matrix);
-  delete matrixMutated.groups['factory-model'];
+  // EK-8 repin: factory-model died with the purge; kept-tooling is a live
+  // CI-invoked group the manifest carries no row for - deleting it from the
+  // matrix export must still be caught (ci.yml invokes a ghost group).
+  delete matrixMutated.groups['kept-tooling'];
   expectCode(validate(CC_PROOF_HOSTING_MANIFEST, matrixMutated), 'CI_INVOKES_UNKNOWN_GROUP');
 });
 
@@ -318,13 +324,19 @@ test('m15: registryGroup defined in the matrix but not CI-invoked fails closed (
 });
 
 test('m16: a registryGroup anchored by no blocking manifest row fails closed (REGISTRY_GROUP_UNANCHORED)', () => {
+  // EK-8 repin: emptying rows is MANIFEST_MALFORMED (the surface may never
+  // be silently emptied), so the unanchoring is proven by demoting the sole
+  // registry row to a well-formed pending row isolated from its run-set.
   const m = clone(CC_PROOF_HOSTING_MANIFEST);
-  m.rows = m.rows.filter((r) => !(r.type === 'blocking' && r.group === m.registryGroup));
-  const result = validate(m);
+  const matrixIsolated = clone(matrix);
+  matrixIsolated.groups[m.registryGroup] = { ...matrixIsolated.groups[m.registryGroup], files: [] };
+  const row = m.rows.find((r) => r.file === REGISTRY_TEST);
+  row.type = 'pending';
+  delete row.group;
+  row.tracker = 'docs/plans/CONFORMANCE-CLOSURE-PLAN.md fake-tracker row';
+  row.reason = 'synthetic unanchoring - must stay red';
+  const result = validate(m, matrixIsolated);
   expectCode(result, 'REGISTRY_GROUP_UNANCHORED');
-  // The now-unanchored group run-set also fails the widening direction —
-  // the anchor requirement is what gives the bijection its fixed point.
-  expectCode(result, 'REGISTRY_GROUP_WIDENED', REGISTRY_TEST);
 });
 
 test('m17: coordinated removal (registry group deleted from the matrix AND its CI step deleted) still fails closed (REGISTRY_GROUP_UNKNOWN)', () => {

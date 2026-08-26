@@ -1,30 +1,32 @@
 // EK-1 / WP-04b — deletion-manifest stop-gate hosting (operator review item 8).
 //
-// Wraps docs/refactoring/event-kernel/tools/validate-deletion-manifests.mjs,
-// the blocking validator proving the two WP-04 deletion manifests cannot rot
-// before EK-7/EK-8:
-//   V1 existence  — every classified path exists in the tree today;
-//   V2 no-rot     — every scoped tracked file is classified (a NEW file under
-//                   src/, tracker-view/, scripts/ or any *.md / doc artifact
-//                   turns the gate red until it is consciously classified);
-//   V3 consistency— no file carries two dispositions / two sections;
-//   V4 tables     — every src/schema.ts CREATE TABLE name is classified in
-//                   legacy §A exactly once.
+// POST-CUTOVER SHAPE (WP-12, 2026-08-26): the validator wrapped here
+// (docs/refactoring/event-kernel/tools/validate-deletion-manifests.mjs)
+// flipped at the EK-8 hard cutover:
+//   V1 (DELETE)  INVERTED — every file that existed at the manifest base and
+//                is classified DELETE must now be ABSENT; a survivor is a
+//                red V1-SURVIVOR (an old-path resurrection fails CI).
+//   V1 (KEEP)    unchanged — classified KEEP/RETAIN files must exist.
+//   V2 NO-ROT    unchanged — every tracked file under src/**, tracker-view/**
+//                (empty), scripts/** (empty) and the *.md doc scope appears
+//                in a manifest row.
+//   V3           unchanged — no file carries two dispositions / two sections.
+//   V4           the old src/schema.ts must NOT exist (its 91 tables died);
+//                duplicate §A rows still fail.
 //
 // This suite proves the gate itself is alive and non-vacuous:
-//   1. GREEN now (the validator exits 0 on the current tree; its real-manifest
-//      defects are declared as KNOWN-GAP entries inside the validator, each
-//      printed on every run — coordinator amendments pending);
+//   1. GREEN now (the validator exits 0 on the purged tree);
 //   2. deterministic — two runs print byte-identical output;
-//   3. three encoded negative mutations, executed against TEMP COPIES of the
-//      manifests (never the real ones), each of which MUST turn the validator
-//      red naming the exact defect:
-//        M1 a row classifying a nonexistent path            -> V1-STALE
-//        M2 a new unclassified file joining the scope       -> V2-UNCLASSIFIED
-//        M3 a duplicate classification of an already-listed
-//           file in a second section                        -> V3-DUPLICATE
+//   3. five encoded negative mutations, executed against TEMP COPIES of the
+//      manifests or in-memory --extra-file simulations (never the real tree):
+//        M1 a KEEP row classifying a nonexistent path        -> V1-STALE
+//        M2 a new unclassified file joining the scope        -> V2-UNCLASSIFIED
+//        M3 a duplicate classification in a second section   -> V3-DUPLICATE
+//        M4 the RESURRECTION of a DELETE-classified file     -> V1-SURVIVOR
+//           (the WP-12 cutover law: old paths may not come back)
+//        M5 the resurrection of the old schema DDL file      -> V4-OLD-SCHEMA
 //
-// Registration (coordinator-owned wiring, see the WP-04b handoff):
+// Registration:
 //   npm script   : validate:deletion-manifests
 //   matrix group : ek-manifest-guard -> tests/infrastructure/deletion-manifest-guard.test.mjs
 import { test } from 'node:test';
@@ -63,18 +65,12 @@ function mutate(dir, file, anchor, insertion) {
   writeFileSync(p, md.replace(anchor, `${anchor}\n${insertion}`));
 }
 
-test('green now: the validator passes on the current tree (declared KNOWN-GAPs aside)', () => {
+test('green now: the validator passes on the purged tree (post-cutover V1 inversion)', () => {
   const r = runValidator();
-  assert.equal(r.status, 0, `validator must exit 0 on the current tree:\n${r.out}`);
+  assert.equal(r.status, 0, `validator must exit 0 on the purged tree:\n${r.out}`);
   assert.match(r.out, /ALL GREEN — digest [0-9a-f]{64}/);
-  // the known-gap debt stays visible on every run (it may never go silent);
-  // once the coordinator amends the manifest and removes the gap entry, the
-  // stale date may not appear at all — either way is green, silence is not
-  const mentionsStaleDate = r.out.includes('2026-08-28-failures');
-  if (mentionsStaleDate) {
-    assert.match(r.out, /KNOWN-GAP V1-STALE[^\n]*2026-08-28-failures/,
-      'the mistyped characterization-fixture date may appear ONLY as a declared KNOWN-GAP line');
-  }
+  // The old schema DDL is gone: V4 reports zero classified schema.ts tables.
+  assert.match(r.out, /schema\.ts CREATE TABLE: 0/);
 });
 
 test('deterministic: two runs print byte-identical output', () => {
@@ -84,18 +80,19 @@ test('deterministic: two runs print byte-identical output', () => {
   assert.equal(a.out, b.out, 'two runs on the same tree must be byte-identical');
 });
 
-test('M1 killed: a row classifying a nonexistent path is RED (V1-STALE names it)', () => {
+test('M1 killed: a KEEP row naming a nonexistent path is RED (V1-STALE names it)', () => {
   const dir = tempManifestDir();
   try {
-    // splice a fake row into the legacy §B.1 table (after its last real row)
+    // Post-cutover, a DELETE row for a nonexistent path is REQUIRED state;
+    // the stale-row oracle is now the KEEP direction.
     mutate(
       dir, LEGACY,
-      '| `src/checkpoint-cli.ts` | Checkpoint capture/restore CLI | EK-8 | none — obsolete (obligation recovery; no snapshots) |',
-      '| `src/wp04b-mutation-fake.ts` | WP-04b mutation probe (nonexistent path) | EK-8 | none — mutation |',
+      '| `tools/agent-proxy/**` | opencode shim (**the only legal worker transport today**) | KEEP |',
+      '| `tools/wp04b-keep-mutation-fake.mjs` | WP-04b mutation probe (nonexistent KEEP path) | KEEP | — | none — mutation |',
     );
     const r = runValidator('--manifest-dir', dir);
-    assert.notEqual(r.status, 0, 'a manifest row naming a path that exists in no tree must fail the gate');
-    assert.match(r.out, /RED V1-STALE[^\n]*src\/wp04b-mutation-fake\.ts/);
+    assert.notEqual(r.status, 0, 'a KEEP row naming a path that exists in no tree must fail the gate');
+    assert.match(r.out, /RED V1-STALE[^\n]*tools\/wp04b-keep-mutation-fake\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -110,16 +107,29 @@ test('M2 killed: a new unclassified file under scope is RED (V2-UNCLASSIFIED nam
 test('M3 killed: a duplicate classification in a second section is RED (V3-DUPLICATE names the file)', () => {
   const dir = tempManifestDir();
   try {
-    // splice a second classification of src/db.ts (already §B.1) into §C
     mutate(
       dir, LEGACY,
-      '| `claude-runner.mjs` + `claude-runner.d.mts` | Worker spawn through the opencode shim;',
-      '| `src/db.ts` | WP-04b mutation probe (duplicate classification of a §B.1 file) | EK-8 | none — mutation |',
+      '| `tools/adr-closure-registry.mjs` (+test) | ADR registry validator',
+      '| `src/db.ts` | WP-04b mutation probe (duplicate classification of a §B.1 file) | DELETE @ EK-8 | none — mutation |',
     );
     const r = runValidator('--manifest-dir', dir);
     assert.notEqual(r.status, 0, 'one file classified by two sections must fail the gate');
-    assert.match(r.out, /RED V3-DUPLICATE[^\n]*src\/db\.ts is classified by 2 sections: B\.1, C/);
+    assert.match(r.out, /RED V3-DUPLICATE[^\n]*src\/db\.ts is classified by 2 sections/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('M4 killed: RESURRECTING a DELETE-classified file is RED (V1-SURVIVOR — the WP-12 cutover law)', () => {
+  // src/db.ts was classified DELETE at the manifest base and is deleted on
+  // the real tree; simulating its resurrection must turn the gate red.
+  const r = runValidator('--extra-file', 'src/db.ts');
+  assert.notEqual(r.status, 0, 'an old-path resurrection must fail the gate (the cutover is irreversible)');
+  assert.match(r.out, /RED V1-SURVIVOR[^\n]*src\/db\.ts/);
+});
+
+test('M5 killed: resurrecting the old schema DDL file is RED (V4-OLD-SCHEMA)', () => {
+  const r = runValidator('--extra-file', 'src/schema.ts');
+  assert.notEqual(r.status, 0, 'the old schema.ts may never return');
+  assert.match(r.out, /V4-OLD-SCHEMA/);
 });

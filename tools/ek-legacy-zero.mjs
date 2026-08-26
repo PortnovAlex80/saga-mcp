@@ -52,7 +52,7 @@
 // Deterministic: sorted output, no timestamps, no randomness.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -77,6 +77,15 @@ function git(args) {
 }
 
 const tracked = new Set(git(['ls-files']).split('\n').filter(Boolean));
+// WP-12 post-cutover universe (2026-08-26): manifest tokens resolve against
+// BASE UNION TRACKED. Before the purge, resolution against the live tree was
+// enough (every classified file existed); after it, the DELETE rows would
+// resolve to nothing and the laws would go VACUOUSLY green. The base SHA in
+// the manifest header is the deletion record's anchor.
+const baseShaMatch = readFileSync(MANIFEST, 'utf8').match(/- \*\*Base SHA:\*\* `([0-9a-f]{40})`/);
+if (!baseShaMatch) throw new Error('LEGACY-ZERO: the manifest is missing its Base SHA header');
+const baseTracked = new Set(git(['ls-tree', '-r', '--name-only', baseShaMatch[1]]).split('\n').filter(Boolean));
+const universe = new Set([...tracked, ...baseTracked]);
 
 // --- compact manifest token/disposition parse --------------------------------
 const md = readFileSync(MANIFEST, 'utf8');
@@ -118,7 +127,7 @@ function globToRegex(pattern) {
 function expandGlob(pattern) {
   const re = globToRegex(pattern);
   const out = [];
-  for (const f of tracked) if (re.test(f)) out.push(f);
+  for (const f of universe) if (re.test(f)) out.push(f);
   return out.sort();
 }
 function expandBraces(token) {
@@ -153,7 +162,7 @@ function resolveToken(rawToken, baseDir, rowText = '') {
         if (hit.length) return hit;
         continue;
       }
-      if (tracked.has(base + variant)) return [base + variant];
+      if (universe.has(base + variant)) return [base + variant];
     }
   }
   return [];
@@ -271,7 +280,20 @@ const survivors = [...tracked].filter((f) => f.startsWith('src/') && !deleteSet.
 const survivorSet = new Set([...survivors, ...keepSet]);
 
 // --- L1: deletion-manifest entries absent -------------------------------------
-const stillPresent = [...deleteSet].filter((f) => tracked.has(f)).sort();
+// WP-12 strengthening (2026-08-26): absence is checked against the tracked
+// set AND the working tree — a resurrection first surfaces as an untracked
+// phantom file, and L1 must catch it before anyone could `git add` it.
+// (dist/ and node_modules are never in the manifest's path space, so the
+// fs probe cannot produce false positives.)
+const presentOnDisk = (f) => {
+  try {
+    statSync(path.join(ROOT, f));
+    return true;
+  } catch {
+    return false;
+  }
+};
+const stillPresent = [...deleteSet].filter((f) => tracked.has(f) || presentOnDisk(f)).sort();
 const byTree = {};
 for (const f of stillPresent) {
   const key = f.includes('/') ? `${f.split('/')[0]}/` : f;
@@ -406,7 +428,10 @@ if (JSON_OUT) {
     console.log(`[legacy-zero] ${l.id} ${l.count === 0 ? 'GREEN' : STRICT ? 'RED' : 'PRE-CUTOVER'} (${l.count}) — ${l.name}`);
     if (l.count > 0) {
       const d = l.detail;
-      const lines = Array.isArray(d) ? d : (d.byTree && Object.keys(d.byTree).length ? Object.entries(d.byTree).map(([k, v]) => `    ${k}: ${v} file(s)`) : d.sample ? d.sample.map((s) => `    ${s}`) : []);
+      const lines = Array.isArray(d) ? d : [
+        ...(d.byTree ? Object.entries(d.byTree).map(([k, v]) => `    ${k}: ${v} file(s)`) : []),
+        ...(d.sample ? d.sample.map((s) => `    ${s}`) : []),
+      ];
       for (const line of lines.slice(0, 12)) console.log(line);
       if (lines.length > 12) console.log(`    … ${lines.length - 12} more`);
     }

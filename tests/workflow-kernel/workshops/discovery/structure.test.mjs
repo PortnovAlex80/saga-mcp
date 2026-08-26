@@ -17,6 +17,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, basename, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const PACKAGE_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'discovery');
@@ -108,31 +109,24 @@ test('module/package identity lives ONLY in the installed manifest: no code bran
 });
 
 test('the package is reachable ONLY from focused tests: no production entrypoint imports it', () => {
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      const source = codeOf(full);
-      if (/workflow-kernel\/workshops\/discovery/.test(source)) {
-        offenders.push(full);
-      }
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/workshops/discovery');
   const allowed = packageFiles.map((file) => file.replaceAll('\\', '/'));
+  // EK-8 cutover repin: pre-cutover the package was test-only reachable
+  // (zero production importers). Post-cutover the ONE production
+  // composition (src/workflow-kernel/composition/**) is the sole legal
+  // production importer - same bite, inverted target.
   for (const offender of offenders) {
     const normalized = offender.replaceAll('\\', '/');
-    assert.ok(allowed.some((allowedPath) => normalized.endsWith(allowedPath.slice(allowedPath.indexOf('discovery/')))),
-      `production path imports the focused-test package: ${offender}`);
+    const packageInternal = allowed.some((allowedPath) => normalized.endsWith(allowedPath.slice(allowedPath.indexOf('discovery/'))));
+    assert.ok(packageInternal || normalized.includes('/src/workflow-kernel/composition/'),
+      `production path outside the ONE composition imports the package: ${offender}`);
   }
+  assert.ok(offenders.some((offender) => offender.replaceAll('\\', '/').includes('/src/workflow-kernel/composition/')), 'the composition must import this package (the cutover landed)');
 });
 
 test('the EK-8 cutover notes are documented in the owned paths', () => {

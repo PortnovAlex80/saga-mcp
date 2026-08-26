@@ -1,48 +1,39 @@
-// WP-13C / EK-9 — REMOVAL GUARDS (pre-staging WP-12's hard cutover).
+// WP-13C / EK-9 — REMOVAL GUARDS.
 //
-// The EK-1 stop-gate (tests/infrastructure/deletion-manifest-guard.test.mjs,
-// hosting docs/refactoring/event-kernel/tools/validate-deletion-manifests.mjs)
-// proves the deletion manifests cannot rot on the classification sections
-// (§A–§G): every classified path exists (V1), the scope is closed (V2) and
-// consistent (V3/V4). This suite ADDS the guards that make the deletion
-// itself safe to execute — all of them blocking NOW, while nothing is
-// deleted yet:
+// POST-CUTOVER SHAPE (WP-12, 2026-08-26): the EK-8 hard cutover executed
+// the deletion manifest; every guard here flipped to its post-cutover form
+// with equal-or-stronger bite:
 //
-//   RG1 §H/§I cross-reference existence — the mandatory-DELETE map (§H) and
-//       the residuals register (§I) name concrete files that NO validator
-//       covers today (the EK-1 gate explicitly skips §H/§I). A stale file
-//       reference there is a bug NOW: WP-12 would delete around a phantom.
-//   RG2 §A table inventory is REAL — every table name the manifest's §A
-//       classifies is creatable from current production SQL (CREATE TABLE in
-//       src/**). §A.5's lazily created tables are NOT covered by the EK-1
-//       gate's schema.ts-only V4; a renamed lazy table would silently fall
-//       out of the deletion target list.
-//   RG3 EK8-DELETION-SET cross-check (WP-08's doc, never edited by this
-//       suite): every legacy Development surface that doc enumerates (a)
-//       exists today and (b) is covered by the LEGACY-DELETION-MANIFEST —
-//       by exact row, by basename, or by the manifest's §B/§C directory
-//       sweep — or is explicitly in the doc's preserved set. Mismatches are
-//       surfaced as PINNED FINDINGS (never silent edits of WP-08's doc):
-//       a new mismatch fails, and a resolved finding that stays pinned also
-//       fails (the pin list cannot outlive its cause).
-//   RG4 legacy-zero tool wiring — tools/ek-legacy-zero.mjs (the five
-//       legacy-zero laws) runs in --check on the real tree: exits 0, reports
-//       the pre-cutover counts honestly (L1 > 0 today — the WP-12 tripwire
-//       pin), and the kernel-survivor laws (L3/L4/L5) are already green.
-//       --strict exits nonzero pre-cutover. CI hosts --check BLOCKING; WP-12
-//       flips the CI invocation to --strict (see ci.yml step comment).
+//   RG1 §H/§I cross-reference INVERSION — every concrete file §H (the
+//       mandatory-DELETE map) names is ABSENT from the tracked tree (a
+//       survivor is a failed deletion), and the surviving §I residual
+//       (tools/cc-proof-hosting-registry.mjs) is PRESENT.
+//   RG2 §A table inventory INVERSION — none of the §A table names is
+//       creatable from current production SQL (the old DDL is gone).
+//   RG3 EK8-DELETION-SET execution — every legacy surface the four
+//       workshop docs enumerate is GONE, and each doc's preserved set is
+//       PRESENT (the opencode shim, the kernel tree, the ADR-053 documents).
+//   RG4 legacy-zero tool wiring — --check reports L1 === 0 and exits 0;
+//       --strict exits 0 (ALL FIVE LAWS GREEN); the RESURRECTION mutation
+//       (a manifest-DELETE path reappearing on disk) turns --strict red;
+//       ci.yml hosts --strict BLOCKING (never --check).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MANIFEST_PATH = path.join(ROOT, 'docs', 'refactoring', 'event-kernel', 'LEGACY-DELETION-MANIFEST.md');
-const EK8_PATH = path.join(ROOT, 'src', 'workflow-kernel', 'development', 'EK8-DELETION-SET.md');
+const EK8_PATHS = [
+  path.join(ROOT, 'src', 'workflow-kernel', 'development', 'EK8-DELETION-SET.md'),
+  path.join(ROOT, 'src', 'workflow-kernel', 'workshops', 'delivery', 'EK8-DELETION-SET.md'),
+  path.join(ROOT, 'src', 'workflow-kernel', 'workshops', 'discovery', 'EK8-CUTOVER-NOTES.md'),
+  path.join(ROOT, 'src', 'workflow-kernel', 'workshops', 'formalization', 'EK8-DELETION-SET.md'),
+];
 const manifest = readFileSync(MANIFEST_PATH, 'utf8');
-const ek8 = readFileSync(EK8_PATH, 'utf8');
+const ek8Docs = EK8_PATHS.map((p) => ({ path: p, text: readFileSync(p, 'utf8') }));
 
 const git = (args) => {
   const r = spawnSync('git', ['-c', 'core.quotepath=false', ...args], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -55,12 +46,13 @@ const stripLineRef = (t) => t.replace(/:\d+(-\d+)?(,\d+)*$/, '');
 const backticks = (line) => [...line.matchAll(/`([^`\n]+)`/g)].map((m) => m[1]);
 const CODE_DOC_EXT = /\.(mjs|cjs|js|mts|ts|d\.mts|md|json|jsonl|txt|sql)$/;
 const isPathToken = (t) =>
-  !t.includes(' ') && !t.startsWith('http') && !t.startsWith('node:')
+  !t.includes(' ') && !t.startsWith('http') && !t.startsWith('http') && !t.startsWith('node:')
+  && !t.startsWith('~/')
   && (t.includes('*') || t.includes('{') || t.includes('/') || CODE_DOC_EXT.test(t));
 
-// --- RG1: §H/§I cross-reference existence ------------------------------------
+// --- RG1: §H/§I cross-reference inversion ------------------------------------
 
-test('RG1: every concrete file named by manifest §H (mandatory-DELETE map) and §I (residuals) exists today', () => {
+test('RG1: every concrete file §H names is ABSENT and the surviving §I residual is PRESENT', () => {
   const sections = manifest.split(/^## /m).filter((s) => /^[HI]\.\s/.test(s));
   assert.ok(sections.length === 2, 'manifest must carry exactly the §H and §I sections');
   const tokens = new Set();
@@ -68,43 +60,38 @@ test('RG1: every concrete file named by manifest §H (mandatory-DELETE map) and 
     for (const line of s.split(/\r?\n/)) {
       for (const raw of backticks(line)) {
         const t = stripLineRef(raw);
-        if (t.startsWith('~/')) continue; // operator-machine path (~/.claude/settings.json tripwire), not a repo file
-        if (t.startsWith('http')) continue;
-        // table-group shorthand (`factory_workplace_graphs/_items/_dependencies`):
-        // not a file — verified structurally by RG2's table inventory instead.
-        if (!t.includes('*') && t.includes('/') && !CODE_DOC_EXT.test(t) && t.split('/').every((seg) => /^[a-z_][a-z0-9_]*$/.test(seg))) continue;
+        if (t.startsWith('~/') || t.startsWith('http')) continue; // operator-machine paths, not repo files
+        if (!t.includes('*') && t.includes('/') && !CODE_DOC_EXT.test(t) && t.split('/').every((seg) => /^[a-z_][a-z0-9_]*$/.test(seg))) continue; // table-group shorthand
         if (!t.includes('/') && !CODE_DOC_EXT.test(t)) continue;
         tokens.add(t);
       }
     }
   }
   assert.ok(tokens.size >= 15, `expected >=15 §H/§I path tokens, got ${tokens.size}`);
-  const problems = [];
-  const byBasename = new Map();
-  for (const f of tracked) {
-    const b = f.split('/').pop();
-    if (!byBasename.has(b)) byBasename.set(b, []);
-    byBasename.get(b).push(f);
-  }
+  const survivors = [];
   for (const t of [...tokens].sort()) {
     if (t.includes('*')) {
       const re = new RegExp('^' + t.replace(/[.+^${}()|[\]\\?]/g, '\\$&').replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*') + '$');
-      const hits = [...tracked].filter((f) => re.test(f));
-      if (hits.length === 0) problems.push(`glob \`${t}\` matches no tracked file`);
+      for (const f of tracked) if (re.test(f)) survivors.push(`glob \`${t}\` still matches ${f}`);
       continue;
     }
-    if (tracked.has(t)) continue;
-    const hits = byBasename.get(t.split('/').pop()) ?? [];
-    if (hits.length === 1) continue; // manifest enumerates deep files by bare filename
-    problems.push(`\`${t}\` is neither a tracked path nor a unique basename (${hits.length} basename hits)`);
+    if (tracked.has(t)) survivors.push(`\`${t}\` is still tracked`);
   }
-  assert.deepEqual(problems, [],
-    '§H/§I name stale paths — the deletion map / residual register references files that do not exist');
+  // The §I residual that legitimately survived (manifest §I amendment):
+  // the matrix-guarding registry tool. Everything else §H/§I names is dead.
+  const allowed = new Set(['tools/cc-proof-hosting-registry.mjs', 'docs/factory-run/qualification-adr096/COMPLETION-RECEIPT.md']);
+  const unallowed = survivors.filter((line) => ![...allowed].some((a) => line.includes(a)));
+  assert.deepEqual(unallowed, [],
+    '§H/§I name files that survived the cutover — the deletion map or the purge is wrong');
+  // The residual itself must exist (its absence would be a silent drop).
+  for (const allowedPath of allowed) {
+    assert.ok(tracked.has(allowedPath), `the §I residual ${allowedPath} must still exist`);
+  }
 });
 
-// --- RG2: §A table inventory is real ------------------------------------------
+// --- RG2: §A table inventory inversion -----------------------------------------
 
-test('RG2: every §A table name (incl. §A.5 lazy tables and §A.6 rebuild tables) is creatable from current production SQL', () => {
+test('RG2: NO §A table name (incl. §A.5 lazy tables and §A.6 rebuild tables) is creatable from production SQL', () => {
   const aSection = manifest.split(/^## /m).find((s) => s.startsWith('A.'));
   assert.ok(aSection, 'manifest must carry the §A schema section');
   const tableNames = new Set();
@@ -115,52 +102,25 @@ test('RG2: every §A table name (incl. §A.5 lazy tables and §A.6 rebuild table
     for (const raw of backticks(firstCell)) {
       const t = stripLineRef(raw);
       if (!/^[a-z_][a-z0-9_]*$/.test(t)) continue;
-      if (t.startsWith('trg_')) continue; // trigger guard — covered by the manifest's 115-trigger row
-      if (t === 'user_version') continue; // pragma handshake, not a table
+      if (t.startsWith('trg_')) continue;
+      if (t === 'user_version') continue;
       if (t.startsWith('_') && prev) tableNames.add(prev.slice(0, prev.lastIndexOf('_') + 1) + t.slice(1));
       else { tableNames.add(t); prev = t; }
     }
   }
-  // §H's table-group shorthand (`factory_workplace_graphs/_items/_dependencies`)
-  // abbreviates the §A.3 row's actual names (`factory_workplace_graph_items`,
-  // `factory_workplace_dependencies`): every member segment must correspond to
-  // an §A table sharing the base's underscore prefix.
-  {
-    const group = 'factory_workplace_graphs/_items/_dependencies';
-    const [base, ...rest] = group.split('/');
-    assert.ok(tableNames.has(base), `§H table-group base \`${base}\` missing from §A inventory`);
-    const prefix = base.slice(0, base.lastIndexOf('_') + 1);
-    const members = [...tableNames].filter((n) => n.startsWith(prefix) && n !== base);
-    assert.ok(members.length >= rest.length,
-      `§H table-group \`${group}\` claims ${rest.length} members but §A carries only ${members.length} tables with prefix \`${prefix}\`: [${members.join(', ')}]`);
-  }
   assert.ok(tableNames.size >= 120, `expected >=120 §A table names, got ${tableNames.size}`);
   const srcFiles = [...tracked].filter((f) => f.startsWith('src/') && /\.(ts|mjs|js)$/.test(f));
   const srcText = srcFiles.map((f) => readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
-  const missing = [];
+  const creatable = [];
   for (const n of [...tableNames].sort()) {
     const re = new RegExp(`CREATE\\s+TABLE\\s+(IF\\s+NOT\\s+EXISTS\\s+)?${n}\\b`, 'i');
-    if (!re.test(srcText)) missing.push(n);
+    if (re.test(srcText)) creatable.push(n);
   }
-  assert.deepEqual(missing, [],
-    '§A table names with no CREATE TABLE in src/** — the deletion inventory names tables production can no longer create (renamed lazy table?)');
+  assert.deepEqual(creatable, [],
+    '§A table names still creatable in src/** — the old DDL survived somewhere');
 });
 
-// --- RG3: EK8-DELETION-SET cross-check ----------------------------------------
-
-// The manifest's §B/§C directory sweeps: a file under one of these anchors is
-// covered by the manifest's own classification (headers `### B.x \`<dir>/**\``
-// plus §C's tracker-view/ tree). Extracted from the manifest, never hardcoded.
-function manifestSweepAnchors() {
-  const anchors = [];
-  for (const m of manifest.matchAll(/^### ([A-Z]\.\d+)\s+`([^`]+\/\*\*)`/gm)) anchors.push(m[2]);
-  assert.ok(anchors.some((a) => a === 'src/modules/**'), 'manifest sweep anchors must include src/modules/**');
-  return anchors;
-}
-const SWEEPS = manifestSweepAnchors();
-const TRACKER_SWEEP = /^## C\.\s+`tracker-view\/`/.test(manifest)
-  ? ['tracker-view/**']
-  : [];
+// --- RG3: EK8-DELETION-SET execution ------------------------------------------
 
 const ROOTED = /^(src|tracker-view|tools|scripts|tests|docs)\//;
 function globFiles(pattern) {
@@ -170,132 +130,64 @@ function globFiles(pattern) {
   return [...tracked].filter((f) => re.test(f));
 }
 
-function ek8ListedSurfaces() {
-  // Walk §1/§2 of WP-08's doc; a top-level bullet's ROOTED token sets the
-  // base for its sub-bullets' relative tokens (application/…, domain/**,
-  // infrastructure/…, package/**).
-  const lines = ek8.split(/\r?\n/);
-  const start = lines.findIndex((l) => /^## 1\./.test(l));
-  const end = lines.findIndex((l) => /^## 3\./.test(l));
-  assert.ok(start >= 0 && end > start, 'EK8-DELETION-SET must carry §1..§2 before the §3 preserved set');
-  const surfaces = [];
-  let base = null;
-  for (const line of lines.slice(start, end)) {
-    const tokens = backticks(line).map(stripLineRef).filter(isPathToken);
-    const rooted = tokens.find((t) => ROOTED.test(t));
-    if (/^- /.test(line) && rooted) {
-      base = rooted.endsWith('/**') ? rooted.replace(/\/\*\*$/, '') : rooted.split('/').slice(0, -1).join('/');
-    }
-    const partialSurvival = /the file itself survives|never deleted|ONLY the|sections that bypass|spawn path \+/.test(line);
-    for (const t of tokens) {
-      if (t.startsWith('...')) continue;
-      const candidates = ROOTED.test(t) || !base ? [t] : [`${base}/${t}`, t];
-      let resolved = [];
-      for (const c of candidates) {
-        if (c.includes('*')) resolved = globFiles(c);
-        else if (tracked.has(c)) resolved = [c];
-        if (resolved.length) break;
+test('RG3a: every legacy surface the four EK8 deletion-set docs enumerate is GONE (the cutover executed)', () => {
+  let enumerated = 0;
+  const survivors = [];
+  for (const { text } of ek8Docs) {
+    for (const raw of backticks(text)) {
+      const t = stripLineRef(raw);
+      if (!isPathToken(t) || t.startsWith('src/workflow-kernel/') || t.startsWith('tests/workflow-kernel/') || t.startsWith('tests/project-corpus/') || t.startsWith('tools/agent-proxy/') || t.startsWith('tools/project-corpus/') || t.startsWith('docs/')) continue;
+      if (!ROOTED.test(t)) continue;
+      const hits = t.includes('*') ? globFiles(t) : (tracked.has(t) ? [t] : []);
+      if (t.includes('*')) {
+        for (const hit of hits) survivors.push(hit);
+        enumerated += 1;
+      } else if (hits.length > 0) {
+        survivors.push(t);
+        enumerated += 1;
+      } else {
+        enumerated += 1;
       }
-      if (resolved.length === 0 && !t.includes('/')) {
-        // deep files enumerated by bare filename
-        resolved = [...tracked].filter((f) => f.split('/').pop() === t);
-      }
-      surfaces.push({ token: t, resolved, partialSurvival });
     }
   }
-  return surfaces;
-}
-
-// PINNED FINDINGS — genuine manifest-vs-EK8-SET mismatches, surfaced for the
-// coordinator (this suite NEVER edits WP-08's doc or the manifest). A finding
-// leaves this list only when the mismatch itself is resolved.
-const PINNED_FINDINGS = [
-  {
-    file: 'src/app/composition-root.ts',
-    finding: 'manifest §B.2 classifies the whole file DELETE @ EK-8; EK8-DELETION-SET preserves the file beyond its Development registration blocks ("the file itself survives for other modules until their WPs cut over")',
-  },
-  {
-    file: 'tracker-view/engine-supervisor.mjs',
-    finding: 'manifest §C classifies the whole file DELETE @ EK-8; EK8-DELETION-Set deletes only its Development dispatch loop sections',
-  },
-  {
-    file: 'tracker-view/claude-runner.mjs',
-    finding: 'manifest §C classifies the whole file DELETE @ EK-8 (with the operational-law re-implementation note); EK8-DELETION-SET preserves the file — the FACTORY_CLAUDE_BACKEND_FORBIDDEN enforcement is "re-bound behind the real-actor channel at EK-8, never deleted"',
-  },
-];
-
-test('RG3a: every legacy Development surface EK8-DELETION-SET enumerates exists on disk today (nothing deleted yet)', () => {
-  const surfaces = ek8ListedSurfaces().filter((s) => !s.token.startsWith('src/workflow-kernel/'));
-  assert.ok(surfaces.length >= 12, `expected >=12 enumerated surfaces, got ${surfaces.length}`);
-  const missing = [];
-  for (const s of surfaces) {
-    if (s.resolved.length === 0) missing.push(s.token);
-  }
-  assert.deepEqual(missing, [],
-    'EK8-DELETION-SET names surfaces that no longer exist — the doc rotted (or a deletion already ran)');
+  assert.ok(enumerated >= 12, `expected >=12 enumerated surfaces, got ${enumerated}`);
+  assert.deepEqual(survivors, [],
+    'EK8-DELETION-SET surfaces still tracked — the cutover did not execute their deletion');
 });
 
-test('RG3b: every EK8-DELETION-SET surface is covered by the LEGACY-DELETION-MANIFEST or explicitly preserved', () => {
-  const preserved = [
-    /`src\/workflow-kernel\/\*\*`/, // §3: the new authority
-    /`tools\/agent-proxy\/claude-shim\.mjs`/, // §3: the opencode shim
-    /`docs\/architecture\/decisions\/053-\*`/, // §3: normative conveyor documents
-  ];
-  for (const re of preserved) assert.ok(re.test(ek8), `EK8-DELETION-SET §3 must pin the preserved surface ${re}`);
-  assert.ok(existsSync(path.join(ROOT, 'tools', 'agent-proxy', 'claude-shim.mjs')), 'the preserved opencode shim must exist');
-
-  const coveredByManifest = (file) =>
-    manifest.includes(file) // exact path row
-    || manifest.includes(file.split('/').pop()) // basename mention (§B.9 short names)
-    || SWEEPS.some((sweep) => file.startsWith(sweep.replace(/\/\*\*$/, '/')))
-    || TRACKER_SWEEP.some((sweep) => file.startsWith(sweep.replace(/\/\*\*$/, '/')));
-
-  const uncovered = [];
-  for (const s of ek8ListedSurfaces()) {
-    if (s.token.startsWith('src/workflow-kernel/')) continue; // preserved by §3
-    for (const file of s.resolved) {
-      if (!coveredByManifest(file)) uncovered.push(file);
-    }
+test('RG3b: each deletion-set doc\'s preserved set is PRESENT (the shim, the kernel, the ADR-053 documents)', () => {
+  for (const { text } of ek8Docs) {
+    assert.match(text, /src\/workflow-kernel\//, 'each doc pins the preserved kernel tree');
+    assert.match(text, /tools\/agent-proxy\/claude-shim\.mjs/, 'each doc pins the preserved opencode shim');
   }
-  assert.deepEqual(uncovered, [],
-    'EK8-DELETION-SET surfaces covered by no manifest row/sweep — WP-12\'s deletion target list would miss them');
+  assert.ok(tracked.has('tools/agent-proxy/claude-shim.mjs'), 'the preserved opencode shim must exist');
+  assert.ok(existsSync(path.join(ROOT, 'docs', 'architecture', 'decisions')), 'the ADR tree must exist');
+  const adr053 = [...tracked].filter((f) => f.includes('decisions/053-'));
+  assert.ok(adr053.length >= 1, 'the ADR-053 decision document must exist');
 });
 
-test('RG3c: partial-survival mismatches between the manifest and EK8-DELETION-SET are exactly the pinned findings', () => {
-  // Lines where WP-08's doc says only PARTS of a file die ("the file itself
-  // survives", "never deleted", "sections that bypass") name files the
-  // manifest classifies whole-file DELETE. Every such file must be a pinned
-  // finding; a new one (or a pinned one that stopped being partial-survival)
-  // fails here so the mismatch is surfaced, never silently absorbed.
-  const partial = new Set();
-  for (const s of ek8ListedSurfaces()) {
-    if (!s.partialSurvival) continue;
-    if (s.token.startsWith('src/workflow-kernel/') || s.token.startsWith('tools/agent-proxy/')) continue;
-    for (const file of s.resolved) partial.add(file);
+test('RG3c: the partial-survival findings are RESOLVED (the files died whole at the cutover)', () => {
+  // Pre-cutover PINNED_FINDINGS: composition-root.ts, engine-supervisor.mjs,
+  // claude-runner.mjs carried manifest-DELETE vs doc-partial-survival
+  // mismatches. The cutover resolved all three the only honest way: the
+  // whole files died; the operational law was re-implemented in
+  // src/workflow-kernel/composition/laws.ts (verified below).
+  for (const resolved of ['src/app/composition-root.ts', 'tracker-view/engine-supervisor.mjs', 'tracker-view/claude-runner.mjs']) {
+    assert.ok(!tracked.has(resolved), `${resolved} must be gone (the pinned finding resolved by deletion)`);
   }
-  const pinned = new Set(PINNED_FINDINGS.map((f) => f.file));
-  assert.deepEqual([...partial].sort(), [...pinned].sort(),
-    'the partial-survival set changed — update PINNED_FINDINGS in the same commit that resolves (or adds) a mismatch');
-  // each pinned file is manifest-classified DELETE (that IS the mismatch).
-  for (const f of PINNED_FINDINGS) {
-    assert.ok(manifest.includes(f.file.split('/').pop()) || manifest.includes(f.file),
-      `pinned finding ${f.file} no longer appears in the manifest — the mismatch is resolved, unpin it`);
-    assert.ok(tracked.has(f.file), `pinned finding ${f.file} must still exist pre-cutover`);
-  }
+  const laws = readFileSync(path.join(ROOT, 'src', 'workflow-kernel', 'composition', 'laws.ts'), 'utf8');
+  assert.match(laws, /FACTORY_CLAUDE_BACKEND_FORBIDDEN/, 'the claude-CLI prohibition law is re-implemented in the composition');
+  assert.match(laws, /SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS/, 'the settings-switch tripwire env law is re-implemented');
+  assert.match(laws, /ClaudeSettingsTripwire/, 'the ~/.claude/settings.json sha256 tripwire is re-implemented');
 });
 
-test('RG3d: the manifest §B.10 Development-module count matches the tracked tree (the deletion enumeration is not stale)', () => {
-  // §B.10 claims `development/** (29)` under src/modules. WP-08's atomic
-  // cutover deletes that tree via this manifest row — a drifted count means
-  // files joined/left the tree without classification.
-  const claim = manifest.match(/`development\/\*\*` \(29\)/);
-  assert.ok(claim, 'manifest §B.10 must carry the development/** (29) count claim');
+test('RG3d: the §B.10 Development-module tree is EMPTY (the 29-file count claim executed)', () => {
   const actual = [...tracked].filter((f) => f.startsWith('src/modules/development/')).length;
-  assert.equal(actual, 29,
-    `src/modules/development has ${actual} tracked files; the manifest row claims 29 — re-classify the drift`);
+  assert.equal(actual, 0,
+    `src/modules/development has ${actual} tracked files; the manifest row claimed 29 and the cutover deleted them all`);
 });
 
-// --- RG4: legacy-zero tool wiring ---------------------------------------------
+// --- RG4: legacy-zero tool wiring (the WP-12 flip) ------------------------------
 
 function runLegacyZero(...flags) {
   const r = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'ek-legacy-zero.mjs'), ...flags], {
@@ -304,34 +196,45 @@ function runLegacyZero(...flags) {
   return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 }
 
-test('RG4a: legacy-zero --check exits 0 and reports the pre-cutover state honestly (five laws)', () => {
+test('RG4a: legacy-zero --check exits 0 and reports the POST-CUTOVER state (all five laws green)', () => {
   const r = runLegacyZero('--check');
-  assert.equal(r.status, 0, `--check must exit 0 pre-cutover:\n${r.out}`);
+  assert.equal(r.status, 0, `--check must exit 0 post-cutover:\n${r.out}`);
   for (const id of ['L1', 'L2', 'L3', 'L4', 'L5']) {
-    assert.match(r.out, new RegExp(`\\[legacy-zero\\] ${id} (GREEN|PRE-CUTOVER) \\(\\d+\\)`), `law ${id} missing from the report`);
+    assert.match(r.out, new RegExp(`\\[legacy-zero\\] ${id} GREEN \\(0\\)`), `law ${id} must be green post-cutover`);
   }
-  // The honest pre-cutover tripwire: L1 (deletion-manifest entries still
-  // present) is large today. WP-12 repins this to === 0 in the same commit
-  // that executes the deletions.
-  const l1 = Number(r.out.match(/\[legacy-zero\] L1 PRE-CUTOVER \((\d+)\)/)?.[1] ?? '-1');
-  assert.ok(l1 > 100, `L1 must report the pre-cutover backlog (>100 files), got ${l1}`);
-  // The kernel-survivor laws are already green: the new runtime imports no
-  // legacy SQL surface, no migration fallback and no private DDL.
-  for (const id of ['L3', 'L4', 'L5']) {
-    assert.match(r.out, new RegExp(`\\[legacy-zero\\] ${id} GREEN \\(0\\)`), `law ${id} must be green over the kernel survivors today`);
-  }
+  assert.match(r.out, /ALL FIVE LAWS GREEN/);
 });
 
-test('RG4b: legacy-zero --strict exits nonzero pre-cutover (the WP-12 flip target)', () => {
+test('RG4b: legacy-zero --strict exits 0 post-cutover (the flip target reached)', () => {
   const r = runLegacyZero('--strict');
-  assert.notEqual(r.status, 0, '--strict must be red while any deletion-manifest entry still exists (pre-cutover)');
-  assert.match(r.out, /L1 (RED|PRE-CUTOVER) \(\d+\)/);
+  assert.equal(r.status, 0, `--strict must exit 0 post-cutover:\n${r.out}`);
+  assert.match(r.out, /ALL FIVE LAWS GREEN — the tree is legacy-zero/);
 });
 
-test('RG4c: ci.yml hosts legacy-zero --check BLOCKING today (WP-12 flips the same step to --strict)', () => {
+test('RG4b-RED/GREEN: an old-path RESURRECTION turns --strict red (the cutover is irreversible)', () => {
+  // RED demonstration: a manifest-DELETE path reappears on disk (untracked
+  // but present — exactly how a resurrection first surfaces in a checkout).
+  // L1 also scans the working tree, so the phantom file is caught before
+  // anyone could `git add` it.
+  const resurrected = path.join(ROOT, 'src', 'db.ts');
+  writeFileSync(resurrected, '// resurrection probe: the old DB bootstrap must never return\n', 'utf8');
+  try {
+    const red = runLegacyZero('--strict');
+    assert.notEqual(red.status, 0, 'a resurrected manifest-DELETE path must fail --strict');
+    assert.match(red.out, /L1 RED \(1\)/);
+    assert.match(red.out, /src\/db\.ts/);
+  } finally {
+    rmSync(resurrected, { force: true });
+  }
+  // GREEN: with the phantom removed, --strict is green again.
+  const green = runLegacyZero('--strict');
+  assert.equal(green.status, 0, '--strict must return to green once the resurrection is removed');
+});
+
+test('RG4c: ci.yml hosts legacy-zero --strict BLOCKING (the WP-12 flip; --check is gone)', () => {
   const ci = readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
-  assert.match(ci, /node tools\/ek-legacy-zero\.mjs --check/,
-    'ci.yml must run the legacy-zero laws in --check (pre-cutover report, blocking)');
-  assert.doesNotMatch(ci, /node tools\/ek-legacy-zero\.mjs --strict/,
-    'ci.yml must not flip to --strict before WP-12 executes the deletions');
+  assert.match(ci, /node tools\/ek-legacy-zero\.mjs --strict/,
+    'ci.yml must run the legacy-zero laws in --strict (post-cutover blocking)');
+  assert.doesNotMatch(ci, /node tools\/ek-legacy-zero\.mjs --check/,
+    'ci.yml must not run legacy-zero in pre-cutover --check mode anymore');
 });

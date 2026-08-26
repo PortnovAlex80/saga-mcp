@@ -1,9 +1,0 @@
-{
-  "tool": "trace_add",
-  "arguments": {
-    "source_id": "FILL_INTEGER_UC_ARTIFACT_ID",
-    "target_type": "artifact",
-    "target_id": "FILL_INTEGER_FR_ARTIFACT_ID",
-    "link_type": "covers"
-  }
-}

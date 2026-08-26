@@ -1967,7 +1967,7 @@ export function explainTraceFailure(target: CommandName, seed = 20260825): {
   readonly targetRefusals: readonly TypedRefusal[];
   readonly workplaceStatuses: readonly string[];
 } {
-  let lazyWorldAtDescribe: KernelWorld = createWorld(seed);
+  const lazyWorldAtDescribe: KernelWorld = createWorld(seed);
   const describe = (input: CommandInput): string => {
     const discriminator = input.gateVerdict ?? input.effectOutcome ?? input.terminalOutcome ?? input.stageRoute ?? input.protocolRole;
     const head = lazyWorldAtDescribe.heads.get(input.instanceId);

@@ -205,11 +205,11 @@ Product/marketing material, runtime-agnostic.
 | Authoring kits | `tools/module-authoring-kit/**` (3 md), `tools/scenario-authoring-kit/**` (2 md) | DELETE | authoring kits of the deleted formats (legacy manifest §D) |
 | Transport doc | `tools/agent-proxy/README.md` | KEEP | documents the surviving opencode transport (WP-18 instruments it) |
 | Docs-graph | `tracker-view/docs-graph/README.md` | DELETE | dies with the docs-graph tool (WP-10 decision) |
-| Package resources .md | `src/process-modules/modules/*/package/resources/**` (45 md) + `nodes/use-case/resources/**` (2 md) + `src/modules/documentation/WORKSHOP.md` (1) = 48 | KEEP (content; path moves) | workshop semantics re-hosted in installed manifests by WP-11 (legacy manifest §B.12 — 61 content files incl. JSON templates); tracked there, listed here for completeness of `git ls-files '*.md'` |
+| Package resources .md | `src/process-modules/modules/*/package/resources/**` (45 md) + `nodes/use-case/resources/**` (2 md) + `src/modules/documentation/WORKSHOP.md` (1) = 48 | DELETE (content re-hosted — amendment 2026-08-26, same as legacy §B.12) | workshop semantics re-hosted in installed manifests by WP-11 (landed); the old paths were deleted at the EK-8 cutover |
 | Requirements templates | `docs/requirements/templates/**` (3) | KEEP (path moves) | see §M |
 | Test-fixture documents | `tests/fixtures/golden-corpus/**` (22 md across the corpora) | KEEP | immutable qualification evidence (legacy manifest §E) |
 | Test-fixture documents (other) | `tests/characterization/fixtures/2026-07-28-failures/**` (8), `tests/factory-contract/design/**` (11), `tests/fixtures/synthetic-{modules,scenarios}/**` (4), `tests/installation/fixtures/**` (2), `tests/matrix/` (1), `tests/MOCK-CLAUDE.md` (1) | DELETE at EK-9 | fixtures/design notes of deleted old-format suites (legacy manifest §E split rule) |
-| Evidence note | `tests/factory-proof/MIGRATION-MAP.md` | KEEP | predecessor evidence-map note for the kept proof/evidence baselines |
+| Evidence note | `tests/factory-proof/MIGRATION-MAP.md` | DELETE (amendment 2026-08-26) | the note mapped the old factory-proof suites onto the EK waves; its consumers were deleted at the EK-8 cutover (historical copy stays in git) |
 
 ## T. Counts (verified against `git ls-files` on the base SHA)
 
@@ -232,5 +232,5 @@ no-rot sweep).
 | DRAFT supersession set | `DRAFT-AGENTS.md`, `docs/DRAFT-CURRENT-DOCUMENTS.md`, `docs/architecture/DRAFT-CONVEYOR-MENTAL-MODEL.md`, `docs/architecture/DRAFT-CONVEYOR-TRANSITION-CHECKLIST.md`, `docs/architecture/DRAFT-CONVEYOR-TRANSITION-DIAGNOSTICS.md`, `docs/architecture/DRAFT-WORKFLOW-KERNEL.md`, `docs/operations/DRAFT-FACTORY-RUNBOOK.md`, `docs/testing/DRAFT-WORKFLOW-KERNEL-TEST-STRATEGY.md` | DELETE | drafts superseded by their living counterparts; EK-10 rewrites the living docs, never the drafts |
 | Human-gate law | `docs/architecture/HUMAN-GATE-CONSOLE.md` | REWRITE | the human-boundary law (operator disposition, append-only audit, bytes guard) folds into the EK-10 runbook + kernel docs; the saga4-specific console implementation dies with the old runtime |
 | Successor plan | `docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md` | KEEP | plan of record (executes after EK-13) |
-| Cutover artifacts | `src/workflow-kernel/development/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/delivery/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/discovery/EK8-CUTOVER-NOTES.md` | KEEP | live refactoring artifacts consumed by WP-12's cutover |
+| Cutover artifacts | `src/workflow-kernel/development/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/delivery/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/discovery/EK8-CUTOVER-NOTES.md`, `src/workflow-kernel/workshops/formalization/EK8-DELETION-SET.md` (added 2026-08-26 — the WP-11F file was missed by the original sweep; classified in the same commit as the WP-12 cutover it stages) | KEEP | live refactoring artifacts consumed by WP-12's cutover |
 | Test fixture | `tests/infrastructure/ek-fixtures/elite-smoke/product/docs/srs.md` | KEEP | committed determinism fixture content (WP-13C) |

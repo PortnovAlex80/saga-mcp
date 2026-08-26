@@ -13,6 +13,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const PACKAGE_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'synthetic');
@@ -105,20 +106,16 @@ test('no bare lifecycle family-name literal in the synthetic package source', ()
 });
 
 test('the synthetic package is reachable ONLY from focused tests', () => {
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      if (/workflow-kernel\/workshops\/synthetic/.test(codeOf(full))) offenders.push(full);
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
-  assert.deepEqual(offenders, [], 'no production path imports the synthetic workshop before the WP-12 cutover');
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/workshops/synthetic');
+  // EK-8 cutover repin: the ONE production composition is the ONLY legal
+  // production importer - the synthetic workshop rides the same kernel with
+  // no new transition kind, table, driver or reconcifier (its proof).
+  const outsideComposition = offenders.map((f) => f.replaceAll('\\', '/')).filter((f) => !f.includes('/src/workflow-kernel/composition/'));
+  assert.deepEqual(outsideComposition, [], 'only the ONE production composition may import the synthetic workshop');
+  assert.ok(offenders.length > 0, 'the composition must import the synthetic package (the cutover landed)');
 });

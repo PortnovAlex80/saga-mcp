@@ -20,6 +20,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const PACKAGE_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'delivery');
@@ -94,32 +95,24 @@ test('the package declares no scheduler, no credential VALUE surface, no network
 });
 
 test('the package is reachable ONLY from focused tests: no production entrypoint imports it', () => {
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      const source = codeOf(full);
-      if (/workflow-kernel\/workshops\/delivery/.test(source)) {
-        offenders.push(full);
-      }
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/workshops/delivery');
   const allowed = new Set(packageFiles().map((file) => file.replaceAll('\\', '/')));
+  // EK-8 cutover repin: the ONE production composition is additionally the
+  // sole legal production importer (pre-cutover this was test-only reach).
   for (const offender of offenders) {
     const normalized = offender.replaceAll('\\', '/');
+    const packageInternal = [...allowed].some((allowedPath) => normalized.endsWith(allowedPath.slice(allowedPath.indexOf('workshops/delivery/'))));
     assert.ok(
-      [...allowed].some((allowedPath) => normalized.endsWith(allowedPath.slice(allowedPath.indexOf('workshops/delivery/')))),
-      `production path imports the focused-test workshop package: ${offender}`,
+      packageInternal || normalized.includes('/src/workflow-kernel/composition/'),
+      `production path outside the ONE composition imports the focused-test workshop package: ${offender}`,
     );
   }
+  assert.ok(offenders.some((offender) => offender.replaceAll('\\', '/').includes('/src/workflow-kernel/composition/')), 'the composition must import this package (the cutover landed)');
 });
 
 test('the EK-8 legacy deletion set is documented in the owned paths', () => {

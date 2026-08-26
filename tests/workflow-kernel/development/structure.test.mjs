@@ -14,6 +14,7 @@ import test from 'node:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findImporters } from '../support/import-scan.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DEVELOPMENT_SRC = join(REPO_ROOT, 'src', 'workflow-kernel', 'development');
@@ -70,37 +71,28 @@ test('the development layer never writes aggregate-owned SQL (zero direct SQL an
 
 test('the vertical is reachable ONLY from focused tests: no production entrypoint imports it', () => {
   const developmentFilesSet = new Set(developmentFiles());
-  const offenders = [];
-  const scan = (dir, extensions) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        scan(full, extensions);
-        continue;
-      }
-      if (!extensions.some((extension) => entry.name.endsWith(extension))) continue;
-      if (entry.name === 'codeOf') continue;
-      // Qualification tooling is NOT a production entrypoint: the WP-13D
-      // corpus drivers + elite-kit replay consume the vertical through its
-      // PUBLIC ingress by design (the plan assigns them that consumer role).
-      const rel = full.replaceAll('\\', '/');
-      if (rel.includes('/tools/project-corpus/') || rel.includes('/tools/elite-evidence-kit/')) continue;
-      const source = codeOf(full);
-      if (/workflow-kernel\/development/.test(source)) {
-        offenders.push(full);
-      }
-    }
-  };
-  scan(join(REPO_ROOT, 'src'), ['.ts']);
-  scan(join(REPO_ROOT, 'tracker-view'), ['.mjs']);
-  scan(join(REPO_ROOT, 'tools'), ['.mjs']);
+  // EK-8 cutover (WP-12): resolver-based importer scan (support/import-scan.mjs)
+  // - strictly stronger than the pre-cutover absolute-path regex.
+  const offenders = findImporters([
+    { dir: join(REPO_ROOT, 'src'), extensions: ['.ts'] },
+    { dir: join(REPO_ROOT, 'tools'), extensions: ['.mjs'] },
+  ], 'src/workflow-kernel/development');
   // Only the development package's own index may re-export it.
   const allowed = [...developmentFilesSet].map((file) => file.replaceAll('\\', '/'));
+  // EK-8 cutover repin: pre-cutover the vertical was test-only reachable
+  // (zero production importers outside tests). Post-cutover the law is:
+  // NOTHING outside src/workflow-kernel/** may import the vertical (the
+  // legacy entrypoints are deleted), and the ONE production composition
+  // does import it. Intra-kernel consumers (e.g. the projection adapters
+  // taking the RoleContractRuntime) are kernel structure, governed by the
+  // dependency-direction ratchets, not by this entrypoint law - and the
+  // resolver-based scan now SEES them, which the old regex never did.
   for (const offender of offenders) {
     const normalized = offender.replaceAll('\\', '/');
-    assert.ok(allowed.some((allowedPath) => normalized.endsWith(allowedPath.slice(allowedPath.indexOf('development/')))),
-      `production path imports the focused-test vertical: ${offender}`);
+    assert.ok(normalized.includes('/src/workflow-kernel/'),
+      `production path outside the kernel imports the vertical: ${offender}`);
   }
+  assert.ok(offenders.some((offender) => offender.replaceAll('\\', '/').includes('/src/workflow-kernel/composition/')), 'the composition must import the vertical (the cutover landed)');
 });
 
 test('the EK-8 legacy deletion set is documented in the owned paths', () => {
