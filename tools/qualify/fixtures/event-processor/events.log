@@ -1,0 +1,10 @@
+login@1000 user=alice
+click@1100 button=home
+click@1200 button=buy
+login@1500 user=bob
+not-an-event
+order@1700 total=42
+order@1800 total=7
+malformed line without shape
+login@1900 user=carol
+click@1950 button=cart
