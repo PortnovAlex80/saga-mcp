@@ -1,0 +1,25 @@
+{
+  "contentDigest": "f54687b89ffb1cbab720f1b24574b9d19cd22537f743dd15b46ee11fc7471ae5",
+  "payload": {
+    "acceptanceCriterionKey": "16:AC-1",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-003"
+    ],
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "galaxy.js SYSTEMS array contains exactly 8 entries (Lave, Zaonce, Diso, Leesti, Riedquat, Leusider, Uszaa, Orerve), each with a station name property",
+        "renderer.js renderGalaxyMap (line 66-114) iterates all systems, rendering dots; current system highlighted yellow (#ffff00) with a surrounding ring via isCurrent check",
+        "ui.js showGalaxyMap (line 29-68) builds a panel listing all systems; current system labeled '(CURRENT)' in yellow, other systems show station name in brackets"
+      ],
+      "summary": "AC-1 passed: static source analysis confirms the galaxy map displays 8 named star systems each with a station, and the player's current location is visually indicated."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-1"
+  },
+  "payloadHash": "f54687b89ffb1cbab720f1b24574b9d19cd22537f743dd15b46ee11fc7471ae5",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

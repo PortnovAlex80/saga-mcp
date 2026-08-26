@@ -1,0 +1,22 @@
+{
+  "contentDigest": "67e2d6fa7a200f6303058aab35fb9785f5ed46519398a8980c70a83b1a749e23",
+  "payload": {
+    "acceptanceCriterionKey": "18:AC-3",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Market.buy() at public/js/market.js:42 implements full buy flow: price lookup, credit check (line 46), cargo capacity check (line 60), credit deduction (line 70), cargo addition (lines 72-86), success return with creditsRemaining",
+        "Unit test 'buy succeeds with sufficient credits and cargo space' (test/run.js:153-162): creates fresh state (100 credits, 20 cargo capacity), buys 5 Food at Lave (price=5), asserts result.success===true, result.commodity==='Food', result.quantity===5, result.unitPrice===5, result.totalCost===25, result.creditsRemaining===75 — all AC-3 Then-clauses verified",
+        "All 115 unit tests pass (0 failures) at frozen candidate commit f7bb7459a09740c526a717710445f2c375093009"
+      ],
+      "summary": "AC-3 (Buy Commodities with Sufficient Resources) is satisfied: Market.buy() in public/js/market.js:42-96 checks credits and cargo capacity, deducts credits, and adds commodity to cargo. Unit test at test/run.js:153-162 asserts all Then-clauses. All 115 tests pass at frozen commit f7bb7459a09740c526a717710445f2c375093009."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-3"
+  },
+  "payloadHash": "67e2d6fa7a200f6303058aab35fb9785f5ed46519398a8980c70a83b1a749e23",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

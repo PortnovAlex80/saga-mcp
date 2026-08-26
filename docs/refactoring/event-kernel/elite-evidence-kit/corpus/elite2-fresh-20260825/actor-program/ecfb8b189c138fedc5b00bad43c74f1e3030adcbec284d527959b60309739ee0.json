@@ -1,0 +1,29 @@
+{
+  "contentDigest": "72b395ef319a98be31eaefd4973851dd893be78db0d8821dc2e29cc4334e2405",
+  "payload": {
+    "acceptanceCriterionKey": "36:AC-21",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-006"
+    ],
+    "evidence": {
+      "limitations": [
+        "Smoke test uses a mock canvas object in Node.js (vm module) rather than an actual browser. The SRS specifies test/smoke.js and npm run smoke as a separate browser smoke test script, which are absent from the candidate. Actual browser canvas rendering is verified only at L0 (human acceptance)."
+      ],
+      "observations": [
+        "Ran node test/run.js at frozen commit f7bb7459a09740c526a717710445f2c375093009 on branch dev",
+        "All 115 unit tests passed (0 failed)",
+        "AC-21 section: 22 Renderer Smoke Tests passed covering: init, getCanvas, getContext, getWidth/getHeight, renderGalaxyMap (draw calls, background fill, system dots via arc, system names via fillText, grid lines via stroke), renderDockingScreen (draw calls, system name), renderHUD (draw calls, credits display), renderText, clear, combat VFX (projectiles, explosions), hyperspace effect (start, render, complete detection), clearVFX",
+        "mockCanvas helper in test/helpers/setup.js records all Canvas 2D API calls; tests assert correct call types and content are produced by Renderer module",
+        "No test/smoke.js file or npm run smoke script exists; SRS specifies these as the browser smoke test vehicle. Canvas rendering verification is performed via mockCanvas unit tests in test/run.js as a Node.js approximation (accepted by prior review as reasonable for L1 test layer)"
+      ],
+      "summary": "22 canvas rendering smoke tests (AC-21 section) all pass at frozen commit f7bb7459a. Tests verify Renderer initializes with canvas, returns correct context/dimensions, and produces all expected Canvas 2D draw calls: fillRect (background/clear), arc (system dots), fillText (labels/HUD), stroke (grid lines), plus combat VFX and hyperspace effect rendering. The full rendering pipeline is exercised without errors."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-21"
+  },
+  "payloadHash": "72b395ef319a98be31eaefd4973851dd893be78db0d8821dc2e29cc4334e2405",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

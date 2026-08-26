@@ -1,0 +1,31 @@
+{
+  "contentDigest": "3fef453b76bb96adc94ece2374948d192975e2e13f36cd26edd3bc9af9e2672c",
+  "payload": {
+    "schemaVersion": "factory.development-readiness-manifest.v1",
+    "sourceCandidate": {
+      "hash": "f02cc08fdb94e4db5b26d56e6eb8317e1430643ca6ed86cd58b167a196c86ca8",
+      "ref": "development-integrated-source:3:f02cc08fdb94e4db5b26d56e6eb8317e1430643ca6ed86cd58b167a196c86ca8",
+      "schema": "factory.integrated-source-candidate.v1"
+    },
+    "targets": [
+      {
+        "key": "primary",
+        "readiness": {
+          "commands": {
+            "installCommand": "npm install",
+            "testCommand": "node test/run.js"
+          },
+          "environment": {
+            "image": "node:18"
+          },
+          "kind": "served",
+          "serve": {
+            "startCommand": "HOST=0.0.0.0 node server.js"
+          }
+        }
+      }
+    ]
+  },
+  "payloadHash": "3fef453b76bb96adc94ece2374948d192975e2e13f36cd26edd3bc9af9e2672c",
+  "schemaId": "factory.development-readiness-manifest.v1"
+}

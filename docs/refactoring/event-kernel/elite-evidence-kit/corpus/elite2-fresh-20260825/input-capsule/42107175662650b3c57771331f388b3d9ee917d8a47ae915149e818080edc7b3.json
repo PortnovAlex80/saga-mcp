@@ -1,0 +1,26 @@
+{
+  "certificateRef": "certificate:1",
+  "executorKind": "generic-flow",
+  "idempotencyKey": "lifecycle:1:stage-run:1",
+  "inputHash": "42bbc8b4d862a32895aa8dd37d9df8da37c27cf571b7aebf24e0912c6ae52c5a",
+  "inputSnapshot": {
+    "constraints": {
+      "deploymentExcluded": true,
+      "humanAcceptanceAfterLocalStart": true,
+      "localRunRequired": true
+    },
+    "context": {
+      "complexity": "XS",
+      "type": "web-app"
+    },
+    "epicId": 1,
+    "evidence": {},
+    "initiatedBy": "factory-start",
+    "objective": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz.",
+    "projectId": 1,
+    "subject": "Elite-style single-player space trading and combat game with a rich browser frontend played in Google Chrome. A local Node.js server serves the game; the player opens http://localhost:<port> in Chrome and plays immediately (npm install && npm start, no manual build steps). The frontend is a first-class acceptance subject: a beautiful single-page canvas/WebGL application with a parallax starfield, hyperspace jump effect, station docking screen, ship HUD (shields, fuel, cargo, credits), commodity market screen with dynamic prices, and arcade laser combat with visual effects. Core gameplay loop: start docked at a station with 100 credits and a small cargo hold; buy low / sell high across a galaxy of at least 8 named systems with per-system price variation; hyperspace jumps consume fuel and carry pirate-encounter risk; win ship-to-ship combat (player lasers vs enemy AI) or flee; spend profits on ship upgrades (cargo capacity, laser, shields, fuel tank); progress toward the Elite rating tracked by profit and combat kills; save/load the game state. Non-functional: 60fps target on a 2020 laptop in Chrome, no external CDN dependencies (fully offline), English UI. Testing: unit tests for market pricing, jump/fuel math, combat resolution and save/load; a browser smoke test that loads the page and asserts the canvas renders; the server must expose /healthz."
+  },
+  "moduleRefKey": "product-discovery@4.0.0",
+  "outputRef": "product:factory.discovery-proposal.v1:3a88325814893a58871cf1919d9d55edd880216bd401fa1e91426232f74f007b",
+  "projectedStage": "discovery"
+}

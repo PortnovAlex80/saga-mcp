@@ -1,0 +1,36 @@
+{
+  "contentDigest": "6917317c29faf7ed81bc7879fb0fdfd7e5526c3f14a9a556cb849c1711ce41be",
+  "payload": {
+    "acceptanceCriterionKey": "30:AC-15",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-002"
+    ],
+    "evidence": {
+      "limitations": [
+        "Tests run in Node.js with localStorage polyfill (test/helpers/setup.js), not in browser localStorage directly — serialization behavior is identical (JSON.stringify/parse) but the storage backing differs"
+      ],
+      "observations": [
+        "Ran node test/run.js at commit f7bb7459a09740c526a717710445f2c375093009 — 115 passed, 0 failed",
+        "Persistence.save uses JSON.stringify to localStorage; Persistence.load uses JSON.parse from localStorage",
+        "Round-trip test: save({credits:42,...}) then load() returns credits===42",
+        "Round-trip test: save({currentSystem:'Zaonce',...}) then load() returns currentSystem==='Zaonce'",
+        "Round-trip test: save({fuel:73,maxFuel:150,...}) then load() returns fuel===73,maxFuel===150",
+        "Round-trip test: save({kills:17,...}) then load() returns kills===17",
+        "Round-trip test: save({cargo:[{commodity:'Food',quantity:5,unitPrice:5}],...}) then load() returns matching cargo array",
+        "Round-trip test: cargoCapacity and accumulatedProfit preserved",
+        "Round-trip test: docked boolean preserved",
+        "Complex session round-trip: 2-item cargo with Textiles(4) and Luxury Goods(1), credits=250, system=Diso, fuel=50, kills=3, profit=120, docked=true — all fields match after load",
+        "Save overwrites: second save with credits=999 replaces first; load returns 999",
+        "clearSave: after clear, load returns null"
+      ],
+      "summary": "AC-15 (Save and Load Restores Exact Game State) verified passed at frozen candidate f7bb7459. All 12 persistence round-trip unit tests pass: save/load preserves credits, currentSystem, fuel, maxFuel, kills, cargo array (commodity, quantity, unitPrice), cargoCapacity, accumulatedProfit, docked state, and full complex gameplay session state."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-15"
+  },
+  "payloadHash": "6917317c29faf7ed81bc7879fb0fdfd7e5526c3f14a9a556cb849c1711ce41be",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

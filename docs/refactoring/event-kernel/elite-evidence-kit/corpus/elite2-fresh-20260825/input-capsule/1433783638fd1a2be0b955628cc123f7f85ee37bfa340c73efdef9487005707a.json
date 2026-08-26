@@ -1,0 +1,1220 @@
+{
+  "artifactTraces": [
+    {
+      "link_type": "derived_from",
+      "source_id": 2,
+      "target_id": 1,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 3,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 4,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 5,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 6,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 7,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 8,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 9,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 10,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 11,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 12,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 13,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 14,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 15,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 6,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 7,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 8,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 9,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 10,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 11,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 12,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 13,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 14,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "covers",
+      "source_id": 15,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 16,
+      "target_id": 6,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 16,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 17,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 17,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 18,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 18,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 19,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 19,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 20,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 20,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 21,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 21,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 22,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 22,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 23,
+      "target_id": 8,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 23,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 24,
+      "target_id": 9,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 24,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 25,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 25,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 26,
+      "target_id": 10,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 26,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 27,
+      "target_id": 11,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 27,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 28,
+      "target_id": 11,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 28,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 29,
+      "target_id": 12,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 29,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 30,
+      "target_id": 13,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 30,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 31,
+      "target_id": 14,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 31,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 32,
+      "target_id": 15,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 32,
+      "target_id": 3,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 33,
+      "target_id": 15,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 33,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 34,
+      "target_id": 15,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 34,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 35,
+      "target_id": 7,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 35,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 36,
+      "target_id": 15,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 37,
+      "target_id": 14,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 36,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 37,
+      "target_id": 4,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "derived_from",
+      "source_id": 38,
+      "target_id": 2,
+      "target_type": "artifact"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 17,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 31,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 37,
+      "target_id": 14,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 22,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 23,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 24,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 25,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 26,
+      "target_id": 15,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 30,
+      "target_id": 16,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 29,
+      "target_id": 17,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 18,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 18,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 18,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 19,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 20,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 21,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 27,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 28,
+      "target_id": 19,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 16,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 24,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 32,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 33,
+      "target_id": 20,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 29,
+      "target_id": 21,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 17,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 31,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 37,
+      "target_id": 22,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 22,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 23,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 24,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 25,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 26,
+      "target_id": 23,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 30,
+      "target_id": 24,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 18,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 19,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 20,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 21,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 27,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 28,
+      "target_id": 25,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 16,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 24,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 32,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 33,
+      "target_id": 26,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 27,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 28,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 28,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 16,
+      "target_id": 30,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 25,
+      "target_id": 31,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 26,
+      "target_id": 32,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 27,
+      "target_id": 33,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 28,
+      "target_id": 34,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 29,
+      "target_id": 35,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 30,
+      "target_id": 36,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 31,
+      "target_id": 37,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 32,
+      "target_id": 38,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 33,
+      "target_id": 39,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 34,
+      "target_id": 40,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 17,
+      "target_id": 41,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 35,
+      "target_id": 42,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 36,
+      "target_id": 43,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 37,
+      "target_id": 44,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 18,
+      "target_id": 45,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 19,
+      "target_id": 46,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 20,
+      "target_id": 47,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 21,
+      "target_id": 48,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 22,
+      "target_id": 49,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 23,
+      "target_id": 50,
+      "target_type": "task"
+    },
+    {
+      "link_type": "implements",
+      "source_id": 24,
+      "target_id": 51,
+      "target_type": "task"
+    },
+    {
+      "link_type": "verified_by",
+      "source_id": 16,
+      "target_id": 30,
+      "target_type": "task"
+    },
+    {
+      "link_type": "verified_by",
+      "source_id": 30,
+      "target_id": 36,
+      "target_type": "task"
+    }
+  ],
+  "artifacts": [
+    {
+      "code": "brief",
+      "contentHash": "7a30870d8182145a50dc89faccbc79197ea06a2ed1aab4cd81ccbc1ad3406fe2",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/01-brief.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Brief: Elite-Style Space Trading and Combat Game",
+      "type": "brief"
+    },
+    {
+      "code": "PRD",
+      "contentHash": "347986ddb99c61d9b5747eb375589916076c0a7564e7db1398594c146cbe047f",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/02-prd.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "PRD: Elite-Style Space Trading and Combat Game",
+      "type": "PRD"
+    },
+    {
+      "code": "FR-1",
+      "contentHash": "4b8b6f11c2a27872db2df605ed35641f8a4a498f52f23860242923f15e804bcd",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/03-functional-requirements.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Functional Requirements: Elite-Style Space Trading and Combat Game",
+      "type": "FR"
+    },
+    {
+      "code": "NFR-1",
+      "contentHash": "2911e17f7394b5a141390173e4aad33cf1a8001f54fe4718ac2ab4b22584a38a",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/04-non-functional-requirements.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Non-Functional Requirements: Elite-Style Space Trading and Combat Game",
+      "type": "NFR"
+    },
+    {
+      "code": "RULE-1",
+      "contentHash": "c2c128021e9880bedc68b592b59797d255e54ed4c4e2bd9f66c15fc21119da78",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/05-rules.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Business Rules: Elite-Style Space Trading and Combat Game",
+      "type": "RULE"
+    },
+    {
+      "code": "UC-1",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Explore Galaxy Map",
+      "type": "UC"
+    },
+    {
+      "code": "UC-2",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Trade Commodities at Station",
+      "type": "UC"
+    },
+    {
+      "code": "UC-3",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Perform Hyperspace Jump",
+      "type": "UC"
+    },
+    {
+      "code": "UC-4",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Encounter Pirate During Jump",
+      "type": "UC"
+    },
+    {
+      "code": "UC-5",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Engage in Ship-to-Ship Combat",
+      "type": "UC"
+    },
+    {
+      "code": "UC-6",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Purchase Ship Upgrades",
+      "type": "UC"
+    },
+    {
+      "code": "UC-7",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Progress Toward Elite Rating",
+      "type": "UC"
+    },
+    {
+      "code": "UC-8",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save and Load Game",
+      "type": "UC"
+    },
+    {
+      "code": "UC-9",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Verify Server Health",
+      "type": "UC"
+    },
+    {
+      "code": "UC-10",
+      "contentHash": "d927603d2d9817f359b7fa338d0a2e681c01b264845a74be3d51e30e98d4d0d9",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/06-use-cases.md#UC-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Experience Visual Presentation",
+      "type": "UC"
+    },
+    {
+      "code": "AC-1",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-1",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Galaxy Map Displays Star Systems",
+      "type": "AC"
+    },
+    {
+      "code": "AC-2",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-2",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "New Game Starting Conditions",
+      "type": "AC"
+    },
+    {
+      "code": "AC-3",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-3",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Buy Commodities with Sufficient Resources",
+      "type": "AC"
+    },
+    {
+      "code": "AC-4",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-4",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Buy Rejected with Insufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-5",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-5",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Buy Rejected When Cargo Capacity Exceeded",
+      "type": "AC"
+    },
+    {
+      "code": "AC-6",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-6",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Sell Commodities and Accumulate Profit",
+      "type": "AC"
+    },
+    {
+      "code": "AC-7",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-7",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Jump Consumes Fuel Proportional to Distance",
+      "type": "AC"
+    },
+    {
+      "code": "AC-8",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-8",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Hyperspace Jump Prevented with Insufficient Fuel",
+      "type": "AC"
+    },
+    {
+      "code": "AC-9",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-9",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Pirate Encounter Presents Choices",
+      "type": "AC"
+    },
+    {
+      "code": "AC-10",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-10",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Combat Resolves in Victory, Defeat, or Escape",
+      "type": "AC"
+    },
+    {
+      "code": "AC-11",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-11",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Enemy Destroyed Increments Kill Count",
+      "type": "AC"
+    },
+    {
+      "code": "AC-12",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-12",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Purchase Ship Upgrades with Sufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-13",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-13",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Upgrade Purchase Rejected with Insufficient Credits",
+      "type": "AC"
+    },
+    {
+      "code": "AC-14",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-14",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Elite Rating Progresses Based on Profit and Kills",
+      "type": "AC"
+    },
+    {
+      "code": "AC-15",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-15",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Save and Load Restores Exact Game State",
+      "type": "AC"
+    },
+    {
+      "code": "AC-16",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-16",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Health Check Endpoint Returns Success",
+      "type": "AC"
+    },
+    {
+      "code": "AC-17",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-17",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Visual Effects Rendered for Each Gameplay Phase",
+      "type": "AC"
+    },
+    {
+      "code": "AC-18",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-18",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Renders at Target Frame Rate",
+      "type": "AC"
+    },
+    {
+      "code": "AC-19",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-19",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Operates Fully Offline",
+      "type": "AC"
+    },
+    {
+      "code": "AC-20",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-20",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Unit Tests Cover Core Logic",
+      "type": "AC"
+    },
+    {
+      "code": "AC-21",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-21",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Browser Smoke Test Verifies Canvas Rendering",
+      "type": "AC"
+    },
+    {
+      "code": "AC-22",
+      "contentHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/07-acceptance-criteria.md#AC-22",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "Game Playable After Install and Start",
+      "type": "AC"
+    },
+    {
+      "code": "SRS",
+      "contentHash": "644eee3684f5436419acc9a226eb778ca74b7cfd9dc05ebc5e9c2d71ca186e86",
+      "driftState": "clean",
+      "path": "docs/requirements/REQ-001/08-srs.md",
+      "status": "accepted",
+      "storageKind": "file_backed",
+      "title": "SRS: Elite-Style Space Trading and Combat Game",
+      "type": "SRS"
+    }
+  ]
+}

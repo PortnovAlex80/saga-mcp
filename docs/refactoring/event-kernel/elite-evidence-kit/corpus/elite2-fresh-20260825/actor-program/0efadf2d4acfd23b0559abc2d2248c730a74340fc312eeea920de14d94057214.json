@@ -1,0 +1,34 @@
+{
+  "contentDigest": "14c2a3034a044154822182b203ce0c547e74075a6579733e87c5be43f043d40b",
+  "payload": {
+    "acceptanceCriterionKey": "32:AC-17",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-001"
+    ],
+    "evidence": {
+      "limitations": [
+        "Static code analysis only; no live browser execution was performed in this verification desk"
+      ],
+      "observations": [
+        "renderer.js L10-148: Parallax starfield fully implemented (3 layers, delta-time scroll, twinkle) - code exists but module not loaded by index.html",
+        "renderer.js L150-196: Hyperspace jump effect fully implemented (radial streaks, progress animation, glow) - code exists but module not loaded by index.html",
+        "renderer.js L198-240: Docking screen fully implemented (gradient, station name, system name) - code exists but module not loaded by index.html",
+        "renderer.js L242-270: HUD fully implemented (shields, fuel, cargo, credits, status) - code exists but module not loaded by index.html",
+        "renderer.js L272-346: Combat VFX fully implemented (laser projectiles, particle explosions, hit flashes) - code exists but module not loaded by index.html",
+        "ui.js L195: renderDockingScreen called from showDockedUI - but ui.js not loaded by index.html",
+        "ui.js L266: renderHUD called from updateHUD - but ui.js not loaded by index.html",
+        "index.html L27-29: Only loads galaxy.js, game-state.js, main.js; renderer.js and ui.js are absent from script tags",
+        "main.js L37-57: Game render loop draws simple system dots only - no parallax starfield or VFX",
+        "test/run.js L645-718: Unit tests verify Renderer functions produce canvas draw calls - tests pass in Node.js but do not prove browser rendering"
+      ],
+      "summary": "AC-17 requires visual effects to be rendered when the game runs in the browser. The VFX implementation code is complete in renderer.js and wired in ui.js, but index.html at the frozen candidate (f7bb745) only loads galaxy.js, game-state.js, and main.js. The Renderer module is never loaded, so no visual effects (parallax starfield, hyperspace, docking screen, HUD, combat VFX) are rendered at runtime."
+    },
+    "outcome": "failed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-17"
+  },
+  "payloadHash": "14c2a3034a044154822182b203ce0c547e74075a6579733e87c5be43f043d40b",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

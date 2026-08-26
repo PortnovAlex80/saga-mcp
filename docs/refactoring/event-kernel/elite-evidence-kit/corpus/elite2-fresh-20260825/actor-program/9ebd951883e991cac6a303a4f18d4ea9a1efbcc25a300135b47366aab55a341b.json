@@ -1,0 +1,23 @@
+{
+  "contentDigest": "530c6eafc604488a34edf6f3e458e469b69b936a9e9385369392d048995597a3",
+  "payload": {
+    "acceptanceCriterionKey": "19:AC-4",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Repository HEAD f7bb745 has tree 50be3cd matching frozen candidate treeHash.",
+        "public/js/market.js:46-53: early return on state.credits < totalCost before any mutation of state.credits or state.cargo.",
+        "Test 'buy fails with insufficient credits' (test/run.js:163-168): state with 100 credits attempts buy of 3 Narcotics at 55 each (total 165), asserts result.success === false and result.reason === 'insufficient_credits'. PASSED.",
+        "Full test suite: 115 passed, 0 failed."
+      ],
+      "summary": "AC-4 (Buy Rejected with Insufficient Credits) is satisfied. The Market.buy function at public/js/market.js:46-53 performs an early return with success:false and reason:insufficient_credits before any state mutation, guaranteeing credits and cargo remain unchanged. The deterministic test 'buy fails with insufficient credits' passes. Full test suite: 115/115 passed."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-4"
+  },
+  "payloadHash": "530c6eafc604488a34edf6f3e458e469b69b936a9e9385369392d048995597a3",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

@@ -1,0 +1,29 @@
+{
+  "contentDigest": "595331a2e24fb3a75648d87b668fe3e1620be991204abd4e74f6369aaa8a98b7",
+  "payload": {
+    "acceptanceCriterionKey": "37:AC-22",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-005"
+    ],
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Frozen commit f7bb7459a09740c526a717710445f2c375093009 confirmed at HEAD on dev branch",
+        "package.json scripts contain only 'start': 'node server.js' — no build/bundle/compile script",
+        "No webpack.config, rollup.config, tsconfig.json, Makefile, Gruntfile, or Gulpfile found at frozen commit",
+        "server.js uses only Node.js built-in modules (http, fs, path) — no npm dependencies required for serving",
+        "server.js reads PORT and HOST from environment variables per container contract",
+        "public/index.html exists in the source tree",
+        "Readiness certification (hash cd04d70a) confirms local runnability gate passed with npm install + HOST=0.0.0.0 node server.js"
+      ],
+      "summary": "AC-22 verified: the game starts with zero manual build steps. package.json at frozen commit f7bb7459 contains only a start script (node server.js) with no build, bundle, or compilation step. No build tooling configuration files exist. server.js is a zero-dependency Node.js HTTP static file server. public/index.html exists. The candidate readiness certification confirms local runnability passed."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-22"
+  },
+  "payloadHash": "595331a2e24fb3a75648d87b668fe3e1620be991204abd4e74f6369aaa8a98b7",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

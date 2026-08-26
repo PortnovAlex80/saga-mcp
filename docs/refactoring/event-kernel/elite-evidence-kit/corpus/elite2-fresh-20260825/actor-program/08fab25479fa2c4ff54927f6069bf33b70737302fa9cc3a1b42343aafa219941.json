@@ -1,0 +1,26 @@
+{
+  "contentDigest": "cccfe4b58f7a79cf87405cf4c9f096ddc6e7b13a7b316b9286dc2c6ec29b3c04",
+  "payload": {
+    "acceptanceCriterionKey": "23:AC-8",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "navigation.js:29 — guard condition state.fuel < fuelCost evaluated before any mutation",
+        "navigation.js:30 — early return { success: false, reason: insufficient_fuel } prevents fuel deduction (line 33) and location change (line 50)",
+        "fuel_guard invariant satisfied: fuel_after == fuel_before when fuel_before < fuel_required (no mutation path reachable before early return)",
+        "location_guard invariant satisfied: location_after == location_before when fuel_before < fuel_required (state.currentSystem assignment at line 50 is unreachable)",
+        "test/run.js:344-349 canJump returns false when insufficient fuel — PASS",
+        "test/run.js:363-368 attemptJump fails with insufficient fuel — PASS (asserts success=false, reason=insufficient_fuel)",
+        "Full deterministic test run: 115 passed, 0 failed"
+      ],
+      "summary": "AC-8 verified: hyperspace jump is prevented with insufficient fuel. The attemptJump function in navigation.js:29-31 returns early with success=false and reason=insufficient_fuel before any state mutation (fuel deduction at line 33, location change at line 50). Both fuel_guard and location_guard invariants hold. Unit tests canJump returns false when insufficient fuel and attemptJump fails with insufficient fuel both pass. Full test suite: 115 passed, 0 failed."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-8"
+  },
+  "payloadHash": "cccfe4b58f7a79cf87405cf4c9f096ddc6e7b13a7b316b9286dc2c6ec29b3c04",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

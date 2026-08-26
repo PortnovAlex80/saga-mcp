@@ -1,0 +1,67 @@
+{
+  "authority": "formalization_settlement_policy",
+  "certificateHash": "ce79f013f347dd68ebfba1efc7c9d0078758c67fb84449d6dcc4c622755ffe18",
+  "certificatePayload": {
+    "decision": "formalized",
+    "inputHash": "6176e0083fa17938590d8651bfa6a500539d0f583e3116ace5ed447fe62a759f",
+    "payload": {
+      "acceptanceBaselineHash": "89a82795d7c76ead37c6b75a15166d67d7d40d441f42e97a0d42bfde3a2e52aa",
+      "bundleHash": "1cc2351245ebb5cbe1bdeecc7d2a9368f2150a20467ae99014ccc31b5cd25e8b",
+      "decision": "formalized",
+      "discoveryCertificateHash": "beda14ec8fcc46310877bfa15dca6768b309ba0c77ff56285fc7d90a7f247e25",
+      "discoveryCertificateRef": "certificate:1",
+      "inputHash": "6176e0083fa17938590d8651bfa6a500539d0f583e3116ace5ed447fe62a759f",
+      "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+      "reasonCodes": [],
+      "schemaVersion": "factory.solution-contract-certificate.generic.v1",
+      "warrantRef": {
+        "constraintRegisterDigest": "8c9fb4e0a426cb7e5a31bd4c21213ad1cfda865a6a3ee69784ddae0a99b81b9f",
+        "constraintRegisterRef": "constraint-register:8c9fb4e0a426cb7e5a31bd4c21213ad1cfda865a6a3ee69784ddae0a99b81b9f",
+        "discoveryCertificateHash": "beda14ec8fcc46310877bfa15dca6768b309ba0c77ff56285fc7d90a7f247e25",
+        "dispositions": {
+          "ord-c-001": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Rendering approach is an implementation-level decision that depends on performance profiling on target hardware during development",
+            "unblockCriterion": "Implementation phase begins and Canvas 2D baseline performance can be measured on target hardware"
+          },
+          "ord-c-002": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Save/load persistence mechanism is an implementation-level decision that depends on simplicity trade-offs during development",
+            "unblockCriterion": "Implementation phase begins and persistence requirements are clarified by initial architecture"
+          },
+          "ord-c-003": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Commodity set and galaxy map layout are design-level decisions that require gameplay prototyping to balance",
+            "unblockCriterion": "Implementation phase begins and a playable prototype allows economic balance iteration"
+          },
+          "ord-c-004": {
+            "disposition": "deferred",
+            "owner": "development",
+            "reason": "Enemy AI difficulty curve and combat balance are design-level decisions that require combat prototyping to tune",
+            "unblockCriterion": "Implementation phase begins and a playable combat prototype allows difficulty tuning"
+          },
+          "ord-c-005": {
+            "disposition": "accepted"
+          },
+          "ord-c-006": {
+            "disposition": "accepted"
+          }
+        },
+        "dispositionsDigest": "e0399365434a5c43a57ec7d805ee517d43e177f1dce401752a0df16c89fa3c2b",
+        "formalizationCaseDigest": "666f1f460936a913cba38dd995f7ee8008c0c7b9d6a0c6ce3f5d6445aef6349d"
+      }
+    },
+    "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+    "reasonCodes": [],
+    "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+  },
+  "decision": "formalized",
+  "inputHash": "6176e0083fa17938590d8651bfa6a500539d0f583e3116ace5ed447fe62a759f",
+  "moduleRefKey": "solution-formalization@1.0.0",
+  "rationale": "Solution contract is complete, traceable, baseline-frozen, and all formalization tasks are done.",
+  "reasonCodes": [],
+  "schemaVersion": "factory.solution-contract-certificate.generic.v1"
+}

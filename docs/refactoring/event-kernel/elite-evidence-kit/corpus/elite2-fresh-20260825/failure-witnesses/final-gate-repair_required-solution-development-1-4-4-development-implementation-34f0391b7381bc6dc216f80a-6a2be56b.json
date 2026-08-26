@@ -1,0 +1,40 @@
+{
+  "decision": {
+    "checkPlan": "development.implementation.final",
+    "phase": "final",
+    "repairTargetRole": "author",
+    "verdict": "repair_required"
+  },
+  "failedChecks": [
+    {
+      "diagnostics": [
+        {
+          "code": "review-finding:unscoped",
+          "digest": "1480db3e449590982826f09d5dfe8f8c8a2a247ad675d44ca806592c16f25c1c",
+          "message": "[BLOCKING] test/run.js: AC-20 requires 'tests pass covering save and load serialization' but the test suite contains zero tests for the Persistence module (save/load functions). The persistence.js module is loaded in the test harness but no test exercises it. Add Persistence save/load serialization tests within test/ scope."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "5a129a661e4974ea908ac7679e8420ed9d75f178775a60a2b8e256646b2cc89a",
+          "message": "[PASS] test/run.js: 100 unit tests covering GameState, EliteGalaxy, Market, Ship, Combat, Navigation, and Rating modules test real module behavior with independent assertions on return values and state mutations. No tautologies."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "ed44551be4e7541fda8947139ddbfce38e9ef005dbebce5098a407a5d3492854",
+          "message": "[PASS] test/run.js, test/helpers/setup.js: Canvas rendering smoke tests use a mock canvas in Node.js (vm module) to verify Renderer produces draw calls. Reasonable Node.js approximation of AC-21 browser smoke test."
+        },
+        {
+          "code": "review-finding:unscoped",
+          "digest": "8d19a9a5b3096453d88196c071d88937b8f8d7c774ecddcc64d5f0938f7a55ec",
+          "message": "[PASS] test/run.js, test/helpers/setup.js: Both changed files are within frozen changeScopes (test/). No out-of-scope modifications."
+        }
+      ],
+      "outcome": "failed",
+      "provider": "factory.review-verdict.v1",
+      "providerVersion": "1.1.0"
+    }
+  ],
+  "kind": "gate-refusal",
+  "note": "Minimal fragment: the failing check receipts (with decoded diagnostics), the gate decision they produced, and the workplace they refused. Reproduces the observed defect/refusal.",
+  "workplace": "solution-development@1.4.4/development-implementation/34f0391b7381bc6dc216f80a"
+}

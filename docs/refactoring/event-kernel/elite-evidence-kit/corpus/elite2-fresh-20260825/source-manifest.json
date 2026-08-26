@@ -1,0 +1,132 @@
+{
+  "digests": {
+    "buildDigest": {
+      "method": "sha256 over sorted \"name@version:packageDigest:status\" of factory_module_installations",
+      "value": "06f0b99e65f2c9dae15628b44065a2b2aa7d469e80d3d6c9bb964d9c15397b04"
+    },
+    "dbContentDigest": {
+      "method": "read-only canonical dump: every user table, rows by rowid, sorted-key JSON rows, sha256 over the concatenation",
+      "value": "3ec5867f4d12f26e3ff646481bac0ab68c33ed2cdc9266bf586c5ff3bbc11bdb"
+    },
+    "journalDigest": {
+      "method": "sha256 over factory-run-journal.jsonl bytes",
+      "value": "eb7417dd590cdb556a4a65e21aa2d6d44e733dd0d4e243eb155f436bb2395df2"
+    },
+    "packageStoreMerkleDigest": {
+      "method": "merkle over content-addressed entries: per entry sha256 over sorted (relative-path, file-sha256) pairs, then sha256 over sorted (entryDigest, fileMerkle) pairs",
+      "value": "24887f40f5e30dcf5cd27bf9bfad4fd80dfaa1bc115e6dc0e0716904a1547f04"
+    },
+    "repoCommitDigest": {
+      "note": "HEAD of the product repository the run wrote to (read-only resolution of .git/HEAD).",
+      "provenance": "direct:loose-ref",
+      "value": "f7bb7459a09740c526a717710445f2c375093009"
+    },
+    "sourceSHA": {
+      "direct": false,
+      "note": "The factory checkout that produced this run is not archived with the run root. The value pins the exact factory module packages (content digests recorded by the DB) and built-in provider bases that executed the run — the strongest recoverable identity of the producing code.",
+      "provenance": "derived:package-store-digests+schema-version",
+      "value": "989c424d9f66c04a027d25c4afd8b7012a2c50800601c4e390b678f29ae3d06f"
+    }
+  },
+  "extractedFrom": {
+    "dbFile": "factory.sqlite",
+    "dbOpened": "readonly",
+    "journal": {
+      "bytes": 900945,
+      "digest": "eb7417dd590cdb556a4a65e21aa2d6d44e733dd0d4e243eb155f436bb2395df2",
+      "lines": 1539,
+      "present": true
+    },
+    "packageStore": {
+      "entries": 1,
+      "present": true
+    },
+    "productDir": "D:\\Development\\elite2-fresh-20260825\\product",
+    "sourceRoot": "D:\\Development\\elite2-fresh-20260825",
+    "walPresent": true
+  },
+  "kitStats": {
+    "actorCapsules": 50,
+    "actorProgramWorkplaces": 38,
+    "failureWitnesses": [
+      "engine-restarts",
+      "final-gate-repair_required-solution-development-1-4-4-development-implementation-34f0391b7381bc6dc216f80a-6a2be56b",
+      "journal-duplicate-obligation-created",
+      "journal-visibility-gap-lost-executions",
+      "supervision-anomalies"
+    ],
+    "inputCapsules": 37,
+    "invariantChecks": 13,
+    "invariantFailures": 0,
+    "traceEvents": 1539,
+    "traceStreams": 150
+  },
+  "kitVersion": "elite-evidence-kit/v1",
+  "observations": {
+    "commandReceipts": 62,
+    "gateDecisions": {
+      "byVerdict": {
+        "accepted": 51,
+        "human_required": 2,
+        "repair_required": 1
+      },
+      "total": 54
+    },
+    "journalEvents": 1539,
+    "lifecycleRuns": 1,
+    "obligations": {
+      "byState": {
+        "completed": 155
+      },
+      "total": 155
+    },
+    "sealedMaterials": 54,
+    "stages": [
+      {
+        "authority": "discovery-settlement-policy",
+        "localOutcome": "go",
+        "moduleRefKey": "product-discovery@4.0.0",
+        "stageId": "initial-discovery",
+        "status": "completed"
+      },
+      {
+        "authority": "formalization_settlement_policy",
+        "localOutcome": "formalized",
+        "moduleRefKey": "solution-formalization@1.0.0",
+        "stageId": "solution-formalization",
+        "status": "completed"
+      },
+      {
+        "authority": "development_settlement_policy",
+        "localOutcome": "verified",
+        "moduleRefKey": "solution-development@1.4.4",
+        "stageId": "solution-development",
+        "status": "completed"
+      }
+    ],
+    "tasks": {
+      "byStatus": {
+        "done": 51
+      },
+      "total": 51
+    },
+    "terminalStatus": "runnable-local",
+    "workerExecutions": {
+      "byState": {
+        "exited": 54,
+        "lost": 2
+      },
+      "total": 56
+    },
+    "workplaces": {
+      "byTerminalReason": {
+        "accepted": 38
+      },
+      "total": 38
+    }
+  },
+  "runId": "run-runnable-local-3ec5867f4d12",
+  "scenario": null,
+  "schemaVersion": 15,
+  "toolVersion": "elite-evidence-kit-extract/1.0.0"
+}

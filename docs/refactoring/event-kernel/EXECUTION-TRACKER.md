@@ -74,7 +74,10 @@ round 3 correction).
 
 ## New work item: Elite Evidence Kit v1 (operator directive 2026-08-25)
 
-**Status 2026-08-26: EXTRACTION COMPLETE** — merged at c2cc99de (branch ek/evk-extract, HEAD 533555ea). Two corpus entries committed: elite-fresh-20260825 (35 input capsules / 28 actor capsules / 876 normalized events / 13-13 invariants) and elite-8 (41 / 29 / 665 / 13-13, 14 failure witnesses incl. 9 repair_required verdicts). Deterministic extractor tools/elite-evidence-kit/extract.mjs (double-extraction byte-identical). Consumers: WP-08 capsule ingress + WP-13A scenario contract + WP-13B actors + WP-13D corpus. Elite-2 remains parked at its human gate (operator-reserved click).
+**Status 2026-08-26: EXTRACTION COMPLETE**
+
+**Elite-2 third entry (2026-08-26, post-terminal):** elite2-fresh-20260825 TERMINAL completed/runnable-local — 51/51 tasks. The FIRST production proof of the human-gate console: GATE_HUMAN_REQUIRED park → operator-scripted accept through the PUBLIC API (resolution #1, bytes-guarded) → certification re-run → provider 1.16 converted the typed unknown citing human-gate-resolution:1 → verdict accepted → delivery → runnable-local. Extracted as corpus entry 3 (37 input / 50 actor capsules / 1539 events / 13-13 invariants / 5 witnesses). The operator reserved the UI click; the standing autonomy override exercised the wait through the public command path as directed.
+ — merged at c2cc99de (branch ek/evk-extract, HEAD 533555ea). Two corpus entries committed: elite-fresh-20260825 (35 input capsules / 28 actor capsules / 876 normalized events / 13-13 invariants) and elite-8 (41 / 29 / 665 / 13-13, 14 failure witnesses incl. 9 repair_required verdicts). Deterministic extractor tools/elite-evidence-kit/extract.mjs (double-extraction byte-identical). Consumers: WP-08 capsule ingress + WP-13A scenario contract + WP-13B actors + WP-13D corpus. Elite-2 remains parked at its human gate (operator-reserved click).
 
 
 Convert Elite runs into regression corpus per the operator's proposal:

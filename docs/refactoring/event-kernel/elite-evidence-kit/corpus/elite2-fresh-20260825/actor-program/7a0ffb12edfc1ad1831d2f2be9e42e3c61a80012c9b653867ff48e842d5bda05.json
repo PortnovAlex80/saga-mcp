@@ -1,0 +1,23 @@
+{
+  "contentDigest": "ce035aa367ceb291a46977429e190ab708e52d61dcc985e9423d08cf75ca5241",
+  "payload": {
+    "acceptanceCriterionKey": "24:AC-9",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "navigation.js:36-44 — attemptJump triggers a pirate encounter via Combat.createEncounter() when random check passes after jump fuel deduction",
+        "combat.js:9,13-21 — createEncounter() returns an object with choices array including fight and flee options",
+        "ui.js:77-117 — showPirateEncounter() renders an overlay with exactly two interactive buttons: FIGHT and FLEE, wired to an onChoice callback",
+        "test/run.js:295-299 — unit test asserts createEncounter choices[0]===fight and choices[1]===flee"
+      ],
+      "summary": "AC-9 verified: pirate encounter after hyperspace jump presents fight-or-flee options to the player."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-9"
+  },
+  "payloadHash": "ce035aa367ceb291a46977429e190ab708e52d61dcc985e9423d08cf75ca5241",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

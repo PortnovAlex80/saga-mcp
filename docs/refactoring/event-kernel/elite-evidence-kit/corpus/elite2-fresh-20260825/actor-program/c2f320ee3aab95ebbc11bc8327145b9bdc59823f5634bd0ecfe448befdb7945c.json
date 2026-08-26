@@ -1,0 +1,22 @@
+{
+  "contentDigest": "05f8f9b30de30fb69652737f3f074870d2fb0aca4aadb2bec69c42b5d3c0d77a",
+  "payload": {
+    "acceptanceCriterionKey": "31:AC-16",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Source code at server.js:37-40 implements GET /healthz handler returning res.writeHead(200) with Content-Type application/json and body {status:'ok'}",
+        "Live HTTP test against the exact server logic: GET /healthz returned STATUS:200, BODY:{\"status\":\"ok\"}",
+        "Candidate commit f7bb7459a09740c526a717710445f2c375093009 verified, HEAD matches frozen candidate"
+      ],
+      "summary": "The /healthz endpoint at the frozen candidate commit f7bb745 returns HTTP 200 with JSON body {\"status\":\"ok\"}, satisfying AC-16 requirement that a success response is returned indicating the server is operational."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-16"
+  },
+  "payloadHash": "05f8f9b30de30fb69652737f3f074870d2fb0aca4aadb2bec69c42b5d3c0d77a",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

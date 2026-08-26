@@ -1,0 +1,227 @@
+{
+  "capsules": [
+    {
+      "digest": "00edee38d4856bc485d762b3aa8830a64735b7c7088b3454868e264308c5f65e",
+      "file": "input-capsule/00edee38d4856bc485d762b3aa8830a64735b7c7088b3454868e264308c5f65e.json",
+      "role": "stage-envelope",
+      "summary": "stage initial-discovery"
+    },
+    {
+      "digest": "03cead06f27ff8b2d35b73f15eebf3244a749270976eb423ef1726a272f02837",
+      "file": "input-capsule/03cead06f27ff8b2d35b73f15eebf3244a749270976eb423ef1726a272f02837.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/02-prd.md"
+    },
+    {
+      "digest": "0447f2ebc9b36cec2100b4680a699b3fd9108de2df92b7e3ef2bc2bfb83ae821",
+      "file": "input-capsule/0447f2ebc9b36cec2100b4680a699b3fd9108de2df92b7e3ef2bc2bfb83ae821.json",
+      "role": "outcome-certificate",
+      "summary": "product-discovery@4.0.0 -> go"
+    },
+    {
+      "digest": "0750f9cbd7746694826ddc8f76f740b3b02e3f55eea3fc5bf5cc162388ca0a62",
+      "file": "input-capsule/0750f9cbd7746694826ddc8f76f740b3b02e3f55eea3fc5bf5cc162388ca0a62.json",
+      "role": "formalization-output/reconciliation-report",
+      "summary": "factory.formalization-reconciliation-report.v1"
+    },
+    {
+      "digest": "0965595c209de59bbb016476fa21f3372dc3d1ae63f6192ae3a909788607c70a",
+      "file": "input-capsule/0965595c209de59bbb016476fa21f3372dc3d1ae63f6192ae3a909788607c70a.json",
+      "role": "trusted-providers",
+      "summary": "7 providers"
+    },
+    {
+      "digest": "13f0735a2c850624d4d9bdd8e2d161db3157e1d5d657cc98189631758cee925e",
+      "file": "input-capsule/13f0735a2c850624d4d9bdd8e2d161db3157e1d5d657cc98189631758cee925e.json",
+      "role": "development-output/readiness-manifest",
+      "summary": "factory.development-readiness-manifest.v1"
+    },
+    {
+      "digest": "1433783638fd1a2be0b955628cc123f7f85ee37bfa340c73efdef9487005707a",
+      "file": "input-capsule/1433783638fd1a2be0b955628cc123f7f85ee37bfa340c73efdef9487005707a.json",
+      "role": "artifact-registry",
+      "summary": "38 artifacts"
+    },
+    {
+      "digest": "223aca03d03a8ca79cdfc09490dd7871ac559100c657dfcc4dae73e42a25f78e",
+      "file": "input-capsule/223aca03d03a8ca79cdfc09490dd7871ac559100c657dfcc4dae73e42a25f78e.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/01-brief.md"
+    },
+    {
+      "digest": "274a9616a80584d805f05a8447b0a34a9acd2ba3a226a6e67c0b19813d27a555",
+      "file": "input-capsule/274a9616a80584d805f05a8447b0a34a9acd2ba3a226a6e67c0b19813d27a555.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-formalization@1.0.0"
+    },
+    {
+      "digest": "347263a5faed0740545eeb3b4e31a52eb067cec839349e519206d71f8572a189",
+      "file": "input-capsule/347263a5faed0740545eeb3b4e31a52eb067cec839349e519206d71f8572a189.json",
+      "role": "formalization-output/use-case-bundle",
+      "summary": "factory.formalization-use-case-bundle.v1"
+    },
+    {
+      "digest": "362be65056fe74757baf5b8c2a1b8707456a016891623fe3cedc66f73092224e",
+      "file": "input-capsule/362be65056fe74757baf5b8c2a1b8707456a016891623fe3cedc66f73092224e.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/04-non-functional-requirements.md"
+    },
+    {
+      "digest": "3d4a3aec017715ddc77efe9d8e83172c579724ad7b7aa838738d2fa8abcb9246",
+      "file": "input-capsule/3d4a3aec017715ddc77efe9d8e83172c579724ad7b7aa838738d2fa8abcb9246.json",
+      "role": "development-verification-ledger",
+      "summary": "66 ledger entries"
+    },
+    {
+      "digest": "40f1ad5ec859723470bc1bf76033d7221f0270baa3aeafaa73e765adce5ae2dd",
+      "file": "input-capsule/40f1ad5ec859723470bc1bf76033d7221f0270baa3aeafaa73e765adce5ae2dd.json",
+      "role": "order",
+      "summary": "order order-274ebad9-1a03-4049-a959-90ab821482a3"
+    },
+    {
+      "digest": "42107175662650b3c57771331f388b3d9ee917d8a47ae915149e818080edc7b3",
+      "file": "input-capsule/42107175662650b3c57771331f388b3d9ee917d8a47ae915149e818080edc7b3.json",
+      "role": "process-envelope",
+      "summary": "process-run product-discovery@4.0.0"
+    },
+    {
+      "digest": "49e83a84d0c5e0f946519a44d8b2bbb0b46fcf3284e4feff7b58983aa63fc150",
+      "file": "input-capsule/49e83a84d0c5e0f946519a44d8b2bbb0b46fcf3284e4feff7b58983aa63fc150.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/08-srs.md"
+    },
+    {
+      "digest": "52ae69191a2523d90a00313a9b7d5436bf720805a8ea449b35ab18312ac46545",
+      "file": "input-capsule/52ae69191a2523d90a00313a9b7d5436bf720805a8ea449b35ab18312ac46545.json",
+      "role": "formalization-output/acceptance-bundle",
+      "summary": "factory.formalization-acceptance-bundle.v1"
+    },
+    {
+      "digest": "54bda29481f9a5bdb9621857890f4cbfb0b328a19926fba549af7258a8c4e576",
+      "file": "input-capsule/54bda29481f9a5bdb9621857890f4cbfb0b328a19926fba549af7258a8c4e576.json",
+      "role": "module-installation-identities",
+      "summary": "9 installations"
+    },
+    {
+      "digest": "5a968ddc34fce0a55891884a1820c639e2edbca6a533cf82bf495d6b0941c17a",
+      "file": "input-capsule/5a968ddc34fce0a55891884a1820c639e2edbca6a533cf82bf495d6b0941c17a.json",
+      "role": "formalization-output/product-bundle",
+      "summary": "factory.formalization-product-bundle.v1"
+    },
+    {
+      "digest": "5bf146968891a9c10701a00faf0a7e1dfa7e2ae8e70c2bd8fb6f2320ed0405e1",
+      "file": "input-capsule/5bf146968891a9c10701a00faf0a7e1dfa7e2ae8e70c2bd8fb6f2320ed0405e1.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-formalization"
+    },
+    {
+      "digest": "6117cd9c19be0977889ac8583976ed42b8dbc3737158a7e87ceb434f4513aaaf",
+      "file": "input-capsule/6117cd9c19be0977889ac8583976ed42b8dbc3737158a7e87ceb434f4513aaaf.json",
+      "role": "formalization-output/architecture-bundle",
+      "summary": "factory.formalization-architecture-bundle.v1"
+    },
+    {
+      "digest": "651446594d37e95d84e131619da73d8cc397e6518d4b1ae4a9eea41721bcaebc",
+      "file": "input-capsule/651446594d37e95d84e131619da73d8cc397e6518d4b1ae4a9eea41721bcaebc.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/03-functional-requirements.md"
+    },
+    {
+      "digest": "651d199f6396876929140c02693bc7e4f0a57d44b7a309be5fa888c9a335b25b",
+      "file": "input-capsule/651d199f6396876929140c02693bc7e4f0a57d44b7a309be5fa888c9a335b25b.json",
+      "role": "development-output/readiness-manifest",
+      "summary": "factory.development-readiness-manifest.v1"
+    },
+    {
+      "digest": "66287ea40ebc711ed63f3d9d71e11e7abd8fbb17eb7712b67da7dce2b81a571a",
+      "file": "input-capsule/66287ea40ebc711ed63f3d9d71e11e7abd8fbb17eb7712b67da7dce2b81a571a.json",
+      "role": "lifecycle-definition",
+      "summary": "lifecycle product-build@1.2.0"
+    },
+    {
+      "digest": "66977cb53e4c09c972147a087aeac0c07627754aee674f802c337418a042108b",
+      "file": "input-capsule/66977cb53e4c09c972147a087aeac0c07627754aee674f802c337418a042108b.json",
+      "role": "discovery-output/readiness-assessment",
+      "summary": "factory.discovery-readiness-assessment.v2"
+    },
+    {
+      "digest": "6af3972157c4ad8c5220b2b459a7652727c988f44ce4a97d3a4ac21a2673e5f5",
+      "file": "input-capsule/6af3972157c4ad8c5220b2b459a7652727c988f44ce4a97d3a4ac21a2673e5f5.json",
+      "role": "development-output/readiness-manifest",
+      "summary": "factory.development-readiness-manifest.v1"
+    },
+    {
+      "digest": "78fe78deb7d83ba68aa427ff28b83bc426bbfb8b9684eed913c96b4dbdcfa2d7",
+      "file": "input-capsule/78fe78deb7d83ba68aa427ff28b83bc426bbfb8b9684eed913c96b4dbdcfa2d7.json",
+      "role": "formalization-solution-contract",
+      "summary": "formalization solution contract"
+    },
+    {
+      "digest": "7a2e5c865ff3caaa54ef7accae9fa663c14e4fb54bef74a72fbc581f030e03c2",
+      "file": "input-capsule/7a2e5c865ff3caaa54ef7accae9fa663c14e4fb54bef74a72fbc581f030e03c2.json",
+      "role": "project-identity",
+      "summary": "project / repository / checkout identity"
+    },
+    {
+      "digest": "7d43d5b8054d26c9566cd3e9b92fc7df3948848eb16d40e76beff4cdbd896fb9",
+      "file": "input-capsule/7d43d5b8054d26c9566cd3e9b92fc7df3948848eb16d40e76beff4cdbd896fb9.json",
+      "role": "development-output/task-graph-proposal",
+      "summary": "factory.development-task-graph-proposal.v1"
+    },
+    {
+      "digest": "8087614d124efa2fd7de6c0a1f435069cea1436b3e0973f5b03cbd6c8372d379",
+      "file": "input-capsule/8087614d124efa2fd7de6c0a1f435069cea1436b3e0973f5b03cbd6c8372d379.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/06-use-cases.md"
+    },
+    {
+      "digest": "9168b7d0995a3b9e095a37521011d47c2742f971335685122b7f3c8ef39869ad",
+      "file": "input-capsule/9168b7d0995a3b9e095a37521011d47c2742f971335685122b7f3c8ef39869ad.json",
+      "role": "outcome-certificate",
+      "summary": "solution-formalization@1.0.0 -> formalized"
+    },
+    {
+      "digest": "947a2cd1ecde52380c567632e056f8cb4b6a58d01fb57f611e27271df8c073c2",
+      "file": "input-capsule/947a2cd1ecde52380c567632e056f8cb4b6a58d01fb57f611e27271df8c073c2.json",
+      "role": "formalization-acceptance-baseline",
+      "summary": "formalization acceptance baseline"
+    },
+    {
+      "digest": "966829ba8450cde94931ab3e32835d18543ca35ee97011ae8732e275cedbf9d7",
+      "file": "input-capsule/966829ba8450cde94931ab3e32835d18543ca35ee97011ae8732e275cedbf9d7.json",
+      "role": "discovery-output/proposal",
+      "summary": "factory.discovery-proposal.v1"
+    },
+    {
+      "digest": "984a3ce23e64b136315ca04cab9aa044789e4ce490fe8cf6e5000702ae8c169d",
+      "file": "input-capsule/984a3ce23e64b136315ca04cab9aa044789e4ce490fe8cf6e5000702ae8c169d.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/07-acceptance-criteria.md"
+    },
+    {
+      "digest": "b2224b0292ecb198ee2adae3ce7fb18c093dc833ff492cc539650edc1f2bec4f",
+      "file": "input-capsule/b2224b0292ecb198ee2adae3ce7fb18c093dc833ff492cc539650edc1f2bec4f.json",
+      "role": "process-envelope",
+      "summary": "process-run solution-development@1.4.4"
+    },
+    {
+      "digest": "c7a41f276d9a805154bd7293dbc5550a5f5d8fb5c4a2c331236d4de862f78ba0",
+      "file": "input-capsule/c7a41f276d9a805154bd7293dbc5550a5f5d8fb5c4a2c331236d4de862f78ba0.json",
+      "role": "requirements-file",
+      "summary": "docs/requirements/REQ-001/05-rules.md"
+    },
+    {
+      "digest": "dea474f7fc6146610769d4524a9a89e76477f9483de85696faa123fcb02afcf8",
+      "file": "input-capsule/dea474f7fc6146610769d4524a9a89e76477f9483de85696faa123fcb02afcf8.json",
+      "role": "outcome-certificate",
+      "summary": "solution-development@1.4.4 -> verified"
+    },
+    {
+      "digest": "e9b8d8c4d8ad07a821a88a2079cd29a1b12e07bea9baee37c2a5fb2701a690bd",
+      "file": "input-capsule/e9b8d8c4d8ad07a821a88a2079cd29a1b12e07bea9baee37c2a5fb2701a690bd.json",
+      "role": "stage-envelope",
+      "summary": "stage solution-development"
+    }
+  ],
+  "runId": "run-runnable-local-3ec5867f4d12"
+}

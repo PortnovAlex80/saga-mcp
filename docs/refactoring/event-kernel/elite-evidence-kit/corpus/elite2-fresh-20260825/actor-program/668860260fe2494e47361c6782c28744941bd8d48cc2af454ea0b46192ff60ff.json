@@ -1,0 +1,29 @@
+{
+  "contentDigest": "1c3f5c3b9fc065a818d7dab6bd1a52961440db40a4d93a9f1380ce1eabe64181",
+  "payload": {
+    "acceptanceCriterionKey": "21:AC-6",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Market.sell (public/js/market.js:98-143) computes sellPrice via getSellPrice (90% of system buy price), calculates profit = totalRevenue - totalBuyCost, increments state.credits by totalRevenue, decrements cargo quantity (splicing when zero), and adds profit to state.accumulatedProfit — satisfying all three AC-6 Then-clauses.",
+        "profit_positivity invariant holds: profit = sellPrice*qty - buyPrice*qty; when sellPrice >= buyPrice (achievable via cross-system price variation), profit >= 0.",
+        "profit_monotonicity invariant holds: accumulatedProfit is only mutated via += (line 131) and initialized to 0 (game-state.js:18), never decremented.",
+        "credits_conservation invariant holds: buy deducts totalCost (line 70), sell adds totalRevenue (line 130), net credits_after = credits_before - buy_total + sell_total.",
+        "Test 'sell succeeds with sufficient cargo' (run.js:183-193): PASS — verifies credits increase on sell.",
+        "Test 'sell fails with insufficient cargo' (run.js:194-198): PASS — verifies rejection guard.",
+        "Test 'sell removes cargo item when quantity reaches zero' (run.js:200-204): PASS — verifies cargo removal.",
+        "Test 'sell tracks accumulated profit' (run.js:206-211): PASS — verifies accumulatedProfit is updated on sell.",
+        "Test 'save and load round-trip preserves accumulatedProfit' (run.js:527-533): PASS — verifies profit persists across save/load.",
+        "Full test suite: 115 passed, 0 failed at frozen candidate commit f7bb7459a09740c526a717710445f2c375093009."
+      ],
+      "summary": "AC-6 (Sell Commodities and Accumulate Profit) is fully satisfied by the frozen candidate at commit f7bb7459a09740c526a717710445f2c375093009. The Market.sell function correctly increases credits by total sell price, removes sold commodities from cargo, and accumulates profit as sell-revenue minus buy-cost. All three formal invariants (profit_positivity, profit_monotonicity, credits_conservation) hold. All 115 unit tests pass."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-6"
+  },
+  "payloadHash": "1c3f5c3b9fc065a818d7dab6bd1a52961440db40a4d93a9f1380ce1eabe64181",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

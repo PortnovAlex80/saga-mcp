@@ -1,0 +1,22 @@
+{
+  "projectRepositories": [
+    {
+      "integrationBranch": "dev",
+      "localPath": "D:\\Development\\elite2-fresh-20260825\\product",
+      "role": "component",
+      "status": "active"
+    }
+  ],
+  "projects": [
+    {
+      "name": "D:/Development/elite2-fresh-20260825",
+      "status": "active"
+    }
+  ],
+  "repositories": [
+    {
+      "defaultBranch": "main",
+      "name": "D:/Development/elite2-fresh-20260825-repo"
+    }
+  ]
+}

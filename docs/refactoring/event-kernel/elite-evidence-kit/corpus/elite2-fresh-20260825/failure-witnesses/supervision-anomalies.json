@@ -1,0 +1,32 @@
+{
+  "anomalies": [
+    {
+      "evidence": [],
+      "exec": "exec#48",
+      "state": "lost",
+      "task": "verification.ac#16"
+    },
+    {
+      "evidence": [
+        {
+          "data": {
+            "display_name": "Endmill",
+            "duration_ms": 33513,
+            "exit_code": 1,
+            "outcome": "exited_before_worker_done",
+            "recovery": "assignment-recovered",
+            "task_id": 46,
+            "worker_done_received": false,
+            "worker_id": "worker:4ea80a0c-fc0f-449e-819c-1c8cff69c536"
+          },
+          "kind": "worker.exit"
+        }
+      ],
+      "exec": "exec#49",
+      "state": "lost",
+      "task": "verification.ac#17"
+    }
+  ],
+  "kind": "supervision-observation",
+  "note": "Lost/terminated executions with their supervision evidence. Not a defect by itself: INV-07 requires (and checks) that they produced no completion products and were reaped/recovered openly."
+}

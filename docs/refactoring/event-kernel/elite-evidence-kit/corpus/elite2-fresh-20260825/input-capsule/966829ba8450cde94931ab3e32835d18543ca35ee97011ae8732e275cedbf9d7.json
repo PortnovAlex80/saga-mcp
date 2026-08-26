@@ -1,0 +1,41 @@
+{
+  "contentDigest": "3a88325814893a58871cf1919d9d55edd880216bd401fa1e91426232f74f007b",
+  "payload": {
+    "assumptions": [
+      "Node.js (LTS) is the only runtime dependency; no Docker, no bundler, no external CDN",
+      "Browser target is Google Chrome on a 2020-era laptop",
+      "All game state is single-player; persistence via server-side file or browser localStorage, no database required",
+      "Canvas 2D is sufficient for visual effects; WebGL is optional for performance",
+      "The game is served as static assets by the Node.js server",
+      "npm test runs all unit tests; a separate smoke-test script covers the browser check"
+    ],
+    "candidate_scope": "A Node.js HTTP server serving a single-page canvas/WebGL application. Features: galaxy of at least 8 named star systems with per-system commodity price variation, trading loop (buy low, sell high), hyperspace jumps consuming fuel with pirate-encounter risk, arcade ship-to-ship laser combat with enemy AI, ship upgrades (cargo capacity, laser, shields, fuel tank), Elite rating system tracked by profit and combat kills, save/load functionality, /healthz endpoint. Unit tests for market pricing, jump/fuel math, combat resolution, save/load. Browser smoke test verifying canvas rendering.",
+    "evidence_refs": [
+      "initiative.objective: full game specification including gameplay loop, visual requirements, non-functional constraints, and testing requirements",
+      "initiative.context: complexity=XS, type=web-app",
+      "initiative.constraints: deploymentExcluded=true, humanAcceptanceAfterLocalStart=true, localRunRequired=true"
+    ],
+    "observed_context": "Greenfield project (no existing code, artifacts, or notes). The repository is empty and the initiative was factory-started with a fully specified objective. Classified as XS complexity, type web-app. Runtime is Node.js serving a single-page application. Constraints: deployment excluded, local run required (npm install && npm start), human acceptance after local start in Chrome. No external CDN dependencies allowed (fully offline). The frontend is a first-class acceptance subject with specific visual requirements: parallax starfield, hyperspace jump effect, docking screen, ship HUD, commodity market, and arcade laser combat with visual effects.",
+    "problem_statement": "There is no single-player space trading and combat game that delivers a classic Elite-style experience playable immediately in a browser without build steps or CDN dependencies. Players who want a rich, immersive space trading experience must install native applications or rely on online services.",
+    "rationale": "The initiative is a well-specified, self-contained XS web-app with clear functional requirements, explicit non-functional constraints, and a bounded scope. All requirements are achievable with Node.js and vanilla browser APIs. The risks are technical implementation concerns (rendering performance, game balance), not feasibility blockers. No external dependencies, no deployment, and no multi-user concerns reduce complexity.",
+    "recommended_outcome": "go",
+    "risks": [
+      "Achieving 60fps canvas rendering with parallax starfield and combat effects on a 2020 laptop without a build step or framework",
+      "Balancing the trading economy across 8+ systems to make the buy-low/sell-high loop engaging",
+      "Implementing arcade combat with visual effects in a zero-build, no-framework frontend",
+      "Ensuring the browser smoke test is reliable across different Chrome versions"
+    ],
+    "stakeholders_or_actors": [
+      "Player: opens the game in Chrome, trades commodities, fights pirates, upgrades ship, pursues Elite rating",
+      "Factory operator: runs npm install && npm start locally and performs human acceptance in Chrome"
+    ],
+    "unknowns": [
+      "Exact canvas rendering approach (Canvas 2D vs. WebGL) for achieving 60fps on target hardware",
+      "Whether save/load should be file-based on the server or localStorage in the browser",
+      "The precise commodity set and galaxy map layout for balanced gameplay",
+      "The enemy AI difficulty curve and combat balance parameters"
+    ]
+  },
+  "payloadHash": "3a88325814893a58871cf1919d9d55edd880216bd401fa1e91426232f74f007b",
+  "schemaId": "factory.discovery-proposal.v1"
+}

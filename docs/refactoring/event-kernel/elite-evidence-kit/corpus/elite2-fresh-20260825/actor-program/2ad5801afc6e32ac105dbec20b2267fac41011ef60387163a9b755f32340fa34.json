@@ -1,0 +1,29 @@
+{
+  "contentDigest": "a47465f5d1c047c92e457baad00eeaa09884e1978808e353b62b3cc64a0ec0b7",
+  "payload": {
+    "acceptanceCriterionKey": "26:AC-11",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [],
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "navigation.js:64-65: resolveEncounterOutcome increments state.kills += 1 only when result.outcome === 'victory'",
+        "game-state.js:17: initial state kills is 0, establishing monotonicity base",
+        "rating.js:18-19: computeScore(profit, kills) = kills * KILL_SCORE_WEIGHT + floor(profit / PROFIT_PER_POINT), confirming kills contribute to rating",
+        "Test 'resolveEncounterOutcome updates kills on victory' PASSES: asserts state.kills === 1 after victory",
+        "Test 'create returns zero kills' PASSES: asserts initial kills === 0",
+        "Test 'save and load round-trip preserves kills' PASSES: kills persist across save/load",
+        "Test 'getRatingName at 8 kills is Mostly Harmless' PASSES: confirms kill-driven rating progression",
+        "Test 'computeScore combines kills and profit' PASSES: score(100, 5) === 15, kills weighted at 1 point each",
+        "All 115 unit tests pass with 0 failures at candidate commit f7bb7459a09740c526a717710445f2c375093009"
+      ],
+      "summary": "AC-11 verified: enemy destruction increments kill count by exactly one, kills are monotonic, and kills contribute to Elite rating progression. All 115 unit tests pass at frozen candidate commit f7bb7459a09740c526a717710445f2c375093009."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-11"
+  },
+  "payloadHash": "a47465f5d1c047c92e457baad00eeaa09884e1978808e353b62b3cc64a0ec0b7",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

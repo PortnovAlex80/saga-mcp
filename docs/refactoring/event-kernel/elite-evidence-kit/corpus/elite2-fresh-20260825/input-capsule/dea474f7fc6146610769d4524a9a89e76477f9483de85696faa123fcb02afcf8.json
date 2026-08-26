@@ -1,0 +1,38 @@
+{
+  "authority": "development_settlement_policy",
+  "certificateHash": "acb25e72e3c8ae19c94335b51b6435abbca0c1cf8a88d585b307c4c3feb5117a",
+  "certificatePayload": {
+    "decision": "verified",
+    "inputHash": "959de600f611a4a26647ad3b152fb673b2ec3ff2d0bcd873a159fd57255bab9d",
+    "payload": {
+      "acceptanceBaselineHash": "89a82795d7c76ead37c6b75a15166d67d7d40d441f42e97a0d42bfde3a2e52aa",
+      "bundleHash": "10c16a89c2024cdaa0804e495080a825f4e361283d3ed4e89531a59544351082",
+      "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+      "decision": "verified",
+      "formalizationCertificateHash": "ce79f013f347dd68ebfba1efc7c9d0078758c67fb84449d6dcc4c622755ffe18",
+      "implementationWorksetHash": "3b1f3a3c6e167a291003df363c9373cb9912b2868d2500f68ba7cc1f95401f1b",
+      "inputHash": "959de600f611a4a26647ad3b152fb673b2ec3ff2d0bcd873a159fd57255bab9d",
+      "policy": {
+        "contentHash": "0cb1747330e6149c10558a39b47f120382254c6f90cd76ae8d26925b54643cc4",
+        "id": "reference-development-policy",
+        "requiredChangeScopes": [],
+        "version": "1.2.0"
+      },
+      "rationale": "Implementation, reviewed integration and acceptance evidence all bind to the unchanged frozen candidate.",
+      "reasonCodes": [],
+      "schemaVersion": "factory.development-certificate.v1",
+      "solutionContractHash": "ef0b8224701056bb2d84390c0701e14461e5ea6fe482c1926a973dd200524d36",
+      "taskGraphHash": "47b5b6529714b9baef54bd3261cdf034e9b8173da4b2a122b5bdb1b891aaba59",
+      "verificationHash": "74d12b76dd4cda23031ba436560fd14eb6d5f152711a1d2b4a28c7ece845f7fb"
+    },
+    "rationale": "Implementation, reviewed integration and acceptance evidence all bind to the unchanged frozen candidate.",
+    "reasonCodes": [],
+    "schemaVersion": "factory.development-certificate.v1"
+  },
+  "decision": "verified",
+  "inputHash": "959de600f611a4a26647ad3b152fb673b2ec3ff2d0bcd873a159fd57255bab9d",
+  "moduleRefKey": "solution-development@1.4.4",
+  "rationale": "Implementation, reviewed integration and acceptance evidence all bind to the unchanged frozen candidate.",
+  "reasonCodes": [],
+  "schemaVersion": "factory.development-certificate.v1"
+}

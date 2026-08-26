@@ -1,0 +1,37 @@
+{
+  "contentDigest": "1ed622af235bcc04960a5edfb4bc7e8bd92515e5de4cb74a7571d1762c71f99b",
+  "payload": {
+    "buildProducts": [],
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "2a3c6a7b6b3ee8c7754a8ed4f81b55817216fafa",
+      "integrationBranch": "dev",
+      "name": "D:/Development/elite2-fresh-20260825-repo",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "added",
+          "path": "public/js/combat.js"
+        },
+        {
+          "change": "added",
+          "path": "public/js/navigation.js"
+        }
+      ],
+      "commitSha": "4ee2a7ffe5f379abbd490d8c40623ce002890a46",
+      "treeSha": "9ac96d75dc8c99976c6c7fb45f14d49ca43f1daf"
+    },
+    "source": {
+      "branch": "saga/task/15/execution/ccd8587827e21e5fe76b",
+      "commitSha": "4ee2a7ffe5f379abbd490d8c40623ce002890a46",
+      "workItemKey": "impl-navigation-combat"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-navigation-combat"
+  },
+  "payloadHash": "1ed622af235bcc04960a5edfb4bc7e8bd92515e5de4cb74a7571d1762c71f99b",
+  "schemaId": "factory.development-implementation-result.v1"
+}

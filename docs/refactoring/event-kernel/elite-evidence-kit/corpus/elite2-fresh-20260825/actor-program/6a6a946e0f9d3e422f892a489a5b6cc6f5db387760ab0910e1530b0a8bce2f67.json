@@ -1,0 +1,23 @@
+{
+  "contentDigest": "4b40af3789d2711b84122707181a2ec9e62f45cba68f3fffaa74aea9e90e06eb",
+  "payload": {
+    "acceptanceCriterionKey": "35:AC-20",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "Market pricing: 15 tests pass covering getMarket, getBuyPrice, getSellPrice, buy/sell transactions, cross-system price variation, and profit tracking",
+        "Jump and fuel consumption: 12 tests pass covering calculateFuelCost, canJump, attemptJump with fuel deduction, insufficient fuel rejection, and encounter outcome resolution",
+        "Combat resolution: 8 tests pass covering createEncounter, enemy types, resolve with fight/flee/submit choices, idempotency of double-resolve",
+        "Save and load serialization: 15 tests pass covering save/load round-trip for credits, currentSystem, fuel, maxFuel, kills, cargo, cargoCapacity, accumulatedProfit, docked state, complex gameplay session, save overwrite, and clearSave"
+      ],
+      "summary": "All 115 unit tests pass at frozen candidate commit f7bb7459a09740c526a717710445f2c375093009. Tests cover all four AC-20 domains: market pricing logic (15 tests), jump and fuel consumption math (12 tests), combat resolution (8 tests), and save/load serialization (15 tests)."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-20"
+  },
+  "payloadHash": "4b40af3789d2711b84122707181a2ec9e62f45cba68f3fffaa74aea9e90e06eb",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

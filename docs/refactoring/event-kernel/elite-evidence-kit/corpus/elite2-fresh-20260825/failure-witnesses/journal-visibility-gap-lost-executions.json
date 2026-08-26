@@ -1,0 +1,24 @@
+{
+  "gaps": [
+    {
+      "completionProducts": 0,
+      "dbLastError": "OS process is not alive",
+      "dbState": "lost",
+      "exec": "exec#48",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "verification.ac#16"
+    },
+    {
+      "completionProducts": 0,
+      "dbLastError": "Task 46 Claude process exited with code 1 before terminal worker_done",
+      "dbState": "lost",
+      "exec": "exec#49",
+      "note": "Loss recorded only in the DB (no supervision.reaped/recovery.memory_delivered journal event).",
+      "successorExecutions": [],
+      "task": "verification.ac#17"
+    }
+  ],
+  "kind": "journal-visibility-gap",
+  "note": "Executions the DB marks lost/terminated with a loss reason but whose transition never appears in the journal. Not a phantom execution (INV-07 checks: no completion products, task re-completed by a successor) — but a replay must reproduce the loss via DB-side state, not via a journal event."
+}

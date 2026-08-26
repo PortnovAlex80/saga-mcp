@@ -1,0 +1,37 @@
+{
+  "contentDigest": "814c8a24ea8bd1f74544cbd5f8c51a19cf324d25eda59291ce989b2c64935ba8",
+  "payload": {
+    "acceptanceCriterionKeys": [
+      "22:AC-7",
+      "23:AC-8",
+      "24:AC-9",
+      "25:AC-10",
+      "26:AC-11"
+    ],
+    "baseCommit": "2a3c6a7b6b3ee8c7754a8ed4f81b55817216fafa",
+    "findings": [
+      "AC-7: calculateFuelCost uses Math.ceil(dist * 0.5) - satisfies fuel_positivity, fuel_proportionality, fuel_identity. Fuel deducted and location updated in attemptJump.",
+      "AC-8: attemptJump returns early with insufficient_fuel before mutating fuel or location. fuel_guard and location_guard invariants hold.",
+      "AC-9: Pirate encounter triggered during jump; Combat.createEncounter returns choices including fight and flee. Encounter returned for UI presentation.",
+      "AC-10: Combat.resolve produces victory, defeat, and escape outcomes. All three required outcomes reachable.",
+      "AC-11: resolveEncounterOutcome increments state.kills by exactly 1 on victory. Rating progression is in impl-rating-progression scope.",
+      "Change scope verified: diff contains only public/js/combat.js and public/js/navigation.js. No scope expansion."
+    ],
+    "processRunId": 3,
+    "productionCellId": "development-implementation",
+    "reviewedProjectRepositoryId": 1,
+    "reviewedRepositoryPath": "D:/Development/elite2-fresh-20260825-repo",
+    "reviewedSourceBranch": "saga/task/15/execution/ccd8587827e21e5fe76b",
+    "reviewedSourceCommit": "4ee2a7ffe5f379abbd490d8c40623ce002890a46",
+    "reviewedTreeSha": "9ac96d75dc8c99976c6c7fb45f14d49ca43f1daf",
+    "reviewerExecutionId": "worker-execution:06679c41-5785-420c-9bed-3d7709e74e17",
+    "reviewerWorkerId": "worker:f5ca139d-a3c3-4855-82d6-4556c3c1af0d",
+    "schemaVersion": "factory.development-review-verdict.v1",
+    "subject_candidate_set_ref": "candidate-set/3/solution-development@1.4.4/development-implementation/6336f797e0e8972c09cdab82/a4987a68e014c96b7ec3906abc5c743a94ce48a73e467f54a41914cdf8230b50/author",
+    "taskKind": "development.code.review",
+    "verdict": "approved",
+    "workItemKey": "impl-navigation-combat"
+  },
+  "payloadHash": "814c8a24ea8bd1f74544cbd5f8c51a19cf324d25eda59291ce989b2c64935ba8",
+  "schemaId": "factory.development-review-verdict.v1"
+}

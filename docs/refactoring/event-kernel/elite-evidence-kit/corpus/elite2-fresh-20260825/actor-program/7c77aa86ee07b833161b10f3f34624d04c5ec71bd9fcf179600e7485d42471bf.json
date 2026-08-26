@@ -1,0 +1,23 @@
+{
+  "contentDigest": "b77a2ab12be055180b1c2b30d208edba1a06c0d0ed6ccfbdd10222606809ffcd",
+  "payload": {
+    "acceptanceCriterionKey": "17:AC-2",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "public/js/game-state.js:2 defines STARTING_CREDITS = 100; line 3 defines STARTING_CARGO_CAPACITY = 20; line 16 sets docked: true in create()",
+        "test/run.js:29-51 contains three direct AC-2 tests: 'create returns object with correct initial credits' (assert credits===100), 'create returns object with correct cargo capacity' (assert cargoCapacity===20), 'create returns object docked' (assert docked===true)",
+        "node test/run.js executed at frozen commit f7bb7459a09740c526a717710445f2c375093009: 115 passed, 0 failed",
+        "main.js:17 calls GameState.create() on new game start, producing the verified initial state"
+      ],
+      "summary": "AC-2 (New Game Starting Conditions) is fully satisfied by the frozen candidate at commit f7bb7459a09740c526a717710445f2c375093009. GameState.create() initializes credits=100, cargoCapacity=20 (defined small capacity), and docked=true. All 115 unit tests pass including the three direct AC-2 assertions."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-2"
+  },
+  "payloadHash": "b77a2ab12be055180b1c2b30d208edba1a06c0d0ed6ccfbdd10222606809ffcd",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

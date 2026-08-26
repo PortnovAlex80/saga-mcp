@@ -1,0 +1,23 @@
+{
+  "contentDigest": "0f81f41b01dc9ee31cfbcd1dbd2e72df4c8bcee72bbc1d8527bf21c2a1aa3f26",
+  "payload": {
+    "acceptanceCriterionKey": "28:AC-13",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "public/js/ship.js:68-76: purchaseUpgrade checks state.credits < upgrade.cost and returns {success:false, reason:'insufficient_credits'} before any state mutation (lines 79-80 are unreachable in this path), guaranteeing idempotency.",
+        "test/run.js:246-251: Unit test 'purchaseUpgrade fails with insufficient credits' creates state with 100 credits, attempts large_cargo (cost 200), asserts success=false and reason='insufficient_credits'. Test passes.",
+        "All 115 unit tests pass (node test/run.js, exit code 0), including the specific AC-13 coverage test and all related Ship module tests.",
+        "AC-13 scenario fully satisfied: Given player docked with credits < upgrade cost, when purchase attempted, then purchase rejected and credits/ship attributes unchanged."
+      ],
+      "summary": "AC-13 verified: Ship.purchaseUpgrade rejects upgrade purchases when player credits are insufficient, returning success:false with reason 'insufficient_credits' without mutating credits or ship attributes."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-13"
+  },
+  "payloadHash": "0f81f41b01dc9ee31cfbcd1dbd2e72df4c8bcee72bbc1d8527bf21c2a1aa3f26",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

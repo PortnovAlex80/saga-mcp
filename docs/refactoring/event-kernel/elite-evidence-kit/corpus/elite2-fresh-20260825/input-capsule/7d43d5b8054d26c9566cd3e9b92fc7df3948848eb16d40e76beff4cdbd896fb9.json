@@ -1,0 +1,579 @@
+{
+  "contentDigest": "1ad3705368a950a107b3d45731f1104fa5b5c984dad10c5d113a7257e2b67e75",
+  "payload": {
+    "implementationItems": [
+      {
+        "acceptanceCriterionKeys": [
+          "17:AC-2",
+          "31:AC-16",
+          "37:AC-22"
+        ],
+        "changeScopes": [
+          "package.json",
+          "server.js",
+          "public/index.html",
+          "public/js/main.js",
+          "public/js/game-state.js",
+          "public/js/galaxy.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-game-foundation",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "18:AC-3",
+          "19:AC-4",
+          "20:AC-5",
+          "21:AC-6",
+          "27:AC-12",
+          "28:AC-13"
+        ],
+        "changeScopes": [
+          "public/js/market.js",
+          "public/js/ship.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-trading-economy",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "22:AC-7",
+          "23:AC-8",
+          "24:AC-9",
+          "25:AC-10",
+          "26:AC-11"
+        ],
+        "changeScopes": [
+          "public/js/navigation.js",
+          "public/js/combat.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-navigation-combat",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "29:AC-14"
+        ],
+        "changeScopes": [
+          "public/js/rating.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-rating-progression",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "30:AC-15"
+        ],
+        "changeScopes": [
+          "public/js/persistence.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-persistence",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "16:AC-1",
+          "24:AC-9",
+          "32:AC-17",
+          "33:AC-18"
+        ],
+        "changeScopes": [
+          "public/js/renderer.js",
+          "public/js/ui.js"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation",
+          "impl-navigation-combat"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-visual-presentation",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "35:AC-20",
+          "36:AC-21"
+        ],
+        "changeScopes": [
+          "test/"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation",
+          "impl-trading-economy",
+          "impl-navigation-combat",
+          "impl-rating-progression",
+          "impl-persistence",
+          "impl-visual-presentation"
+        ],
+        "executionMode": "git_change",
+        "executionSkill": "saga-developer",
+        "key": "impl-test-suite",
+        "kind": "implementation",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "implementation"
+      }
+    ],
+    "integrationTargets": [
+      {
+        "expectedBaseCommit": "08d8fba7a094e41e7af9b5516ae5a7902a684cd9",
+        "projectRepositoryId": 1,
+        "sourceWorkItemKeys": [
+          "impl-game-foundation",
+          "impl-trading-economy",
+          "impl-navigation-combat",
+          "impl-rating-progression",
+          "impl-persistence",
+          "impl-visual-presentation",
+          "impl-test-suite"
+        ],
+        "targetBranch": "dev"
+      }
+    ],
+    "schemaVersion": "factory.development-task-graph-proposal.v1",
+    "verificationItems": [
+      {
+        "acceptanceCriterionKeys": [
+          "16:AC-1"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-003"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-visual-presentation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-1",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "17:AC-2"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-2",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "18:AC-3"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-3",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "19:AC-4"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-4",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "20:AC-5"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-5",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "21:AC-6"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-6",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "22:AC-7"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-navigation-combat"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-7",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "23:AC-8"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-navigation-combat"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-8",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "24:AC-9"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-navigation-combat",
+          "impl-visual-presentation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-9",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "25:AC-10"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-004"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-navigation-combat"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-10",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "26:AC-11"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-navigation-combat"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-11",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "27:AC-12"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-12",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "28:AC-13"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-trading-economy"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-13",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "29:AC-14"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-rating-progression"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-14",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "30:AC-15"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-002"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-persistence"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-15",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "31:AC-16"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-16",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "32:AC-17"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-001"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-visual-presentation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-17",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "33:AC-18"
+        ],
+        "changeScopes": [],
+        "criticality": "degradable",
+        "dependsOnKeys": [
+          "impl-visual-presentation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-18",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "34:AC-19"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-19",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "35:AC-20"
+        ],
+        "changeScopes": [],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-test-suite"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-20",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "36:AC-21"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-006"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-test-suite"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-21",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      },
+      {
+        "acceptanceCriterionKeys": [
+          "37:AC-22"
+        ],
+        "changeScopes": [],
+        "coveredConstraintIds": [
+          "ord-c-005"
+        ],
+        "criticality": "blocker",
+        "dependsOnKeys": [
+          "impl-game-foundation"
+        ],
+        "executionMode": "read_only_evidence",
+        "executionSkill": "saga-verifier",
+        "key": "verify-ac-22",
+        "kind": "verification",
+        "projectRepositoryId": 1,
+        "required": true,
+        "taskKind": "verification.ac"
+      }
+    ]
+  },
+  "payloadHash": "1ad3705368a950a107b3d45731f1104fa5b5c984dad10c5d113a7257e2b67e75",
+  "schemaId": "factory.development-task-graph-proposal.v1"
+}

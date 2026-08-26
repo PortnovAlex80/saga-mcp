@@ -1,0 +1,32 @@
+{
+  "contentDigest": "c4c7cb7a7beff58993b2a01fb1e1f275da622f944cb3974abeb9015ac3470b3a",
+  "payload": {
+    "acceptanceCriterionKey": "25:AC-10",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "coveredConstraintIds": [
+      "ord-c-004"
+    ],
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "combat.js resolveFight: assigns 'victory' when enemyHP <= 0 (line 52), 'defeat' when playerHP <= 0 (line 54) or max rounds exhausted (line 56)",
+        "combat.js resolveFlee: assigns 'escape' when Math.random() < 0.5 (line 66), 'defeat' otherwise (line 68)",
+        "combat.js resolveSubmit: assigns 'defeat' unconditionally (line 76)",
+        "combat.js resolve: routes to exactly resolveFight/resolveFlee/resolveSubmit based on choice string; invalid choices leave encounter unresolved (line 80-96)",
+        "No other string literals are ever assigned to encounter.outcome in the entire combat.js module",
+        "Test 'resolve submit always results in defeat' passes: confirms defeat path",
+        "Test 'resolveEncounterOutcome updates kills on victory' passes: confirms victory outcome is consumed by navigation",
+        "Test 'resolveEncounterOutcome on escape arrives at destination' passes: confirms escape outcome is consumed by navigation",
+        "Test 'resolveEncounterOutcome on defeat stays docked' passes: confirms defeat outcome is consumed by navigation",
+        "Full test suite: 115 passed, 0 failed at frozen commit f7bb7459a09740c526a717710445f2c375093009"
+      ],
+      "summary": "Combat.resolve() in public/js/combat.js at frozen commit f7bb7459 only ever assigns exactly three outcome strings to encounter.outcome: 'victory' (line 52, resolveFight when enemyHP<=0), 'defeat' (lines 54/56 resolveFight, line 68 resolveFlee, line 76 resolveSubmit), or 'escape' (line 66, resolveFlee when random < ESCAPE_CHANCE). No other outcome values are possible. All 115 unit tests pass including navigation.resolveEncounterOutcome tests that exercise all three outcomes."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-10"
+  },
+  "payloadHash": "c4c7cb7a7beff58993b2a01fb1e1f275da622f944cb3974abeb9015ac3470b3a",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

@@ -1,0 +1,30 @@
+{
+  "contentDigest": "0c22b457e5b91dbcfb06565d5894840da0cde86355397cea7e3a71a4a52f6632",
+  "payload": {
+    "acceptanceCriterionKey": "29:AC-14",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [
+        "HUD display gap is a renderer/ui concern outside the rating module scope (SRS scoped AC-14 to public/js/rating.js only), but the AC clause 'the rating is displayed on the HUD' is an explicit acceptance condition on the integrated candidate"
+      ],
+      "observations": [
+        "PASS: rating.js:18-20 computeScore(profit,kills)=kills*1+floor(profit/10) correctly combines both inputs into a single score",
+        "PASS: rating.js:4-13 defines 8 ascending tiers (Harmless 0, Mostly Harmless 8, Poor 24, Average 80, Competent 320, Dangerous 1080, Deadly 3200, Elite 6400)",
+        "PASS: rating.js:22-32 getRatingTier maps score to highest qualifying tier via descending iteration",
+        "PASS: rating_monotonicity invariant holds: computeScore is monotonically non-decreasing in both profit and kills; tier lookup selects highest qualifying threshold",
+        "PASS: game-state.js:17-18 initializes kills=0 and accumulatedProfit=0; market.js:131 updates accumulatedProfit on sell; navigation.js:65 increments kills on victory",
+        "PASS: All 12 Rating unit tests pass (computeScore, getRatingName, getRatingTier, getAllTiers, ascending order, constants, high profit)",
+        "PASS: All 115 unit tests pass (0 failures)",
+        "FAIL: renderer.js:242-270 renderHUD draws 5 lines (shields, fuel, cargo, credits, status) — NO rating line is rendered",
+        "FAIL: ui.js:252-268 updateHUD updates DOM elements for location, credits, cargo, fuel, status — NO rating element is updated or displayed"
+      ],
+      "summary": "Rating tier calculation correctly combines profit and kills through 8 tiers with monotonicity invariant satisfied, but the rating is NOT displayed on the HUD as required by AC-14 clause 'And the rating is displayed on the HUD'."
+    },
+    "outcome": "failed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-14"
+  },
+  "payloadHash": "0c22b457e5b91dbcfb06565d5894840da0cde86355397cea7e3a71a4a52f6632",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

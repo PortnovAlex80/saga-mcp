@@ -1,0 +1,1205 @@
+{
+  "commands": [
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#1",
+      "payloadHash": "fa9a122ac33593803f0d6761680f7f39a856d0c9d053e13c94386a9f6882a005",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 1,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "discovery.work#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#2",
+      "payloadHash": "4ab0d30b035f2bb3abdffe372ae3e502a8df7633b5db4c34c6b819344e7e4346",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 2,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "discovery.assess#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#3",
+      "payloadHash": "395390cae9ab2f73273c390dcd6c1da65662c27c508c2a97ac83aecdc753534a",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 3,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.product#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#4",
+      "payloadHash": "2fde82320eeabee0806eda70bb3774ccfd8a8de90522dcaba1bb1c1f49d5e2fb",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 4,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#5",
+      "payloadHash": "fc1da44d26eeb5fce946deb605d371071f2cdedde94d70e28c20ab04defcbbfb",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 5,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.use-cases#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#6",
+      "payloadHash": "a61c83e63b45accd0ceb8487fbeeb25289c3e72392158cf24099a5cfd62afd15",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 6,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#2"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#7",
+      "payloadHash": "3352fb0d1c77481bb5b89fea1e39e3de755e4f2ef03d62ad5f47f8d504dcf47c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 7,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.acceptance#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#8",
+      "payloadHash": "b9f34a0ce037293ae974e0775320704acfb4f08291fd5c00e11128d3ba2a9b4c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 8,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#3"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#9",
+      "payloadHash": "8b0accac7c3954078ba32a977b1d1597ad54a5ff2606b3e5b871b1a2961c9ec8",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 9,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.reconcile#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#10",
+      "payloadHash": "78130abe461cf601a13953506da9568c0f961ece2555e433b11f66cbc4e2b3c4",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 10,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "managed_execution",
+      "commandKind": "worker_done",
+      "exec": "exec#11",
+      "payloadHash": "a454524400be34179ec6cfcb615e0c65e94e29b7f37a70b07e6f69a7a2b0226b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 11,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.architecture#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#12",
+      "payloadHash": "4ec7df31eb53feb45f0368309b19b9969100e3154b729eb989ad2c4ee29008b6",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 12,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "formalization.review#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#13",
+      "payloadHash": "3d27b0f75487003637667d49fcd99beeb8e0f36e9589ac7e32bf6e6da1a58baa",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 13,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "planning.decomposition#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#15",
+      "payloadHash": "0803880f92f1dd66ccb6c8847cb5c087a2ffebd1b911409a614bdf4cb04ea893",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:96f36cdc-9250-4a83-a65b-03c00f573e45",
+            "branch": "task/14",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 14,
+            "title": "impl-game-foundation"
+          }
+        ],
+        "completed": 17,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#14",
+      "payloadHash": "1d8ffc81b9a181ecfd63a2cfba6bc2b71524361905014a64df1fb71cf83c7314",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:06c62f83-5a31-492a-b9af-1d57fd3d16ba",
+            "branch": "task/21",
+            "epic_name": "REQ-001",
+            "status": "review_in_progress",
+            "task_id": 21,
+            "title": "impl-rating-progression"
+          }
+        ],
+        "completed": 14,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#16",
+      "payloadHash": "c055ad31546ebd8464f129942a710929871f8f760da2147add0c41aec4808ff5",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:c307e53e-0444-4be8-90b6-fc591d02ee91",
+            "branch": "task/22",
+            "epic_name": "REQ-001",
+            "status": "review_in_progress",
+            "task_id": 22,
+            "title": "impl-game-foundation"
+          }
+        ],
+        "completed": 21,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#17",
+      "payloadHash": "a801dc8f948c5f8142c87a069ddb535a500fda6d2469d19201933e9956796388",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 22,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#2"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#18",
+      "payloadHash": "d524cd228f3cfd0ccdf58d94f514e09bce2b189a95700f408a175734203aead0",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:1fc52b4e-993b-4274-a174-e4b7bad0a049",
+            "branch": "task/16",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 16,
+            "title": "impl-persistence"
+          }
+        ],
+        "completed": 15,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#2"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#19",
+      "payloadHash": "0e336f4faa1ada90e710070e42d14adcd771d983ce6bae2a03201fd8161387b9",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:f5ca139d-a3c3-4855-82d6-4556c3c1af0d",
+            "branch": "task/23",
+            "epic_name": "REQ-001",
+            "status": "review_in_progress",
+            "task_id": 23,
+            "title": "impl-navigation-combat"
+          }
+        ],
+        "completed": 16,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#3"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#20",
+      "payloadHash": "cfd1e20b7854ef08c598d736057ded7fdf580b221db24f8935aa3ef7326f8a6a",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 23,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#3"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#21",
+      "payloadHash": "00d0b11e07233b4f6b5238d988828acd1bc5fec5c667ad1482127db71f1872fc",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 24,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#22",
+      "payloadHash": "7f0ac00428cd4b86558d176348825b6f36b6eeadfe78fdf53710b09e7184ccae",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:64bd553e-1456-47cd-9825-da913f35e486",
+            "branch": "task/20",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 20,
+            "title": "impl-visual-presentation"
+          }
+        ],
+        "completed": 19,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#6"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#23",
+      "payloadHash": "6ad9b3c07e54cfbf542b2e0375baeee146686fb9795d1235e9baf289a79f3dcd",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:ff6c454a-3be8-448b-ae68-755e40c07ab0",
+            "branch": "task/25",
+            "epic_name": "REQ-001",
+            "status": "review_in_progress",
+            "task_id": 25,
+            "title": "impl-trading-economy"
+          }
+        ],
+        "completed": 20,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#7"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#24",
+      "payloadHash": "7677c2cb7110d59d63f0ecec2943b7c2f63118d7e75527ce8e944b291d88dc4c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:3afd5ca2-f2e7-48f7-82da-3cf8448536cb",
+            "branch": "task/26",
+            "epic_name": "REQ-001",
+            "status": "review_in_progress",
+            "task_id": 26,
+            "title": "impl-visual-presentation"
+          }
+        ],
+        "completed": 25,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#24",
+      "payloadHash": "rel-4a598c44",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "review_in_progress"
+      },
+      "task": "development.code.review#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#25",
+      "payloadHash": "cd22a2862af2497cf31edf491af93dfcc6a35d532ccca5b5f0a53a4344d08756",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 26,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#6"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#26",
+      "payloadHash": "e06431c73402626b80867c10c43a395ec11574bc9d4e7bc898e4669f81a8558e",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 18,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#27",
+      "payloadHash": "e97cc3e36a80e5954bb5172a2212c59a2bb256f861343ad4af0728f17060ac7c",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 27,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#7"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#28",
+      "payloadHash": "272abf6bd5551d05be5f6d59221f5356be45b6101a8601e42583dd84bddb409e",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 18,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#29",
+      "payloadHash": "530ace9e45f36784f9d0e4dbdfd4508e581f40a1407ea275711091c47d676771",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 28,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.code.review#8"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#30",
+      "payloadHash": "c0550435b7f391fc7e835cc52ad03297c1bdba1c88854f068f1c436c96e35c51",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 29,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.readiness#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#30",
+      "payloadHash": "rel-3ee73c86",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "development.readiness#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#31",
+      "payloadHash": "4055e2e6d3e82bb07c6cbef6012694b3bbe21a1a44b8b90d001d7818f5fac2de",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 29,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.readiness#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#31",
+      "payloadHash": "rel-2f767b86",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "development.readiness#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#32",
+      "payloadHash": "03eba627734cb1783ed09d5496ae791b8e796340c098f351aa81adf9f968622d",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 29,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "development.readiness#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#33",
+      "payloadHash": "ad084d5a2b11dfd2adf9be24a45cb10a9e88be06898738662405b5aa5eb3ab76",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:ea4aa90f-6d4b-414d-9d45-4b126bf8939d",
+            "branch": "task/31",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 31,
+            "title": "verify Combat Resolves in Victory, Defeat, or Escape"
+          }
+        ],
+        "completed": 30,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#1"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#34",
+      "payloadHash": "52c67b162ce0b55a42d138dec36c1f54f9c2fe7e9f15e2296c380346679a25ad",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:f45317ed-eea1-4b7e-ba2a-7a112f8f56e6",
+            "branch": "task/32",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 32,
+            "title": "verify Enemy Destroyed Increments Kill Count"
+          }
+        ],
+        "completed": 31,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#2"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#35",
+      "payloadHash": "f2e1670c1c7134a1c7fcf15a66cd4b3a41074252d6742de8e88e9f2a6621b36f",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 32,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#3"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#37",
+      "payloadHash": "5039fe2798a3da967802694b6a392b33d53d3b5e5fbfa61e1156c74755671b9f",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:8b8a5f8d-6dac-45b7-8c95-60c1a2f68fb3",
+            "branch": "task/33",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 33,
+            "title": "verify Purchase Ship Upgrades with Sufficient Credits"
+          }
+        ],
+        "completed": 34,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#5"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#36",
+      "payloadHash": "d183d084f2a145e8b72148fb0f0079bbe3cdb830178b08464d086d47979dc3d6",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:7b64cf7d-998f-4c40-ac54-63fe05185c4e",
+            "branch": "task/35",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 35,
+            "title": "verify Elite Rating Progresses Based on Profit and Kills"
+          }
+        ],
+        "completed": 33,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#36",
+      "payloadHash": "rel-ab6069fa",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "verification.ac#4"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#39",
+      "payloadHash": "718b58e8541411763f8c530ca65866a3dd633350e8fda236bf331225ac6f28b9",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:7b64cf7d-998f-4c40-ac54-63fe05185c4e",
+            "branch": "task/35",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 35,
+            "title": "verify Elite Rating Progresses Based on Profit and Kills"
+          }
+        ],
+        "completed": 36,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#7"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#38",
+      "payloadHash": "c87ff8ff88f3d62d5e2e216ba551ccd395928e5a82b6e6a9e8c29a0127dea4c4",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:bf725135-ec94-41a5-9832-cace18ae9e52",
+            "branch": "task/37",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 37,
+            "title": "verify Health Check Endpoint Returns Success"
+          }
+        ],
+        "completed": 35,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#6"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#38",
+      "payloadHash": "rel-b94ea966",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "verification.ac#6"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#40",
+      "payloadHash": "de829a5ac32de429669039c8fceee36fd9b4de5202bf3906a189848f435cb469",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e156ab78-a648-433c-b31a-24e0338c9101",
+            "branch": "task/38",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 38,
+            "title": "verify Visual Effects Rendered for Each Gameplay Phase"
+          }
+        ],
+        "completed": 37,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#8"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#40",
+      "payloadHash": "rel-9ab432bd",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "verification.ac#8"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#42",
+      "payloadHash": "5d2e3bfe818073ece80bff81080afdee45fa40b35d563e3c3c5f465c298dd3e8",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e156ab78-a648-433c-b31a-24e0338c9101",
+            "branch": "task/38",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 38,
+            "title": "verify Visual Effects Rendered for Each Gameplay Phase"
+          }
+        ],
+        "completed": 39,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#10"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#43",
+      "payloadHash": "4cbfb628e58bbb5c398e453950e1c8dfbb2dd500042419f1ba6e0b635a05dcba",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e156ab78-a648-433c-b31a-24e0338c9101",
+            "branch": "task/38",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 38,
+            "title": "verify Visual Effects Rendered for Each Gameplay Phase"
+          }
+        ],
+        "completed": 40,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#11"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#44",
+      "payloadHash": "a7db2bb620018662e23b3b8fab2c29435f1e7969c0483b394c3feed4542e5c0a",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e156ab78-a648-433c-b31a-24e0338c9101",
+            "branch": "task/38",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 38,
+            "title": "verify Visual Effects Rendered for Each Gameplay Phase"
+          }
+        ],
+        "completed": 41,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#12"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#45",
+      "payloadHash": "1b67fa5e3fc11f0e0ca8e83fbaa342533464e4bad491d55dc96852f6d1969ebf",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e156ab78-a648-433c-b31a-24e0338c9101",
+            "branch": "task/38",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 38,
+            "title": "verify Visual Effects Rendered for Each Gameplay Phase"
+          }
+        ],
+        "completed": 42,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#13"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#41",
+      "payloadHash": "f9980a33178de9c69f2faac9364e92ea60010917f693cf5bcbec82fe132ca71f",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:e39cb179-e6b0-4faf-bdcc-d562fe8f223d",
+            "branch": "task/43",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 43,
+            "title": "verify Browser Smoke Test Verifies Canvas Rendering"
+          }
+        ],
+        "completed": 38,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#9"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#46",
+      "payloadHash": "0157f8f118455fb9309dd51ab83853f96972e4a01d7699a33dee873b39e7467b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:cad868d8-d4cb-46b9-9d45-f8f88038159a",
+            "branch": "task/44",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 44,
+            "title": "verify Game Playable After Install and Start"
+          }
+        ],
+        "completed": 43,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#14"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#47",
+      "payloadHash": "998a2e93499adbb0ea3b3a5fd6550be939223dbfde576f6939d6f2834639ef1d",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 44,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#15"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#49",
+      "payloadHash": "rel-e89f81e7",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": true,
+        "restoredStatus": "in_progress"
+      },
+      "task": "verification.ac#17"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "ObserveProcessExited",
+      "exec": "exec#48",
+      "payloadHash": "rel-12dc422b",
+      "rejectionCode": null,
+      "result": {
+        "acknowledged": true,
+        "preservedProjection": false,
+        "restoredStatus": "todo"
+      },
+      "task": "verification.ac#16"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#50",
+      "payloadHash": "4bb6ffa8077be30a6500c41a5556d57bfa4873a6e057f4a62e2991adf7fa484f",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 45,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#16"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#51",
+      "payloadHash": "feaea63f6addd06073ab327cff9cc3eecbb5855b990ae852ab95ede6ad5cbc1d",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:cf762425-aaaa-4b75-84f0-9d87078e7651",
+            "branch": "task/45",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 45,
+            "title": "verify Buy Commodities with Sufficient Resources"
+          }
+        ],
+        "completed": 46,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#17"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#53",
+      "payloadHash": "fdb1392bd48b3542d55ea438d22f04f453bb4c83cceedeb7df48cd5b6eebcc53",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:22784a7e-d52a-4e1e-8962-b40c6753b772",
+            "branch": "task/47",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 47,
+            "title": "verify Buy Rejected When Cargo Capacity Exceeded"
+          }
+        ],
+        "completed": 48,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#19"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#52",
+      "payloadHash": "1438853926163fe533afe478d6365e5bb4a42f08610844348d720819ffb66467",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 47,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#18"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#54",
+      "payloadHash": "1fab2605cc91327c4ca2cc79d0b2d7fe2d3efa0287a5449d89d37057f41d260b",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:66dda9d9-dc64-4409-b9b0-9389cce1be5d",
+            "branch": "task/50",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 50,
+            "title": "verify Hyperspace Jump Prevented with Insufficient Fuel"
+          }
+        ],
+        "completed": 49,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#20"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#56",
+      "payloadHash": "f6a33bdfb67fd6318d1834f671402b16689fda5ec498624e9b27c3d4271b6fa6",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [
+          {
+            "assigned_to": "worker:66dda9d9-dc64-4409-b9b0-9389cce1be5d",
+            "branch": "task/50",
+            "epic_name": "REQ-001",
+            "status": "in_progress",
+            "task_id": 50,
+            "title": "verify Hyperspace Jump Prevented with Insufficient Fuel"
+          }
+        ],
+        "completed": 51,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#22"
+    },
+    {
+      "accepted": true,
+      "actorKind": "controller",
+      "commandKind": "presentation_close",
+      "exec": "exec#55",
+      "payloadHash": "108d23ebbb88580d79236cfc2ccf7810a498fa60bffe1fcb6716839c1e8ab1f4",
+      "rejectionCode": null,
+      "result": {
+        "active_tasks": [],
+        "completed": 50,
+        "completed_new_status": "done",
+        "stop": true,
+        "stop_reason": "task completed — stop now and return your summary"
+      },
+      "task": "verification.ac#21"
+    }
+  ]
+}

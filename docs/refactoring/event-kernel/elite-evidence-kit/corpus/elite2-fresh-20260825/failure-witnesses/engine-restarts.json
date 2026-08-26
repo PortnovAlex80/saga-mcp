@@ -1,0 +1,37 @@
+{
+  "engineExits": [
+    {
+      "code": 2,
+      "product_outcome": null,
+      "reason": "paused",
+      "terminal_status": null
+    },
+    {
+      "code": 2,
+      "product_outcome": null,
+      "reason": "paused",
+      "terminal_status": null
+    },
+    {
+      "code": 2,
+      "product_outcome": null,
+      "reason": "paused",
+      "terminal_status": null
+    },
+    {
+      "code": 2,
+      "product_outcome": null,
+      "reason": "paused",
+      "terminal_status": null
+    },
+    {
+      "code": 2,
+      "product_outcome": null,
+      "reason": "paused",
+      "terminal_status": null
+    }
+  ],
+  "kind": "resilience-observation",
+  "note": "Engine exits before final completion (crash/restart cycles). The run later reached a typed terminal — restart tolerance is part of the observed system behavior.",
+  "runTerminalCycles": 3
+}

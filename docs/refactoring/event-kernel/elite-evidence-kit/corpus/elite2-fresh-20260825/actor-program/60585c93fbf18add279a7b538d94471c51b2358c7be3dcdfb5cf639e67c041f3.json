@@ -1,0 +1,25 @@
+{
+  "contentDigest": "a17aa0397f90da8457cd5a18b7f6aca705ec5cb0f7c5a8964fbae6b558c7778f",
+  "payload": {
+    "acceptanceCriterionKey": "34:AC-19",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [
+        "Verification is static source analysis only; no runtime browser network-intercept test was performed in this environment"
+      ],
+      "observations": [
+        "index.html references only local script paths (/js/galaxy.js, /js/game-state.js, /js/main.js) — no external CDN <script>, <link>, or <img> tags found",
+        "ripgrep scan of all source files (src/, public/, server.js) for fetch, XMLHttpRequest, WebSocket, EventSource, navigator.onLine, network returned zero matches",
+        "package.json has no dependencies or devDependencies fields — the project uses only Node.js built-in modules",
+        "All CSS is inline in index.html <style> block — no external font or stylesheet loads"
+      ],
+      "summary": "Static source analysis of candidate f7bb745 confirms zero external network dependencies and zero runtime network API usage. The game operates fully offline."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-19"
+  },
+  "payloadHash": "a17aa0397f90da8457cd5a18b7f6aca705ec5cb0f7c5a8964fbae6b558c7778f",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

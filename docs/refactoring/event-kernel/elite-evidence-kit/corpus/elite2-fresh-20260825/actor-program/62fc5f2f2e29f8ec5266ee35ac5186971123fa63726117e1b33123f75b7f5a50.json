@@ -1,0 +1,53 @@
+{
+  "contentDigest": "bb0e40449b681c374b9d9604f9a291fdb299c5af035114897a4443ec964a7770",
+  "payload": {
+    "acceptanceCriterionKeys": [
+      "35:AC-20",
+      "36:AC-21"
+    ],
+    "buildProducts": [
+      {
+        "command": "node test/run.js",
+        "exitCode": 0,
+        "failed": 0,
+        "output": "All tests passed.",
+        "passed": 100,
+        "type": "test"
+      }
+    ],
+    "coveredConstraintIds": [
+      "ord-c-006"
+    ],
+    "reasonCodes": [],
+    "repository": {
+      "baseCommit": "d7e622067d26c3e006ea27d63164a9bebea27a5b",
+      "integrationBranch": "dev",
+      "name": "elite2-product",
+      "projectRepositoryId": 1
+    },
+    "schemaVersion": "factory.development-implementation-result.v1",
+    "snapshot": {
+      "changedFiles": [
+        {
+          "change": "added",
+          "path": "test/helpers/setup.js"
+        },
+        {
+          "change": "added",
+          "path": "test/run.js"
+        }
+      ],
+      "commitSha": "f1432c523934c8b9fb27ce66111e061c68dfee93",
+      "treeSha": "d840b1a3e9ca839f8b642446d0b9751a66239380"
+    },
+    "source": {
+      "branch": "saga/task/18/execution/359568f14f69cf1a057e",
+      "commitSha": "f1432c523934c8b9fb27ce66111e061c68dfee93",
+      "workItemKey": "impl-test-suite"
+    },
+    "terminalStatus": "complete",
+    "workItemKey": "impl-test-suite"
+  },
+  "payloadHash": "bb0e40449b681c374b9d9604f9a291fdb299c5af035114897a4443ec964a7770",
+  "schemaId": "factory.development-implementation-result.v1"
+}

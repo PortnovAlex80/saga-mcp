@@ -1,0 +1,29 @@
+{
+  "contentDigest": "55914ef9c846b141aec67feef76f9aef24e73a0420a7d41ffc3788bda3163ef2",
+  "payload": {
+    "acceptanceCriterionKey": "22:AC-7",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "fuel_positivity: calculateFuelCost returns Math.ceil(dist * 0.5); for any dist > 0 this yields >= 1, satisfying fuel_consumed > 0",
+        "fuel_proportionality: Math.ceil(dist * 0.5) is a monotonically non-decreasing function of dist, satisfying the monotonicity invariant",
+        "fuel_identity: Math.ceil(0 * 0.5) = 0, satisfying fuel_consumed(0) = 0",
+        "Unit test 'calculateFuelCost for Lave to Zaonce' PASS",
+        "Unit test 'attemptJump deducts fuel' PASS — state.fuel is reduced by fuelCost after a successful jump",
+        "Unit test 'canJump returns true when enough fuel' PASS",
+        "Unit test 'canJump returns false when insufficient fuel' PASS",
+        "Unit test 'attemptJump fails with insufficient fuel' PASS — fuel unchanged on rejection",
+        "Unit test 'FUEL_PER_DISTANCE_UNIT is 0.5' PASS — constant confirmed",
+        "All 115 unit tests pass (node test/run.js)"
+      ],
+      "summary": "AC-7 verified: hyperspace jump fuel consumption is proportional to distance via Math.ceil(distance * FUEL_PER_DISTANCE_UNIT) in navigation.js:calculateFuelCost. All three formal properties (positivity, proportionality, identity) hold analytically and all 6 navigation-related unit tests pass."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-7"
+  },
+  "payloadHash": "55914ef9c846b141aec67feef76f9aef24e73a0420a7d41ffc3788bda3163ef2",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

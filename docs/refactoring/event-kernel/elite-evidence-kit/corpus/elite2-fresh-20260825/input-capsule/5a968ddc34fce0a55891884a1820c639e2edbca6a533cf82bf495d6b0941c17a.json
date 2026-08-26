@@ -1,0 +1,76 @@
+{
+  "contentDigest": "2bfbb89769c8b7e468b6cfc0bff51958a47565c1072a33c4b9d45ac4d374380d",
+  "payload": {
+    "artifacts": [
+      {
+        "artifactId": 2,
+        "artifactStatus": "draft",
+        "artifactType": "PRD",
+        "contentHash": "347986ddb99c61d9b5747eb375589916076c0a7564e7db1398594c146cbe047f"
+      },
+      {
+        "artifactId": 3,
+        "artifactStatus": "draft",
+        "artifactType": "FR",
+        "contentHash": "4b8b6f11c2a27872db2df605ed35641f8a4a498f52f23860242923f15e804bcd"
+      },
+      {
+        "artifactId": 4,
+        "artifactStatus": "draft",
+        "artifactType": "NFR",
+        "contentHash": "2911e17f7394b5a141390173e4aad33cf1a8001f54fe4718ac2ab4b22584a38a"
+      },
+      {
+        "artifactId": 5,
+        "artifactStatus": "draft",
+        "artifactType": "RULE",
+        "contentHash": "c2c128021e9880bedc68b592b59797d255e54ed4c4e2bd9f66c15fc21119da78"
+      },
+      {
+        "artifactId": 1,
+        "artifactStatus": "draft",
+        "artifactType": "brief",
+        "contentHash": "7a30870d8182145a50dc89faccbc79197ea06a2ed1aab4cd81ccbc1ad3406fe2"
+      }
+    ],
+    "expectedSchemaRef": "factory.formalization-product-bundle.v1",
+    "schemaVersion": "factory.workplace-production-snapshot.v3",
+    "traces": [
+      {
+        "linkType": "derived_from",
+        "sourceId": 2,
+        "targetId": 1,
+        "targetType": "artifact",
+        "traceHash": "bce412de0dc2e649b9951a637ea087f47fc9d3b394389e15382bdeea6cdde384",
+        "traceId": 1
+      },
+      {
+        "linkType": "derived_from",
+        "sourceId": 3,
+        "targetId": 2,
+        "targetType": "artifact",
+        "traceHash": "19224bf102236d0a0427dcf70ec3ede7faeba934c2010d427a5204502e4c23bb",
+        "traceId": 2
+      },
+      {
+        "linkType": "derived_from",
+        "sourceId": 4,
+        "targetId": 2,
+        "targetType": "artifact",
+        "traceHash": "fb68f488a9fd2661299791ee790293ab1ea10a3a59db429debc494b2faf0f621",
+        "traceId": 3
+      },
+      {
+        "linkType": "derived_from",
+        "sourceId": 5,
+        "targetId": 2,
+        "targetType": "artifact",
+        "traceHash": "dd4914f09a59ce61aa7c2146ec7b105cbd138235474f54ec784093355b560bc8",
+        "traceId": 4
+      }
+    ],
+    "workplaceRef": "workplace/2/solution-formalization@1.0.0/formalization-product-contract/singleton"
+  },
+  "payloadHash": "2bfbb89769c8b7e468b6cfc0bff51958a47565c1072a33c4b9d45ac4d374380d",
+  "schemaId": "factory.formalization-product-bundle.v1"
+}

@@ -1,0 +1,26 @@
+{
+  "contentDigest": "9426cc93d9b3aa5c9c1dcc204d08c868e16e186da8f9c11c1b5d1465f35365ff",
+  "payload": {
+    "acceptanceCriterionKey": "27:AC-12",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "public/js/ship.js:57-89: purchaseUpgrade validates credits (line 68), deducts cost (line 79), calls upgrade.apply(state) (line 80) to mutate ship attribute",
+        "public/js/ship.js:2-37: Four upgrades defined with apply functions that mutate cargoCapacity, maxFuel, fuel",
+        "test/run.js:238-244: purchaseUpgrade succeeds with sufficient credits - success=true, creditsRemaining=40, maxFuel=130",
+        "test/run.js:258-261: cargo_extension increases cargoCapacity by 10 to 30",
+        "test/run.js:263-267: large_cargo increases cargoCapacity by 25 to 45",
+        "test/run.js:269-274: military_fuel increases maxFuel by 50 to 150",
+        "Full suite at frozen candidate: 115 passed, 0 failed"
+      ],
+      "summary": "AC-12 (Purchase Ship Upgrades with Sufficient Credits) is fully satisfied by the frozen candidate at commit f7bb7459a09740c526a717710445f2c375093009. The Ship module implements purchaseUpgrade which validates credits, deducts cost, and applies the upgrade attribute mutation. All 7 ship-upgrade tests pass."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-12"
+  },
+  "payloadHash": "9426cc93d9b3aa5c9c1dcc204d08c868e16e186da8f9c11c1b5d1465f35365ff",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}

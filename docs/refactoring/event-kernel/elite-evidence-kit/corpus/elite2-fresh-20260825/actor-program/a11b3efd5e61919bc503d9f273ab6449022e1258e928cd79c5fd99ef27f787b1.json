@@ -1,0 +1,24 @@
+{
+  "contentDigest": "88614b1921e6e265263c4a84cde69ec2e2ee90b153bcc9982130c25e10f7bbf5",
+  "payload": {
+    "acceptanceCriterionKey": "20:AC-5",
+    "acceptedCriterionHash": "6c92a9992d14bdb99276cde21855bcc1fb3e2c682f55b8c38d5dd886b1970313",
+    "candidateHash": "200e6e3b6b79b53055ceabe09ed66036837b3080f698b33ceb142cbea5bfee5e",
+    "evidence": {
+      "limitations": [],
+      "observations": [
+        "public/js/market.js:60 — guard condition: currentCargoCount + quantity > state.cargoCapacity evaluated before any state mutation",
+        "public/js/market.js:61-68 — early return {success:false, reason:'cargo_full', currentLoad, capacity, requested} with no modification to state.credits or state.cargo",
+        "test/run.js:169-175 — test creates state with credits=1000 (sufficient), cargoCapacity=20, buys 21 Food at price 5: totalCost=105 which is affordable, but 21 > 20 capacity → rejected with reason 'cargo_full'",
+        "Idempotency property (INV-8) satisfied structurally: both insufficient-credits and cargo-full branches return before lines 70-86 which mutate state.credits and state.cargo",
+        "Full test suite: 115 passed, 0 failed at frozen candidate commit f7bb7459a09740c526a717710445f2c375093009"
+      ],
+      "summary": "The frozen candidate at commit f7bb7459a09740c526a717710445f2c375093009 correctly rejects buy when it would exceed cargo capacity, preserving credits and cargo unchanged. Implementation in public/js/market.js:60-68 checks currentCargoCount + quantity > state.cargoCapacity before any state mutation and returns {success:false, reason:'cargo_full'}. Unit test 'buy fails when cargo is full' (test/run.js:169-175) confirms rejection with sufficient credits but quantity 21 exceeding capacity 20. All 115 tests pass, 0 failures."
+    },
+    "outcome": "passed",
+    "schemaVersion": "factory.candidate-verification-evidence-product.v2",
+    "verificationItemKey": "verify-ac-5"
+  },
+  "payloadHash": "88614b1921e6e265263c4a84cde69ec2e2ee90b153bcc9982130c25e10f7bbf5",
+  "schemaId": "factory.candidate-verification-evidence-product.v2"
+}
