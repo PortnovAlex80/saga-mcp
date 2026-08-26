@@ -49,7 +49,10 @@ saga-launch-ref.txt
 sim-workspace/
 
 # Generated product emitted into repo root by factory smoke runs.
-index.html
+# Root-anchored (2026-08-26): the bare pattern silently ate every nested
+# fixture/product index.html (WP-08 simple-server, WP-15 qualify fixtures) —
+# committed-but-vanishing files, red builds on every fresh checkout.
+/index.html
 
 # Saga runtime package-store — content-addressed cache of module resources,
 # materialized at install time by production-install.ts. Regenerable from
