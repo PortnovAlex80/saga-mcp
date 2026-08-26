@@ -72,6 +72,12 @@ independent round-2 verifier (counterexample killed, all 8 tasks green).
 All 9 specification digests now inline in the receipt (operator review
 round 3 correction).
 
+## Kernel findings ledger (2026-08-26)
+
+- Finding 1 (WP-13D): DUPLICATE_EFFECT not instance-scoped — **FIXED** (keyed producer+payloadDigest).
+- Finding 2 (WP-13D): human-decision node dead-end — **FIXED** (D12 node rung, pinned RED/GREEN).
+- Finding 3 (WP-13D): no drain-empty oracle — the obligation frontier keeps structural lane rows (materializeWorkplace.production-cell, runGate.*, runEffects, advanceProcessFlow*) after full settlement. Needs a frontier API decision in application/obligation-consumer (structural lane rows vs demand rows). **DEFERRED past EK-11**: qualification runs on the frozen kernel; the exit criteria do not require the drain invariant.
+
 ## New work item: Elite Evidence Kit v1 (operator directive 2026-08-25)
 
 **Status 2026-08-26: EXTRACTION COMPLETE**
