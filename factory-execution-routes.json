@@ -1,7 +1,0 @@
-{
-  "version": "1",
-  "default": {
-    "executor": { "kind": "claude-cli" }
-  },
-  "routes": []
-}

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Build Factory Workshop"
-  short_description: "Assemble declarative universal factory workshops"
-  default_prompt: "Use $build-factory-workshop to design and validate a declarative Production Cell workshop."

@@ -154,9 +154,14 @@ const FUTURE_NAMESPACE = 'src/workflow-kernel/';
 // is prose, not a base directory.
 const SECTION_BASE_OVERRIDES = new Map([['S', '']]);
 
-// Files legitimately deleted since the manifest base (empty until the EK-7 /
-// EK-8 deletion phases execute; then their deletions are appended here).
-const DELETED_SINCE_BASE = new Set([]);
+// Files legitimately deleted since the manifest base. FLIPPED at EK-8
+// (2026-08-26, WP-12): the hard cutover executed the legacy deletion
+// manifest, so V1 inverts for DELETE-classified entries — every file that
+// existed at the manifest base and is classified DELETE MUST now be ABSENT
+// (V1-SURVIVOR). KEEP/RETAIN-AND-MOVE entries must still exist. The
+// per-file DELETED_SINCE_BASE allowlist is therefore obsolete: the
+// classification itself is the deletion record.
+const POST_CUTOVER = !argv.includes('--pre-cutover');
 
 // Real manifest defects surfaced by this validator on the current tree —
 // coordinator amendments pending. Each: { code, includes, detail }.
@@ -475,6 +480,11 @@ function parseLegacy() {
         row.dispositionCol >= 0 ? row.cells[row.dispositionCol]
         : row.verdictCol >= 0 ? row.cells[row.verdictCol] : '';
       const rowDisposition = dispositionOf(rowDispositionCell) ?? dispositionOf(rowText) ?? unitDisposition;
+      // KEEP carve (same convention as tools/ek-legacy-zero.mjs): a token
+      // followed by "(qualifier) KEEP" inside an otherwise-DELETE row carves
+      // that exact token back out (the §E post-cutover guard register).
+      const keepMentions = new Set([...rowText.matchAll(/`([^`]+)`\s*\([^)]*\)\s*KEEP/g)].map((m) => stripLineRef(m[1])));
+      const rowTokenKeep = (s) => keepMentions.has(s);
       for (const ci of row.pathCols) {
         const cell = row.cells[ci] ?? '';
         const cellTokens = backticks(cell).map(stripLineRef);
@@ -504,8 +514,8 @@ function parseLegacy() {
           }
           const crossRef = u.id === 'B.11' && s === 'modules/**' && /resources/i.test(rowText);
           rowTokens.push({
-            raw: s, unit: u.id, paths, disposition: rowDisposition,
-            source: 'row', crossRef, count: countAfter(s, cell),
+            raw: s, unit: u.id, paths, disposition: rowTokenKeep(s) ? 'KEEP' : rowDisposition,
+            source: 'row', crossRef, count: countAfter(s, cell), carved: rowTokenKeep(s),
           });
         }
       }
@@ -716,11 +726,24 @@ const sectionAResolved = [];
 }
 
 // --- shared coverage assembly ------------------------------------------------
-// §G RETAIN-AND-MOVE files are subtracted from every other legacy entry (the
-// manifest's own convention: §B.9's "except the pure-contract move in §G" and
-// §B.14's "except the §G move of canonical-json.ts").
+// §G owns its files (the declared exception: only its table rows count).
+// Pre-cutover §G carried RETAIN-AND-MOVE (subtracted from every DELETE
+// group); post-cutover (2026-08-26 amendment) its rows record the landed
+// kernel successors with verdict SUPERSEDED — DELETE @ EK-8. Either way a
+// §G-covered file is classified ONLY by §G (no cross-unit duplicate).
 const retainSet = new Set(
   legacy.tokens.filter((t) => t.unit === 'G' && t.disposition === 'RETAIN-AND-MOVE')
+    .flatMap((t) => t.paths),
+);
+const gOwnedSet = new Set(
+  legacy.tokens.filter((t) => t.unit === 'G' && t.paths.length > 0)
+    .flatMap((t) => t.paths),
+);
+// KEEP-carve paths (the "(qualifier) KEEP" convention): subtracted from
+// every DELETE classification of the same manifest, mirroring
+// tools/ek-legacy-zero.mjs (`for (const p of keepSet) deleteSet.delete(p)`).
+const keepCarveSet = new Set(
+  legacy.tokens.filter((t) => t.carved && t.disposition === 'KEEP')
     .flatMap((t) => t.paths),
 );
 
@@ -752,6 +775,8 @@ function assembleCoverage(tokens, subtractRetain) {
     }
     for (const p of t.paths) {
       if (subtractRetain && retainSet.has(p) && t.unit !== 'G') continue;
+      if (t.unit !== 'G' && gOwnedSet.has(p)) continue; // §G owns its files
+      if (t.carved !== true && keepCarveSet.has(p) && t.disposition === 'DELETE') continue; // the carve wins over a section DELETE
       if (delegatedElsewhere(p, t.unit)) continue;
       if (!coverage.has(p)) coverage.set(p, []);
       coverage.get(p).push({ unit: t.unit, raw: t.raw, disposition: t.disposition });
@@ -767,13 +792,26 @@ for (const msg of [...new Set(legacyCov.stale)].sort()) red('V1-STALE', `[legacy
 for (const msg of [...new Set(docCov.stale)].sort()) red('V1-STALE', `[document] ${msg}`);
 {
   const vanished = [];
-  for (const p of legacyCov.coverage.keys()) {
-    if (baseFiles.has(p) && !currFiles.has(p) && !DELETED_SINCE_BASE.has(p)) vanished.push(`[legacy] ${p}`);
+  const survivors = [];
+  for (const [p, entries] of [...legacyCov.coverage].sort()) {
+    const isDelete = entries.some((e) => e.disposition === 'DELETE');
+    if (POST_CUTOVER && isDelete && baseFiles.has(p)) {
+      if (currFiles.has(p)) survivors.push(`[legacy] ${p}`);
+      continue;
+    }
+    if (baseFiles.has(p) && !currFiles.has(p)) vanished.push(`[legacy] ${p}`);
   }
   for (const p of docCov.coverage.keys()) {
-    if (baseFiles.has(p) && !currFiles.has(p) && !DELETED_SINCE_BASE.has(p)) vanished.push(`[document] ${p}`);
+    // A document-classified DELETE file may legitimately vanish when its
+    // deletion executes (the legacy-manifest §F overlap at EK-8, or EK-10);
+    // only a vanished KEEP/REWRITE is a defect. No SURVIVOR check here: the
+    // document purge itself is EK-10's exit, not EK-8's.
+    const docDelete = (docCov.coverage.get(p) ?? []).some((e) => e.disposition === 'DELETE');
+    if (docDelete) continue;
+    if (baseFiles.has(p) && !currFiles.has(p)) vanished.push(`[document] ${p}`);
   }
   for (const v of vanished.sort()) red('V1-VANISHED', `${v} was classified at base ${BASE_SHA.slice(0, 8)} but is no longer tracked`);
+  for (const s of survivors.sort()) red('V1-SURVIVOR', `${s} is classified DELETE and existed at the manifest base — the EK-8 cutover requires it gone (resurrection is a red build)`);
 }
 
 // --- V3: consistency (duplicates + disposition conflicts) --------------------

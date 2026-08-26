@@ -1,8 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "synthetic.seo.input.v1",
-  "title": "Synthetic SEO Input (W0-A7 fixture)",
-  "type": "object",
-  "additionalProperties": true,
-  "description": "Data-only placeholder schema. Wave 1 ContractSchemaRegistry will register a concrete codec behind this id."
-}
