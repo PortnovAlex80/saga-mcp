@@ -33,4 +33,5 @@ export default conveyorProject({
     'TerminalProof:workplace.success', 'TerminalProof:workplace.success',
   ]),
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success'],
+  ek11: { planId: 'P10', kind: 'in-memory-job-queue-simulator', fixture: 'qual:job-queue-sim', profile: ["build","cli-smoke","package-receipt","determinism"] },
 });

@@ -1,0 +1,60 @@
+{
+  "kitKind": "ek-qualification-kit",
+  "kitVersion": 1,
+  "source": {
+    "head": "cc2c8145fdb6f5f43a1fd8522953b9374d86b8c8",
+    "packageJsonDigest": "05561f257d04699d3c39a6cc14b9e168290ff5f315b21d35f184e005a00008ac",
+    "packageLockDigest": "80b732d6537454d0f261d17a16bc67d8ed2b82650649ce53f4a569c0a9f93340"
+  },
+  "build": {
+    "distFileCount": 390,
+    "distTreeHash": "26b954e32c912c4f3307ab743921ce4faa5357106289d583c8d598a0970f6699"
+  },
+  "kernel": {
+    "schemaFingerprint": "c53efa8f284c616da61890a9c1ae275a1badee91c3d789ba744b610a1bd820c4",
+    "protocolId": "ek.factory.workflow-kernel",
+    "schemaVersion": 1,
+    "universeDigest": "92751dedf814dc89133df6f5ff4e53a505649f0ab0e40962874007570c77c80f",
+    "universeSchemaVersion": "ek.transition-universe.ek1-reconciliation.v1",
+    "universeCommandCount": 53,
+    "actorVersion": "0563af342f32228bf7d99ff66886345290d92260ef22a9c24f985873c03d9c51",
+    "actorModulesDigest": "dacb8fa73b10ebcf75b1a0adb078f9a669d0b72bfc7e1974a8ece30d548f189c",
+    "complexityBudgetDigest": "f9da8b1a434ec44f84b83d1a07b2a818f05ca06c97ec2283db40a39de155e91a",
+    "roleContractManifestDigest": "4c8a0abab026a8197909c0706b1876cbab24a3aef09579ddf7330cea0a6df545",
+    "promptBudgetProfileDigest": "5648ae361d8cd78ecfbdc56c816ffc0b5e24b03b87805ee5eab955aed2cdffc5",
+    "promptBudgetProfileRef": "content://prompt-budget-profiles/development-factory-2026-08",
+    "promptBudgetSchemaDigest": "e84a3c4a48507a77bfa6094652496df8f52a42e8418fa1386fc1857f67677f24",
+    "tokenCounterIdentityDigest": "53c1b9cddbf6bc6ab3cf38bf388c28caa522307a9f6c23033ea61b6503a52175"
+  },
+  "packages": {
+    "better-sqlite3": "2477bed8910fa9e3a842f20721f86927ef6d1424851f423539c644e48ec20e84"
+  },
+  "admission": {
+    "admissionContractDigest": "d1f9272c330f28c68a83d93f53d98ab9a529dcfb83a9f0b76a0ce47ab24a5048",
+    "validatorDigest": "5913418282d8bf02b9c4d0d2c75fc0afa0807a8e46a98d59bfc49d0f33c2662d",
+    "ekAdmissionReceiptDigest": "7635a4bdc0f9ee5af309897187b49e1196fdf3a6e8e1350c59b4eab7116b4971"
+  },
+  "capsule": {
+    "lineageId": "lineage:simple-server-2026-08",
+    "parentLifecycleRef": "sha256:08e75c68d323cc2246fcba3836f66f3cc9b630b35d224bef2eaed1d32b37f7e2",
+    "capsuleDigest": "af5ebdb86739370e1fcdbedfddd6fa311ed3139a74bae5cc87e860b3a54dff72",
+    "packageBytesDigest": "fe34b8437359f8cffe0c384b703977ee90d478b6f94bcea36cd7a80e31db44c3"
+  },
+  "scenarioUniverse": {
+    "corpusDescriptors": "6e2d37f89ead823310f440c0c2b66d7c3d48f415ae2ad18db9fcca8ed4d98f9c",
+    "corpusFixtures": "8fe266e5503029988c174da96f2964991aea842109229f61fa50109eb6eb23c0",
+    "simpleServerFixture": "cfdec5a455db3f05c7fd6458d2f158edcf73ad648e0c2b50581760e56ddb8378",
+    "qualifyFixtures": "97eaadd75580d8b0c3a11a8d741e93129935c80e96f5f303b3011661f6cffff9",
+    "eliteEvidenceKit": "2af5e45b1c5e19b6c5fdef32986a221d0f68ab780bfbe4560973cf9fb73bce51"
+  },
+  "seed": 20260826,
+  "kitId": "281c370abd16902dfb100167cb0808706a78dcd85f7c1ba3d46466a527e4d3a6",
+  "frozenAt": "2026-08-26T03:35:30.113Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {},
+    "cwd": "D:/Development/saga-mcp-EK-WP15"
+  }
+}

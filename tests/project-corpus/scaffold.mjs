@@ -30,6 +30,7 @@ export function durableProject({
   faultSchedule = [], expectedRefusal, expectedWorldHeads, expectationPolicies = {}, justifications = {},
   seed = 20260825, topologyShape = 'chain', concurrencyCap = 1, allowedTools,
   expectedWaits, expectedObligations, expectedEvidence, expectedProofs, expectedEvents,
+  ek11,
 }) {
   const waits = expectedWaits ?? authoredWaits(program).map((kind) => ({ kind, state: waitStateOf(program, kind) }));
   return {
@@ -64,6 +65,7 @@ export function durableProject({
     expectedRefusal,
     expectedInvariants,
     ...(notes ? { notes } : {}),
+    ...(ek11 ? { ek11 } : {}),
   };
 }
 
@@ -71,6 +73,7 @@ export function durableProject({
 export function conveyorProject({
   projectId, projectKind, description, conveyorTopology, product, expectedInvariants, notes,
   expectedWorldHeads, expectations, expectationPolicies = {}, justifications = {},
+  ek11,
 }) {
   return {
     formatVersion: PROJECT_CORPUS_FORMAT_VERSION,
@@ -97,6 +100,7 @@ export function conveyorProject({
     expectedWorld: { heads: expectedWorldHeads, allowExtraHeads: true },
     expectedInvariants,
     ...(notes ? { notes } : {}),
+    ...(ek11 ? { ek11 } : {}),
   };
 }
 
@@ -104,6 +108,7 @@ export function conveyorProject({
 export function developmentProject({
   projectId, projectKind, description, product, expectedInvariants, notes,
   expectedWorldHeads, expectations, expectationPolicies = {}, justifications = {},
+  ek11,
 }) {
   return {
     formatVersion: PROJECT_CORPUS_FORMAT_VERSION,
@@ -127,6 +132,7 @@ export function developmentProject({
     expectedWorld: { heads: expectedWorldHeads, allowExtraHeads: true },
     expectedInvariants,
     ...(notes ? { notes } : {}),
+    ...(ek11 ? { ek11 } : {}),
   };
 }
 

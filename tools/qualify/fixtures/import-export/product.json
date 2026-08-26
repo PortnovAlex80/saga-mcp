@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "import-export",
+  "description": "Qualification product fixture (import-export) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/server.mjs"
+  ]
+}

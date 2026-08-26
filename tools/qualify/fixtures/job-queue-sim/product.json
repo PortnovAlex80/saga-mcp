@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "job-queue-sim",
+  "description": "Qualification product fixture (job-queue-sim) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/simulate.mjs"
+  ]
+}

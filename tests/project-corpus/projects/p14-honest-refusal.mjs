@@ -49,4 +49,5 @@ export default durableProject({
     { instanceId: 'workplace:1', status: 'author-intent-admitted' },
   ],
   notes: ['Authored events cover only the steps before the refusal: the refused application emits no event.'],
+  ek11: { planId: 'P14', kind: 'multi-module-event-processor', fixture: 'qual:event-processor', profile: ["build","test","cli-smoke","package-receipt","determinism"] },
 });

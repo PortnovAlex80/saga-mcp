@@ -1,0 +1,36 @@
+{
+  "kind": "ek-qualify.series-result.v1",
+  "series": "concurrency-ek11-r3",
+  "kitId": "44adc64a30a919058342133e72bad44574e05d38b9e8b45fe228866d65ba04ab",
+  "kitPath": "D:/Development/saga-mcp-EK-WP15/docs/refactoring/event-kernel/qualification/kits/44adc64a30a919058342133e72bad44574e05d38b9e8b45fe228866d65ba04ab.json",
+  "sourceHead": "86cde442ad4f316a9a7b20b06d4be1ea98737ed2",
+  "distTreeHash": "26b954e32c912c4f3307ab743921ce4faa5357106289d583c8d598a0970f6699",
+  "seed": 20260826,
+  "frozenAt": "2026-08-26T03:55:48.411Z",
+  "sealedAt": "2026-08-26T03:57:59.385Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {},
+    "cwd": "D:/Development/saga-mcp-EK-WP15"
+  },
+  "allGreen": false,
+  "evidenceRoot": "D:/Development/ek-qual-evidence/44adc64a30a919058342133e72bad44574e05d38b9e8b45fe228866d65ba04ab/concurrency-ek11-r3",
+  "evidenceManifestDigest": "480665dac7650a547712e96fd794b9d0deb396d230a41d02395103283610a244",
+  "evidenceFileCount": 13,
+  "resultTable": [
+    {
+      "id": "proof-a-four-independent-concurrent",
+      "status": "green",
+      "elapsedMs": 0,
+      "checksGreen": "20/20"
+    },
+    {
+      "id": "proof-b-diamond-cap2-barrier",
+      "status": "red",
+      "elapsedMs": 0,
+      "checksGreen": "5/7"
+    }
+  ]
+}

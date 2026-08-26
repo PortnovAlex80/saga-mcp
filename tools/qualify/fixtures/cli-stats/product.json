@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "cli-stats",
+  "description": "Qualification product fixture (cli-stats) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/stats.mjs"
+  ]
+}

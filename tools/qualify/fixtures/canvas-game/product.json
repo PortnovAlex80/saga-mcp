@@ -1,0 +1,10 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "canvas-game",
+  "description": "Qualification product fixture (canvas-game) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/game.mjs",
+    "public/index.html",
+    "public/game.js"
+  ]
+}

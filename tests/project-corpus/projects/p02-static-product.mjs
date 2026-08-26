@@ -33,4 +33,5 @@ export default developmentProject({
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success', 'product-verification-green', 'product-determinism'],
   notes: ['The static product gate = build + structure hook (no server to loopback); determinism = identical build digest on re-build.'],
+  ek11: { planId: 'P02', kind: 'static-browser-counter', fixture: 'repo:static-site', profile: ["build","browser-smoke","package-receipt","determinism"] },
 });

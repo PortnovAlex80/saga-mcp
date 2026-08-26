@@ -35,4 +35,5 @@ export default conveyorProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success'],
+  ek11: { planId: 'P09', kind: 'file-backed-notes-http-service', fixture: 'qual:served-crud', profile: ["build","test","api-smoke","browser-smoke","package-receipt","persistence"] },
 });

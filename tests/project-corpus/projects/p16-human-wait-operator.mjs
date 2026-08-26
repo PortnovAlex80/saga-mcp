@@ -32,4 +32,5 @@ export default durableProject({
     'Both human-input waits (the gate verdict and enterHumanWait) are discharged exactly by the operator commands.',
     'KERNEL RESIDUAL (recorded honestly, not worked around): the node reducer has no cell-acceptance edge from the human-decision path, so the run ladder cannot close past a human-decision node; the honest terminal of the human-wait arm is the workplace terminal proof (the WP-13B reference terminal).',
   ],
+  ek11: { planId: 'P16', kind: 'local-release-packager-idempotent-receipt', fixture: 'qual:cli-packager', profile: ["build","cli-smoke","package-receipt"] },
 });

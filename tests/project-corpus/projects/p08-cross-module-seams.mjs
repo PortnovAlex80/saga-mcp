@@ -40,4 +40,5 @@ export default conveyorProject({
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success'],
   notes: ['The seam-consumption oracle: compareGraphs(forwardObservedGraph, declaredPlanningGraph) must be the typed exact equality (WP-09 observed-graphs).'],
+  ek11: { planId: 'P08', kind: 'markdown-doc-site-generator', fixture: 'qual:md-site', profile: ["build","browser-smoke","package-receipt","determinism"] },
 });

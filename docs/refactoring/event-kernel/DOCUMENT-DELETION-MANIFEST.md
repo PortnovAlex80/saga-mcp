@@ -204,6 +204,7 @@ Product/marketing material, runtime-agnostic.
 | Experiment/designer trees | `core-view/**` (2), `workshop-designer/README.md`, `tool-templates/process-modules/module-stage-tracker.md` | DELETE | old-format tooling/templates |
 | Authoring kits | `tools/module-authoring-kit/**` (3 md), `tools/scenario-authoring-kit/**` (2 md) | DELETE | authoring kits of the deleted formats (legacy manifest §D) |
 | Transport doc | `tools/agent-proxy/README.md` | KEEP | documents the surviving opencode transport (WP-18 instruments it) |
+| Qualification product fixture doc | `tools/qualify/fixtures/md-site/content.md` | KEEP | the markdown INPUT of the EK-11 md-site product fixture (WP-15): the generator's own source material, verified by the qualification product smoke — not documentation (amendment 2026-08-26) |
 | Docs-graph | `tracker-view/docs-graph/README.md` | DELETE | dies with the docs-graph tool (WP-10 decision) |
 | Package resources .md | `src/process-modules/modules/*/package/resources/**` (45 md) + `nodes/use-case/resources/**` (2 md) + `src/modules/documentation/WORKSHOP.md` (1) = 48 | DELETE (content re-hosted — amendment 2026-08-26, same as legacy §B.12) | workshop semantics re-hosted in installed manifests by WP-11 (landed); the old paths were deleted at the EK-8 cutover |
 | Requirements templates | `docs/requirements/templates/**` (3) | KEEP (path moves) | see §M |

@@ -17,6 +17,23 @@
 import { evaluateWorldInvariants, unevaluatedInvariants } from './invariants.mjs';
 import { runDurableSession, runPlanningConveyor, runDevelopmentVertical } from './modes.mjs';
 
+/** The compact receipt-evidence view of one observed world (WP-15: the
+ *  qualification wrapper evaluates the EK-11 receipt-completeness law over
+ *  exactly these durable facts - no live kernel objects cross the boundary). */
+export function receiptWorldOf(world) {
+  return {
+    evidence: (world?.evidence ?? []).map((fact) => ({ ref: fact.ref, kind: fact.kind })),
+    proofs: [...new Set((world?.proofs ?? []).map((proof) => proof.id))].sort(),
+    workIntents: [...(world?.workIntents?.values() ?? [])].map((intent) => ({
+      intentRef: intent.intentRef,
+      workplace: intent.workplaceInstanceId,
+      role: intent.protocolRole,
+      roleContract: intent.roleContract,
+    })),
+    heads: [...(world?.heads?.entries() ?? [])].map(([instanceId, head]) => ({ instanceId, status: head.status, ...(head.terminal !== undefined ? { terminal: head.terminal } : {}) })),
+  };
+}
+
 /**
  * Run one project descriptor.
  *
@@ -43,6 +60,7 @@ export async function runProject(descriptor, options = {}) {
       status: 'red',
       checks: [{ id: 'drive', status: 'red', detail: `${error?.stack ?? String(error)}` }],
       invariants: [],
+      observed: null,
       elapsedMs: Date.now() - startedAt,
       error: String(error?.message ?? error),
     };
@@ -67,6 +85,9 @@ export async function runProject(descriptor, options = {}) {
     checks: allChecks,
     invariants,
     elapsedMs: Date.now() - startedAt,
+    ...(mode.observed !== undefined && mode.observed !== null
+      ? { observed: { summary: mode.observed.summary, events: mode.observed.events, receiptWorld: receiptWorldOf(mode.observed.world) } }
+      : { observed: null }),
   };
 }
 

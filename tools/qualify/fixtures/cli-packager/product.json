@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "cli-packager",
+  "description": "Qualification product fixture (cli-packager) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/packager.mjs"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "metrics-dashboard",
+  "description": "Qualification product fixture (metrics-dashboard) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/server.mjs",
+    "public/index.html",
+    "public/app.js",
+    "public/style.css"
+  ]
+}

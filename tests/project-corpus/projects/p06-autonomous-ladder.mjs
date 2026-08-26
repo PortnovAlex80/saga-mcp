@@ -25,4 +25,5 @@ export default durableProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
   notes: ['The seven-proof ladder (cell/workplace/node/process/stage/lifecycle/run) is authored from the universe proof tables.'],
+  ek11: { planId: 'P06', kind: 'cli-csv-to-json-transformer', fixture: 'qual:cli-transform', profile: ["build","cli-smoke","package-receipt","determinism"] },
 });

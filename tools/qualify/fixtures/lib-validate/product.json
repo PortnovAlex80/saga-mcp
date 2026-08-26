@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "lib-validate",
+  "description": "Qualification product fixture (lib-validate) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/validate.mjs"
+  ]
+}

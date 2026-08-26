@@ -1,0 +1,90 @@
+{
+  "kind": "ek-qualify.series-result.v1",
+  "series": "dev-ek11-01",
+  "kitId": "034ae797a94b1f5a99c551caca23358a9d48ab4fb324e69178bc431a40b9a078",
+  "kitPath": "D:/Development/saga-mcp-EK-WP15/docs/refactoring/event-kernel/qualification/kits/034ae797a94b1f5a99c551caca23358a9d48ab4fb324e69178bc431a40b9a078.json",
+  "sourceHead": "09d589caf6e75fafcbe485227b8b5cd96bcfad0c",
+  "distTreeHash": "26b954e32c912c4f3307ab743921ce4faa5357106289d583c8d598a0970f6699",
+  "seed": 20260826,
+  "frozenAt": "2026-08-26T03:28:45.169Z",
+  "sealedAt": "2026-08-26T03:29:08.358Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {},
+    "cwd": "D:/Development/saga-mcp-EK-WP15"
+  },
+  "allGreen": true,
+  "evidenceRoot": "D:/Development/ek-qual-evidence/034ae797a94b1f5a99c551caca23358a9d48ab4fb324e69178bc431a40b9a078/dev-ek11-01",
+  "evidenceManifestDigest": "183d82fdad44e9fd14df2fe37a9a26eeb1cd55fb58ed3564530ee3e34872cc35",
+  "evidenceFileCount": 241,
+  "resultTable": [
+    {
+      "id": "run-01",
+      "status": "green",
+      "elapsedMs": 1082,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-02",
+      "status": "green",
+      "elapsedMs": 989,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-03",
+      "status": "green",
+      "elapsedMs": 999,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-04",
+      "status": "green",
+      "elapsedMs": 1193,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-05",
+      "status": "green",
+      "elapsedMs": 1042,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-06",
+      "status": "green",
+      "elapsedMs": 989,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-07",
+      "status": "green",
+      "elapsedMs": 1039,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-08",
+      "status": "green",
+      "elapsedMs": 1145,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-09",
+      "status": "green",
+      "elapsedMs": 1178,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-10",
+      "status": "green",
+      "elapsedMs": 1201,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "identical-normalized-traces",
+      "status": "green",
+      "elapsedMs": 0,
+      "checksGreen": "1/1"
+    }
+  ]
+}

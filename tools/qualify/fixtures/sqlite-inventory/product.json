@@ -1,0 +1,9 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "sqlite-inventory",
+  "description": "Qualification product fixture (sqlite-inventory) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/server.mjs",
+    "src/inventory.mjs"
+  ]
+}

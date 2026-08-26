@@ -33,4 +33,5 @@ export default developmentProject({
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success', 'product-verification-green'],
   notes: ['The product check runs the fixture build/loopback/smoke scripts on a temp copy - hermetic (loopback on 127.0.0.1 ephemeral port).'],
+  ek11: { planId: 'P01', kind: 'served-hello-frontend-api', fixture: 'repo:simple-server', profile: ["build","test","api-smoke","browser-smoke","package-receipt","determinism"] },
 });

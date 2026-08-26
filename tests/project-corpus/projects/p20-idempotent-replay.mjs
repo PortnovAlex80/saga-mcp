@@ -23,4 +23,5 @@ export default durableProject({
     { instanceId: 'workplace:1', status: 'terminal', terminal: 'TerminalProof:workplace.success' },
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
+  ek11: { planId: 'P20', kind: 'full-stack-expense-tracker-persistence-tests', fixture: 'qual:served-crud', profile: ["build","test","api-smoke","browser-smoke","package-receipt","persistence"] },
 });

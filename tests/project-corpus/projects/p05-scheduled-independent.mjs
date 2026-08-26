@@ -36,4 +36,5 @@ export default conveyorProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success', 'product-verification-green', 'product-determinism', 'determinism-replay'],
+  ek11: { planId: 'P05', kind: 'todo-crud-web-app', fixture: 'qual:served-crud', profile: ["build","test","api-smoke","browser-smoke","package-receipt","persistence"] },
 });

@@ -31,4 +31,5 @@ export default conveyorProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success'],
+  ek11: { planId: 'P12', kind: 'json-schema-validator-package', fixture: 'qual:lib-validate', profile: ["build","test","cli-smoke","package-receipt"] },
 });
