@@ -209,16 +209,57 @@ if (isMain) {
       process.exit(0);
     }
 
-    /* The execution path is the coordinator's (EK-12 owner). WP-15 prewires
-     * only: a green-fenced driver that has NOT been exercised end to end in
-     * this work package must not silently start a real run. */
-    process.stderr.write(
-      '\nREAL SERIES EXECUTION NOT IMPLEMENTED BY WP-15 (prewire-only work package).\n'
-      + 'The coordinator owns the EK-12 execution: wire the engine start behind these fences\n'
-      + '(the fences above are the blocking precondition surface), then run the three\n'
-      + 'projects consecutively with per-run evidence preserved under the prewire paths.\n',
-    );
-    process.exit(3);
+    /* ---- EK-12 EXECUTION (the coordinator-owned engine, real cognition) ----
+     * Plan law order: the NON-QUALIFYING preflight injection check first
+     * (oversized hook context + oversized tool result refused at the exact
+     * pre-send receipt, zero network sends), then the three projects
+     * CONSECUTIVELY on this one immutable kit - a red run STOPS the series
+     * (evidence preserved; the restart-from-R1 law applies after repair). */
+    const { runRealProject, preflightInjectionCheck } = await import('./lib/real-run.mjs');
+    const log = (line) => process.stdout.write(line);
+    const preflight = await preflightInjectionCheck(series, { log });
+    if (!preflight.ok) {
+      process.stderr.write('\nREAL SERIES PREFLIGHT RED - the pre-send receipt boundary failed to refuse the oversized injections; the series refuses to start.\n');
+      process.exit(1);
+    }
+
+    const results = [];
+    for (const id of seriesIds) {
+      const descriptor = REAL_SERIES[id];
+      process.stdout.write(`\n=== ${id}: ${descriptor.title} (fixture ${descriptor.fixture}) ===\n`);
+      const result = await runRealProject(series, descriptor, { log });
+      results.push(result);
+      process.stdout.write(`  ${id} ${result.status.toUpperCase()} in ${result.elapsedMs}ms (checks ${result.checksGreen}; ${result.admittedReceipts} real provider requests)\n`);
+      for (const check of result.checks.filter((check) => check.status === 'red')) {
+        process.stdout.write(`      [RED] ${check.id}: ${check.detail}\n`);
+      }
+      if (result.status !== 'green') {
+        /* The consecutive law: STOP at the first red run; the evidence dir is
+         * preserved (created before the run, never rolled back). */
+        const { record } = await series.seal(results.map((entry) => ({
+          id: entry.id, status: entry.status, elapsedMs: entry.elapsedMs, checksGreen: entry.checksGreen, admittedReceipts: entry.admittedReceipts, evidenceDir: entry.evidenceDir,
+        })));
+        const { writeSeriesRecord } = await import('./lib/series.mjs');
+        writeSeriesRecord(record, join(REPO_ROOT, 'docs', 'refactoring', 'event-kernel', 'qualification', 'series'));
+        process.stderr.write(`\nREAL SERIES STOPPED: ${id} is RED on kit ${series.kitId} - per the EK-12 law the series restarts from R1 on a NEW kit after the minimal repair.\n`);
+        process.exit(1);
+      }
+    }
+
+    const { summary, sealed, record } = await series.seal(results.map((result) => ({
+      id: result.id,
+      status: result.status,
+      elapsedMs: result.elapsedMs,
+      checksGreen: result.checksGreen,
+      admittedReceipts: result.admittedReceipts,
+      evidenceDir: result.evidenceDir,
+    })));
+    const { writeSeriesRecord } = await import('./lib/series.mjs');
+    const recordPath = writeSeriesRecord(record, join(REPO_ROOT, 'docs', 'refactoring', 'event-kernel', 'qualification', 'series'));
+    process.stdout.write(`\n=== REAL SERIES: ${results.filter((result) => result.status === 'green').length}/${results.length} GREEN on kit ${series.kitId} ===\n`);
+    process.stdout.write(`evidence: ${series.evidenceRoot.replaceAll('\\', '/')} (manifest digest ${sealed.treeHash})\n`);
+    process.stdout.write(`record: ${recordPath.replaceAll('\\', '/')}\n`);
+    process.exit(summary.allGreen ? 0 : 1);
   } catch (error) {
     process.stderr.write(`${String(error?.message ?? error)}\n`);
     process.exit(1);
