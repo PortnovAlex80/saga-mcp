@@ -172,12 +172,15 @@ export async function runProductEvidence(kind, profile, repo, options = {}) {
     if (build2.code !== 0 || digest2 !== digest1) return fail('determinism', `second build digest ${String(digest2)} != ${digest1}`);
   }
 
-  /* 3. The product's own tests (default discovery over the staged repo's
-   *    test/ tree - node --test resolves the directory itself; a positional
-   *    directory argument is NOT a supported discovery form). */
+  /* 3. The product's own unit proof harnesses (the fixture test/ files are
+   *  product-owned PROOF harnesses named *.proof.mjs - the repo's orphan
+   *  ratchet hosts REPO suites; product fixtures are executed explicitly
+   *  here, plus any classic *.test.mjs a product ships). */
   if (profile.includes('test')) {
     if (!existsSync(join(repo, 'test'))) return fail('test', 'the product declares no test/ directory');
-    const test = runNode(repo, ['--test'], 'unit-tests');
+    const files = readdirSync(join(repo, 'test')).filter((name) => /\.(test|proof)\.mjs$/.test(name)).sort();
+    if (files.length === 0) return fail('test', 'the product test/ directory carries no *.test.mjs / *.proof.mjs harness');
+    const test = runNode(repo, ['--test', ...files.map((name) => join('test', name))], `unit-tests(${files.length})`);
     steps.push(test);
     if (test.code !== 0) return fail('test', test.stderr.trim().slice(0, 400) || 'tests failed');
   }
