@@ -144,6 +144,24 @@ test('mutation f: a duplicate effect accepted twice is killed', () => {
   assert.ok(violations.some((v) => v.kind === 'DUPLICATE_EFFECT'), `oracle killed the duplicate effect: ${JSON.stringify(violations).slice(0, 200)}`);
 });
 
+test('D12 node rung regression: the human-decision detour converges to the SAME terminal acceptance', () => {
+  // WP-13D finding 2 (fixed 2026-08-26): after the operator's human
+  // decision and the provider outcome, recordCellAcceptance must accept
+  // from provider-outcome-recorded — the human loop is a detour, never a
+  // dead end. Removing the rung re-dead-ends every human-waited node (the
+  // p16 corpus shape) and this pin goes red.
+  const nodeRun = REDUCERS.find((entry) => entry.aggregate === 'NodeRun');
+  const edge = nodeRun.transitions.find((t) => t.command === 'nodeRun.recordCellAcceptance');
+  assert.ok(edge, 'the node acceptance edge exists');
+  assert.ok(edge.fromStatuses.includes('provider-outcome-recorded'),
+    'recordCellAcceptance accepts from provider-outcome-recorded (the D12 detour converges)');
+  assert.equal(edge.toStatus, 'cell-acceptance-recorded');
+  assert.equal(edge.terminal, true);
+  // The guard must STILL demand full settlement — the detour never lowers the bar.
+  const guardSource = String(nodeRun.guards['nodeRun.recordCellAcceptance']);
+  assert.match(guardSource, /TerminalProof:workplace.success/, 'the proof requirement stays');
+  assert.match(guardSource, /CellFinalAcceptance/, 'the acceptance evidence requirement stays');
+});
 test('DUPLICATE_EFFECT regression: the legal post-uncertainty re-settle is NOT a duplicate (D12 wake path)', () => {
   // WP-13B residual fix (2026-08-26): unknown -> TypedWait:effect-uncertainty
   // -> operator wake -> success is the LEGAL effect ladder; the oracle must

@@ -101,7 +101,13 @@ export const NodeRunReducer: AggregateReducer = {
     { command: 'nodeRun.create', fromStatuses: [], toStatus: 'created', terminal: false },
     { command: 'nodeRun.materializeCell', fromStatuses: ['created'], toStatus: 'cell-materialized', terminal: false },
     { command: 'nodeRun.recordKernelResult', fromStatuses: ['cell-materialized'], toStatus: 'kernel-result-recorded', terminal: false, obligations: [] },
-    { command: 'nodeRun.recordCellAcceptance', fromStatuses: ['kernel-result-recorded'], toStatus: 'cell-acceptance-recorded', terminal: true },
+    // D12 node-side rung (2026-08-26 convergence): after the operator's human
+    // decision and the provider outcome, the node converges back to the SAME
+    // terminal acceptance the kernel-result path uses — the human loop is a
+    // DETOUR, never a dead end. The guard still demands
+    // TerminalProof:workplace.success + CellFinalAcceptance + settled effects,
+    // so only an honestly-dispositioned, fully-settled cell reaches terminal.
+    { command: 'nodeRun.recordCellAcceptance', fromStatuses: ['kernel-result-recorded', 'provider-outcome-recorded'], toStatus: 'cell-acceptance-recorded', terminal: true },
     { command: 'nodeRun.recordHumanDecision', fromStatuses: ['kernel-result-recorded'], toStatus: 'human-decision-recorded', terminal: false },
     { command: 'nodeRun.recordProviderOutcome', fromStatuses: ['human-decision-recorded'], toStatus: 'provider-outcome-recorded', terminal: false, applies: (input) => input.effectOutcome !== 'unknown' },
     { command: 'nodeRun.recordProviderOutcome', fromStatuses: ['human-decision-recorded'], toStatus: 'provider-uncertainty-waited', terminal: false, applies: (input) => input.effectOutcome === 'unknown' },
