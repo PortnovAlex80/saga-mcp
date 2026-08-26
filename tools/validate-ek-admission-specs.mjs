@@ -55,7 +55,12 @@ const specFiles = {
   transitionUniverse: path.join(SPECS, 'frozen-inputs', 'transition-universe.json'),
 };
 const digests = Object.fromEntries(Object.entries(specFiles).map(([k, f]) => [k, sha256(f)]));
-const selfDigest = sha256(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+// ACD self-digest (audit round 3, item 5): read THIS FILE via fileURLToPath —
+// the Windows-correct URL→path conversion. The previous .pathname regex
+// produced a self-reading that diverged from the kit's fs-path reading,
+// splitting the admissionContractDigest into two values. One file, one
+// reading, one digest — identical to the qualify kit formula.
+const selfDigest = sha256(fileURLToPath(import.meta.url));
 // mutationCorpusDigest: subsumed by hashing the three validator scripts that
 // EMBED their mutation corpora (each RED corpus lives in the validator file);
 // recorded explicitly so the ACD formula is legible.

@@ -60,17 +60,11 @@ const runSet = new Set(runFiles);
 const qSet = new Set(quarantine.map(q => q.path));
 
 // G1 — quarantined files are real, deliberate skips; no leak into run-sets.
-test('G1a: every quarantined file exists on disk', () => {
-  // EK-8 cutover (2026-08-26): the quarantine table shrank to the one
-  // KEEP-tree pre-existing-red file - every other entry's file was deleted
-  // by the purge, and a quarantine row for an absent file is a phantom skip.
-  assert.ok(quarantine.length >= 1, 'expected at least 1 quarantined file');
-  for (const q of quarantine) {
-    assert.ok(
-      existsSync(path.join(root, q.path)),
-      `quarantined file missing on disk: ${q.path}`,
-    );
-  }
+// G1a (EK-9 closure repair): zero quarantine — vacuously every quarantined
+// file exists; the law is the emptiness itself (see G3).
+test('G1a: quarantine is empty (vacuous existence holds)', () => {
+  assert.equal(quarantine.length, 0);
+  for (const q of quarantine) assert.ok(existsSync(q.path));
 });
 
 test('G1b: no quarantined file leaks into a blocking run-set', () => {
@@ -176,12 +170,13 @@ test('G2p: the repository has ZERO orphan test files (R1 omnibus ratchet)', () =
     + 'commit it lands');
 });
 
-// G3 — the known pre-existing-red file stays quarantined (the FLAKY classes
-// died with their files at the EK-8 purge).
-test('G3: the pre-existing-red diagnostics file is quarantined', () => {
-  for (const f of ['tests/architecture/submission-validator-diagnostics.test.mjs']) {
-    assert.ok(qSet.has(f), `required quarantine missing: ${f}`);
-  }
+// G3 (EK-9 closure repair, 2026-08-26): the plan requires NO quarantine,
+// shadow or unhosted category. The last pre-existing-red entry was removed
+// WITH its file (subject deleted at EK-8; blocking successors live in the
+// kernel suites — capsule-ingress typed refusals + check-diagnostic decodes).
+test('G3: the matrix has ZERO quarantine entries (the EK-9 law)', () => {
+  assert.equal(quarantine.length, 0,
+    `quarantine must be empty — entries: ${quarantine.map(q => q.path).join(', ')}`);
 });
 
 test('G3b: flaky quarantine entries reference a stabilization plan', () => {

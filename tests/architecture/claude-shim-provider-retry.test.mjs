@@ -313,7 +313,11 @@ test('T2: short sleeps emit no heartbeat (nothing to keep alive)', async () => {
 // T3/T4 — integration with the stub opencode binary
 // ---------------------------------------------------------------------------
 
-function runShim(plan, { timeoutMs = 30_000 } = {}) {
+// Timing budget: load-safe (audit round 3). The shim spawns a real node
+// child + stub provider; under the FULL sequential matrix the 30s budget
+// was exceeded at 34.5s. 120s covers the loaded lane; the retry-semantics
+// oracle below is unchanged.
+function runShim(plan, { timeoutMs = 120_000 } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'claude-shim-retry-'));
   const statePath = path.join(dir, 'state.txt');
   const child = spawn(process.execPath, [SHIM, '-p', '--bare', '--model', 'glm-4.7'], {

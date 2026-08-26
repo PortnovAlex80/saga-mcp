@@ -127,11 +127,15 @@ const GROUPS = {
 // was deleted by the purge left the table (a quarantine row for an absent
 // file is a phantom skip). The one surviving entry is the architecture
 // suite's pre-existing-red diagnostics file, which stays in the KEEP tree.
-const QUARANTINE = [
-  { glob: 'tests/architecture/submission-validator-diagnostics.test.mjs',
-    kind: 'PRE-EXISTING-RED',
-    reason: 'assertion mismatch (outcome expected "failed", got undefined) on a clean checkout; retained through the EK-8 purge as a KEEP-tree file (its subject module was deleted; EK-10 documentation purge owns its final disposition).' },
-];
+// EK-9 closure repair (2026-08-26, audit round 3): the LAST quarantine entry
+// (submission-validator-diagnostics, PRE-EXISTING-RED) is REMOVED with its
+// file — its subject module was deleted at the EK-8 purge and the file was
+// retained only pending EK-10 disposition (passed). The diagnostic law it
+// guarded has BLOCKING SUCCESSORS in the kernel: the capsule-ingress typed
+// refusal battery + the check-diagnostic decode proofs in the
+// workflow-kernel suites (development/capsule-ingress.test.mjs et al).
+// The matrix now has ZERO quarantine entries (the EK-9 law).
+const QUARANTINE = [];
 
 // --- glob expansion (single-level '*', recursive '**', no deps) --------------
 // WP-13C fix (2026-08-26): a '**' segment now matches ZERO OR MORE directory
