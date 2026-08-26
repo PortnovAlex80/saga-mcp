@@ -225,3 +225,16 @@ and evidence root preserved under its own kit directory in
   gates demanded two tree changes (fixture unit harnesses renamed to
   `*.proof.mjs` for the orphan-ratchet law; the md-site fixture input
   classified in the document deletion manifest — KEEP).
+
+## FINAL re-run (2026-08-26, post-EK-12-tooling — the audit-mandated single-kit record)
+
+On the FINAL kit `123504a4…` (source HEAD `00261a0d`, the same immutable kit as the
+EK-12 real series):
+
+- Development reliability: **10/10 GREEN, traces IDENTICAL** (`series/dev-20260826164500.json`)
+- Scripted corpus: **20/20 GREEN** (`series/projects-20260826164530.json`)
+- Concurrency: Proof A **GREEN (20/20)**, Proof B **GREEN (7/7)** (`series/concurrency-20260826164626.json`)
+
+The earlier red Proof B (diamond settlement) was fixed by the process-run
+concurrency rung + the proof ladder wiring; every superseded intermediate
+result below remains as the honest bring-up history.

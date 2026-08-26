@@ -1,0 +1,144 @@
+{
+  "kind": "ek-qualify.series-result.v1",
+  "series": "projects-20260826041750",
+  "kitId": "2f42823876e061d846f2935fc7d27013cf61746340fddb10d0a0b52523b9e31a",
+  "kitPath": "D:/Development/saga-mcp-SAGA4/docs/refactoring/event-kernel/qualification/kits/2f42823876e061d846f2935fc7d27013cf61746340fddb10d0a0b52523b9e31a.json",
+  "sourceHead": "63571f59f6d4bc28918897a3799f7c787f037a51",
+  "distTreeHash": "32edf199c794f9294c3394c207a7f2d41e87e52faaa762ab3d739e1bebc14d05",
+  "seed": 20260826,
+  "frozenAt": "2026-08-26T04:17:49.579Z",
+  "sealedAt": "2026-08-26T04:18:30.838Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {},
+    "cwd": "D:/Development/saga-mcp-SAGA4"
+  },
+  "allGreen": true,
+  "evidenceRoot": "D:/Development/ek-qual-evidence/2f42823876e061d846f2935fc7d27013cf61746340fddb10d0a0b52523b9e31a/projects-20260826041750",
+  "evidenceManifestDigest": "5170e6fcd406f2b9a5988f120815f56003dbd83673ca3a0a6bf3821b17ebe778",
+  "evidenceFileCount": 414,
+  "resultTable": [
+    {
+      "id": "P01-p01-served-happy",
+      "status": "green",
+      "elapsedMs": 2803,
+      "checksGreen": "13/13"
+    },
+    {
+      "id": "P02-p02-static-product",
+      "status": "green",
+      "elapsedMs": 1054,
+      "checksGreen": "14/14"
+    },
+    {
+      "id": "P03-p03-served-repair",
+      "status": "green",
+      "elapsedMs": 1344,
+      "checksGreen": "14/14"
+    },
+    {
+      "id": "P04-p04-batch-pipeline",
+      "status": "green",
+      "elapsedMs": 1798,
+      "checksGreen": "12/12"
+    },
+    {
+      "id": "P05-p05-scheduled-independent",
+      "status": "green",
+      "elapsedMs": 2493,
+      "checksGreen": "14/14"
+    },
+    {
+      "id": "P06-p06-autonomous-ladder",
+      "status": "green",
+      "elapsedMs": 1355,
+      "checksGreen": "15/15"
+    },
+    {
+      "id": "P07-p07-autonomous-worker-loss",
+      "status": "green",
+      "elapsedMs": 971,
+      "checksGreen": "13/13"
+    },
+    {
+      "id": "P08-p08-cross-module-seams",
+      "status": "green",
+      "elapsedMs": 1658,
+      "checksGreen": "10/10"
+    },
+    {
+      "id": "P09-p09-chain-topology",
+      "status": "green",
+      "elapsedMs": 2008,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "P10-p10-diamond-topology",
+      "status": "green",
+      "elapsedMs": 2315,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "P11-p11-fan-in-topology",
+      "status": "green",
+      "elapsedMs": 1650,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "P12-p12-fan-out-topology",
+      "status": "green",
+      "elapsedMs": 1546,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "P13-p13-independent-topology",
+      "status": "green",
+      "elapsedMs": 2694,
+      "checksGreen": "11/11"
+    },
+    {
+      "id": "P14-p14-honest-refusal",
+      "status": "green",
+      "elapsedMs": 726,
+      "checksGreen": "11/11"
+    },
+    {
+      "id": "P15-p15-failed-predecessor",
+      "status": "green",
+      "elapsedMs": 1170,
+      "checksGreen": "10/10"
+    },
+    {
+      "id": "P16-p16-human-wait-operator",
+      "status": "green",
+      "elapsedMs": 1429,
+      "checksGreen": "14/14"
+    },
+    {
+      "id": "P17-p17-effect-uncertainty",
+      "status": "green",
+      "elapsedMs": 959,
+      "checksGreen": "12/12"
+    },
+    {
+      "id": "P18-p18-restart-matrix",
+      "status": "green",
+      "elapsedMs": 8460,
+      "checksGreen": "14/14"
+    },
+    {
+      "id": "P19-p19-projection-faults",
+      "status": "green",
+      "elapsedMs": 1497,
+      "checksGreen": "15/15"
+    },
+    {
+      "id": "P20-p20-idempotent-replay",
+      "status": "green",
+      "elapsedMs": 2355,
+      "checksGreen": "17/17"
+    }
+  ]
+}
