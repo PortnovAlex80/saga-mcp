@@ -3,8 +3,8 @@
   "packageTitle": "Immutable baseline and gate ledger",
   "plan": "docs/plans/CONFORMANCE-CLOSURE-PLAN.md",
   "generatedBy": "integration owner (CC-00)",
-  "baseSha": "37ce4c00",
-  "baseSelection": "RE-CAPTURED 2026-08-24 (canonical BM-5 integration): the BM-5 series (e64b1a34, 010f600c, 5ac00dc5 from stage22/bm5-file-identity) was cherry-picked onto the canonical ADR-095 phase-2C/3 saga4 line (27a81403) with byte-identical evidence blobs — raw committed blob hashes recomputed at the integrated tree: conformance-report gitBlobOid 5c83feec / sha256 e3d29e61..., harvest-manifest gitBlobOid 3ae2c03c / sha256 55a3ad81..., identical to the pins taken at e64b1a34. baseSha advances to the canonical integration head 087f1a65 so the evidence-freeze commit is on the saga4 lineage itself (K0-E base verification reachable from a saga4-only clone); the blob pins are UNCHANGED and the e64b1a34 supersession below is preserved verbatim. Earlier: RE-CAPTURED 2026-08-24 (BM-5 correction follow-up): the original CC-00 base 6ddcb107 (origin/saga4 == local saga4 at CC-00 start, one commit above the historical draft base 53cf7c81) is superseded for PIN PURPOSES ONLY — e64b1a34 legitimately regenerated the conformance-report snapshot (universe 176 -> 178, ADR-095 phase-2 terminal-accounting tokens) without repinning, leaving K0-E red on a clean checkout of that commit. Pins re-captured at the new evidence-freeze SHA e64b1a34 per the supersession discipline (supersededValues below); the harvest-manifest blob is unchanged since 6ddcb107 and keeps its original pin",
+  "baseSha": "cfa273d101def2454425e2644967845ac295b5bd",
+  "baseSelection": "RE-CAPTURED 2026-08-26 (EK integration branch): the conformance-report blob was regenerated at 838a737b (final canonical-plan EC-10 disposition + suite snapshot refresh) without repinning, leaving K0-E red; per the supersession discipline the pins were re-captured at the new blob (5d57f9ea) and baseSha advances to the EK integration head cfa273d101def2454425e2644967845ac295b5bd (evidence blobs byte-identical from 838a737b through this head; surfaced by WP-13C base verification). RE-CAPTURED 2026-08-24 (canonical BM-5 integration): the BM-5 series (e64b1a34, 010f600c, 5ac00dc5 from stage22/bm5-file-identity) was cherry-picked onto the canonical ADR-095 phase-2C/3 saga4 line (27a81403) with byte-identical evidence blobs — raw committed blob hashes recomputed at the integrated tree: conformance-report gitBlobOid 5c83feec / sha256 e3d29e61..., harvest-manifest gitBlobOid 3ae2c03c / sha256 55a3ad81..., identical to the pins taken at e64b1a34. baseSha advances to the canonical integration head 087f1a65 so the evidence-freeze commit is on the saga4 lineage itself (K0-E base verification reachable from a saga4-only clone); the blob pins are UNCHANGED and the e64b1a34 supersession below is preserved verbatim. Earlier: RE-CAPTURED 2026-08-24 (BM-5 correction follow-up): the original CC-00 base 6ddcb107 (origin/saga4 == local saga4 at CC-00 start, one commit above the historical draft base 53cf7c81) is superseded for PIN PURPOSES ONLY — e64b1a34 legitimately regenerated the conformance-report snapshot (universe 176 -> 178, ADR-095 phase-2 terminal-accounting tokens) without repinning, leaving K0-E red on a clean checkout of that commit. Pins re-captured at the new evidence-freeze SHA e64b1a34 per the supersession discipline (supersededValues below); the harvest-manifest blob is unchanged since 6ddcb107 and keeps its original pin",
   "worktree": "D:/Development/saga-mcp-CC-00 (branch cc/CC-00-immutable-baseline)",
   "liveEngines": {
     "elite6": {
@@ -53,7 +53,7 @@
       "command": "npm run conformance:v1",
       "exit": 0,
       "mode": "committed-snapshot",
-      "committedReportSha256": "0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818",
+      "committedReportSha256": "884be3289fc04d2693dc3902ab7254381c6801bdb5c80bf5cc3eacf4fc65946f",
       "semanticDiffFromCommitted": "none (rewrites generatedAt only)"
     },
     "coverageFactory": {
@@ -184,9 +184,9 @@
     "verifiedBy": "tests/factory-proof/k0-baseline.test.mjs (K0-E): reads the exact committed blob through git cat-file (never checkout bytes) and fails on any pin mismatch, missing pin, or non-64-hex pin",
     "files": {
       "tests/factory-evidence/conformance-report.json": {
-        "sha256": "0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818",
-        "gitBlobOid": "f347878abed6ba0f93e0229e156e2629496e8f0d",
-        "blobBytes": 28917
+        "sha256": "884be3289fc04d2693dc3902ab7254381c6801bdb5c80bf5cc3eacf4fc65946f",
+        "gitBlobOid": "5d57f9ea3275b0e0aba36492bdf772344d29b481",
+        "blobBytes": 33700
       },
       "tests/factory-evidence/harvest-manifest.json": {
         "sha256": "faaebf5dec4941463c0a45a610884c1106208f4e610f5dd3f3ead8efbc67dabd",
@@ -629,5 +629,12 @@
   ],
   "reportCorrections": [
     "tests/factory-evidence/conformance-report.json:144-147 says mutation kills are K4-owned; per the closure plan the report text itself is corrected in CC-31 (mutation identity/kill closure are K3; K4 owns fault schedules)"
+  ],
+  "supersededValues": [
+    {
+      "field": "committedEvidenceDigests.files['tests/factory-evidence/conformance-report.json'] + CC-00-BASELINE.md (conformance-report pin)",
+      "was": "gitBlobOid f347878abed6ba0f93e0229e156e2629496e8f0d / sha256 0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818 (28917 bytes)",
+      "identifiedAs": "838a737b (EK integration branch, 2026-08-26) committed the final canonical-plan EC-10 disposition note together with the conformance-report snapshot the blocking suites regenerate (mode harvest -> committed-snapshot, generatedAt refreshed) WITHOUT repinning, leaving K0-E red at that HEAD; superseded 2026-08-26 by the same discipline: pins re-captured at the EK integration head (blob 5d57f9ea3275b0e0aba36492bdf772344d29b481, 33700 bytes) — surfaced by WP-13C's base verification"
+    }
   ]
 }

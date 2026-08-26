@@ -85,6 +85,7 @@ Policy: the new database protocol is greenfield (plan §"Fresh protocol only"). 
 | `factory_gate_decisions` (1859) | Immutable gate decisions (ADR-053) | DELETE | EK-8 | `GateDecision` (new relation; pure contract moves — §G) |
 | `factory_workplace_gate_decision_heads` (1894) | Current gate decision head | DELETE | EK-8 | `Workplace` aggregate head revision |
 | `factory_gate_finding_set_chain` (1929) | Finding-trajectory chain (lazily created in `sqlite-gate-finding-set-chain.ts`) | DELETE | EK-8 | finding evidence refs on `GateDecision` |
+| `factory_human_gate_resolutions` (2026-08-24, HUMAN-GATE-CONSOLE) | Operator accept/reject answers to `GATE_HUMAN_REQUIRED` parks — append-only, bytes-guarded (workplace + gate decision key + candidate-bytes subject binding + provider) | DELETE | EK-8 | `TypedWait:human-input`/`effect-uncertainty` + operator disposition receipts (D12) + the command-only projection console (WP-10/WP-11V) |
 
 ### A.4 Engine / launch / recovery family
 
@@ -173,7 +174,7 @@ All are created by repository constructors with `CREATE TABLE IF NOT EXISTS` (th
 | `src/orchestrate-cli.ts` | Old orchestration CLI | EK-8 | new run CLI under the runbook (EK-10 `FACTORY-RUNBOOK.md`) |
 | `src/checkpoint-cli.ts` | Checkpoint capture/restore CLI | EK-8 | none — obsolete (obligation recovery; no snapshots) |
 
-### B.2 `src/app/**` (18 files) — engine host, start, continuation — DELETE @ EK-8
+### B.2 `src/app/**` (19 files) — engine host, start, continuation — DELETE @ EK-8
 
 All 18 files (`automatic-pre-spawn-recovery.ts`, `composition-root.ts`, `dispatch-loop.ts`, `engine-start-adoption.ts`, `engine-start-lifecycle-burial.ts`, `factory-boot-revision.ts`, `factory-continuation.ts`, `factory-documentation-continuation.ts`, `factory-redevelopment.ts`, `factory-release-continuation.ts`, `factory-start.ts`, `launch-terminal-settlement.ts`, `operator-soft-stop.ts`, `orchestration-idle-state.ts`, `product-lifecycle-repository-bindings.ts`, `product-lifecycle-run-starter.ts`, `product-lifecycle-runtime.ts`, `start-product-lifecycle-from-idea.ts`) are the old production orchestration entry/composition. **`engine-start-adoption.ts` and `factory-boot-revision.ts` are the mandatory-DELETE DB-adoption and schema-bootstrap-mutation members of this family.** Replacement: new composition root + obligation driver + lifecycle/stage/process/node aggregates (WP-05/WP-07/WP-09; cutover WP-12).
 
@@ -244,7 +245,19 @@ All files under `src/process-modules/modules/{discovery,formalization,developmen
 
 `runtime/orchestration-mode.ts` is an old/new-style switch (mandatory DELETE class); `shared/authority/**` (execution-context, build-execution-context, authorize-tool-call) is the role-resolution-by-execution-context machinery replaced by the pinned `CanonicalRoleContract` (WP-17); `shared/assign-one-card.ts` is board assignment (EK-7 class); `shared/work-intent.ts` types are re-frozen by EK-1.
 
-## C. `tracker-view/` production UI (33 files) — DELETE @ EK-8 (projection rebuilt by WP-10)
+
+
+### B.15 `src/workflow-kernel/**` — the NEW runtime landed by the EK waves — KEEP (the replacement itself)
+
+Landed 2026-08-24..26 by WP-05..WP-11/WP-13. These files ARE the replacement
+column of this manifest — the future-namespace tokens the prose above
+referenced, now landed. KEEP; classified so V2 no-rot holds over the grown
+tree (the EK-8 cutover deletes the OLD side, never this tree).
+
+| Path(s) | Role | Phase | Replacement |
+|---|---|---|---|
+| `domain/**`, `persistence/**`, `application/**`, `context-envelope/**`, `roles/**`, `development/**`, `planning/**`, `projection/**`, `testing/**`, `workshops/**` | the new event-projected kernel packages (model, sole-writer repositories, obligation consumer/waits/faults, context accountant + pre-send admission, role compiler, Development vertical + capsule ingress, planning/settlement, Kanban projection, test actors/fault scheduler, converted workshops) | — (KEEP: this IS the replacement) | n/a — the replacement itself |
+## C. `tracker-view/` production UI (34 files) — DELETE @ EK-8 (projection rebuilt by WP-10)
 
 | Path(s) | Current authority role | Phase | Replacement |
 |---|---|---|---|
@@ -253,6 +266,7 @@ All files under `src/process-modules/modules/{discovery,formalization,developmen
 | `lifecycle-endpoints.mjs` | **Direct `INSERT INTO tasks`** (`lifecycle-endpoints.mjs:268`) and worker observation endpoints | **EK-7** (direct board write) | typed `WorkItem`/planning commands; projection read |
 | `board-render.mjs`, `artifact-render.mjs`, `artifact-presentation.mjs` | Board/artifact rendering off `tasks`/`artifacts` | EK-8 | `KanbanCard` projection rendering |
 | `claude-runner.mjs` + `claude-runner.d.mts` | Worker spawn through the opencode shim; hosts the `FACTORY_CLAUDE_BACKEND_FORBIDDEN` fail-closed guard and `SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS` tripwire behavior | EK-8 | WP-18 instrumented OpenCode transport; **the claude-CLI prohibition and the `~/.claude/settings.json` tripwire must be re-implemented in the new transport — operational law, not legacy** |
+| `human-gate-endpoints.mjs` | Operator answer surface for GATE_HUMAN_REQUIRED parks + open worker questions (GET /api/human-gates, POST /api/human-gates/resolve, /api/human-requests*) — the Elite-2 gap closure | EK-8 | typed waits + operator disposition commands + the projection console (WP-10/WP-11V; D12) |
 | `engine-supervisor.mjs`, `product-delivery-composition.mjs`, `product-delivery-local-release-composition.mjs`, `product-idea-source.mjs`, `repeated-tool-loop.mjs`, `structured-context-hook.mjs`, `model-management.mjs`, `verification-accounting-endpoints.mjs`, `git-bootstrap.mjs`, `shared.mjs` | Engine host/UI services around the old runtime (incl. `/api/model/set` writer and verification-accounting writes) | EK-8 | new engine host + command API; `/api/model/set` becomes a typed operator command under the runbook |
 | `lifecycle-pipeline/**` (4), `docs-graph/**` (11) | Pipeline view + docs graph tool | EK-8 | projection views over the new read API (WP-10); docs-graph is tooling, re-pointed or deleted by WP-10 owner decision |
 

@@ -486,7 +486,13 @@ function parseLegacy() {
             continue;
           }
           if (u.id.startsWith('A')) continue; // §A rows classify tables (V4), not paths
-          if (s.startsWith(FUTURE_NAMESPACE)) {
+          if (s.startsWith(FUTURE_NAMESPACE) && rowDisposition !== 'KEEP') {
+            // "Diagnostics only until EK lands it" — the kernel LANDED
+            // (2026-08-24..26 waves). A future-namespace token in a PATH
+            // column of a KEEP row is a CLASSIFICATION row (§B.15: the new
+            // runtime classifies itself); inside Replacement/prose cells of
+            // DELETE rows the token stays what it always was — replacement
+            // prose, never classification.
             rowTokens.push({ raw: s, unit: u.id, paths: [], disposition: null, source: 'row', crossRef: true, count: null });
             continue;
           }
@@ -581,12 +587,13 @@ function parseLegacy() {
 
 // --- DOCUMENT manifest parse -------------------------------------------------
 function parseDocument() {
-  const units = splitUnits(docMd, 'A', 'S');
+  const units = splitUnits(docMd, 'A', 'U');
   for (const u of units) {
     if (SECTION_BASE_OVERRIDES.has(u.id)) u.baseDir = SECTION_BASE_OVERRIDES.get(u.id);
   }
   const tokens = [];
   for (const u of units) {
+    if (u.id === 'T') continue; // T is the counts section — bookkeeping prose, never classification
     const unitDisposition = dispositionOf(u.title);
     const headingDirs = headingPaths(u.title).filter((t) => t.includes('/') && !t.includes('*') && !t.includes('\u2026') && !BARE_SCOPE_ROOTS.has(t));
     const swallow = headingDirs.length > 0 && unitDisposition !== null;

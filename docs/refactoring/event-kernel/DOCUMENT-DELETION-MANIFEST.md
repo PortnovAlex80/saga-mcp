@@ -220,3 +220,17 @@ Product/marketing material, runtime-agnostic.
   - DELETE 237 = root 3 (DRAGON-PROMPT, DRAGON-MAP, ЖУРНАЛ-ЗАПУСКОВ) + .claude 1 + docs-root 4 + architecture prose 22 (incl. the unregistered proposal) + design 5 + factory-map 12 + factory-run 27 (stages + conformance-closure) + factory 7 + handoff 25 + ideas(docs) 5 + plans 7 + research 6 + testing 19 + verification 4 + vision 2 + workshops 2 + agents 6 + skills 28 + modules-ext 11 + scenarios-ext 2 + ideas(root) 2 + core-view 2 + workshop-designer 1 + tool-templates 1 + tools 5 + tracker-view/docs-graph 1 + old-format test-fixture documents 29 (characterization 8, factory-contract/design 11, synthetic 4, installation 2, matrix 1, MOCK-CLAUDE 1).
 - **Artifacts: KEEP 11 / DELETE 11.** Grand totals: **KEEP 177 / REWRITE 14 / DELETE 248**.
 - Zero unclassified; nothing both KEEP and DELETE; every DELETE with evidence value is ordered after FINAL-RECEIPT pinning.
+## U. EK-wave additions (14) — classified 2026-08-26
+
+Files that joined the document scope during the EK waves (successor plan,
+human-gate console design record, per-package cutover notes, a committed
+test fixture, and the pre-existing DRAFT-* supersession set surfaced by the
+no-rot sweep).
+
+| Group | Files | Verdict | Reason |
+|---|---|---|---|
+| DRAFT supersession set | `DRAFT-AGENTS.md`, `docs/DRAFT-CURRENT-DOCUMENTS.md`, `docs/architecture/DRAFT-CONVEYOR-MENTAL-MODEL.md`, `docs/architecture/DRAFT-CONVEYOR-TRANSITION-CHECKLIST.md`, `docs/architecture/DRAFT-CONVEYOR-TRANSITION-DIAGNOSTICS.md`, `docs/architecture/DRAFT-WORKFLOW-KERNEL.md`, `docs/operations/DRAFT-FACTORY-RUNBOOK.md`, `docs/testing/DRAFT-WORKFLOW-KERNEL-TEST-STRATEGY.md` | DELETE | drafts superseded by their living counterparts; EK-10 rewrites the living docs, never the drafts |
+| Human-gate law | `docs/architecture/HUMAN-GATE-CONSOLE.md` | REWRITE | the human-boundary law (operator disposition, append-only audit, bytes guard) folds into the EK-10 runbook + kernel docs; the saga4-specific console implementation dies with the old runtime |
+| Successor plan | `docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md` | KEEP | plan of record (executes after EK-13) |
+| Cutover artifacts | `src/workflow-kernel/development/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/delivery/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/discovery/EK8-CUTOVER-NOTES.md` | KEEP | live refactoring artifacts consumed by WP-12's cutover |
+| Test fixture | `tests/infrastructure/ek-fixtures/elite-smoke/product/docs/srs.md` | KEEP | committed determinism fixture content (WP-13C) |

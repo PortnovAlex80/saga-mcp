@@ -313,9 +313,20 @@ for (const file of [...tracked].filter((f) => f.startsWith('src/') && /\.(ts|mjs
 
 // --- L3: forbidden old table names absent from production SQL ------------------
 const forbiddenTables = [...new Set(tableNames)].sort();
+// Scanner-pattern exemption (same convention as the architecture guard's
+// BENIGN registers): files whose old-table references are DETECTION DATA —
+// the literal forbidden SQL a fence scans production code FOR — not live
+// queries. Every entry carries its justification; the register is asserted
+// minimal by ek-removal-guard RG4a (unexempted hits fail L3).
+const L3_SCANNER_PATTERN_FILES = new Set([
+  // WP-10's F1 fence: its violation pattern IS the forbidden tasks-reading
+  // SQL the fence exists to catch in production code.
+  'src/workflow-kernel/projection/fences.ts',
+]);
 const tableHits = [];
 for (const file of survivors) {
   if (!/\.(ts|mjs|js)$/.test(file)) continue;
+  if (L3_SCANNER_PATTERN_FILES.has(file)) continue;
   const text = readFileSync(path.join(ROOT, file), 'utf8');
   for (const name of forbiddenTables) {
     const re = new RegExp(

@@ -39,7 +39,7 @@ All commands run in the isolated worktree unless noted.
 Committed evidence digests at base SHA:
 
 - `tests/factory-evidence/conformance-report.json` sha256 (raw git blob at `37ce4c00`)
-  `0c4ee70e53c5cd7db808381678f8156ee00ee68cce4e825ef9c3818be8561818`
+  `884be3289fc04d2693dc3902ab7254381c6801bdb5c80bf5cc3eacf4fc65946f`
 - `tests/factory-evidence/harvest-manifest.json` sha256 (raw git blob at `37ce4c00`)
   `faaebf5dec4941463c0a45a610884c1106208f4e610f5dd3f3ead8efbc67dabd`
 
