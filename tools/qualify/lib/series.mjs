@@ -68,13 +68,19 @@ export async function openSeries({ kitReference, seriesId, evidenceRootOverride 
  *  - every WorkIntent (the owner of every ActivityAttempt; the attempt's
  *    activityAttempt.create pins the intent's role contract) carries a
  *    nonempty role-contract digest;
- *  - every attempt reached a serviced state (admitted/outcome/refusal
- *    recorded) and the admitted PromptAssemblyReceipt count covers the
- *    provider-sent attempts (unbroken sequence start per request);
- *  - the run terminal proof family is present and single.
+ *  - every attempt reached a serviced state - a completed outcome, a typed
+ *    provider refusal, a cancellation, or a CLASSIFIED worker loss (the
+ *    loss classification IS the honest terminal of a lost worker; it is
+ *    never an unserviced attempt) - and the admitted PromptAssemblyReceipt
+ *    count covers the provider-sent attempts;
+ *  - the run-terminal law: AT MOST one run terminal proof always, and
+ *    EXACTLY one when this project kind terminalizes its run (kinds whose
+ *    oracle is an honest early refusal, a pending operator disposition or
+ *    a recorded human decision legitimately carry none - the descriptor's
+ *    expected world heads declare which world this is).
  * Returns { ok, checks, receipts }.
  */
-export function receiptCompleteness(world) {
+export function receiptCompleteness(world, { requireRunTerminal = true } = {}) {
   const checks = [];
   const receipts = {
     attempts: [],
@@ -114,8 +120,9 @@ export function receiptCompleteness(world) {
   for (const [instanceId, head] of attempts) {
     receipts.attempts.push({ attempt: instanceId, status: head.status });
   }
-  const unserviced = receipts.attempts.filter((attempt) => !['outcome-recorded', 'provider-refusal-recorded', 'cancelled'].includes(attempt.status));
-  checks.push({ id: 'attempts-serviced', ok: unserviced.length === 0, detail: unserviced.length === 0 ? `${receipts.attempts.length} attempt(s) all reached a serviced terminal state` : `attempts left unserviced: ${unserviced.map((attempt) => `${attempt.attempt}:${attempt.status}`).join(', ')}` });
+  const SERVICED_ATTEMPT_STATES = ['outcome-recorded', 'provider-refusal-recorded', 'cancelled', 'worker-loss-classified'];
+  const unserviced = receipts.attempts.filter((attempt) => !SERVICED_ATTEMPT_STATES.includes(attempt.status));
+  checks.push({ id: 'attempts-serviced', ok: unserviced.length === 0, detail: unserviced.length === 0 ? `${receipts.attempts.length} attempt(s) all reached a serviced terminal state (outcome / typed refusal / cancellation / classified worker loss)` : `attempts left unserviced: ${unserviced.map((attempt) => `${attempt.attempt}:${attempt.status}`).join(', ')}` });
 
   const providerAttempts = receipts.attempts.filter((attempt) => attempt.status === 'outcome-recorded' || attempt.status === 'provider-refusal-recorded');
   checks.push({
@@ -124,7 +131,14 @@ export function receiptCompleteness(world) {
     detail: `${receipts.promptAssemblyReceipts.admitted.length} admitted PromptAssemblyReceipt(s) over ${providerAttempts.length} provider-sent attempt(s)${receipts.promptAssemblyReceipts.refused.length > 0 ? ` (+${receipts.promptAssemblyReceipts.refused.length} refused)` : ''}`,
   });
   const runTerminals = receipts.terminalProofs.filter((proof) => proof.startsWith('TerminalProof:run.'));
-  checks.push({ id: 'exactly-one-run-terminal', ok: runTerminals.length === 1, detail: `${runTerminals.length} run terminal proof(s): ${runTerminals.join(', ') || 'none'}` });
+  const terminalLawOk = runTerminals.length <= 1 && (!requireRunTerminal || runTerminals.length === 1);
+  checks.push({
+    id: requireRunTerminal ? 'exactly-one-run-terminal' : 'no-duplicate-run-terminal',
+    ok: terminalLawOk,
+    detail: requireRunTerminal
+      ? `${runTerminals.length} run terminal proof(s): ${runTerminals.join(', ') || 'none'}`
+      : `${runTerminals.length} run terminal proof(s) - this kind's oracle is the honest non-terminal family (a ${runTerminals.length === 0 ? 'refusal/disposition' : 'terminal'} world), duplication is still forbidden`,
+  });
   return { ok: checks.every((check) => check.ok), checks, receipts };
 }
 

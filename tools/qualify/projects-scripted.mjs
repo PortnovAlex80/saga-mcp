@@ -56,11 +56,16 @@ async function qualifyOneProject(series, descriptor) {
   if (result.invariants !== undefined) context.invariants = result.invariants.map((invariant) => ({ id: invariant.id, status: invariant.status }));
 
   /* 2. Receipt completeness over the observed world (when the corpus
-   *    engine exposed it). */
+   *    engine exposed it). The run-terminal law is kind-aware: a project
+   *    whose declared expected world leaves factory-run non-terminal (the
+   *    honest early-refusal / pending-disposition / human-decision oracles)
+   *    legitimately carries no run terminal proof - duplication is still
+   *    forbidden. */
   if (result.observed !== null && result.observed !== undefined) {
     const observed = result.observed;
     context.traceFingerprint = traceFingerprint(observed.summary);
-    const completeness = receiptCompleteness(observed.receiptWorld);
+    const requireRunTerminal = descriptor.expectedWorld.heads.some((head) => head.instanceId === 'factory-run:1' && head.status === 'terminal');
+    const completeness = receiptCompleteness(observed.receiptWorld, { requireRunTerminal });
     for (const check of completeness.checks) checks.push(check.ok ? okCheck(check.id, check.detail) : redCheck(check.id, check.detail));
     writeEvidence(evidenceDir, 'receipts.json', completeness.receipts);
     writeEvidence(evidenceDir, 'normalized-trace.json', observed.summary);

@@ -172,10 +172,12 @@ export async function runProductEvidence(kind, profile, repo, options = {}) {
     if (build2.code !== 0 || digest2 !== digest1) return fail('determinism', `second build digest ${String(digest2)} != ${digest1}`);
   }
 
-  /* 3. The product's own tests. */
+  /* 3. The product's own tests (default discovery over the staged repo's
+   *    test/ tree - node --test resolves the directory itself; a positional
+   *    directory argument is NOT a supported discovery form). */
   if (profile.includes('test')) {
     if (!existsSync(join(repo, 'test'))) return fail('test', 'the product declares no test/ directory');
-    const test = runNode(repo, ['--test', 'test/'], 'unit-tests');
+    const test = runNode(repo, ['--test'], 'unit-tests');
     steps.push(test);
     if (test.code !== 0) return fail('test', test.stderr.trim().slice(0, 400) || 'tests failed');
   }
