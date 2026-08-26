@@ -29,4 +29,5 @@ export default durableProject({
     { instanceId: 'lifecycle-run:1', status: 'terminal', terminal: 'TerminalProof:lifecycle.success' },
   ],
   notes: ['The repair loop exercises workplace.enterRepairWait + workplace.rolloverRepairEpoch (retry arm) before the accepted re-submission.'],
+  ek11: { planId: 'P03', kind: 'cli-text-statistics', fixture: 'qual:cli-stats', profile: ["build","cli-smoke","package-receipt","determinism"] },
 });

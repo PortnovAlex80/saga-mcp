@@ -157,6 +157,31 @@ export const DESCRIPTOR_KEYS = [
   'expectedRefusal',
   'expectedInvariants',
   'notes',
+  'ek11',
+];
+
+/**
+ * The EK-11 qualification alignment block (WP-15): maps one corpus project
+ * onto the plan's 20-product inventory (plan phase EK-11 table) and declares
+ * the product-evidence profile the qualification driver verifies against a
+ * FRESH product repository per run. Additive and optional: the corpus drive
+ * never reads it; only tools/qualify does.
+ */
+export const EK11_KEYS = ['planId', 'kind', 'fixture', 'profile'];
+
+/** The closed product-evidence vocabulary (per plan EK-11: build/test/start
+ *  evidence per kind; browser smoke for browser products; API/CLI smoke
+ *  otherwise; local Delivery/package effect receipts). */
+export const EK11_EVIDENCE_PROFILES = [
+  'build',
+  'test',
+  'browser-smoke',
+  'api-smoke',
+  'cli-smoke',
+  'package-receipt',
+  'determinism',
+  'persistence',
+  'recovery',
 ];
 
 export const PRODUCT_KEYS = ['class', 'verification', 'fixture'];
@@ -452,6 +477,36 @@ export function validateProjectDescriptor(doc) {
               if ('tools' in step && !Array.isArray(step.tools)) err(`${at}.tools`, 'wrong-type', 'tools must be an array of tool names');
               if ('dropFields' in step && !Array.isArray(step.dropFields)) err(`${at}.dropFields`, 'wrong-type', 'dropFields must be an array');
             });
+          }
+        }
+      }
+    }
+  }
+
+  /* ek11 (optional, WP-15): the plan EK-11 product-kind alignment. */
+  if ('ek11' in doc && doc.ek11 !== undefined) {
+    const ek11 = doc.ek11;
+    if (!isObject(ek11)) err('$.ek11', 'wrong-type', 'ek11 must be a JSON object');
+    else {
+      closedKeys(ek11, EK11_KEYS, '$.ek11', err);
+      for (const key of EK11_KEYS) {
+        if (!(key in ek11)) err(`$.ek11.${key}`, 'missing-key', `required key "${key}" is absent`);
+      }
+      if ('planId' in ek11 && !/^P[0-9]{2}$/.test(String(ek11.planId))) {
+        err('$.ek11.planId', 'invalid-value', 'planId must match /^P[0-9]{2}$/ (the EK-11 inventory id)');
+      }
+      if ('kind' in ek11 && !isNonEmptyString(ek11.kind)) err('$.ek11.kind', 'wrong-type', 'kind must be a nonempty string');
+      if ('fixture' in ek11 && !isNonEmptyString(ek11.fixture)) err('$.ek11.fixture', 'wrong-type', 'fixture must be a nonempty string');
+      if ('profile' in ek11) {
+        if (!Array.isArray(ek11.profile)) err('$.ek11.profile', 'wrong-type', 'profile must be an array of evidence kinds');
+        else {
+          ek11.profile.forEach((entry, i) => {
+            inVocabulary(entry, EK11_EVIDENCE_PROFILES, `$.ek11.profile[${i}]`, err, 'evidence kind');
+          });
+          if (!ek11.profile.includes('build')) err('$.ek11.profile', 'invalid-value', 'every product kind requires build evidence');
+          if (!ek11.profile.includes('package-receipt')) err('$.ek11.profile', 'invalid-value', 'every product kind requires a local package effect receipt');
+          if (!ek11.profile.includes('browser-smoke') && !ek11.profile.includes('api-smoke') && !ek11.profile.includes('cli-smoke')) {
+            err('$.ek11.profile', 'invalid-value', 'every product kind requires at least one smoke class (browser/api/cli)');
           }
         }
       }

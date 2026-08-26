@@ -1,0 +1,9 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "md-site",
+  "description": "Qualification product fixture (md-site) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/render.mjs",
+    "content.md"
+  ]
+}

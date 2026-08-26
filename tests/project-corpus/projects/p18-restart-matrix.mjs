@@ -51,4 +51,5 @@ export default durableProject({
     'The 16 entries map one-to-one onto the WP-07 registry points (boundary map for the commit/worker/gate/effect seams, anchor-command windows for admission/send/worker-return).',
     'One process dies once: each matrix entry executes in its own fresh database.',
   ],
+  ek11: { planId: 'P18', kind: 'import-export-with-recovery', fixture: 'qual:import-export', profile: ["build","api-smoke","package-receipt","persistence","recovery"] },
 });

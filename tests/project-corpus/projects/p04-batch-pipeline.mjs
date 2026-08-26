@@ -36,4 +36,5 @@ export default conveyorProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
   expectedInvariants: ['no-invariant-violations', 'workplace-terminal-success', 'product-verification-green', 'product-determinism'],
+  ek11: { planId: 'P04', kind: 'reusable-validation-library', fixture: 'qual:lib-validate', profile: ["build","test","cli-smoke","package-receipt"] },
 });

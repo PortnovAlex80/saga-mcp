@@ -35,4 +35,5 @@ export default conveyorProject({
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.truthful-failure' },
   ],
   expectedInvariants: ['no-invariant-violations', 'truthful-failure-ladder', 'readiness-boundary-intact'],
+  ek11: { planId: 'P15', kind: 'rest-service-with-operator-frontend', fixture: 'qual:served-crud', profile: ["build","api-smoke","browser-smoke","package-receipt"] },
 });

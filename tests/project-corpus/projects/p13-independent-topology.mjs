@@ -33,4 +33,5 @@ export default conveyorProject({
   notes: [
     'RESIDUAL (observed honestly): after full settlement the obligation frontier still lists claimable lane rows (materializeWorkplace.production-cell, runGate.author/final, runEffects, advanceProcessFlow*) - the kernel exposes no drain-empty oracle, so no drain-closed invariant is declared for conveyor projects.',
   ],
+  ek11: { planId: 'P13', kind: 'sqlite-inventory-application', fixture: 'qual:sqlite-inventory', profile: ["build","test","api-smoke","package-receipt","persistence"] },
 });

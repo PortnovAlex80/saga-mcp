@@ -1,0 +1,9 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "event-processor",
+  "description": "Qualification product fixture (event-processor) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/pipeline.mjs",
+    "events.log"
+  ]
+}

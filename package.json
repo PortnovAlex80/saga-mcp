@@ -48,7 +48,13 @@
     "test:legacy-zero": "node tools/ek-legacy-zero.mjs --strict",
     "corpus:full": "node tools/project-corpus/run-corpus.mjs --full",
     "corpus:smoke": "node tools/project-corpus/run-corpus.mjs --smoke",
-    "corpus:kit-replay": "node tools/project-corpus/replay-elite-kit.mjs"
+    "corpus:kit-replay": "node tools/project-corpus/replay-elite-kit.mjs",
+    "qualify:kit": "node tools/qualify/kit.mjs",
+    "qualify:development": "node tools/qualify/development-series.mjs",
+    "qualify:projects:scripted": "node tools/qualify/projects-scripted.mjs",
+    "qualify:concurrency": "node tools/qualify/concurrency.mjs",
+    "qualify:projects:real": "node tools/qualify/real-series.mjs",
+    "qualify:proof": "node --test tests/qualify/kit-fences.proof.mjs tests/qualify/kinds-map.proof.mjs tests/qualify/product-evidence.proof.mjs"
   },
   "keywords": [
     "mcp",

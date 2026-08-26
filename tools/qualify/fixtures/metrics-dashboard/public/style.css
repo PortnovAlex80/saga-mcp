@@ -1,0 +1,4 @@
+/* metrics-dashboard/public/style.css - the dashboard stylesheet. */
+#summary { font-family: monospace; }
+#series { border-collapse: collapse; font-family: monospace; }
+#series td { border: 1px solid #999; padding: 2px 6px; }

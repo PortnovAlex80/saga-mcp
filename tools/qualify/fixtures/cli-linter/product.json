@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "cli-linter",
+  "description": "Qualification product fixture (cli-linter) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/lint.mjs"
+  ]
+}

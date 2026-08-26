@@ -1,0 +1,3 @@
+/* served-crud/public/style.css - the served product stylesheet. */
+#item-list { font-family: monospace; list-style: none; padding: 0; }
+#item-list li { padding: 2px 0; }

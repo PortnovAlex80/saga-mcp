@@ -28,4 +28,5 @@ export default durableProject({
     { instanceId: 'workplace:1', status: 'terminal', terminal: 'TerminalProof:workplace.success' },
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
+  ek11: { planId: 'P19', kind: 'canvas-game-keyboard-browser-smoke', fixture: 'qual:canvas-game', profile: ["build","test","browser-smoke","package-receipt"] },
 });

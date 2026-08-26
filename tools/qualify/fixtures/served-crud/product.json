@@ -1,0 +1,12 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "served-crud",
+  "description": "Qualification product fixture (served-crud) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/server.mjs",
+    "src/store.mjs",
+    "public/index.html",
+    "public/app.js",
+    "public/style.css"
+  ]
+}

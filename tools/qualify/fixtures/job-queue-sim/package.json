@@ -1,0 +1,12 @@
+{
+  "name": "job-queue-sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The job-queue-sim qualification product fixture (plan EK-11, WP-15). Zero runtime dependencies; verified hermetically.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "package": "node scripts/package.mjs",
+    "smoke": "node verify/smoke.mjs"
+  }
+}

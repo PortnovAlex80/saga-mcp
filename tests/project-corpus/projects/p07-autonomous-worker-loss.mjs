@@ -23,4 +23,5 @@ export default durableProject({
     { instanceId: 'workplace:1', status: 'terminal', terminal: 'TerminalProof:workplace.success' },
     { instanceId: 'factory-run:1', status: 'terminal', terminal: 'TerminalProof:run.success' },
   ],
+  ek11: { planId: 'P07', kind: 'webhook-receiver-with-validation', fixture: 'qual:webhook-receiver', profile: ["build","api-smoke","package-receipt","persistence"] },
 });

@@ -31,4 +31,5 @@ export default durableProject({
     { instanceId: 'node-run:1', status: 'provider-uncertainty-waited' },
   ],
   notes: ['The honest terminal of this arm is the workplace proof with the node left waiting: delivery cannot pass an outstanding operator disposition.'],
+  ek11: { planId: 'P17', kind: 'config-linter-machine-readable', fixture: 'qual:cli-linter', profile: ["build","cli-smoke","package-receipt"] },
 });

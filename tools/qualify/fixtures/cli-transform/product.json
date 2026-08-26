@@ -1,0 +1,8 @@
+{
+  "kind": "ek-qualify-product-fixture.v1",
+  "product": "cli-transform",
+  "description": "Qualification product fixture (cli-transform) - deterministic, zero runtime dependencies, verified hermetically on loopback/stdin only.",
+  "inputs": [
+    "src/transform.mjs"
+  ]
+}
