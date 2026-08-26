@@ -373,6 +373,15 @@ export const FACT_FAMILY_BY_TABLE = {
   factory_delivery_approval_decisions: 'obligation',
   factory_reconciliation_records: 'workplace', factory_replan_mandates: 'workplace',
   supervision_locks: 'workplace',
+  // Post-cutover event kernel (EK-8 sole-writer schema; 2026-08-26 closure classification)
+  factory_run: 'project-order-run', protocol_metadata: 'project-order-run',
+  lifecycle_run: 'lifecycle', stage_run: 'stage', process_run: 'process', node_run: 'node',
+  work_item: 'workitem-task', work_item_dependency: 'workitem-task',
+  workplace: 'workplace', workplace_work_intent: 'workplace', workplace_production_revision: 'workplace', workplace_candidate_set: 'workplace',
+  activity_attempt: 'execution-attempt', activity_attempt_prompt_assembly_receipt: 'execution-attempt',
+  workplace_gate_decision: 'gate', workplace_effect_receipt: 'effect', workplace_cell_final_acceptance: 'terminal-acceptance',
+  transition_obligation: 'obligation', typed_wait: 'obligation', workflow_event: 'obligation', terminal_proof: 'terminal-acceptance',
+  kanban_card: 'workitem-task',
 };
 
 export function factFamilyOfTable(table) {

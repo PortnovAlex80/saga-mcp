@@ -18,7 +18,7 @@ export const FAMILY_RECORDS = {
         'epics', 'episode_workflows', 'factory_orders', 'factory_order_runs',
         'factory_launch_requests', 'factory_launch_controller_terms',
         'factory_launch_controller_leases', 'factory_runtime_mode',
-        'factory_database_identity', 'supervision_locks'],
+        'factory_database_identity', 'supervision_locks', 'factory_run'],
       currentOwnerClaimedByDocs: 'CONVEYOR-MENTAL-MODEL §7/§23: Project is stable product/replay scope; FactoryOrder.lifecycle_run_id is the immutable root pointer; OrderRunChain is append-only with one active leaf; LaunchRequest is owned by the launch repository (requested->claimed->running->paused|completed|failed).',
       linearizationPoint: 'Factory Start transaction: factory_orders INSERT + lifecycle run creation + order_run chain append, idempotency-deduplicated by (project, epic, source_digest); launch claim CAS on factory_launch_requests.claim_token.',
       decisionReaders: [
@@ -41,7 +41,7 @@ export const FAMILY_RECORDS = {
     {
       id: 'lifecycle',
       tables: ['factory_lifecycle_runs', 'lifecycle_events', 'lifecycle_execution_controls',
-        'factory_protocol_runs', 'factory_protocol_step_runs'],
+        'factory_protocol_runs', 'factory_protocol_step_runs', 'lifecycle_run'],
       currentOwnerClaimedByDocs: 'Mental model §23: LifecycleRun owned by the lifecycle repository and the exact stage-transition journal; terminal LifecycleRun is never changed back to running.',
       linearizationPoint: 'sqlite-lifecycle-run-repository CAS UPDATEs on factory_lifecycle_runs (version column) inside per-transition transactions; lifecycle_events append-only journal rows.',
       decisionReaders: [
@@ -65,7 +65,7 @@ export const FAMILY_RECORDS = {
     {
       id: 'stage',
       tables: ['factory_stage_runs', 'factory_continuation_authorizations',
-        'factory_continuation_prefix_stages'],
+        'factory_continuation_prefix_stages', 'stage_run'],
       currentOwnerClaimedByDocs: 'Mental model §7/§23: stage transitions owned by the lifecycle repository and exact stage-transition journal; continuation from accepted prefix is append-only with immutable inherited-stage descriptors.',
       linearizationPoint: 'stage run INSERT with (lifecycle_run_id, stage_id, attempt) uniqueness; settlement UPDATE guarded by lifecycle transaction.',
       decisionReaders: [
@@ -89,7 +89,7 @@ export const FAMILY_RECORDS = {
       tables: ['factory_process_runs', 'factory_process_transitions', 'factory_process_products',
         'factory_process_outcome_certificates', 'factory_process_module_installations',
         'factory_module_installations', 'factory_scenario_installations',
-        'factory_scenario_module_locks', 'factory_definition_compatibility_receipts'],
+        'factory_scenario_module_locks', 'factory_definition_compatibility_receipts', 'process_run'],
       currentOwnerClaimedByDocs: 'Mental model §23: ProcessRun repository owns created->preparing->running->paused|settling->terminal; outcome certificates immutable; module installations are content-pinned packages (EC-7 of ADR-053).',
       linearizationPoint: 'sqlite-process-run-repository status UPDATEs in settlement transactions; process_transitions journal; outcome certificate INSERT with unique key.',
       decisionReaders: [
@@ -110,7 +110,7 @@ export const FAMILY_RECORDS = {
     },
     {
       id: 'node',
-      tables: ['factory_node_runs', 'factory_call_instances', 'factory_work_intents'],
+      tables: ['factory_node_runs', 'factory_call_instances', 'factory_work_intents', 'node_run', 'node_run'],
       currentOwnerClaimedByDocs: 'Mental model §23: generic flow cursor + NodeRun repository own running->completed|failed; factory_work_intents have a single DDL owner and freeze the WorkIntent contract (verified by predecessor scan).',
       linearizationPoint: 'node run INSERT per (process_run_id, node_id, attempt); completion UPDATE by generic-flow executor; WorkIntent INSERT pinned by trg_factory_work_intents_contract_immutable.',
       decisionReaders: [
@@ -133,7 +133,7 @@ export const FAMILY_RECORDS = {
       id: 'workitem-task',
       tables: ['tasks', 'subtasks', 'task_dependencies', 'task_conflict_keys',
         'factory_workplace_graphs', 'factory_workplace_graph_items',
-        'factory_workplace_dependencies', 'factory_development_task_projections'],
+        'factory_workplace_dependencies', 'factory_development_task_projections', 'work_item', 'work_item_dependency'],
       currentOwnerClaimedByDocs: 'CONVEYOR-RUNTIME header + ADR-097: tasks.status is declared a reverse projection of factory_workplaces.kanbanPhase, written only by WorkplaceProjector; the sealed workplace graph (factory_workplace_graphs/items/dependencies) is the immutable planning DAG (triggers block UPDATE/DELETE).',
       actualOwnerToday: 'BOTH: tasks.status is written by 16 sanctioned writers (ratchet tests/lifecycle/architecture.test.mjs:131-199) and read back as scheduling input by admission, dependency, generation and progress decisions — Kanban is simultaneously projection and authority (ADR-097 finding).',
       linearizationPoint: 'none single: task claim CAS in work-assignment-core (BEGIN IMMEDIATE + worker_executions INSERT), projector reverse-projection UPDATE, dependency block/unblock UPDATEs in tools/tasks.ts, settlement/burial drains.',
@@ -164,7 +164,7 @@ export const FAMILY_RECORDS = {
         'factory_operator_holds', 'factory_workplace_recovery_epochs',
         'factory_scope_widening_events', 'factory_workplace_contributions',
         'factory_workplace_gate_decision_heads', 'factory_replan_mandates',
-        'factory_reconciliation_records'],
+        'factory_reconciliation_records', 'workplace', 'workplace_work_intent', 'workplace_production_revision', 'workplace_candidate_set'],
       currentOwnerClaimedByDocs: 'sqlite-workplace-repository header: applyTransition is the ONLY writer of (kanban_phase, loop_state, next_role, terminal_reason, revision) with CAS; Workplace reducer owns the loop (mental model §23 Workplace row).',
       actualOwnerToday: 'the repository is the primary writer, but ADR-097 violation 6 holds: engine-start-lifecycle-burial.ts:265,277, operator-soft-stop.ts:1114, replan-supersede.ts:77, workplace-settlement-drain.ts:99 UPDATE factory_workplaces directly outside the repository; scripts/restore-from-checkpoint.mjs:295,416,629 INSERT/UPDATEs it.',
       linearizationPoint: 'factory_workplaces.revision CAS in SqliteWorkplaceRepository.applyTransition inside the caller transaction (ConveyorRuntime atomically BEGIN IMMEDIATE).',
@@ -187,7 +187,7 @@ export const FAMILY_RECORDS = {
     {
       id: 'execution-attempt',
       tables: ['worker_executions', 'factory_execution_reservations',
-        'factory_execution_completion_products', 'command_receipts'],
+        'factory_execution_completion_products', 'command_receipts', 'activity_attempt', 'activity_attempt_prompt_assembly_receipt'],
       currentOwnerClaimedByDocs: 'Mental model §23: ExecutionReservation/WorkerExecution owned by atomic assignment, fence, lease and execution repository; ADR-053: execution is provenance only — never accepted-material authority.',
       linearizationPoint: 'atomic claim transaction: work-assignment-core UPDATE tasks + INSERT worker_executions + reservation row in one BEGIN IMMEDIATE; fence = current_execution_id + execution state.',
       decisionReaders: [
@@ -256,7 +256,7 @@ export const FAMILY_RECORDS = {
       id: 'gate',
       tables: ['factory_gate_runs', 'factory_gate_presentation_attempts',
         'factory_check_receipts', 'factory_gate_decisions',
-        'factory_gate_finding_set_chain'],
+        'factory_gate_finding_set_chain', 'workplace_gate_decision'],
       currentOwnerClaimedByDocs: 'sqlite-gate-repository header + mental model §6/§23: gate driver + immutable decision ledger; GateDecision append-only with deterministic decision_key idempotency.',
       linearizationPoint: 'decision INSERT keyed by decision_key (replay returns stored row, digest mismatch throws GATE_DECISION_REPLAY_MISMATCH); workplace gate-decision head UPDATE in the same transaction.',
       decisionReaders: [
@@ -278,7 +278,7 @@ export const FAMILY_RECORDS = {
       id: 'effect',
       tables: ['factory_effect_attempts', 'factory_cell_effect_receipts',
         'factory_cell_effect_repair_issues', 'factory_external_effect_actions',
-        'factory_external_effect_events'],
+        'factory_external_effect_events', 'workplace_effect_receipt'],
       currentOwnerClaimedByDocs: 'Mental model §20: effects are authorized external changes with exact desired-state identity, idempotency key, durable EffectAttempt and EffectReceipt; capability-neutral core.',
       linearizationPoint: 'effect attempt INSERT (attempt_no from MAX within owner tx) + receipt INSERT idempotent by identity; external effect event log append-only per action sequence.',
       decisionReaders: [
@@ -298,7 +298,7 @@ export const FAMILY_RECORDS = {
     },
     {
       id: 'terminal-acceptance',
-      tables: ['factory_cell_final_acceptances', 'factory_run_terminal_event_receipts'],
+      tables: ['factory_cell_final_acceptances', 'factory_run_terminal_event_receipts', 'workplace_cell_final_acceptance', 'workplace_cell_final_acceptance'],
       currentOwnerClaimedByDocs: 'Mental model §6: CellFinalAcceptance constructible only after final GateDecision accepted + revision applied + every required effect receipt + Workplace terminal(accepted); replay certification consumes it, not a raw verdict.',
       linearizationPoint: 'acceptance INSERT inside the same transaction as the last effect receipt + workplace terminal transition.',
       decisionReaders: [
@@ -319,7 +319,7 @@ export const FAMILY_RECORDS = {
     {
       id: 'obligation',
       tables: ['factory_transition_obligations', 'factory_delivery_approval_requests',
-        'factory_delivery_approval_decisions', 'human_requests'],
+        'factory_delivery_approval_decisions', 'human_requests', 'transition_obligation', 'typed_wait', 'workflow_event', 'terminal_proof'],
       currentOwnerClaimedByDocs: 'ADR-053 Step 7 / EC-8: every cross-machine handoff has a durable obligation or atomic outbox; sqlite-transition-obligation-ledger appends fenced obligations; the integrator wires the five conveyor handoffs; human_requests is the durable human-wait channel; delivery approval inbox is the standard human-approval bridge.',
       linearizationPoint: 'fenced atomic append inside the source-fact transaction (e.g. run-gate obligation appended inside the seal transaction); lease by CAS fence (lease_fence=MAX(...) UPDATE at ledger:364).',
       decisionReaders: [
@@ -366,7 +366,7 @@ export const FAMILY_RECORDS = {
     },
     {
       id: 'checkpoint',
-      tables: ['factory_checkpoints'],
+      tables: ['factory_checkpoints', 'protocol_metadata'],
       currentOwnerClaimedByDocs: 'Mental model §17: Checkpoint restores operational state of the same interrupted run (distinct from recovery/replay); factory-checkpoint-service captures manifests with 10-newest retention per (project, epic); capture runs in a one-shot child process (B4).',
       linearizationPoint: 'checkpoint INSERT with (project, epic, sequence_no from MAX+1) inside the capture transaction; restore is the operator script scripts/restore-from-checkpoint.mjs — a DIRECT SQL WRITER across factory_workplaces, worker_executions, lifecycle runs, obligations (DELETE), accepted head (DELETE).',
       decisionReaders: [

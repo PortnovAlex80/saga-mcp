@@ -52,6 +52,7 @@ TABLE_FAMILY.supervision_locks = 'project-order-run';
 
 // Table class defaults (which kind of durable fact the table holds today).
 const PROJECTION_TABLES = new Set([
+  'kanban_card',
   'tasks', 'subtasks', 'task_dependencies', 'factory_development_task_projections',
   'comments', 'notes', 'templates', 'activity_log', 'runtime_observations',
 ]);
@@ -80,7 +81,7 @@ const NON_TABLES = new Set([
 ]);
 
 // Scope classification of a reader file.
-const DECISION_RE = /^(src\/(app|application|checkpoints|helpers|infrastructure|lifecycle|modules|observability|planner|process-modules|replay|runtime|shared|types|validators|worker|index|db|schema|worker-executions|orchestrate-cli|checkpoint-cli)\b)/;
+const DECISION_RE = /^(src\/(app|application|checkpoints|helpers|infrastructure|lifecycle|workflow-kernel|modules|observability|planner|process-modules|replay|runtime|shared|types|validators|worker|index|db|schema|worker-executions|orchestrate-cli|checkpoint-cli)\b)/;
 const PRESENTATION_RE = /^(src\/tools\/(?!dispatcher))/;
 const TRACKER_VIEW = /^tracker-view\//;
 const SCRIPTS = /^scripts\//;
