@@ -1368,7 +1368,7 @@
       "adr": "097",
       "file": "097-event-projected-workflow-kernel.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "implemented",
       "owningReleases": [
         "K21"
       ],
@@ -1388,7 +1388,7 @@
       "adr": "098",
       "file": "098-freeze-successor-complexity-role-and-context-contracts-in-ek1.md",
       "decisionStatus": "accepted",
-      "closureState": "planned",
+      "closureState": "implemented",
       "owningReleases": [
         "K21"
       ],

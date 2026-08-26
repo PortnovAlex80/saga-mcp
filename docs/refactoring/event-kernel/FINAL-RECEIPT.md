@@ -1,0 +1,149 @@
+# Event-Projected Kernel Greenfield Refactoring — FINAL RECEIPT
+
+Executor: integration coordinator (autonomous, operator standing directive).
+Plan: docs/plans/EVENT-PROJECTED-KERNEL-GREENFIELD-REFACTORING-PLAN.md — all
+phases EK-0…EK-13 complete. This receipt is the EK-13 closure artifact.
+
+## Identities (non-self-referential by construction)
+
+- **qualificationSourceSha:** `00261a0d7e99dc4070f5abb10b1bff79b9918bc7` —
+  the immutable source whose executable tree, build and product runs are
+  qualified. Bound by kit `123504a46b312b467cf39ea9df4e562099653ebc8a7e83e47ba4b35d0c208b28`.
+- **closureSha:** the commit containing this receipt (docs-only; recorded
+  externally). Its executable tree is byte-identical to
+  qualificationSourceSha: every commit after `00261a0d` touches only
+  `docs/**` (qualification records, tracker, census, ADRs, this receipt).
+  This receipt does not embed its own commit hash.
+
+## Predecessor
+
+- CANONICAL-CONSISTENCY-AND-ADR053-CLOSURE-PLAN complete; completion receipt
+  `docs/factory-run/qualification-adr096/COMPLETION-RECEIPT.md` (closing SHA
+  `bacf4f82`); ADR-053 CLOSED; residuals transferred to this plan by its
+  transfer rule (6 structural Development tokens, 2 Delivery, 10
+  documentation families, 9 low authority seams, CC-41/42 refusals, CC-U2,
+  EK-12 pre-send blocker — all consumed or resolved below).
+
+## EK-1 admission identity
+
+- Original EK admission receipt: `docs/refactoring/event-kernel/EK-ADMISSION-RECEIPT.json`,
+  digest `7635a4bdc0f9ee5a…` (preserved verbatim; recorded in the kit).
+- EK-1 source SHA: `21ba0816` (census base).
+- admissionContractDigest at EK-1: `d1d6f85763eb613d…`.
+- Final recomputed ACD at qualificationSourceSha (validator formula):
+  `d1f9272c330f28c6…` — matches the immutable kit exactly. The delta is the
+  frozen EK-8 amendments (spec digests re-frozen with re-validation); the
+  original receipt digest above is preserved unchanged.
+- Three frozen specification digests: complexity budget `f9da8b1a434ec44f…`,
+  canonical role contract schema + prompt budget profile — pinned in the kit
+  (`4c8a0abab026a819…` role-contract manifest; `5648ae361d8cd78e…`
+  PromptBudgetProfile; token counter `53c1b9cddbf6bc6a…`).
+
+## Qualification build identity (kit 123504a4…)
+
+| Item | Digest / value |
+|---|---|
+| source HEAD | `00261a0d` |
+| dist tree | `32edf199c794f929…` (390 files) |
+| schema fingerprint | `c53efa8f284c616d…` |
+| transition universe | `92751dedf814dc89…` (53 commands / 49 obligations / 5 waits / 28 proofs / 67 evidence kinds; 32 reconciliation entries, 0 silently accepted) |
+| actor version | `0563af342f32228b…` |
+| seed | 20260826 |
+| ACD (final) | `b4ffd16479cfd46f…` (kit formula) / `d1f9272c…` (validator formula) |
+
+## Qualification tables (all on kit 123504a4 @ 00261a0d)
+
+**EK-11 Development reliability — 10/10 GREEN, identical normalized traces**
+(`series/dev-20260826164500.json`; evidence manifest `23ae0004…`).
+
+**EK-11 scripted corpus — 20/20 GREEN, actual product outputs** (P01–P20;
+build/test/browser-or-API-or-CLI smoke/local package receipts;
+`series/projects-20260826164530.json`; manifest `2575c2e7…`).
+
+**EK-11 concurrency — GREEN** (Proof A four-way isolation 20/20; Proof B
+diamond-at-cap-2 7/7, deterministic barrier, peak==2 by world state;
+`series/concurrency-20260826164626.json`; manifest `4d1820fe…`).
+
+**EK-12 real OpenCode full conveyor — R1/R2/R3 consecutive GREEN, 37/37
+checks each** (81/65/136 min; fresh DB+repo per run; complete
+idea→Discovery→Formalization→Development→Delivery path; per-request
+pre-send PromptAssemblyReceipt completeness; independent product
+verification; `series/real-20260826094711.json`, allGreen; 142 evidence
+files; manifest `3b965061…`). Superseded bring-up iterations preserved as
+honest history (36 evidence roots; findings fixed and pinned:
+NODE_UNDECLARED regression; concurrency diamond rung; model-answers-not-serves).
+
+## Clean-checkout blocking commands (qualificationSourceSha, fresh worktree)
+
+- `npm run build` — clean.
+- Acceptance matrix: workflow-kernel **737/737**; project-corpus 33/33;
+  architecture 67/67; kept-tooling 27/27; ek-manifest-guard 7/7;
+  ek-admission 1/1; ek-removal-guard 10/10; ek-evidence-kit 3/3;
+  cc-proof-registry 26/26; matrix-coverage 19/19.
+- `npm test` (full matrix, sequential): **836 pass / 1 fail / 0 skip** — the
+  single failure is the claude-shim provider-retry T3 under full-matrix load
+  (30s timeout exceeded at 34.5s); isolated rerun **52/52** and the
+  architecture group rerun **67/67** green. Recorded as load-flakiness with
+  the isolated greens, not silently dropped.
+- `node tools/ek-legacy-zero.mjs --strict` — **ALL FIVE LAWS GREEN** (empty
+  allowlist: L1 0, L2 0, L3 0, L4 0, L5 0).
+- `npm run validate:ek-admission-specs` — ALL GREEN.
+- `npm run test:workflow-complexity` — **COMPLEXITY_CHECK_GREEN**, 16/16
+  binding dimensions, zero waivers.
+- Authority census re-run: builder **0 unclassified**, validator **0
+  violations** — the post-cutover kernel classified (every table one
+  sole-writer repository; extended census committed in docs).
+- Transition-universe reconciliation: VALID (see digests above).
+- Kanban rebuild from zero: proven by the projection mutation battery
+  (delete-all-rows / forged-rows / stopped-projector-rebuild → identical
+  normalized trace + byte-identical board), hosted in workflow-kernel.
+- Mutation & fault-schedule results: harness 6/6 registered mutations killed
+  (4 baseline suites green); WP-13B crash matrix 16 fault points × restart →
+  identical normalized worlds; corpus RED/GREEN families green.
+
+## ADR registry closure (this commit)
+
+- **ADR-097** (event-projected workflow kernel): registry closureState
+  `planned` → `implemented` — the kernel is the ONE production runtime
+  (EK-8 cutover complete, legacy-zero 5/5, Kanban a disposable projection)
+  and is qualified end-to-end (scripted + real series above).
+- **ADR-098** (freeze successor contracts in EK-1): all nine closure
+  checkboxes marked `[x]` with evidence pointers (admission receipt digests;
+  validator mutation kills; complexity second-path kills; one role digest
+  across launch paths; prompt-budget coverage; real-lane pre-send receipts;
+  EK-8 zero debt; this receipt's recorded vectors/digests; the
+  qualificationSourceSha/closureSha separation proven by this receipt).
+  Registry closureState `planned` → `implemented`.
+
+## Complexity, roles and prompt accounting (final, no waiver)
+
+- Complexity vector: 16 binding dimensions GREEN (conjunctive envelope);
+  zero temporary legacy/replacement debt (legacy-zero L-laws all 0);
+  `workshops.nameBranchLiterals = 0`.
+- Exactly ONE role-binding compilation path (WP-17 compiler/resolver; zero
+  fallback resolvers) and ONE cumulative context accountant (WP-18 envelope;
+  admission at the exact pre-send boundary; RUNNING_COUNTER_IDENTITY pinned
+  in the production composition).
+- Role-contract manifest digest `4c8a0abab026a819…`; PromptBudgetProfile
+  digest `5648ae361d8cd78e…`; token counter `53c1b9cddbf6bc6a…`; the real
+  lane's per-run receipt-completeness is recorded per EK-12 series (37/37
+  checks include the receipt law).
+
+## Known residuals (exact)
+
+1. **Drain-oracle kernel finding** (WP-13D finding 3): after full settlement
+   the obligation frontier keeps structural lane rows
+   (`materializeWorkplace.production-cell`, `runGate.*`, `runEffects`,
+   `advanceProcessFlow*`); a drain-closed invariant is therefore undeclared.
+   Deferred WITH justification (frontier API design decision), recorded in
+   the EXECUTION-TRACKER findings ledger; it does not touch any
+   architecture law, deletion, schema policy or qualifying run.
+2. Elite-2 operator console (the saga4-side human-gate UI) retired with the
+   old runtime at EK-8; its LAW (typed wait + operator disposition) is the
+   native kernel semantics (D5/D12) exercised in qualification (p16/p17,
+   delivery pause, R-series). The Elite-2 production proof is evidence-kit
+   corpus entry 3.
+3. The claude-shim T3 load-flakiness (documented above; isolated green).
+
+No residual in an architecture law, legacy deletion, schema policy or
+qualifying run remains open.

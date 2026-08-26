@@ -236,27 +236,27 @@ only for current canonical truth and its existing receipt.
 
 ADR-098 remains `planned` until all of the following are blocking and green:
 
-- [ ] EK-1 stores hashes for the three specifications, validator and independent
+- [x] EK-1 stores hashes for the three specifications, validator and independent
       EK admission receipt before WP-05.
-- [ ] `validate:ek-admission-specs` rejects a removed complexity dimension,
+- [x] `validate:ek-admission-specs` rejects a removed complexity dimension,
       duplicate/missing role binding, zero/unbounded limit, arbitrary contract
       field, executable/fallback route rule, route-selecting limit table and
       unclassified hook/tool context source.
-- [ ] `test:workflow-complexity` kills a second authority/path and an
+- [x] `test:workflow-complexity` kills a second authority/path and an
       unbudgeted universe expansion.
-- [ ] `test:role-contract` proves one digest across scripted, replay and real
+- [x] `test:role-contract` proves one digest across scripted, replay and real
       launch paths, atomic WorkIntent-to-ActivityAttempt inheritance and every
       fallback resolver.
-- [ ] `test:prompt-budget` covers initial prompt, hooks, tool schemas/results,
+- [x] `test:prompt-budget` covers initial prompt, hooks, tool schemas/results,
       recovery, concurrent admission, crash/send distinction and one-over-limit
       behavior without silent truncation.
-- [ ] The real OpenCode lane exposes exact pre-send receipts for all turns; an
+- [x] The real OpenCode lane exposes exact pre-send receipts for all turns; an
       initial-stdin/postflight-only adapter is blocking-red.
-- [ ] EK-8 reports zero legacy/replacement debt and one binding/accounting path.
-- [ ] EK-13 records final complexity vectors, role manifest digest and prompt
+- [x] EK-8 reports zero legacy/replacement debt and one binding/accounting path.
+- [x] EK-13 records final complexity vectors, role manifest digest and prompt
       distribution with no waiver, recomputes admissionContractDigest, and
       updates ADR-098/registry only from these executable digests.
-- [ ] EK-13 distinguishes qualificationSourceSha from the later docs-only
+- [x] EK-13 distinguishes qualificationSourceSha from the later docs-only
       closureSha and proves their executable trees byte-identical; the receipt
       never attempts to contain its own commit hash.
 
