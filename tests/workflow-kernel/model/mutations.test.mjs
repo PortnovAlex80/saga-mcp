@@ -144,6 +144,23 @@ test('mutation f: a duplicate effect accepted twice is killed', () => {
   assert.ok(violations.some((v) => v.kind === 'DUPLICATE_EFFECT'), `oracle killed the duplicate effect: ${JSON.stringify(violations).slice(0, 200)}`);
 });
 
+test('concurrency rung regression: a second in-flight node terminal records after the first (diamond settlement)', () => {
+  // EK-11 finding EK11-CONCURRENCY-DIAMOND-SETTLEMENT (fixed 2026-08-26):
+  // the process status channel is one lane; fan-out at cap >= 2 lands the
+  // second node's terminal while the channel is node-terminal-recorded.
+  // Removing the rung re-dead-ends every concurrent diamond and this pin
+  // goes red.
+  const processRun = REDUCERS.find((entry) => entry.aggregate === 'ProcessRun');
+  const edge = processRun.transitions.find((t) => t.command === 'processRun.recordNodeTerminal');
+  assert.ok(edge, 'the node-terminal edge exists');
+  assert.ok(edge.fromStatuses.includes('node-terminal-recorded'),
+    'recordNodeTerminal accepts a second in-flight node terminal (concurrent fan-out settles)');
+  assert.equal(edge.toStatus, 'node-terminal-recorded');
+  // The serial lane is unchanged and settlement still demands its proof.
+  assert.ok(edge.fromStatuses.includes('node-entered'));
+  const settleEdge = processRun.transitions.find((t) => t.command === 'processRun.settle');
+  assert.equal(settleEdge.fromStatuses[0], 'node-terminal-recorded');
+});
 test('D12 node rung regression: the human-decision detour converges to the SAME terminal acceptance', () => {
   // WP-13D finding 2 (fixed 2026-08-26): after the operator's human
   // decision and the provider outcome, recordCellAcceptance must accept

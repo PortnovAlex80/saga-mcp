@@ -59,7 +59,14 @@ export const ProcessRunReducer: AggregateReducer = {
   transitions: [
     { command: 'processRun.create', fromStatuses: [], toStatus: 'created', terminal: false },
     { command: 'processRun.enterNode', fromStatuses: ['created', 'node-terminal-recorded'], toStatus: 'node-entered', terminal: false },
-    { command: 'processRun.recordNodeTerminal', fromStatuses: ['node-entered'], toStatus: 'node-terminal-recorded', terminal: false },
+    // Concurrency rung (EK-11 finding EK11-CONCURRENCY-DIAMOND-SETTLEMENT, fixed
+    // 2026-08-26): the process status channel is ONE lane, but the frozen
+    // universe's dependency dimension REQUIRES concurrently-open nodes (fan-out,
+    // cap >= 2). Recording the terminal of a second in-flight node after the
+    // first terminal landed must be legal — per-node legality lives on the
+    // NodeRun instances (their own guards + terminal proofs), not on this
+    // channel. The serial flow (enter -> record -> enter) is unchanged.
+    { command: 'processRun.recordNodeTerminal', fromStatuses: ['node-entered', 'node-terminal-recorded'], toStatus: 'node-terminal-recorded', terminal: false },
     { command: 'processRun.settle', fromStatuses: ['node-terminal-recorded'], toStatus: 'terminal', terminal: true },
     { command: 'processRun.settleFailure', fromStatuses: ['node-terminal-recorded'], toStatus: 'settle-failed', terminal: true },
   ],
