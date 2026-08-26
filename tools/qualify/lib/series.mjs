@@ -8,7 +8,7 @@
  */
 
 import { join } from 'node:path';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname } from 'node:path';
 
@@ -91,12 +91,19 @@ export function receiptCompleteness(world) {
   receipts.terminalProofs = [...new Set((world.proofs ?? []).map((proof) => (typeof proof === 'string' ? proof : proof.id)))].sort();
 
   const intents = [...(world.workIntents?.values?.() ?? world.workIntents ?? [])];
+  /** The pin arrives as { roleContractRef, roleContractDigest } (the
+   *  InstalledWorkshopManifest binding); a pinned intent carries a nonempty
+   *  roleContractDigest. */
+  const isPinned = (roleContract) => typeof roleContract === 'string'
+    ? roleContract.length > 0
+    : typeof roleContract?.roleContractDigest === 'string' && roleContract.roleContractDigest.length > 0;
   for (const intent of intents) {
     receipts.workIntents.push({
       intentRef: intent.intentRef,
       workplace: intent.workplaceInstanceId,
       role: intent.protocolRole,
-      roleContractPinned: typeof intent.roleContract === 'string' && intent.roleContract.length > 0,
+      roleContractPinned: isPinned(intent.roleContract),
+      roleContractDigest: typeof intent.roleContract === 'object' ? intent.roleContract?.roleContractDigest : intent.roleContract,
     });
   }
   const unpinnedIntents = receipts.workIntents.filter((intent) => !intent.roleContractPinned);
@@ -133,6 +140,7 @@ export function traceFingerprint(normalizedTrace) {
 }
 
 export function writeSeriesRecord(record, kitsRecordsDir) {
+  mkdirSync(kitsRecordsDir, { recursive: true });
   const path = join(kitsRecordsDir, `${record.series.replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
   writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
   return path;
