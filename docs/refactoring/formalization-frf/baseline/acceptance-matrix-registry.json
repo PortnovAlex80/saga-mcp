@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "groups": {
+    "project-corpus": {
+      "files": [
+        "tests/project-corpus/corpus.test.mjs",
+        "tests/project-corpus/mutations.test.mjs",
+        "tests/project-corpus/replay-kit.test.mjs",
+        "tests/project-corpus/run-corpus.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "20-project scripted corpus format + drivers + elite-kit replay"
+    },
+    "workflow-kernel": {
+      "files": [
+        "tests/workflow-kernel/actors/actors.test.mjs",
+        "tests/workflow-kernel/actors/human-wait-scenario.test.mjs",
+        "tests/workflow-kernel/application/admission.test.mjs",
+        "tests/workflow-kernel/application/consumer.test.mjs",
+        "tests/workflow-kernel/application/faults.test.mjs",
+        "tests/workflow-kernel/application/structure.test.mjs",
+        "tests/workflow-kernel/application/waits.test.mjs",
+        "tests/workflow-kernel/composition/composition.test.mjs",
+        "tests/workflow-kernel/composition/cutover-pins.test.mjs",
+        "tests/workflow-kernel/context-envelope/accountant.test.mjs",
+        "tests/workflow-kernel/context-envelope/admission.test.mjs",
+        "tests/workflow-kernel/context-envelope/receipt.test.mjs",
+        "tests/workflow-kernel/context-envelope/transport.test.mjs",
+        "tests/workflow-kernel/development/acceptance.test.mjs",
+        "tests/workflow-kernel/development/actors.test.mjs",
+        "tests/workflow-kernel/development/capsule-ingress.test.mjs",
+        "tests/workflow-kernel/development/fixtures/simple-server/test/unit.test.mjs",
+        "tests/workflow-kernel/development/material-chain.test.mjs",
+        "tests/workflow-kernel/development/mutations.test.mjs",
+        "tests/workflow-kernel/development/prompt-fixtures.test.mjs",
+        "tests/workflow-kernel/development/role-contract.test.mjs",
+        "tests/workflow-kernel/development/structure.test.mjs",
+        "tests/workflow-kernel/engine/compare.test.mjs",
+        "tests/workflow-kernel/engine/minimize.test.mjs",
+        "tests/workflow-kernel/engine/scenario.test.mjs",
+        "tests/workflow-kernel/faults/scenario-faults.test.mjs",
+        "tests/workflow-kernel/fixtures/budget-drivers.test.mjs",
+        "tests/workflow-kernel/fixtures/concurrency-drivers.test.mjs",
+        "tests/workflow-kernel/fixtures/fixtures.test.mjs",
+        "tests/workflow-kernel/fixtures/role-binding-drivers.test.mjs",
+        "tests/workflow-kernel/model/complexity.test.mjs",
+        "tests/workflow-kernel/model/digest.test.mjs",
+        "tests/workflow-kernel/model/explorer.test.mjs",
+        "tests/workflow-kernel/model/mutations.test.mjs",
+        "tests/workflow-kernel/model/purity.test.mjs",
+        "tests/workflow-kernel/model/reducers.test.mjs",
+        "tests/workflow-kernel/model/universe-registry.test.mjs",
+        "tests/workflow-kernel/persistence/open-protocol.test.mjs",
+        "tests/workflow-kernel/persistence/ratchet.test.mjs",
+        "tests/workflow-kernel/persistence/repositories.test.mjs",
+        "tests/workflow-kernel/persistence/schema.test.mjs",
+        "tests/workflow-kernel/planning/observed-graphs.test.mjs",
+        "tests/workflow-kernel/planning/plan-graph.test.mjs",
+        "tests/workflow-kernel/planning/planner-admission.test.mjs",
+        "tests/workflow-kernel/planning/readiness.test.mjs",
+        "tests/workflow-kernel/planning/settlement.test.mjs",
+        "tests/workflow-kernel/planning/structure.test.mjs",
+        "tests/workflow-kernel/projection/adapters.test.mjs",
+        "tests/workflow-kernel/projection/cards.test.mjs",
+        "tests/workflow-kernel/projection/context.test.mjs",
+        "tests/workflow-kernel/projection/fences.test.mjs",
+        "tests/workflow-kernel/projection/mutations.test.mjs",
+        "tests/workflow-kernel/projection/rebuild.test.mjs",
+        "tests/workflow-kernel/roles/compiler.test.mjs",
+        "tests/workflow-kernel/roles/resolver.test.mjs",
+        "tests/workflow-kernel/roles/structural.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/approval.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/bundle.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/conveyor.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/mutations.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/packaging.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/preflight.test.mjs",
+        "tests/workflow-kernel/workshops/delivery/structure.test.mjs",
+        "tests/workflow-kernel/workshops/development/installation.test.mjs",
+        "tests/workflow-kernel/workshops/development/mutations.test.mjs",
+        "tests/workflow-kernel/workshops/development/role-bindings.test.mjs",
+        "tests/workflow-kernel/workshops/development/scenario.test.mjs",
+        "tests/workflow-kernel/workshops/development/structure.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/checkplans.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/contributions.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/idea-intake.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/mutations.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/products.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/role-bindings.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/scenario.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/structure.test.mjs",
+        "tests/workflow-kernel/workshops/discovery/waits.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/effects.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/gates.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/ingress.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/manifest.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/products.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/roles.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/scenario.test.mjs",
+        "tests/workflow-kernel/workshops/formalization/structure.test.mjs",
+        "tests/workflow-kernel/workshops/synthetic/generalization.test.mjs",
+        "tests/workflow-kernel/workshops/synthetic/mutations.test.mjs",
+        "tests/workflow-kernel/workshops/synthetic/structure.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "EK event-projected kernel: model, persistence, roles, engine, application, context envelope, development vertical, projection, workshops, the EK-8 production composition"
+    },
+    "architecture": {
+      "files": [
+        "tests/architecture/adr-closure-registry.test.mjs",
+        "tests/architecture/claude-shim-provider-retry.test.mjs",
+        "tests/architecture/conveyor-transition-diagnostics-doc.test.mjs",
+        "tests/architecture/ek8-cutover-structure.test.mjs",
+        "tests/architecture/kernel-admission-distance.test.mjs",
+        "tests/architecture/no-claim-scope.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "ADR-053 cutover gates, dependency-direction ratchet, conveyor boundaries (re-pinned to the post-cutover tree by WP-12)"
+    },
+    "kept-tooling": {
+      "files": [
+        "tools/adr-closure-registry.test.mjs",
+        "tools/build-receipt.test.mjs",
+        "tests/agent-proxy/claude-shim-cwd.test.mjs",
+        "tests/agent-proxy/sandbox-agents-marker.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "ADR registry, build receipt, and the opencode-shim transport guard tests (the KEEP classes of the EK-8 purge)"
+    },
+    "ek-manifest-guard": {
+      "files": [
+        "tests/infrastructure/deletion-manifest-guard.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "EK-1/WP-04b deletion-manifest stop-gate in its POST-CUTOVER shape (V1 inverted for DELETE: survivors are red; killed mutations updated by WP-12)"
+    },
+    "ek-admission": {
+      "files": [
+        "tests/infrastructure/ek-admission-validator.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "EK-1 admission-spec validator wrapper - validate:ek-admission-specs blocking in the matrix"
+    },
+    "ek-removal-guard": {
+      "files": [
+        "tests/infrastructure/ek-removal-guard.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "WP-13C removal guards in their POST-CUTOVER shape (RG1 secH absent / secI present, RG2 tables uncreatable, RG3 sets absent, RG4 legacy-zero --strict wiring flipped by WP-12)"
+    },
+    "ek-mutation-coverage": {
+      "files": [
+        "tests/infrastructure/ek-mutation-coverage.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "WP-13C mutation coverage - the declared kernel mutation demonstrations are real kills (model/application/development suites)"
+    },
+    "ek-evidence-kit": {
+      "files": [
+        "tests/infrastructure/ek-evidence-kit-determinism.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "WP-13C elite-evidence-kit determinism - two extractions byte-identical on the committed fixture + read-only source contract"
+    },
+    "matrix-coverage": {
+      "files": [
+        "tests/infrastructure/acceptance-matrix-coverage.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "CI-02 self-check - matrix completeness + no-hidden-failure guard (re-pinned to the post-cutover matrix by WP-12)"
+    },
+    "cc-proof-registry": {
+      "files": [
+        "tests/infrastructure/cc-proof-hosting.test.mjs"
+      ],
+      "concurrency": null,
+      "note": "CC-U1/ADR-092 proof-hosting registry - post-cutover manifest (the old-runtime proof rows died with their suites; the registry row itself stays)"
+    }
+  },
+  "quarantine": [],
+  "quarantineEmptyGlobs": []
+}

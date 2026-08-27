@@ -1,0 +1,390 @@
+{
+  "artifactId": "frf-wp01-post-ek-inventory",
+  "schemaVersion": "frf.post-ek-inventory.v1",
+  "capturedAt": "2026-08-27T07:21:43.203Z",
+  "capturedFrom": {
+    "baseSha": "5c158608",
+    "saga4At": "be0d5948"
+  },
+  "package": {
+    "name": "saga-mcp",
+    "version": "2.0.0"
+  },
+  "installedFormalizationPackage": {
+    "moduleId": "workshop:solution-formalization",
+    "moduleVersion": "2.0.0",
+    "sourceFiles": [
+      {
+        "path": "src/workflow-kernel/workshops/formalization/actors.ts",
+        "sha256": "466d3aa82c83c199734866da0e08fa908d090be8856686cf27f61e601f180189",
+        "lines": 232
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/contribution.ts",
+        "sha256": "ddf40134e5add54bd360b2773a6a4829167f38a095e37c32a671eb958de273f5",
+        "lines": 145
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/driver.ts",
+        "sha256": "b28a48b0dbaaacf74bb415fe2c7733501b63bccf6d1a8f4504c273445e126a89",
+        "lines": 939
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/effects.ts",
+        "sha256": "a6a24f9cd3a8aea6bbdfdaf5bb7e6b101de09165137d2e35723eee675bc59d47",
+        "lines": 116
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/envelope.ts",
+        "sha256": "354e3d10fc7584dd83926ec87e4497cbfe306014b08b02b84213c5f813876f33",
+        "lines": 153
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/gates.ts",
+        "sha256": "f27ac3a67360e941b29b8e8dfa7079e87d40af52e3c9323d3ea7fdb755ee8256",
+        "lines": 213
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/index.ts",
+        "sha256": "dd382c2c1b12f78fed111c4a815dde830c08922ef431189be495d29804a4313a",
+        "lines": 26
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/ingress.ts",
+        "sha256": "8f5035bd1fa9e1f6230a5cb1e327abfd63a2e394436ebc0ffbaf8016b27620b9",
+        "lines": 334
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/manifest.ts",
+        "sha256": "2b9b2c77f7d1173cc3245a317427e2a8b6685d6fd03959c6b3fe8b34b3e4e220",
+        "lines": 393
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/products.ts",
+        "sha256": "93c6fcdbf74ca4d5b76448621002a786b601f7d095de07e30d54d78d59086519",
+        "lines": 792
+      },
+      {
+        "path": "src/workflow-kernel/workshops/formalization/roles.ts",
+        "sha256": "f8d7aaf9a3091bca1281b9633e72d2fc1638f142123f7630a6c21d38a070a4a4",
+        "lines": 347
+      }
+    ],
+    "distFiles": [
+      "dist/workflow-kernel/workshops/formalization/actors.js",
+      "dist/workflow-kernel/workshops/formalization/contribution.js",
+      "dist/workflow-kernel/workshops/formalization/driver.js",
+      "dist/workflow-kernel/workshops/formalization/effects.js",
+      "dist/workflow-kernel/workshops/formalization/envelope.js",
+      "dist/workflow-kernel/workshops/formalization/gates.js",
+      "dist/workflow-kernel/workshops/formalization/index.js",
+      "dist/workflow-kernel/workshops/formalization/ingress.js",
+      "dist/workflow-kernel/workshops/formalization/manifest.js",
+      "dist/workflow-kernel/workshops/formalization/products.js",
+      "dist/workflow-kernel/workshops/formalization/roles.js"
+    ],
+    "distFileCount": 11,
+    "sourceTotalLines": 3690
+  },
+  "developmentConsumerSurface": {
+    "note": "ZERO references to solutionContract/developmentHandoff/scenarioBindings anywhere in this package (verified by grep at capture time) — the FRF-09 gap.",
+    "sourceFiles": [
+      {
+        "path": "src/workflow-kernel/workshops/development/bindings.ts",
+        "sha256": "1270bbefcf16161dfab9a53148ad8db2af4d3b3534592c4691d529ff6e9b785a",
+        "lines": 299
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/checkplans.ts",
+        "sha256": "84b24923ce730b7e1bdecbbac5e00a403af727f1bd85339fa1cb4f0e15cf842a",
+        "lines": 207
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/effects.ts",
+        "sha256": "5c1db4b0a8dabf7faa210970ce89a5dede8b6bf763f712eaad04d9f4dd878427",
+        "lines": 30
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/index.ts",
+        "sha256": "0731d45fa427302f937ee01b254cadde62c49ca8918acb720f9ea4fe81e58392",
+        "lines": 30
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/installation.ts",
+        "sha256": "c346a63bc7f742794bd880d7eb9772d4c2ca70eb4ff9d00908aa120a916b15fa",
+        "lines": 406
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/manifest.ts",
+        "sha256": "3e5adc1619fe85a0f6e9e470fb181d18ee0c58c1d5169d082caaa547bbf29d6c",
+        "lines": 179
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/mappings.ts",
+        "sha256": "7694fb2a08b5553c0731da1a4df67adae5a8c2880d21acb96c2dcb68af48380b",
+        "lines": 162
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/products.ts",
+        "sha256": "61fd3d1b7bd7e82ef264436fed8e867a8920b06ba8b77b864aaf347487f60453",
+        "lines": 194
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/runbook.ts",
+        "sha256": "bd5bd510435a99bdc66a54441a0a6c70cc0e256f8592b4d1afc99ffe517f0ed2",
+        "lines": 500
+      },
+      {
+        "path": "src/workflow-kernel/workshops/development/waits.ts",
+        "sha256": "c38594d2722769dc3b3680dabfc137a4294ceefbd96473c886085b77cd80618d",
+        "lines": 102
+      }
+    ]
+  },
+  "syntheticScenarioEngine": {
+    "sourceFiles": [
+      {
+        "path": "src/workflow-kernel/workshops/synthetic/bindings.ts",
+        "sha256": "7f715a1798a36c95cab4fff6a0ad5c4594ef1c65dc42274f1780da455ab5ee5e",
+        "lines": 241
+      },
+      {
+        "path": "src/workflow-kernel/workshops/synthetic/index.ts",
+        "sha256": "ce49ac28f72cbd56c32665e6d22da2663fbb9ae500836693ee4ba1609bfd4717",
+        "lines": 18
+      },
+      {
+        "path": "src/workflow-kernel/workshops/synthetic/installation.ts",
+        "sha256": "9b86ebd503a2f665c9f76975f00cf64d873c400fb30049308cd23dbe6ed8fbde",
+        "lines": 301
+      },
+      {
+        "path": "src/workflow-kernel/workshops/synthetic/products.ts",
+        "sha256": "8b269f2cfbe427cec0b09ee572687b4021127f324012e58c37d89dd16c525941",
+        "lines": 139
+      },
+      {
+        "path": "src/workflow-kernel/workshops/synthetic/scenario.ts",
+        "sha256": "982b08415de56cd176568463f940a2e9e1e3c02739f123773bdc6a43d8102493",
+        "lines": 295
+      }
+    ]
+  },
+  "kernelSeams": [
+    {
+      "path": "src/workflow-kernel/composition/production.ts",
+      "sha256": "93122125a4bd6523d0711f84171165e2409925e528b26c50e7d4b181cd5e267e"
+    },
+    {
+      "path": "src/workflow-kernel/planning/bindings.ts",
+      "sha256": "f7a4fa429247cf4cb29406f5ff15bdcc91e46d90f1ee8fbf36df08b80ad4cf00"
+    },
+    {
+      "path": "src/workflow-kernel/domain/reducers/lifecycle-run.ts",
+      "sha256": "486062d32717e99088a6944b375c3c89c3f4f29f80d4edde3173b0f43dedde0b"
+    },
+    {
+      "path": "src/workflow-kernel/domain/universe.ts",
+      "sha256": "b3a79b3ba0d3779433321e954ba70242637f69b8a7339303c97247567e80453e"
+    }
+  ],
+  "lifecycleStageRoutes": [
+    {
+      "stageRoute": "initial-discovery",
+      "obligation": "obligation:enterStage.initial-discovery"
+    },
+    {
+      "stageRoute": "solution-formalization",
+      "obligation": "obligation:enterStage.solution-formalization"
+    },
+    {
+      "stageRoute": "solution-development",
+      "obligation": "obligation:enterStage.solution-development"
+    },
+    {
+      "stageRoute": "delivery-release",
+      "obligation": "obligation:enterStage.delivery-release"
+    },
+    {
+      "stageRoute": "verify-terminal-claims",
+      "obligation": "obligation:verifyTerminalClaims"
+    }
+  ],
+  "formalizationTestSuites": {
+    "focused": [
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/effects.test.mjs",
+        "sha256": "1a171ef8cbabf6deb445eab8827cd25710960640dde7593a1ce12f28c67fa0f7",
+        "declaredTests": 4
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/gates.test.mjs",
+        "sha256": "190cf5c970e2e75652cab32676f92b91bcb5e5032ebc8c73cbd99a59834c3a37",
+        "declaredTests": 7
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/ingress.test.mjs",
+        "sha256": "ce682377e15253c17dd4346f5db16cf6b7b5f6e0ee62ca32b839f5eb54bc5f41",
+        "declaredTests": 9
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/manifest.test.mjs",
+        "sha256": "45f6aee564536e42d9794ff18538276966c7ca2bd48be3ebf019e2fd5f9e4b8f",
+        "declaredTests": 8
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/products.test.mjs",
+        "sha256": "01cec7da18c612f8290d27244e21ab2ddf140c817a69b02acd36fd75d3d30c1d",
+        "declaredTests": 10
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/roles.test.mjs",
+        "sha256": "9c34806dea2664db8cbf017114e0426c223a05929c8ea6bf79370f35a8e243fb",
+        "declaredTests": 6
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/scenario.test.mjs",
+        "sha256": "1fd3a72c9de671b5698ff92d2ad9aa85420d5d69a5068f4e282990f7254d89dc",
+        "declaredTests": 15
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/structure.test.mjs",
+        "sha256": "aaeb9e57df504fb0a501b5b0b70a690b3f071b1259a2536c9ee93faee391b218",
+        "declaredTests": 9
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/formalization/support.mjs",
+        "sha256": "101b388b596c80e834a1df88d15ba818f9a548bbf7bedc445bdb6393e464cb84",
+        "declaredTests": 0
+      }
+    ],
+    "focusedDeclaredTestsTotal": 68,
+    "otherSuitesTouchingFormalization": [
+      {
+        "path": "tests/workflow-kernel/composition/composition.test.mjs",
+        "sha256": "14eec230c3ec41d95e0d237d239e1deb07375456269c01c5d86db1910a98f7c0",
+        "formalizationMentions": 2,
+        "declaredTests": 8
+      },
+      {
+        "path": "tests/workflow-kernel/development/capsule-ingress.test.mjs",
+        "sha256": "b02a836c8e96bd90cccd7078c14dfb5482bbc85b4a7c2f06af332af7f0f8dbc8",
+        "formalizationMentions": 5,
+        "declaredTests": 10
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/development/installation.test.mjs",
+        "sha256": "c998b65e7498e5435b139ca9391a7696cfd0cae9532121f99b2c5c85a729820b",
+        "formalizationMentions": 1,
+        "declaredTests": 13
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/development/structure.test.mjs",
+        "sha256": "598ea5c5d08cd1da3705a7d3db97e7cf4d345c723c1412223c999eab5e02fde7",
+        "formalizationMentions": 1,
+        "declaredTests": 7
+      },
+      {
+        "path": "tests/workflow-kernel/workshops/synthetic/structure.test.mjs",
+        "sha256": "bd7ee3749b61b1be271279b0861f284863a9251eee91f5ee68bf6acb21266e80",
+        "formalizationMentions": 1,
+        "declaredTests": 6
+      }
+    ],
+    "evidenceFixtures": [
+      "tests/factory-evidence/formalization/formalization_acceptance-heading-mismatch-repair.json",
+      "tests/factory-evidence/formalization/formalization_acceptance-missing-trace-repair.json",
+      "tests/factory-evidence/formalization/formalization_acceptance-retry-exhaustion.json",
+      "tests/factory-evidence/formalization/formalization_acceptance-worker-crash.json",
+      "tests/factory-evidence/formalization/formalization_architecture-invalid-d2-repair.json",
+      "tests/factory-evidence/formalization/formalization_architecture-retry-exhaustion.json",
+      "tests/factory-evidence/formalization/formalization_architecture-worker-crash.json",
+      "tests/factory-evidence/formalization/formalization_happy-formalized.json",
+      "tests/factory-evidence/formalization/formalization_product-missing-brief-lineage-repair.json",
+      "tests/factory-evidence/formalization/formalization_product-retry-exhaustion.json",
+      "tests/factory-evidence/formalization/formalization_product-stale-execution-fence.json",
+      "tests/factory-evidence/formalization/formalization_product-worker-crash.json",
+      "tests/factory-evidence/formalization/formalization_reconciliation-duplicate-submit.json",
+      "tests/factory-evidence/formalization/formalization_reconciliation-late-tool-call.json",
+      "tests/factory-evidence/formalization/formalization_reconciliation-malformed-report-rejected.json",
+      "tests/factory-evidence/formalization/formalization_reconciliation-retry-exhaustion.json",
+      "tests/factory-evidence/formalization/formalization_reconciliation-worker-crash.json",
+      "tests/factory-evidence/formalization/formalization_restart-idempotency.json",
+      "tests/factory-evidence/formalization/formalization_reviewer-feedback-absent.json",
+      "tests/factory-evidence/formalization/formalization_reviewer-feedback-corrupted.json",
+      "tests/factory-evidence/formalization/formalization_reviewer-feedback-exact.json",
+      "tests/factory-evidence/formalization/formalization_reviewer-feedback-stale.json",
+      "tests/factory-evidence/formalization/formalization_reviewer-foreign-subject.json",
+      "tests/factory-evidence/formalization/formalization_use-cases-missing-fr-coverage-repair.json",
+      "tests/factory-evidence/formalization/formalization_useCases-retry-exhaustion.json",
+      "tests/factory-evidence/formalization/formalization_useCases-worker-crash.json"
+    ],
+    "evidenceFixtureCount": 26
+  },
+  "acceptanceMatrixRegistry": {
+    "groupCount": 11,
+    "quarantineCount": 0,
+    "groups": {
+      "project-corpus": {
+        "files": 4,
+        "note": "20-project scripted corpus format + drivers + elite-kit replay"
+      },
+      "workflow-kernel": {
+        "files": 88,
+        "note": "EK event-projected kernel: model, persistence, roles, engine, application, context envelope, development vertical, projection, workshops, the EK-8 production composition"
+      },
+      "architecture": {
+        "files": 6,
+        "note": "ADR-053 cutover gates, dependency-direction ratchet, conveyor boundaries (re-pinned to the post-cutover tree by WP-12)"
+      },
+      "kept-tooling": {
+        "files": 4,
+        "note": "ADR registry, build receipt, and the opencode-shim transport guard tests (the KEEP classes of the EK-8 purge)"
+      },
+      "ek-manifest-guard": {
+        "files": 1,
+        "note": "EK-1/WP-04b deletion-manifest stop-gate in its POST-CUTOVER shape (V1 inverted for DELETE: survivors are red; killed mutations updated by WP-12)"
+      },
+      "ek-admission": {
+        "files": 1,
+        "note": "EK-1 admission-spec validator wrapper - validate:ek-admission-specs blocking in the matrix"
+      },
+      "ek-removal-guard": {
+        "files": 1,
+        "note": "WP-13C removal guards in their POST-CUTOVER shape (RG1 secH absent / secI present, RG2 tables uncreatable, RG3 sets absent, RG4 legacy-zero --strict wiring flipped by WP-12)"
+      },
+      "ek-mutation-coverage": {
+        "files": 1,
+        "note": "WP-13C mutation coverage - the declared kernel mutation demonstrations are real kills (model/application/development suites)"
+      },
+      "ek-evidence-kit": {
+        "files": 1,
+        "note": "WP-13C elite-evidence-kit determinism - two extractions byte-identical on the committed fixture + read-only source contract"
+      },
+      "matrix-coverage": {
+        "files": 1,
+        "note": "CI-02 self-check - matrix completeness + no-hidden-failure guard (re-pinned to the post-cutover matrix by WP-12)"
+      },
+      "cc-proof-registry": {
+        "files": 1,
+        "note": "CC-U1/ADR-092 proof-hosting registry - post-cutover manifest (the old-runtime proof rows died with their suites; the registry row itself stays)"
+      }
+    }
+  },
+  "ciHosts": {
+    "workflows": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "sha256": "74ee96aea3f928c30ffb8cf2faa6f404ac145e2fb29585aff7b20e1d63c16503"
+      },
+      {
+        "path": ".github/workflows/d5-review.yml",
+        "sha256": "1b8adee0696c32d502334852708c1e1f3ec6d9bea06b562b45afdb385b6feb6a"
+      },
+      {
+        "path": ".github/workflows/publish.yml",
+        "sha256": "03a4e4c5727710017366452693eb12be51a3ce09a92db550e8bc816261ef98cb"
+      }
+    ]
+  }
+}
