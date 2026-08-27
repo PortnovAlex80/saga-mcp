@@ -1,0 +1,46 @@
+{
+  "reconciliation": "frf-wp02.v1",
+  "frozenDigests": {
+    "forwardBody": "sha256:d697938a47c037aa297bcae9533f7b1d2e076e127ffd7091b974ae4604b4c10f",
+    "forwardArtifact": "0f9ad4edaa8e1fd75edf16cd7ff48d049e75a32c55c7e929d1abe4f44c0b7a70",
+    "reverseArtifact": "45f2ffa42048a0771fd492fcbee9fd0d56c3904d3883658de7969596f7f73552",
+    "installedBaseline": "050a7217e3b7f677b933a2770a1a24dcdf48424d431a585f86d3922df480c1b6"
+  },
+  "forwardVsInstalled": {
+    "shapeEqual": true,
+    "nodeIdsEqual": true,
+    "fCounts": {
+      "edges": 18,
+      "kernelNodes": 2,
+      "nodes": 11,
+      "productionCells": 6,
+      "terminalNodes": 3
+    },
+    "iCounts": {
+      "nodes": 11,
+      "edges": 18,
+      "byKind": {
+        "production-cell": 6,
+        "kernel": 2,
+        "terminal": 3
+      },
+      "productionCells": 6,
+      "kernelNodes": 2,
+      "terminalNodes": 3
+    },
+    "note": "forward (source-derived) equals installed shape — D-0 corroborated from the forward direction"
+  },
+  "reverseRequirements": {
+    "totalNodes": 39,
+    "claims": 9,
+    "edges": 94,
+    "vocabularies": 8,
+    "note": "reverse is a REQUIREMENTS graph (39 nodes/94 edges) over the same 11-node flow — it declares what the plan REQUIRES the semantics to prove"
+  },
+  "gapEmergence": {
+    "bindingBlindValidator": "CONFIRMED by forward F-6 (source observation) + reverse FOREIGN_LINEAGE constraint + WP01 UC-FOREIGN reproduction",
+    "noDevelopmentConsumer": "CONFIRMED by forward F-7 (source-wide grep) + reverse development-case consumed-by-planning edge (required, not installed)",
+    "additionalForwardFindings": 11
+  },
+  "verdict": "WP02 CLOSED: the two independent derivations agree structurally and jointly confirm the semantic gap; FRF-03..09 have their authority map"
+}
