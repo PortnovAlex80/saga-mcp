@@ -1,0 +1,93 @@
+{
+  "kind": "ek-qualify.series-result.v1",
+  "series": "dev-20260827045604",
+  "kitId": "2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465",
+  "kitPath": "D:/Development/saga-mcp-SAGA4/docs/refactoring/event-kernel/qualification/kits/2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465.json",
+  "sourceHead": "b218f42bc83bebee52e73151b5576a0b1ab297a0",
+  "distTreeHash": "f8ec2850364fd9f12f9d0ec4f131d9604bc35fc4e1b3ae783f40dbca0ebf9070",
+  "seed": 20260826,
+  "frozenAt": "2026-08-27T04:53:26.927Z",
+  "sealedAt": "2026-08-27T04:56:14.160Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {
+      "SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS": "1",
+      "SAGA_REAL_CLAUDE_PATH": "node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs"
+    },
+    "cwd": "D:/Development/saga-mcp-SAGA4"
+  },
+  "allGreen": true,
+  "evidenceRoot": "D:/Development/ek-qual-evidence/2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465/dev-20260827045604",
+  "evidenceManifestDigest": "052f7ec16d26c1c91b8fc923f324e8b892be68459c4470d457274f8f5b09782c",
+  "evidenceFileCount": 241,
+  "resultTable": [
+    {
+      "id": "run-01",
+      "status": "green",
+      "elapsedMs": 1048,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-02",
+      "status": "green",
+      "elapsedMs": 941,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-03",
+      "status": "green",
+      "elapsedMs": 947,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-04",
+      "status": "green",
+      "elapsedMs": 991,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-05",
+      "status": "green",
+      "elapsedMs": 910,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-06",
+      "status": "green",
+      "elapsedMs": 945,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-07",
+      "status": "green",
+      "elapsedMs": 970,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-08",
+      "status": "green",
+      "elapsedMs": 918,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-09",
+      "status": "green",
+      "elapsedMs": 998,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "run-10",
+      "status": "green",
+      "elapsedMs": 960,
+      "checksGreen": "9/9"
+    },
+    {
+      "id": "identical-normalized-traces",
+      "status": "green",
+      "elapsedMs": 0,
+      "checksGreen": "1/1"
+    }
+  ]
+}

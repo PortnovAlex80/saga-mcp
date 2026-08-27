@@ -1,0 +1,33 @@
+{
+  "kind": "ek-qualify.series-result.v1",
+  "series": "real-20260827050602",
+  "kitId": "2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465",
+  "kitPath": "D:/Development/saga-mcp-SAGA4/docs/refactoring/event-kernel/qualification/kits/2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465.json",
+  "sourceHead": "b218f42bc83bebee52e73151b5576a0b1ab297a0",
+  "distTreeHash": "f8ec2850364fd9f12f9d0ec4f131d9604bc35fc4e1b3ae783f40dbca0ebf9070",
+  "seed": 20260826,
+  "frozenAt": "2026-08-27T04:53:26.927Z",
+  "sealedAt": "2026-08-27T06:51:36.322Z",
+  "environment": {
+    "os": "win32 10.0.26100 (x64)",
+    "node": "v24.13.1",
+    "npm": "unknown",
+    "env": {
+      "SAGA_MODEL_SWITCH_SKIP_CLAUDE_SETTINGS": "1",
+      "SAGA_REAL_CLAUDE_PATH": "node D:/Development/saga-mcp/tools/agent-proxy/claude-shim.mjs"
+    },
+    "cwd": "D:/Development/saga-mcp-SAGA4"
+  },
+  "allGreen": true,
+  "evidenceRoot": "D:/Development/ek-qual-evidence/2fd57c84a8f5d8772633fb68ee745cc0ee7b96f1743654de917180bf8e50e465/real-20260827050602",
+  "evidenceManifestDigest": "7f33dc8ba1b71e8149b456d9de92307054715883cad61e4c6392a7dd61b213de",
+  "evidenceFileCount": 50,
+  "resultTable": [
+    {
+      "id": "R1",
+      "status": "green",
+      "elapsedMs": 6333267,
+      "checksGreen": "37/37"
+    }
+  ]
+}
