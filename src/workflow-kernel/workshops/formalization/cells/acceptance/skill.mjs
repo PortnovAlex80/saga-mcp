@@ -11,7 +11,7 @@
  * PURITY: pure data + the WP03 canonical digest rule. No I/O.
  */
 
-import { sha256OfCanonical } from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+import { sha256OfCanonical } from '../../contracts/validators/common.mjs';
 import { ACCEPTANCE_CELL_NODE_ID } from './protocol.mjs';
 
 /** The installed semantic-skill id pattern of this desk (manifest.ts). */

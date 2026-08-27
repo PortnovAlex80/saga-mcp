@@ -1,0 +1,99 @@
+{
+  "$id": "urn:saga:frf-contract:ac-binding:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "FRF-WP03 AC binding payload contract (define-acceptance-contract desk). One atomic acceptance criterion binding. bindsTo carries BOTH UC citation shapes the reverse grammar requires: the scenario-level binding (edge/0051) and the terminal-branch binding (edge/0052) - a scenario-facing AC must retain both (stripping either is a killed mutation). Every criterion binds exact FR or NFR material (edges 0049/0050; RULE is not an AC-bindable kind). Evidence kind is the closed four-value vocabulary and an observable terminal result is declared (cr-05). AC remains WHAT-side: architecture/file-allocation keys are typed SCOPE_VIOLATION. Payload contract only.",
+  "properties": {
+    "bindsTo": {
+      "additionalProperties": false,
+      "description": "The criterion's exact lineage bindings.",
+      "properties": {
+        "requirementRefs": {
+          "description": "Exact FR or NFR member ids this criterion verifies (min 1).",
+          "items": {
+            "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ucScenarioRefs": {
+          "description": "Scenario-level UC citation (edge/0051); required together with ucTerminalBranchRefs for a scenario-facing criterion.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ucTerminalBranchRefs": {
+          "description": "Terminal-branch UC citation (edge/0052); required together with ucScenarioRefs for a scenario-facing criterion.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "requirementRefs"
+      ],
+      "type": "object"
+    },
+    "criterionId": {
+      "description": "Stable atomic criterion identity (namespace:id).",
+      "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+      "type": "string"
+    },
+    "evidence": {
+      "additionalProperties": false,
+      "description": "The evidence method and observable terminal result (cr-05: evidence type and observable terminal result are declared).",
+      "properties": {
+        "evidenceKind": {
+          "description": "Closed evidence-kind vocabulary.",
+          "enum": [
+            "audit",
+            "independent-agent-review",
+            "monitoring",
+            "test"
+          ]
+        },
+        "observableTerminalResult": {
+          "description": "The observable terminal result this criterion verifies end to end.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidenceKind",
+        "observableTerminalResult"
+      ],
+      "type": "object"
+    },
+    "schemaVersion": {
+      "const": "frf-contracts.ac-binding.v1",
+      "description": "Versioned contract identity."
+    },
+    "verifiableStatementRefs": {
+      "description": "References to the verifiable statement (given/when/then) of this criterion; resolved against the exact accepted verifiable-statement id set.",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "bindsTo",
+    "criterionId",
+    "evidence",
+    "schemaVersion",
+    "verifiableStatementRefs"
+  ],
+  "title": "FRF AC binding (frf-contracts.ac-binding.v1)",
+  "type": "object"
+}

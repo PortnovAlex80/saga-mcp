@@ -18,6 +18,11 @@
  * .../synthetic/**); WP-12/EK-8 performs the production cutover.
  */
 
+// FRF-WP09/WP11: the lifecycle handoff edge surface - the DevelopmentCase
+// entry the Formalization settlement settles into (the formalization
+// driver consumes this at run settlement; the planning desks in handoff/
+// plan + workitem consume the case's scenario obligations).
+export * from './handoff-entry.js';
 export * from './installation.js';
 export * from './manifest.js';
 export * from './products.js';

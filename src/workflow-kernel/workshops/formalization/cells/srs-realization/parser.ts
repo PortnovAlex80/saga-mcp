@@ -37,7 +37,7 @@ import type {
   RealizedScenarioEntry,
   SrsRealizationSection,
 } from './contract.js';
-import type { ProductRefusal } from '../../products.js';
+import type { ProductRefusal } from '../../contracts/artifacts.js';
 
 export type ParseOutcome =
   | { readonly ok: true; readonly section: SrsRealizationSection }

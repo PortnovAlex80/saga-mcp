@@ -46,13 +46,15 @@ The binder verifies fail-closed, before any validation may run:
   (`boundSeam()`), which imports, relative to the repository root:
 
   ```js
-  const WP03_VALIDATOR_PATH = 'docs/refactoring/formalization-frf/contracts/validators/requirements-bundle.mjs';
+  // Since FRF-WP11 the CANONICAL module is in-package (the docs path is the frozen snapshot):
+  const WP03_VALIDATOR_PATH = 'src/workflow-kernel/workshops/formalization/contracts/validators/requirements-bundle.mjs';
   ```
 
-- AT COMPOSITION TIME (FRF-WP11, coordinator-owned): the installed
-  composition root performs the same dynamic import + binding when the
-  Cell package is wired into the installed manifest. Until then the
-  package is TEST-ONLY reachable (no production module imports it).
+- AT COMPOSITION TIME (LANDED, FRF-WP11 2026-08-27): the installed
+  semantic dispatch (cells/dispatch.mjs, `installedRequirementsSeamBinding()`)
+  binds the IN-PACKAGE validator (src/workflow-kernel/workshops/
+  formalization/contracts/validators/requirements-bundle.mjs) through the
+  same fail-closed seam; the cell is an installed desk surface.
 
 ## The fail-closed outcome (never a silent pass)
 

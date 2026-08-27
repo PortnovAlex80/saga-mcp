@@ -18,7 +18,9 @@ test('a fully-verified handoff imports through the public ingress', async () => 
   const result = ingress.ingestDiscoveryHandoff(session, capsule, new Uint8Array(HANDOFF_BYTES), HANDOFF_BINDING);
   assert.equal(result.imported, true);
   assert.match(result.capsuleRef, /^sha256:[0-9a-f]{64}$/);
-  assert.equal(result.verified.sourceClaimDigests.length, 3);
+  // Four accepted source claims (the frozen WP03 fixture universe: scope-1,
+  // scope-2, constraint-1, outcome-1 - re-pinned at the FRF-WP11 cutover).
+  assert.equal(result.verified.sourceClaimDigests.length, 4);
   assert.equal(result.verified.terminalClaimDigests.length, 2);
   assert.match(result.ingressReceiptRef, /^evidence:CapsuleIngressReceipt#\d+$/);
   // The kernel committed the capsule planning facts (the WorkItem inputs).

@@ -18,6 +18,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = join(dirnameOf(import.meta.url), '..', '..', '..', '..', '..', '..');
 const FIXTURES = join(dirnameOf(import.meta.url), 'fixtures');
 const DOCS_CONTRACTS = join(ROOT, 'docs/refactoring/formalization-frf/contracts');
+/** The FRF-WP11 canonical in-package contracts tree. */
+const INSTALLED_CONTRACTS = join(ROOT, 'src/workflow-kernel/workshops/formalization/contracts');
 
 function dirnameOf(url) {
   return join(fileURLToPath(url), '..');
@@ -55,20 +57,26 @@ test('the universe builder is fail-closed on every missing input material', asyn
   assert.match(noBranchMap.detail, /terminal-branch map/);
 });
 
-test('THE SEAM: the cell runs the actual WP03 validator, not a copy', async () => {
+test('THE SEAM: the cell runs the actual in-package WP03 validator, not a copy', async () => {
   const c = await cell();
-  const wp03 = await moduleImport(join(DOCS_CONTRACTS, 'validators/ac-binding.mjs'));
+  // FRF-WP11: the canonical home is the in-package contracts tree (the
+  // docs-tree copy is a frozen byte-equal snapshot; the seam imports
+  // in-package, so the identity comparison resolves against THAT module).
+  const wp03 = await moduleImport(join(INSTALLED_CONTRACTS, 'validators/ac-binding.mjs'));
   assert.equal(c.validateAcBinding, wp03.validateAcBinding, 'the seam must re-export the WP03 module function by identity');
   assert.equal(c.WP03_AC_BINDING_KIND, 'frf-contracts.ac-binding.v1');
   assert.equal(c.WP03_SEAM.adoptedContract, wp03.CONTRACT_KIND);
-  // Digest pins: the adopted files must be byte-identical to the frozen WP03 contracts.
+  // Digest pins: the adopted files must be byte-identical to the canonical
+  // contracts AND their frozen docs snapshots (drift in either is red).
   const { createHash } = await import('node:crypto');
   for (const [pinKey, file] of [
     ['validatorSha256', 'validators/ac-binding.mjs'],
     ['commonSha256', 'validators/common.mjs'],
   ]) {
-    const digest = createHash('sha256').update(readFileSync(join(DOCS_CONTRACTS, file))).digest('hex');
-    assert.equal(c.WP03_SEAM[pinKey], digest, `${file} drifted from the seam pin; the frozen contract may only change through a new WP03 version`);
+    const canonical = createHash('sha256').update(readFileSync(join(INSTALLED_CONTRACTS, file))).digest('hex');
+    assert.equal(c.WP03_SEAM[pinKey], canonical, `${file} drifted from the seam pin; the frozen contract may only change through a new WP03 version`);
+    const snapshot = createHash('sha256').update(readFileSync(join(DOCS_CONTRACTS, file))).digest('hex');
+    assert.equal(snapshot, canonical, `${file}: the docs snapshot drifted from the canonical in-package contract`);
   }
 });
 
@@ -216,17 +224,22 @@ test('the gate: accepted green, typed routing, fail-closed provider verification
   assert.equal(wrongKind.reason, 'PROVIDER_NOT_DECLARED');
 });
 
-test('the reason-to-verdict routing is pinned to the installed gates.ts table', async () => {
+test('the reason-to-verdict routing is pinned to the frozen kernel table (the cells own the routing since FRF-WP11)', async () => {
   const c = await cell();
-  const source = readFileSync(join(ROOT, 'src/workflow-kernel/workshops/formalization/gates.ts'), 'utf8');
-  const tableStart = source.indexOf('const VERDICT_OF_REASON');
-  const tableEnd = source.indexOf('};', tableStart);
-  assert.ok(tableStart >= 0, 'the installed gates.ts declares VERDICT_OF_REASON');
-  const tableSource = source.slice(tableStart, tableEnd);
-  for (const [reason, verdict] of Object.entries(c.VERDICT_OF_REASON)) {
-    const re = new RegExp(`${reason}:\\s*'${verdict}'`);
-    assert.match(tableSource, re, `the cell routing for ${reason} must equal the installed gates.ts routing`);
-  }
+  // The installed gate surface (gates.ts) delegates verdict routing to the
+  // cells; the FROZEN table below is the pre-cutover gates.ts routing that
+  // the cutover preserved verbatim (test-owned literal - never derived
+  // from the cell under test).
+  const FROZEN_ROUTING = {
+    MALFORMED_PRODUCT: 'repair',
+    MISSING_LINEAGE: 'repair',
+    STALE_LINEAGE: 'repair',
+    COVERAGE_GAP: 'repair',
+    FOREIGN_LINEAGE: 'upstream-repair',
+    DRIFT_DETECTED: 'human-wait',
+    SCOPE_VIOLATION: 'terminal-reject',
+  };
+  assert.deepEqual(c.VERDICT_OF_REASON, FROZEN_ROUTING);
   assert.deepEqual(Object.keys(c.VERDICT_OF_REASON).sort(), [...c.REFUSAL_REASONS].sort());
 });
 

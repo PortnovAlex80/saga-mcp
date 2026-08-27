@@ -27,7 +27,8 @@ import { sha256OfCanonical } from '../../domain/digest.js';
 
 /** The installed identity of the workshop (content-addressed as data). */
 export const FORMALIZATION_MODULE_ID = 'workshop:solution-formalization' as const;
-export const FORMALIZATION_MODULE_VERSION = '2.0.0' as const;
+/** 3.0.0 = the FRF-WP11 semantic cutover (the scenario-first cells became the desk authority). */
+export const FORMALIZATION_MODULE_VERSION = '3.0.0' as const;
 
 /* ------------------------------------------------------------------ */
 /* The process transition graph (installed-manifest content, R17)       */
@@ -79,14 +80,14 @@ export const FORMALIZATION_FLOW_NODES: readonly FormalizationFlowNode[] = [
     label: 'Define Product Intent',
     kind: 'production-cell',
     description: 'Produce the brief and PRD with stable atomic intent members and required dispositions.',
-    desk: { outputProductKind: 'formalization.prd-intent.v1', checkProviderId: 'formalization.prd-structure.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
+    desk: { outputProductKind: 'frf-cell.product-intent.v1', checkProviderId: 'frf-cell.product-intent.members.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
   },
   {
     id: 'model-use-cases',
     label: 'Model Use Cases',
     kind: 'production-cell',
     description: 'Produce interaction/operational scenarios with a declared actor of the closed vocabulary.',
-    desk: { outputProductKind: 'formalization.uc-scenarios.v1', checkProviderId: 'formalization.uc-structure.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
+    desk: { outputProductKind: 'frf-cell.uc-scenarios.v1', checkProviderId: 'frf-cell.uc-scenarios.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
   },
   {
     id: 'derive-system-requirements',
@@ -100,7 +101,7 @@ export const FORMALIZATION_FLOW_NODES: readonly FormalizationFlowNode[] = [
     label: 'Define Acceptance Contract',
     kind: 'production-cell',
     description: 'Produce acceptance criteria bound to exact FR/NFR material and UC terminal branches.',
-    desk: { outputProductKind: 'formalization.acceptance-bindings.v1', checkProviderId: 'formalization.acceptance-structure.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
+    desk: { outputProductKind: 'formalization.acceptance-bindings.v1', checkProviderId: 'frf.acceptance-closure.v1', effectId: 'formalization.accept-products', operatorStaffed: false },
   },
   {
     id: 'reconcile-what',
@@ -114,7 +115,7 @@ export const FORMALIZATION_FLOW_NODES: readonly FormalizationFlowNode[] = [
     label: 'Freeze WHAT Baseline',
     kind: 'kernel',
     description: 'Freeze the content-addressed whole-WHAT baseline over the exact accepted material.',
-    desk: { outputProductKind: 'formalization.what-baseline.v1', checkProviderId: 'formalization.baseline-freeze.v1', effectId: 'formalization.freeze-what-baseline', operatorStaffed: true },
+    desk: { outputProductKind: 'frf-contracts.what-baseline.v1', checkProviderId: 'formalization.baseline-freeze.v1', effectId: 'formalization.freeze-what-baseline', operatorStaffed: true },
   },
   {
     id: 'define-architecture-contract',
@@ -128,7 +129,7 @@ export const FORMALIZATION_FLOW_NODES: readonly FormalizationFlowNode[] = [
     label: 'Settle Formalization',
     kind: 'kernel',
     description: 'Emit the content-addressed Solution Contract over the baseline and the accepted SRS revision.',
-    desk: { outputProductKind: 'formalization.solution-contract.v1', checkProviderId: 'formalization.settlement-structure.v1', effectId: 'formalization.settle-solution-contract', operatorStaffed: true },
+    desk: { outputProductKind: 'frf-contracts.solution-contract.v1', checkProviderId: 'formalization.settlement-structure.v1', effectId: 'formalization.settle-solution-contract', operatorStaffed: true },
   },
   { id: 'complete-formalized', label: 'Complete: formalized', kind: 'terminal', description: 'A complete frozen solution contract is ready for downstream work.', emitsOutcome: 'formalized' },
   { id: 'complete-inconsistent', label: 'Complete: inconsistent', kind: 'terminal', description: 'The contract graph contains unresolved contradictions or traceability gaps.', emitsOutcome: 'inconsistent' },
@@ -288,15 +289,20 @@ export interface CheckProviderDeclaration {
 }
 
 function checkProviders(): readonly CheckProviderDeclaration[] {
+  // FRF-WP11 cutover: every row pins the OWNING FRF cell's validator (the
+  // old products.ts validator names died with that module - no dual path).
+  // Row identities that cells pin back (formalization.requirements-
+  // structure.v1, formalization.srs-structure.v1, formalization.baseline-
+  // freeze.v1, formalization.settlement-structure.v1) keep their ids.
   const table: readonly { readonly providerId: string; readonly nodeId: string; readonly productKind: string; readonly validator: string }[] = [
-    { providerId: 'formalization.prd-structure.v1', nodeId: 'define-product-intent', productKind: 'formalization.prd-intent.v1', validator: 'validatePrdIntent' },
-    { providerId: 'formalization.uc-structure.v1', nodeId: 'model-use-cases', productKind: 'formalization.uc-scenarios.v1', validator: 'validateUseCaseScenarios' },
-    { providerId: 'formalization.requirements-structure.v1', nodeId: 'derive-system-requirements', productKind: 'formalization.system-requirements.v1', validator: 'validateSystemRequirements' },
-    { providerId: 'formalization.acceptance-structure.v1', nodeId: 'define-acceptance-contract', productKind: 'formalization.acceptance-bindings.v1', validator: 'validateAcceptanceContract' },
-    { providerId: 'formalization.reconciliation-structure.v1', nodeId: 'reconcile-what', productKind: 'formalization.what-reconciliation.v1', validator: 'validateWhatReconciliation' },
-    { providerId: 'formalization.baseline-freeze.v1', nodeId: 'freeze-what-baseline', productKind: 'formalization.what-baseline.v1', validator: 'validateWhatBaseline' },
+    { providerId: 'frf-cell.product-intent.members.v1', nodeId: 'define-product-intent', productKind: 'frf-cell.product-intent.v1', validator: 'wp03:validatePrdIntentMember' },
+    { providerId: 'frf-cell.uc-scenarios.v1', nodeId: 'model-use-cases', productKind: 'frf-cell.uc-scenarios.v1', validator: 'wp03:validateUcScenarioMember' },
+    { providerId: 'formalization.requirements-structure.v1', nodeId: 'derive-system-requirements', productKind: 'formalization.system-requirements.v1', validator: 'wp03:validateRequirementsBundle' },
+    { providerId: 'frf.acceptance-closure.v1', nodeId: 'define-acceptance-contract', productKind: 'formalization.acceptance-bindings.v1', validator: 'validateAcceptanceBundle' },
+    { providerId: 'formalization.reconciliation-structure.v1', nodeId: 'reconcile-what', productKind: 'formalization.what-reconciliation.v1', validator: 'reconcileWhat' },
+    { providerId: 'formalization.baseline-freeze.v1', nodeId: 'freeze-what-baseline', productKind: 'frf-contracts.what-baseline.v1', validator: 'freezeWhatBaseline' },
     { providerId: 'formalization.srs-structure.v1', nodeId: 'define-architecture-contract', productKind: 'formalization.srs.v1', validator: 'validateSrs' },
-    { providerId: 'formalization.settlement-structure.v1', nodeId: 'settle-formalization', productKind: 'formalization.solution-contract.v1', validator: 'validateSolutionContract' },
+    { providerId: 'formalization.settlement-structure.v1', nodeId: 'settle-formalization', productKind: 'frf-contracts.solution-contract.v1', validator: 'settleSolutionContract' },
   ];
   return table.map((entry) => ({
     providerId: entry.providerId,

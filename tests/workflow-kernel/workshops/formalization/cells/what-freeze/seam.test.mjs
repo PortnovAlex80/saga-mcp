@@ -36,7 +36,8 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..', '..', '..', '..');
-const WP03_VALIDATORS = path.join(REPO_ROOT, 'docs', 'refactoring', 'formalization-frf', 'contracts', 'validators');
+const WP03_VALIDATORS = path.join(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'formalization', 'contracts', 'validators');
+const WP03_SNAPSHOTS = path.join(REPO_ROOT, 'docs', 'refactoring', 'formalization-frf', 'contracts', 'validators');
 const wp03ValidatorModule = () => importAbs(path.join(WP03_VALIDATORS, 'what-baseline.mjs'));
 
 test('S1: the cell\'s contract identity IS the WP03 validator\'s (one identity, no fork)', async () => {
@@ -46,9 +47,18 @@ test('S1: the cell\'s contract identity IS the WP03 validator\'s (one identity, 
   assert.equal(shared.CONTRACT_KIND, wp03.CONTRACT_KIND);
   assert.equal(shared.WP03_SEAM.contractId, wp03.CONTRACT_KIND);
   assert.equal(protocol.WHAT_BASELINE_PRODUCT_KIND, wp03.CONTRACT_KIND);
-  // The seam path string resolves to the exact WP03 module.
+  // FRF-WP11: the seam path string resolves to the CANONICAL in-package
+  // module (the docs-tree copy is a frozen byte-equal snapshot).
   const seamTarget = path.resolve(REPO_ROOT, 'src', 'workflow-kernel', 'workshops', 'formalization', 'cells', 'what-freeze', shared.WP03_SEAM.validatorPath);
   assert.equal(path.resolve(seamTarget), path.join(WP03_VALIDATORS, 'what-baseline.mjs'));
+  // The frozen docs snapshot stays byte-equal to the canonical contract.
+  for (const name of ['what-baseline.mjs', 'common.mjs']) {
+    assert.equal(
+      (await import('node:fs')).readFileSync(path.join(WP03_SNAPSHOTS, name)).equals((await import('node:fs')).readFileSync(path.join(WP03_VALIDATORS, name))),
+      true,
+      `${name}: the docs snapshot drifted from the canonical in-package contract`,
+    );
+  }
 });
 
 test('S2: canonical digest parity - the WP03 helpers equal the kernel digest rule byte-for-byte', async () => {

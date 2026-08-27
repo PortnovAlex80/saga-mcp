@@ -2,11 +2,11 @@
 
 New parallel construction (plan
 `docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md`, work
-package FRF-WP04, desk contract "define-product-intent"). Test-only
-reachable: nothing imports this package except
-`tests/workflow-kernel/workshops/formalization/cells/**`; the
-coordinator wires it into the installed package manifest in FRF-11 and
-the old flow stays authoritative until that cutover.
+package FRF-WP04, desk contract "define-product-intent"). INSTALLED
+since the FRF-WP11 cutover: the installed workshop routes the
+define-product-intent desk through this cell (the manifest pins its
+declared provider `frf-cell.product-intent.members.v1`), and the old
+products.ts validator died at the cutover.
 
 ## Package contents
 
@@ -41,21 +41,20 @@ the contracts. This cell therefore:
    seam is a typed `CONTRACT_SEAM_UNWIRED` gate refusal - a bypassed
    validator can never become a silent pass.
 
-**Who installs the port today:** the focused test suite
-(`tests/workflow-kernel/workshops/formalization/cells/support.mjs`)
-imports the real WP03 validator and installs it, with
-`validatorDigest = sha256(validator file bytes)` - the seam is
-content-addressed to the exact WP03 contract file. The cell gates in the
-tests therefore run the real WP03 semantics over the WP03 fixture corpus
-(green + RED seeds).
+**Who installs the port (since FRF-WP11):** the seam ITSELF - the
+installed wiring self-installs the in-package validator
+(`src/workflow-kernel/workshops/formalization/contracts/validators/
+prd-intent-member.mjs`) on first resolution, pinned by the package
+identity table (`contracts/identity.ts`). A test-side install of the
+same pinned digest stays an idempotent no-op; a different digest is
+refused (`CONTRACT_SEAM_REPINNED`). The docs-tree contract is a frozen
+byte-equal snapshot (removal-guarded).
 
-**Who installs it after FRF-11:** the coordinator's package wiring (the
-compiled contracts pinned by the installed package manifest). The port
-shape is already that wiring's shape; no cell code changes.
-
-`resetProductIntentContractSeamForTests()` is a test-only hook used to
-prove the unwired/indeterminate behaviors before wiring the real
-validator; FRF-11 deletes it together with the test-time injection.
+**Who installs it (since FRF-WP11):** the seam itself - the installed
+wiring resolves the in-package validator through the pinned identity
+table on first use. The pre-cutover test-only reset hook died with the
+test-time injection (an unwired seam is unreachable in the installed
+package; the swap fence is the identity-table pin).
 
 ## Gate behavior summary
 

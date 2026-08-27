@@ -2,10 +2,10 @@
  * workflow-kernel/workshops/formalization/cells/srs-realization/index.ts
  * - FRF-WP08: the public surface of the SRS scenario-realization cell.
  *
- * TEST-ONLY REACHABLE (the FRF cell landing rule): no production module
- * outside this cell directory imports it; the FRF-WP09+ work packages and
- * the coordinator wire the cell into the installed flow. Until then the
- * cell is exercised exclusively by its blocking-hosted suite
+ * INSTALLED (since the FRF-WP11 cutover): the installed semantic
+ * dispatch (cells/dispatch.mjs) routes the define-architecture-contract
+ * desk through this cell (the manifest's formalization.srs-structure.v1
+ * row that the desk declaration pins). The blocking-hosted suite stays
  * (tests/workflow-kernel/workshops/formalization/cells/srs-realization/**,
  * hosted by the acceptance matrix's workflow-kernel group glob).
  */

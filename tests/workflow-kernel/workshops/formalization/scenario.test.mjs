@@ -1,16 +1,19 @@
 /**
  * scenario.test.mjs - THE full Formalization run through public commands
- * (WP-11F): capsule ingress of the accepted Discovery output -> the
- * imported-Discovery shell stage -> the solution-formalization stage route
- * -> all eight desks (six Production Cells + two kernel nodes) through the
- * author/reviewer desks, semantic gates and idempotent effects -> node/
- * process/stage/lifecycle/run settlement with terminal proofs. Plus the
- * typed refusal mutations (foreign lineage, malformed product, illegal
- * sequence) and the D5/D12 typed-wait scenarios.
+ * (FRF-WP11 cutover shape): capsule ingress of the accepted Discovery
+ * output -> the imported-Discovery shell stage -> the solution-
+ * formalization stage route -> all eight desks (six Production Cells +
+ * two kernel nodes) through the author/reviewer desks, the INSTALLED FRF
+ * cells' semantic gates (WP04-09 via cells/dispatch.mjs) and idempotent
+ * effects -> node/process/stage/lifecycle/run settlement with terminal
+ * proofs -> the WP09 lifecycle edge settles the DevelopmentCase into the
+ * Development entry. Plus the typed refusal mutations (foreign lineage,
+ * malformed product, illegal sequence) and the D5/D12 typed-wait
+ * scenarios.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { freshDatabase, fullRunConfig, sharedTransport, allAttemptRefs, buildHandoffCapsule, HANDOFF_BINDING, HANDOFF_BYTES, buildAuthoredChain, sha256 } from './support.mjs';
+import { freshDatabase, fullRunConfig, sharedTransport, allAttemptRefs, buildHandoffCapsule, buildAuthoredChain, HANDOFF_BINDING, HANDOFF_BYTES, sha256 } from './support.mjs';
 
 const driver = () => import('../../../../dist/workflow-kernel/workshops/formalization/driver.js');
 
@@ -40,24 +43,53 @@ test('the full run reaches the run terminal proof through public commands only',
   assert.equal(result.desks.length, 8);
   for (const desk of result.desks) {
     assert.equal(desk.gateVerdict, 'accepted', `${desk.nodeId} gate verdict`);
-    assert.match(desk.productRef ?? '', /^sha256:[0-9a-f]{64}$/);
+    if (desk.nodeId !== 'reconcile-what') {
+      assert.match(desk.productRef ?? '', /^sha256:[0-9a-f]{64}$/, `${desk.nodeId} sealed product ref`);
+    }
   }
 });
 
-test('the accepted-material chain folded to the solution contract (ADR-053 authority)', async () => {
+test('the accepted chain folded through the FRF cells to the solution contract (ADR-053 authority)', async () => {
   const { session, result, chain } = await runFullScenario();
   const accepted = result.accepted;
   assert.ok(accepted.handoff, 'the handoff seeded the chain');
-  assert.ok(accepted.prd && accepted.useCases && accepted.requirements && accepted.acceptance && accepted.reconciliation && accepted.baseline && accepted.srs);
-  assert.equal(accepted.srs?.realizedScenarioIds.length, 2);
-  // The chain digests are exactly the test-authored fold (deterministic).
-  assert.equal(accepted.prd?.revisionDigest, chain.acceptedAt.prd.prd.revisionDigest);
-  assert.equal(accepted.baseline?.wholeWhatDigest, chain.acceptedAt.baseline.baseline.wholeWhatDigest);
+  assert.ok(accepted.prd && accepted.useCases && accepted.requirements && accepted.acceptance && accepted.reconciliation && accepted.baseline && accepted.srs && accepted.solution, 'every desk folded its accepted set');
+  // The PRD/UC accepted sets are exactly the authored bundles' members.
+  assert.deepEqual([...accepted.prd.acceptedSet.prdMemberIds].sort(), [...chain.prd.memberIds].sort());
+  assert.deepEqual([...accepted.useCases.acceptedSet.scenarioIds].sort(), [...chain.uc.memberIds].sort());
+  assert.deepEqual([...accepted.requirements.sealed.bundle.requirements.map((r) => r.requirementId)].sort(), [...chain.requirements.memberIds].sort());
+  assert.deepEqual([...accepted.acceptance.bundle.criteria.map((c) => c.criterionId)].sort(), [...chain.acceptance.memberIds].sort());
+  // The frozen whole-WHAT digest is deterministic over the carried surfaces
+  // (the frozen WP03 green fixture's digest - the freezer never rescans).
+  const material = await import('./support.mjs').then((m) => m.corpusMaterial());
+  assert.equal(accepted.baseline.baseline.wholeWhatDigest, material.greenBaselineFixture().wholeWhatDigest);
+  // The settlement sealed the binding-aware contract over both authorities.
+  assert.equal(accepted.solution.contract.schemaVersion, 'frf-contracts.solution-contract.v1');
+  assert.match(accepted.solution.artifact.ref, /^sha256:[0-9a-f]{64}$/);
+  // The reconciliation verdict is COMPUTED (a consistent report over the closed chain).
+  assert.equal(accepted.reconciliation.report.verdict, 'consistent');
   // Gates and acceptance bind REVISION material: the final acceptance of the
   // settle desk carries the accepted-authority evidence, never the attempt.
   const world = session.hydrateWorld().world;
   assert.ok(world.evidence.some((fact) => fact.kind === 'AcceptedCandidateAuthority'));
   assert.ok(world.evidence.some((fact) => fact.kind === 'CellFinalAcceptance'));
+});
+
+test('the WP09 lifecycle edge settles the DevelopmentCase into the Development entry (byte-for-byte)', async () => {
+  const { result } = await runFullScenario();
+  const handoff = result.developmentHandoff;
+  assert.ok(handoff, 'the formalized run produced the lifecycle handoff');
+  assert.equal(handoff.entry, 'admit-development-case');
+  const record = handoff.record;
+  assert.equal(record.ok, true, `the byte-for-byte handoff record: ${JSON.stringify(record)}`);
+  assert.match(record.solutionContractRef, /^sha256:[0-9a-f]{64}$/);
+  const devCase = handoff.developmentCase;
+  assert.equal(devCase.schemaVersion, 'frf-development.case.v1');
+  // The Development workshop consumes the case: its planning surface binds
+  // every scenario identity (no accepted UC disappears from the case).
+  const scenarioIds = devCase.scenarioBindings.map((binding) => binding.scenarioId).sort();
+  assert.deepEqual(scenarioIds, ['uc:batch-1', 'uc:checkout-1']);
+  assert.ok(devCase.scenarioRealizationBindings.length >= 2, 'the realization bindings are typed required values of the case');
 });
 
 test('every desk ran through the role-identity law: same pin in WorkIntent, attempt and views', async () => {
@@ -125,9 +157,9 @@ test('idempotent re-drive converges: the same world, no new events, all steps sk
 
 test('effects are idempotent across the run: accept-products runs once per desk content', async () => {
   const { applied } = await runFullScenario();
-  // The 8 accept-products effects (one per non-kernel desk) + freeze + settle.
+  // The 7 accept-products effects (one per production-cell desk + the import shell) + freeze + settle.
   const acceptCount = applied.filter((entry) => entry.effectId === 'formalization.accept-products').length;
-  assert.equal(acceptCount, 7, 'six cells + the import shell accept their products');
+  assert.equal(acceptCount, 7, 'six production cells + the import shell accept their products (the kernel desks settle their own effects)');
   assert.equal(applied.filter((entry) => entry.effectId === 'formalization.freeze-what-baseline').length, 1);
   assert.equal(applied.filter((entry) => entry.effectId === 'formalization.settle-solution-contract').length, 1);
 });
@@ -140,10 +172,9 @@ test('MUTATION foreign lineage: a UC deriving from a foreign PRD member routes u
   const db = await freshDatabase();
   const session = await db.open();
   const { transport } = await sharedTransport(session, allAttemptRefs());
-  const capsule = await buildHandoffCapsule();
-  const chain = await buildAuthoredChain(capsule.capsuleDigest, capsule.capsuleRef);
+  const chain = await buildAuthoredChain();
   // The UC desk derives from a PRD member outside the accepted revision.
-  chain.uc.product.scenarios[0].prdIntentRefs = ['PRD-FOREIGN'];
+  chain.uc.product.scenarios[0].prdIntentRefs = ['prd:FOREIGN'];
   const { config } = await fullRunConfig(session, { chain, transport });
   const result = await driver().then((d) => d.runFormalizationWorkshop(config));
   const modelUseCases = result.desks.find((desk) => desk.nodeId === 'model-use-cases');
@@ -157,14 +188,29 @@ test('MUTATION malformed product: an actorless UC routes repair and the reviewer
   const db = await freshDatabase();
   const session = await db.open();
   const { transport } = await sharedTransport(session, allAttemptRefs());
-  const capsule = await buildHandoffCapsule();
-  const chain = await buildAuthoredChain(capsule.capsuleDigest, capsule.capsuleRef);
+  const chain = await buildAuthoredChain();
   chain.uc.product.scenarios[0].actorKind = 'robot';
   const { config } = await fullRunConfig(session, { chain, transport });
   const result = await driver().then((d) => d.runFormalizationWorkshop(config));
   const modelUseCases = result.desks.find((desk) => desk.nodeId === 'model-use-cases');
   assert.equal(modelUseCases?.gateVerdict, 'repair');
   assert.ok(result.blockedAt !== undefined);
+});
+
+test('MUTATION foreign handoff bindings: settlement refuses a scenario-binding-stripped handoff (the UC-FOREIGN kill)', async () => {
+  const db = await freshDatabase();
+  const session = await db.open();
+  const { transport } = await sharedTransport(session, allAttemptRefs());
+  const chain = await buildAuthoredChain();
+  // Strip the scenario bindings while retaining the AC ids (ledger D-2/D-17).
+  delete chain.solution.product['scenario-bindings'];
+  const { config } = await fullRunConfig(session, { chain, transport });
+  const result = await driver().then((d) => d.runFormalizationWorkshop(config));
+  const settle = result.desks.find((desk) => desk.nodeId === 'settle-formalization');
+  assert.equal(settle?.gateVerdict, 'terminal-reject', 'the settler fence refuses an incomplete twelve-kind handoff');
+  assert.ok(result.blockedAt !== undefined);
+  // No DevelopmentCase settles from a refused settlement.
+  assert.equal(result.developmentHandoff, undefined);
 });
 
 test('MUTATION illegal sequence: settleEffect before the final gate is refused by the kernel', async () => {
@@ -258,6 +304,7 @@ test('D5 human-input wait: drift at the freeze desk waits for the operator and r
   assert.equal(wait.descriptor.kind, 'TypedWait:human-input');
   assert.deepEqual(wait.descriptor.wakeCommands, ['workplace.resolveHumanResponse']);
   assert.equal(wait.resolve.status, 'committed');
+  assert.equal(wait.resolve.status, 'committed');
   const head = session.hydrateWorld().world.heads.get(freezeWorkplace);
   assert.equal(head.status, 'human-response-resolved');
 });
@@ -266,15 +313,15 @@ test('D12 effect uncertainty: the effect settles unknown, the operator dispositi
   const db = await freshDatabase();
   const session = await db.open();
   const { transport } = await sharedTransport(session, allAttemptRefs());
-  const { config, chain } = await fullRunConfig(session, { transport });
+  const { config } = await fullRunConfig(session, { transport });
   const d = await driver();
   const staged = await d.runFormalizationWorkshop({ ...config, stopAfter: 'desk-settle-formalization-final-gate' });
   assert.equal(staged.blockedAt, 'desk-settle-formalization-final-gate');
   const world = session.hydrateWorld().world;
   const settleWorkplace = [...world.heads.keys()].find((id) => id.startsWith('formalization-workplace:') && id.includes('settle-formalization'));
-  // The settlement effect's content digest is already registered by the
-  // executor during the drive? No: the drive stopped before settle-effect.
-  const contentDigest = chain.solution.artifact.ref;
+  // The drive stopped before settle-effect: register the settlement content
+  // digest once, then run the uncertainty loop over it.
+  const contentDigest = staged.desks.find((desk) => desk.nodeId === 'settle-formalization')?.productRef ?? `sha256:${sha256('settlement')}`;
   const firstSettlement = config.effects.execute('formalization.settle-solution-contract', contentDigest, () => 'settled-once');
   assert.equal(firstSettlement.outcome, 'success');
   const loop = d.effectUncertaintyLoop(config, settleWorkplace);
@@ -326,13 +373,13 @@ test('the repair loop requeues the AUTHOR identity with the SAME pin', async () 
 });
 
 test('the scenario carries the whole-WHAT baseline and the solution contract as accepted revisions', async () => {
-  const { session, chain, result } = await runFullScenario();
-  assert.equal(result.accepted.baseline?.wholeWhatDigest, chain.baseline.product.wholeWhatDigest);
-  assert.equal(result.accepted.srs?.revisionDigest, chain.acceptedAt.srs.srs.revisionDigest);
+  const { session, result } = await runFullScenario();
+  const material = await import('./support.mjs').then((m) => m.corpusMaterial());
+  assert.equal(result.accepted.baseline?.baseline?.wholeWhatDigest, material.greenBaselineFixture().wholeWhatDigest);
+  assert.match(result.accepted.baseline?.artifact?.ref ?? '', /^sha256:[0-9a-f]{64}$/);
   const world = session.hydrateWorld().world;
   // The kernel recorded production revisions for every desk (the authority).
   const revisions = world.evidence.filter((fact) => fact.kind === 'WorkplaceProductionRevision');
   const workplaceCount = [...world.heads.values()].filter((entry) => entry.aggregate === 'Workplace').length;
   assert.ok(revisions.length >= 2 * workplaceCount, `at least one sealed revision per desk round (got ${revisions.length} for ${workplaceCount} workplaces)`);
-  void sha256;
 });

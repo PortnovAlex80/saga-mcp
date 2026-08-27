@@ -1,40 +1,39 @@
 /**
- * workflow-kernel/workshops/formalization/cells/product-intent/seam.ts -
- * THE WP03 CONTRACT SEAM of the define-product-intent Production Cell
- * (FRF-WP04; plan docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md
- * "Work packages/FRF-WP04" + "Desk contracts/define-product-intent").
+ * cells/product-intent/seam.ts - THE WP03 CONTRACT SEAM of the
+ * define-product-intent Production Cell (FRF-WP04; INSTALLED wiring since
+ * the FRF-WP11 cutover; plan docs/plans/
+ * FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md "Work packages/
+ * FRF-WP04" + "Desk contracts/define-product-intent").
  *
  * WHAT THIS SEAM IS (documented honestly; see README.md in this directory):
  *
  *   The semantic authority for a PRD intent member is the FRF-WP03 contract
- *   frf-contracts.prd-intent-member.v1, whose schema and validator live in
- *   the docs tree (docs/refactoring/formalization-frf/contracts/) as pure
- *   .mjs modules. The TypeScript package under src/ CANNOT import them:
- *   tsc compiles src/** only, and the contracts are deliberately not
- *   compiled production modules yet (FRF-WP03: "Adds no artifact type or
- *   mutable storage owner"; the cells ADOPT the contracts, they do not
- *   fork them).
+ *   frf-contracts.prd-intent-member.v1. Since the FRF-WP11 cutover the
+ *   contract's CANONICAL HOME is the in-package contracts tree
+ *   (src/workflow-kernel/workshops/formalization/contracts/validators/
+ *   prd-intent-member.mjs, imported directly below through its .d.mts
+ *   declaration; the docs-tree copy is a frozen byte-equal snapshot,
+ *   removal-guarded). This cell NEVER re-implements the member contract:
+ *   it validates every member through THIS SEAM - a typed port installed
+ *   exactly once, content-addressed to the pinned validator bytes.
  *
- *   Therefore this cell NEVER re-implements the member contract and NEVER
- *   imports the docs tree. It validates every member through THIS SEAM:
- *   a typed port installed exactly once. Until a port is installed the
- *   gate refuses fail-closed (CONTRACT_SEAM_UNWIRED) - a bypassed
+ *   INSTALLED WIRING (the FRF-WP11 flip): the port self-installs on first
+ *   resolution from the in-package validator, pinned by the package's
+ *   identity table (contracts/identity.ts; the blocking guard re-hashes
+ *   both the canonical file and the docs snapshot against the pin - a
+ *   drifted or swapped validator is a red build). The install() function
+ *   stays the documented seam surface: a test-side install of the SAME
+ *   digest is an idempotent no-op; a swap to a DIFFERENT digest is
+ *   refused (CONTRACT_SEAM_REPINNED) - a bypassed or silently-exchanged
  *   validator can never become a silent pass.
- *
- *   TODAY the port is installed at TEST time by
- *   tests/workflow-kernel/workshops/formalization/cells/support.mjs,
- *   which imports the real WP03 validator
- *   (validators/prd-intent-member.mjs) and pins the port's
- *   validatorDigest to the sha256 of that exact file - the seam is
- *   content-addressed to the WP03 contract bytes. FRF-11 replaces the
- *   test-time injection with installed-package wiring (compiled contracts
- *   pinned by the package manifest); the port shape is already that
- *   wiring's shape, so no cell code changes.
  *
  * PURITY: no I/O, no clock, no session. A module-level single-slot
  * registry with a typed re-pin fence (install once; a second install
  * with a DIFFERENT digest is refused).
  */
+
+import { validatePrdIntentMember } from '../../contracts/validators/prd-intent-member.mjs';
+import { contractDigestOf } from '../../contracts/identity.js';
 
 /** The WP03 contract identity this cell adopts (never re-declared as logic). */
 export const PRODUCT_INTENT_CONTRACT_KIND = 'frf-contracts.prd-intent-member.v1';
@@ -96,6 +95,17 @@ export type SeamResolution =
 let installedPort: ProductIntentContractPort | undefined;
 
 /**
+ * The INSTALLED port (FRF-WP11): the in-package WP03 validator behind the
+ * pinned digest from the package identity table. Self-installed on first
+ * resolution - the seam is never unwired in the installed package.
+ */
+const INSTALLED_PORT: ProductIntentContractPort = {
+  contractKind: PRODUCT_INTENT_CONTRACT_KIND,
+  validatorDigest: contractDigestOf('prd-intent-member'),
+  validateMember: (member, universe) => validatePrdIntentMember(member, universe) as ProductIntentContractValidation,
+};
+
+/**
  * Install the contract port ONCE. A re-install with the same digest is an
  * idempotent no-op; a re-install with a different digest is refused (the
  * seam is pinned, never silently swapped - mutation: validator swap).
@@ -108,35 +118,27 @@ export function installProductIntentContract(port: ProductIntentContractPort): {
       detail: `the product-intent contract port must carry contractKind ${PRODUCT_INTENT_CONTRACT_KIND}, a validatorDigest and a validateMember function`,
     };
   }
-  if (installedPort !== undefined && installedPort.validatorDigest !== port.validatorDigest) {
+  const pinned = contractDigestOf('prd-intent-member');
+  if (port.validatorDigest !== pinned) {
     return {
       refused: true,
       reason: 'CONTRACT_SEAM_REPINNED',
-      detail: `the product-intent contract seam is pinned to validator ${installedPort.validatorDigest}; a swap to ${port.validatorDigest} is refused (install once; never silently exchanged)`,
+      detail: `the product-intent contract seam is pinned to the installed validator ${pinned} (contracts/identity.ts); a port carrying ${port.validatorDigest} is refused (the pin is the package identity table; never silently exchanged)`,
     };
   }
   installedPort = port;
   return { installed: true, validatorDigest: port.validatorDigest };
 }
 
-/** Resolve the installed port (fail-closed when nothing is wired). */
+/**
+ * Resolve the installed port. Since the FRF-WP11 cutover the resolution
+ * SELF-INSTALLS the in-package validator port on first use (installed
+ * wiring); an external install of the same pinned digest stays an
+ * idempotent no-op.
+ */
 export function resolveProductIntentContract(): SeamResolution {
   if (installedPort === undefined) {
-    return {
-      refused: true,
-      reason: 'CONTRACT_SEAM_UNWIRED',
-      detail: 'no WP03 product-intent contract validator is wired into the seam; the cell gate refuses fail-closed instead of guessing validity (see cells/product-intent/README.md)',
-    };
+    installedPort = INSTALLED_PORT;
   }
   return { resolved: true, port: installedPort };
-}
-
-/**
- * TEST-ONLY seam reset (named honestly). Production code never calls this;
- * it exists so the focused suite can prove the UNWIRED and INDETERMINATE
- * behaviors before wiring the real WP03 validator. FRF-11 deletes it
- * together with the test-time injection.
- */
-export function resetProductIntentContractSeamForTests(): void {
-  installedPort = undefined;
 }

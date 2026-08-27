@@ -1,0 +1,101 @@
+{
+  "$id": "urn:saga:frf-contract:prd-intent-member:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "FRF-WP03 PRD intent-member payload contract. One stable atomic intent member of the PRD container (define-product-intent desk; plan 'Desk contracts/define-product-intent'). The member carries exactly one disposition of the closed four-value vocabulary (plan 'Target semantic trace grammar'); deferred and out_of_scope require owner and reason; direct_requirement requires a reason why no meaningful interaction or operational scenario exists. scopeClaimRefs cite the exact Discovery scope-claim text the member realizes; terminalClaimRefs cite the lifecycle terminal claims it owns. Payload contract only: no artifact type or storage owner is added.",
+  "properties": {
+    "disposition": {
+      "additionalProperties": false,
+      "description": "Exactly one disposition per member (plan cr-04 law of the reverse graph).",
+      "properties": {
+        "disposition": {
+          "description": "Closed vocabulary: scenario_required | direct_requirement | deferred | out_of_scope.",
+          "enum": [
+            "deferred",
+            "direct_requirement",
+            "out_of_scope",
+            "scenario_required"
+          ]
+        },
+        "owner": {
+          "description": "Required for deferred and out_of_scope.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "description": "Required for deferred, out_of_scope and direct_requirement.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "disposition"
+      ],
+      "type": "object"
+    },
+    "memberId": {
+      "description": "Stable atomic member identity (namespace:id).",
+      "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+      "type": "string"
+    },
+    "memberKind": {
+      "description": "Closed member-kind vocabulary (define-product-intent desk contract).",
+      "enum": [
+        "actor-stakeholder",
+        "assumption-unknown",
+        "constraint",
+        "outcome",
+        "scope-exclusion",
+        "system-boundary",
+        "terminal-claim"
+      ]
+    },
+    "schemaVersion": {
+      "const": "frf-contracts.prd-intent-member.v1",
+      "description": "Versioned contract identity."
+    },
+    "scopeClaimRefs": {
+      "description": "Exact Discovery scope-claim text references this member realizes (subset class of the accepted source claims).",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "sourceClaimRefs": {
+      "description": "Exact Discovery source claims the member derives from (min 1; reverse edge/0066 derived-from-exact-source-claims).",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "statement": {
+      "description": "The intent statement text.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "terminalClaimRefs": {
+      "description": "Lifecycle terminal claims owned by this member (reverse edge/0047: product terminal claims originate as PRD lifecycle-terminal-claim intent members).",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "disposition",
+    "memberId",
+    "memberKind",
+    "schemaVersion",
+    "sourceClaimRefs",
+    "statement"
+  ],
+  "title": "FRF PRD intent member (frf-contracts.prd-intent-member.v1)",
+  "type": "object"
+}

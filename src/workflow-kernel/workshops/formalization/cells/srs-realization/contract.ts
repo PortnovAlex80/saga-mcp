@@ -41,8 +41,8 @@
  */
 
 import { digestExcluding, sha256OfCanonical } from '../../../../domain/digest.js';
-import type { ContentArtifact, ProductRefusal } from '../../products.js';
-import { artifactOf } from '../../products.js';
+import type { ContentArtifact, ProductRefusal } from '../../contracts/artifacts.js';
+import { artifactOf } from '../../contracts/artifacts.js';
 
 /* ------------------------------------------------------------------ */
 /* Versioned contract identities                                       */
@@ -216,7 +216,7 @@ export interface ArchitectureContractProduct {
 /* Refusal vocabulary (sibling parity: the workshop's closed seven)     */
 /* ------------------------------------------------------------------ */
 
-export type { ProductRefusal, ProductValidation, ContentArtifact } from '../../products.js';
+export type { ProductRefusal, ProductValidation, ContentArtifact } from '../../contracts/artifacts.js';
 
 /* ------------------------------------------------------------------ */
 /* Digest rules (recomputed, never trusted)                            */

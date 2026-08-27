@@ -40,7 +40,7 @@
  * No I/O, no clock, no session, no SQL, no mutation of any input.
  */
 
-import { sha256OfCanonical } from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+import { sha256OfCanonical } from '../../contracts/validators/common.mjs';
 import { validateAcBinding } from './wp03-seam.mjs';
 import {
   checkAcToSourceClosure,

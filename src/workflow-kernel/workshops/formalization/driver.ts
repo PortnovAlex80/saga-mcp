@@ -1,6 +1,10 @@
 /**
  * workflow-kernel/workshops/formalization/driver.ts - the Formalization
- * scenario conveyor (WP-11F, plan phase EK-8 workshop conversion).
+ * scenario conveyor (WP-11F, plan phase EK-8 workshop conversion;
+ * FRF-WP11 semantic cutover: the desks gate through the FRF cells -
+ * WP04-09 - and fold the accepted chain through cells/dispatch.mjs; the
+ * WP09 lifecycle edge settles the DevelopmentCase into the Development
+ * entry at run settlement).
  *
  * A STATELESS composition over durable facts, in the exact discipline of
  * the WP-07 obligation driver with WP-09-style durable bindings:
@@ -74,12 +78,12 @@ import { FORMALIZATION_AUTHOR_LAUNCH_KIND, FORMALIZATION_REVIEWER_LAUNCH_KIND } 
 import type { FormalizationActorScript, FormalizationActorRunResult } from './actors.js';
 import { FormalizationScriptedActor } from './actors.js';
 import type { FormalizationEffectExecutor } from './effects.js';
-import type { GateCandidate, SemanticGateOutcome } from './gates.js';
+import type { SemanticGateOutcome } from './gates.js';
 import { evaluateProductGate } from './gates.js';
 import type { CheckProviderDeclaration } from './manifest.js';
 import { checkProviderOfDesk, deskNodeIds, nodeOf } from './manifest.js';
-import type { AcceptedMaterial, BaselineFreezeInputs } from './products.js';
-import { acceptedBaselineAfter, acceptedMaterialAfter, acceptedMaterialOfHandoff, acceptedScenarioRequiredAfter, contributionOf } from './contribution.js';
+import type { AcceptedChain, DeskCandidate } from './cells/dispatch.mjs';
+import { acceptedChainOfHandoff, foldDeskAcceptance } from './cells/dispatch.mjs';
 
 /* ------------------------------------------------------------------ */
 /* Step results                                                        */
@@ -95,7 +99,13 @@ export interface FormalizationRunResult {
   readonly steps: readonly { readonly step: string; readonly result: DeskStepResult }[];
   readonly blockedAt: string | undefined;
   /** The accepted-material chain after the last accepted desk (pure fold). */
-  readonly accepted: AcceptedMaterial;
+  readonly accepted: AcceptedChain;
+  /** The WP09 lifecycle handoff: the DevelopmentCase settled into the Development entry (formalized runs only). */
+  readonly developmentHandoff?: {
+    readonly entry: string;
+    readonly developmentCase: unknown;
+    readonly record: { readonly ok: true; readonly solutionContractRef: string } | { readonly ok: false; readonly refused: true; readonly reason: string; readonly detail: string };
+  };
   /** Per-desk accepted material summary (the production-revision authority). */
   readonly desks: readonly {
     readonly nodeId: string;
@@ -118,14 +128,14 @@ export interface FormalizationHandoffRef {
   readonly constraints: readonly ExternalReference[];
   readonly unknowns: readonly ExternalReference[];
   readonly terminalClaims: readonly ExternalReference[];
+  /** The exact constraint/unknown IDS of the accepted handoff (the lineage universe; refs alone are not ids). */
+  readonly constraintIds?: readonly string[];
+  readonly unknownIds?: readonly string[];
 }
 
-/** One desk's authored product + its atomic member ids (the fold input). */
+/** One desk's authored candidate (the exact material carried by the transition). */
 export interface AuthoredDeskProduct {
-  readonly candidate: GateCandidate;
-  readonly memberIds: readonly string[];
-  /** The scenario_required PRD members (PRD desk only - the UC coverage fence). */
-  readonly scenarioRequiredMemberIds?: readonly string[];
+  readonly candidate: DeskCandidate;
 }
 
 export interface FormalizationRunConfig {
@@ -459,37 +469,16 @@ function deskProviderOf(nodeId: string): CheckProviderDeclaration | undefined {
 }
 
 /** The actor's authored product of one kind (kernel desks use config.authored instead). */
-function actorProductOf(actor: FormalizationActorRunResult | undefined, productKind: string): GateCandidate | undefined {
-  if (productKind === 'formalization.what-baseline.v1') return undefined; // the freezer consumes exact accepted inputs
+function actorProductOf(actor: FormalizationActorRunResult | undefined, productKind: string): DeskCandidate | undefined {
   const product = actor?.products.find((entry) => entry.kind === productKind);
-  return product === undefined ? undefined : ({ kind: product.kind, product: product.product } as GateCandidate);
-}
-
-/** The exact freeze inputs derived from the accepted chain (never a rescan). */
-export function baselineInputsOf(config: FormalizationRunConfig, accepted: AcceptedMaterial): BaselineFreezeInputs {
-  return {
-    handoffDigest: accepted.handoff?.digest ?? config.handoff.digest,
-    prdRevisionDigest: accepted.prd?.revisionDigest ?? '',
-    ucRevisionDigest: accepted.useCases?.revisionDigest ?? '',
-    requirementsRevisionDigest: accepted.requirements?.revisionDigest ?? '',
-    acceptanceRevisionDigest: accepted.acceptance?.revisionDigest ?? '',
-    reconciliationRevisionDigest: accepted.reconciliation?.revisionDigest ?? '',
-    memberDigests: [
-      ...(accepted.prd ? [accepted.prd.revisionDigest] : []),
-      ...(accepted.useCases ? [accepted.useCases.revisionDigest] : []),
-      ...(accepted.requirements ? [accepted.requirements.revisionDigest] : []),
-      ...(accepted.acceptance ? [accepted.acceptance.revisionDigest] : []),
-      ...(accepted.reconciliation ? [accepted.reconciliation.revisionDigest] : []),
-    ],
-    acceptedTraceDigest: config.handoff.capsuleRef,
-  };
+  return product === undefined ? undefined : { kind: product.kind, product: product.product };
 }
 
 /** Drive one full desk on a workplace through the public command path. */
 async function driveDesk(
   config: FormalizationRunConfig,
   state: DeskDriverState,
-  accepted: AcceptedMaterial,
+  accepted: AcceptedChain,
   stop: (step: string, result: DeskStepResult) => void,
   isStopped: () => boolean,
 ): Promise<void> {
@@ -706,12 +695,12 @@ function settleDeskNode(
 /* ------------------------------------------------------------------ */
 
 /** The handoff-sourced accepted-material state (the chain seed). */
-export function initialAcceptedOf(config: FormalizationRunConfig): AcceptedMaterial {
-  return acceptedMaterialOfHandoff({
+export function initialAcceptedOf(config: FormalizationRunConfig): AcceptedChain {
+  return acceptedChainOfHandoff({
     digest: config.handoff.digest,
     sourceClaimIds: config.handoff.sourceClaimIds,
-    constraintIds: config.handoff.constraints.map((ref) => ref.ref),
-    unknownIds: config.handoff.unknowns.map((ref) => ref.ref),
+    constraintIds: config.handoff.constraintIds ?? config.handoff.constraints.map((ref) => ref.ref),
+    unknownIds: config.handoff.unknownIds ?? config.handoff.unknowns.map((ref) => ref.ref),
     terminalClaimIds: config.handoff.terminalClaimIds,
   });
 }
@@ -725,7 +714,7 @@ export async function runFormalizationWorkshop(config: FormalizationRunConfig): 
   const session = config.session;
   const steps: { step: string; result: DeskStepResult }[] = [];
   const desks: { nodeId: string; workplace?: InstanceId; productRef?: string; gateVerdict?: string }[] = [];
-  let accepted = initialAcceptedOf(config);
+  let accepted: AcceptedChain = initialAcceptedOf(config);
   let stopped = false;
   const stop = (step: string, result: DeskStepResult): void => {
     if (stopped) return;
@@ -805,17 +794,11 @@ export async function runFormalizationWorkshop(config: FormalizationRunConfig): 
     if (!stopped) stop(`desk-${nodeId}-node-settle`, settleDeskNode(config, binding, nodeId, formalizationProcess));
 
     // Fold the accepted material ONLY on an accepted author gate (the
-    // production-revision authority chain moves forward).
+    // production-revision authority chain moves forward through the
+    // cells' accepted-set folds - ADR-053).
     const gate = state.gateOutcomes.authorGate;
-    if (gate?.verdict === 'accepted' && gate.productRef !== undefined && state.authored !== undefined) {
-      const artifact = { ref: gate.productRef, digest: gate.productRef.replace(/^sha256:/, ''), content: null };
-      if (nodeId === 'define-product-intent') {
-        accepted = acceptedScenarioRequiredAfter(state.authored.scenarioRequiredMemberIds ?? [], acceptedMaterialAfter(accepted, state.productKind, artifact, state.authored.memberIds));
-      } else if (nodeId === 'freeze-what-baseline') {
-        accepted = acceptedBaselineAfter(accepted, artifact.digest, (state.authored.candidate.product as { wholeWhatDigest: string }).wholeWhatDigest);
-      } else {
-        accepted = acceptedMaterialAfter(accepted, state.productKind, artifact, state.authored.memberIds);
-      }
+    if (gate?.verdict === 'accepted' && gate.fold !== undefined) {
+      accepted = foldDeskAcceptance(accepted, nodeId, gate.fold as never);
     }
     desks.push({
       nodeId,
@@ -837,7 +820,38 @@ export async function runFormalizationWorkshop(config: FormalizationRunConfig): 
 
   const blocked = steps.find((entry) => entry.result.status === 'refused' || entry.result.status === 'actor-refused' || entry.result.status === 'acceptance-refused');
   const stagedAt = config.stopAfter !== undefined && steps.some((entry) => entry.step === config.stopAfter) ? config.stopAfter : undefined;
-  return { steps, blockedAt: blocked?.step ?? stagedAt, accepted, desks };
+
+  /* --- the WP09 lifecycle edge: settlement settles the DevelopmentCase into the Development entry --- */
+  let developmentHandoff: FormalizationRunResult['developmentHandoff'];
+  if (blocked === undefined && accepted.solution !== undefined && accepted.baseline !== undefined && accepted.srs !== undefined) {
+    const settled = {
+      ok: true as const,
+      outcome: 'formalized' as const,
+      contract: accepted.solution.contract,
+    };
+    const lifecycleModule = await import('../development/handoff/lifecycle.mjs');
+    const caseModule = await import('../development/handoff/case.mjs');
+    const mapped = lifecycleModule.mapSettlementToDevelopmentEntry(settled);
+    if (mapped.ok === true) {
+      const repositoryPolicyRefs = (accepted.solution as { readonly repositoryPolicyRefs?: readonly string[] }).repositoryPolicyRefs ?? [];
+      const built = caseModule.buildDevelopmentCase({
+        frozenBaseline: accepted.baseline.baseline,
+        baselineArtifact: accepted.baseline.artifact,
+        srs: accepted.srs.srsAuthority,
+        repositoryPolicyRefs,
+        solutionContract: accepted.solution.contract,
+        architectureContract: accepted.srs.architectureContract,
+      });
+      if (built.ok === true) {
+        developmentHandoff = {
+          entry: mapped.entry,
+          developmentCase: built.developmentCase,
+          record: lifecycleModule.lifecycleHandoffRecord(settled, built.developmentCase),
+        };
+      }
+    }
+  }
+  return { steps, blockedAt: blocked?.step ?? stagedAt, accepted, desks, ...(developmentHandoff !== undefined ? { developmentHandoff } : {}) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -929,10 +943,4 @@ export function repairLoopScenario(
     (s) => headOf(s, workplace)?.status === 'author-intent-admitted',
   );
   return { enter, requeue };
-}
-
-/** The contribution mapping of one desk's authored product (pure, for tests). */
-export function deskContributionOf(nodeId: string, intentRef: string, productRef: string, productKind: string): ReturnType<typeof contributionOf> {
-  void nodeId;
-  return contributionOf(intentRef, productKind, { ref: productRef, digest: productRef.replace(/^sha256:/, ''), content: null });
 }

@@ -71,7 +71,7 @@ Laws of the seam (pinned by `seam.test.mjs`):
 - **S6** the settlement resolves against exactly the WP03 frozen
   handoff/obligation vocabularies (12 + 5).
 
-**WP11 integration contract:** this cell is TEST-ONLY REACHABLE (no
+**WP11 integration contract (landed 2026-08-27):** this cell is INSTALLED (the
 production entrypoint imports it; nothing compiled into `dist/`; asserted
 by `cell-contracts.test.mjs`). At the FRF-WP11 package integration the
 seam flips: the WP03 validators are compiled into the installed package,

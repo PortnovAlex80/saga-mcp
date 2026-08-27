@@ -40,34 +40,27 @@ const VERDICT_OF_REASON = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Mutation kills that MUST run before the real seam is wired.          */
+/* Seam-lifecycle laws in the INSTALLED wiring (FRF-WP11).             */
 /* ------------------------------------------------------------------ */
 
-test('mutation kill (validator bypass): an unwired seam refuses fail-closed - never a silent pass', async () => {
+test('the installed seam resolves ONLY the pinned in-package validator (a bypass never resolves)', async () => {
   const cell = await cellModule();
-  cell.resetProductIntentContractSeamForTests();
-  const provider = cell.declaredProductIntentCheckProvider();
-  const outcome = cell.evaluateProductIntentGate(provider, greenPrdBundle(), universe);
-  assert.equal(outcome.refused, true);
-  assert.equal(outcome.reason, 'CONTRACT_SEAM_UNWIRED');
-  assert.match(outcome.detail, /fail-closed/);
-  // A product that WOULD be green is not accepted without the validator.
-  assert.equal('verdict' in outcome, false);
+  const identity = await import('../../../../../dist/workflow-kernel/workshops/formalization/contracts/identity.js');
+  const seam = cell.resolveProductIntentContract();
+  assert.equal(seam.resolved, true, 'the installed package never runs an unwired seam');
+  // The resolved port carries EXACTLY the pinned digest (the package
+  // identity table - the successor of the pre-cutover unwired-seam kill:
+  // a bypassed or swapped validator can never be the resolved port).
+  assert.equal(seam.port.validatorDigest, identity.contractDigestOf('prd-intent-member'));
+  assert.equal(seam.port.contractKind, 'frf-contracts.prd-intent-member.v1');
+  // The resolved port IS the WP03 member behavior (fail-closed self-test).
+  const refusedNull = seam.port.validateMember(null, universe);
+  assert.equal(refusedNull.ok, false);
+  assert.equal(refusedNull.reason, 'MALFORMED_PRODUCT');
 });
 
-test('an indeterminate validator reason routes to the D5 human-input wait (never a pass)', async () => {
+test('the D5 human-input routing stays the declared wait of last resort (never a pass)', async () => {
   const cell = await cellModule();
-  cell.resetProductIntentContractSeamForTests();
-  const fake = cell.installProductIntentContract({
-    contractKind: 'frf-contracts.prd-intent-member.v1',
-    validatorDigest: 'test-fake-indeterminate-validator',
-    validateMember: () => ({ ok: false, refused: true, reason: 'INDETERMINATE_BUDGET_CUTOFF', detail: 'fake indeterminate disposition' }),
-  });
-  assert.equal(fake.installed, true);
-  const provider = cell.declaredProductIntentCheckProvider();
-  const outcome = cell.evaluateProductIntentGate(provider, greenPrdBundle(), universe);
-  assert.equal(outcome.verdict, 'human-wait');
-  assert.equal(outcome.issues[0].source, 'INDETERMINATE:INDETERMINATE_BUDGET_CUTOFF');
   const routing = cell.obligationRoutingOf('human-wait');
   assert.equal(routing.obligationKind, 'obligation:requeueAfterHumanResolution');
   assert.equal(routing.wait.kind, 'TypedWait:human-input');
@@ -86,12 +79,7 @@ test('mutation kill (validator swap): the seam is pinned - a second install with
 });
 
 test('mutation kill (fence removal): a mutated declaration never verifies - PROVIDER_NOT_DECLARED', async () => {
-  // Wire the REAL WP03 seam from here on (the fake indeterminate port of
-  // the previous test is deliberately reset: the seam kill tests above
-  // proved the unwired/pinned behaviors already).
   const cell = await cellModule();
-  cell.resetProductIntentContractSeamForTests();
-  await installProductIntentWp03Seam();
   const intact = cell.declaredProductIntentCheckProvider();
   // Fence removal: same id/kind/validator, empty fence list.
   const fenceRemoved = { ...intact, fences: [], providerDigest: '0'.repeat(64) };
