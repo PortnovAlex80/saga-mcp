@@ -54,6 +54,14 @@ export interface OpenCodeChannelConfig {
   readonly cwd?: string;
   /** Explicit executor override (tests/laws wiring); defaults to resolveExecutorPath(). */
   readonly executor?: ResolvedExecutor;
+  /**
+   * Operator rate limit (2026-08-26 directive: GLM-5.3-flash default, limit 6):
+   * AT MOST this many shim processes may be in flight concurrently; further
+   * sends QUEUE (FIFO) at this boundary — the provider is never hammered past
+   * the plan limit. 0/undefined = unlimited (single-lane drivers).
+   */
+  readonly maxConcurrentSends?: number;
+  /** Spawn observer (diagnostics; one line per spawn). */
   /** Explicit tripwire override; defaults to a tripwire armed at construction. */
   readonly tripwire?: ClaudeSettingsTripwire;
   /** Spawn sink for tests (never used to fake results - only to observe argv). */
@@ -67,6 +75,22 @@ export interface OpenCodeChannelConfig {
  * channel; this module is deliberately thin - resolve laws, spawn, hash.
  */
 export class OpenCodeShimChannel implements ProviderNetworkChannel {
+  private inFlight = 0;
+  private readonly sendQueue: Array<() => void> = [];
+
+  /** Rate-limit gate (FIFO): at most maxConcurrentSends shim processes alive. */
+  private async acquireSendSlot(): Promise<void> {
+    const cap = this.config.maxConcurrentSends ?? 0;
+    if (cap <= 0 || this.inFlight < cap) { this.inFlight++; return; }
+    await new Promise<void>(release => this.sendQueue.push(release));
+    this.inFlight++;
+  }
+
+  private releaseSendSlot(): void {
+    this.inFlight--;
+    const next = this.sendQueue.shift();
+    if (next) next();
+  }
   private readonly executor: ResolvedExecutor;
   private readonly tripwire: ClaudeSettingsTripwire;
 
@@ -87,6 +111,7 @@ export class OpenCodeShimChannel implements ProviderNetworkChannel {
     readonly routePin: ProviderRoutePin;
     readonly maxOutputTokens: number;
   }): Promise<ProviderChannelResult> {
+    await this.acquireSendSlot();
     // LAW 2 before every send: the settings tripwire must hold.
     const verify = this.tripwire.verify();
     if (!verify.ok) {
@@ -127,6 +152,7 @@ export class OpenCodeShimChannel implements ProviderNetworkChannel {
       child.on('close', (code) => {
         if (settled) return;
         settled = true;
+        this.releaseSendSlot();
         if (timer !== undefined) clearTimeout(timer);
         if (code === 0) {
           resolve({ status: 'delivered', outcomeDigest: 'sha256:' + createHash('sha256').update(stdout, 'utf8').digest('hex') });

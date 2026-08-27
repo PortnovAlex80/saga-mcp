@@ -27,7 +27,11 @@ import type { ProviderRoutePin } from '../context-envelope/receipt.js';
 import { sha256OfCanonical } from '../domain/digest.js';
 
 /** The frozen digest of the production rows (content address, sha256). */
-export const PRODUCTION_LIMIT_TABLE_DIGEST = 'sha256:60636c3052f3644af7bf638ec9bb2e86ab8f9f968a13a2d883446aaccd0c2c52';
+// Repinned 2026-08-26 (operator directive: GLM-5.3-flash joins the catalog
+// and becomes the default route, rate limit 6 at the channel). The digest
+// moved with the rows in the SAME change — the fail-closed drift guard above
+// forced this repin (computed 0bef5d84… at the change).
+export const PRODUCTION_LIMIT_TABLE_DIGEST = 'sha256:0bef5d84cfc8c363664f3c7a906c8fc2be459d7bcf91db13d4035bfd148aefc3';
 
 /**
  * The production provider-model limit table (pinned at the EK-8 cutover;
@@ -37,6 +41,7 @@ export const PRODUCTION_LIMIT_TABLE: ProviderModelLimitTableArtifact = Object.fr
   kind: 'provider-model-limit-table',
   rows: Object.freeze([
     Object.freeze({ provider: 'zai', model: 'glm-5.2', version: 'catalog-2026-08-24', contextLimitTokens: 131072 }),
+    Object.freeze({ provider: 'zai', model: 'glm-5.3-flash', version: 'catalog-2026-08-26', contextLimitTokens: 131072 }),
     Object.freeze({ provider: 'zai', model: 'glm-4.7', version: 'catalog-2026-08-24', contextLimitTokens: 204800 }),
   ]),
 });
@@ -52,8 +57,8 @@ if (tableRowsDigestOf(PRODUCTION_LIMIT_TABLE.rows) !== PRODUCTION_LIMIT_TABLE_DI
 /** The one provider route the production composition serves. */
 export const PRODUCTION_ROUTE_PIN: ProviderRoutePin = Object.freeze({
   provider: 'zai',
-  model: 'glm-4.7',
-  version: 'catalog-2026-08-24',
+  model: 'glm-5.3-flash',
+  version: 'catalog-2026-08-26',
 });
 
 /**
@@ -64,19 +69,19 @@ export const PRODUCTION_ROUTE_PIN: ProviderRoutePin = Object.freeze({
  */
 export const PRODUCTION_PROMPT_BUDGET_PROFILE: PromptBudgetProfile = Object.freeze({
   providerModelLimitTableRef: {
-    ref: 'content://provider-model-limit-tables/factory-production-ek8',
+    ref: 'content://provider-model-limit-tables/factory-production-2026-08-26-glm53flash',
     digest: PRODUCTION_LIMIT_TABLE_DIGEST,
     digestAlgorithm: 'sha256' as const,
   },
   tokenCounterRef: RUNNING_COUNTER_IDENTITY,
-  providerContextLimitTokens: 204800,
+  providerContextLimitTokens: 131072,
   maxProviderRequests: 40,
-  maxStaticTokens: 150000,
+  maxStaticTokens: 95000,
   maxDynamicTokens: 30000,
   maxRecoveryTokens: 8000,
   maxToolResultTokens: 12000,
-  maxTotalInputTokens: 180000,
-  maxCumulativeSessionInputTokens: 400000,
+  maxTotalInputTokens: 116000,
+  maxCumulativeSessionInputTokens: 300000,
   reservedOutputTokens: 8192,
   providerOverheadReserveTokens: 2048,
   safetyMarginTokens: 4096,
@@ -84,7 +89,7 @@ export const PRODUCTION_PROMPT_BUDGET_PROFILE: PromptBudgetProfile = Object.free
 });
 
 /** The content-addressed identity of the profile (evidence pins carried by attempts). */
-export const PRODUCTION_PROFILE_REF = 'content://prompt-budget-profiles/factory-production-ek8';
+export const PRODUCTION_PROFILE_REF = 'content://prompt-budget-profiles/factory-production-2026-08-26-glm53flash';
 
 /** The profile's content digest (sha256 over the canonicalized profile object). */
 export const PRODUCTION_PROFILE_DIGEST: string = 'sha256:' + sha256OfCanonical(PRODUCTION_PROMPT_BUDGET_PROFILE);

@@ -105,7 +105,7 @@ test('C2: dispatcher/runner/tracker views transport the SAME digest (one resolut
 
 test('C3: the production profile pins RUNNING_COUNTER_IDENTITY; a foreign pin fails admission closed (RED/GREEN)', async () => {
   const envelope = await dist('workflow-kernel/context-envelope/index.js');
-  const { PRODUCTION_PROMPT_BUDGET_PROFILE, PRODUCTION_LIMIT_TABLE, PRODUCTION_LIMIT_TABLE_DIGEST } = await dist('workflow-kernel/composition/pins.js');
+  const { PRODUCTION_PROMPT_BUDGET_PROFILE, PRODUCTION_LIMIT_TABLE, PRODUCTION_LIMIT_TABLE_DIGEST, PRODUCTION_ROUTE_PIN } = await dist('workflow-kernel/composition/pins.js');
   // The pin: the profile's tokenCounterRef IS the running identity.
   assert.deepEqual(PRODUCTION_PROMPT_BUDGET_PROFILE.tokenCounterRef, envelope.RUNNING_COUNTER_IDENTITY);
   assert.equal(PRODUCTION_PROMPT_BUDGET_PROFILE.providerModelLimitTableRef.digest, PRODUCTION_LIMIT_TABLE_DIGEST);
@@ -120,7 +120,7 @@ test('C3: the production profile pins RUNNING_COUNTER_IDENTITY; a foreign pin fa
     { layer: 'write-authority', content: 'write authority: cell workspace only' },
   ];
   const attempt = {
-    providerRoutePin: { provider: 'zai', model: 'glm-4.7', version: 'catalog-2026-08-24' },
+    providerRoutePin: { provider: 'zai', model: PRODUCTION_ROUTE_PIN.model, version: PRODUCTION_ROUTE_PIN.version },
     nextRequestOrdinal: 0,
     cumulativeInputTokens: 0,
   };
