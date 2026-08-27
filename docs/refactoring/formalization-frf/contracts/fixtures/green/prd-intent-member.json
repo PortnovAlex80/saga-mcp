@@ -1,0 +1,18 @@
+{
+  "disposition": {
+    "disposition": "scenario_required"
+  },
+  "memberId": "prd:outcome-1",
+  "memberKind": "outcome",
+  "schemaVersion": "frf-contracts.prd-intent-member.v1",
+  "scopeClaimRefs": [
+    "claim:scope-1"
+  ],
+  "sourceClaimRefs": [
+    "claim:outcome-1"
+  ],
+  "statement": "A shopper can complete an end-to-end checkout of a cart and receive a delivered order confirmation.",
+  "terminalClaimRefs": [
+    "terminal:delivered-1"
+  ]
+}
