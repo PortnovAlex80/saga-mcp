@@ -1,0 +1,190 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>core-view-ek — ядро событий</title>
+<style>
+/* === Визуальный язык legacy board-render (page()), дословно где возможно === */
+*{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d1117;color:#e6edf3}
+a{color:inherit;text-decoration:none}
+.board-head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.cur-proj{font-weight:700;font-size:15px}
+.sub{font-size:11px;color:#8b949e}
+.summary{display:flex;gap:12px;padding:16px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.sum-item{flex:1;min-width:96px;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center}
+.sum-item b{display:block;font-size:22px;color:#58a6ff} .sum-item span{font-size:11px;color:#8b949e}
+.sum-item.g b{color:#3fb950}.sum-item.y b{color:#d29922}.sum-item.r b{color:#f85149}
+.heartbeat{display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e;justify-content:center}
+.hb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.hb-dot.green{background:#3fb950;animation:hb-pulse 0.9s infinite}
+.hb-dot.yellow{background:#f1c40f;animation:hb-pulse 1.8s infinite}
+.hb-dot.red{background:#e74c3c}
+@keyframes hb-pulse{0%,100%{opacity:1;transform:scale(1.15);box-shadow:0 0 6px currentColor}50%{opacity:.25;transform:scale(.7);box-shadow:0 0 0 currentColor}}
+.tabs{display:flex;gap:4px;padding:12px 20px 0}
+.tab{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s}
+.tab:hover{border-color:#8b949e;color:#e6edf3}
+.tab.active{border-color:#58a6ff;color:#58a6ff;background:#0d1117;font-weight:600}
+.wrap{margin:0 20px 30px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;min-height:55vh;overflow:auto;font-size:12px}
+table{border-collapse:collapse;width:100%} td,th{border-bottom:1px solid #21262d;padding:7px 10px;text-align:left;vertical-align:middle}
+th{text-align:left;background:#21262d;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+tr:hover td{background:#0d1117}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.muted{color:#484f58}.ok{color:#3fb950}.warn{color:#d29922}.bad{color:#f85149}
+.small{font-size:11px}
+.lane{display:inline-block;padding:1px 8px;border-radius:8px;font-size:10px;border:1px solid #30363d}
+.Ltodo{color:#8b949e}.Lin-progress{color:#58a6ff;border-color:#1f6feb}.Lreview{color:#a371f7;border-color:#8957e5}
+.Lrepair{color:#f0883e;border-color:#bd561d}.Lwaiting{color:#d29922;border-color:#9e6a03}
+.Lterminal{color:#3fb950;border-color:#238636}
+.task-badge{font-size:9px;padding:2px 5px;border-radius:8px;background:#21262d;color:#8b949e;border:1px solid #30363d;display:inline-block;margin:1px}
+.task-badge.author{color:#3fb950;border-color:#238636}
+.task-badge.reviewer{color:#a371f7;border-color:#6e40c9}
+.task-badge.wp{color:#d29922;font-family:ui-monospace,Consolas,monospace}
+/* kind coloring хроники: цвет по агрегату-источнику */
+.evt{padding:4px 8px;border-left:3px solid #30363d;margin:3px 0;background:#0d1117;border-radius:0 5px 5px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.evt .seq{font-family:ui-monospace,Consolas,monospace;color:#484f58;min-width:34px}
+.evt .kind{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:600}
+.KWorkplace{color:#58a6ff}.KWorkItem{color:#79c0ff}.KActivityAttempt{color:#d2a8ff}
+.KFactoryRun{color:#f0883e}.KLifecycleRun{color:#ffa657}.KStageRun{color:#a371f7}
+.KProcessRun{color:#3fb950}.KNodeRun{color:#56d364}.KCognitionTransport{color:#e3b341}
+.evt .inst{font-family:ui-monospace,Consolas,monospace;font-size:10px;color:#8b949e}
+.evt .st{font-size:10px;color:#8b949e}
+/* дерево конвейера */
+.tree{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.9}
+.tnode{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:2px 6px;border-radius:5px}
+.tnode:hover{background:#0d1117}
+.tnode .tid{color:#58a6ff;font-weight:600}
+.tnode .tst{color:#8b949e;font-size:11px}
+.tnode .tterm{color:#3fb950;font-size:10px}
+.t-kid{margin-left:26px;border-left:1px solid #30363d;padding-left:14px}
+.h3{color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;font-weight:600}
+a.jlink{color:#58a6ff;cursor:pointer} a.jlink:hover{text-decoration:underline}
+.empty-hint{padding:24px;text-align:center;color:#484f58;font-size:13px}
+.chip{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .15s}
+.chip:hover{border-color:#8b949e;color:#e6edf3}
+.chip.active{border-color:#58a6ff;color:#58a6ff;background:#0d1117;font-weight:600}
+.filter-bar{display:flex;align-items:center;gap:6px;padding:10px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.filter-label{font-size:12px;color:#8b949e;margin-right:4px}
+</style></head><body>
+<div class="board-head">
+  <span style="font-size:22px">🛰</span>
+  <div><div class="cur-proj">core-view-ek · ядро событий</div>
+  <div class="sub">пассивный наблюдатель · readonly:true на каждый запрос · ни одной записи · <span id="dbpath" class="mono"></span></div></div>
+  <span style="flex:1"></span>
+  <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+</div>
+<div class="summary" id="summary">…</div>
+<div class="filter-bar">
+  <span class="filter-label">Вкладка:</span>
+  <button class="chip active" data-t="board">Цеха</button>
+  <button class="chip" data-t="tree">Конвейер</button>
+  <button class="chip" data-t="obligations">Обязательства</button>
+  <button class="chip" data-t="waits">Ожидания</button>
+  <button class="chip" data-t="events">Хроника</button>
+  <button class="chip" data-t="proofs">Доказательства</button>
+  <span style="flex:1"></span>
+  <button class="chip" onclick="load()">↻ Обновить</button>
+</div>
+<div class="wrap" id="body">загрузка…</div>
+<script>
+let tab='board';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+document.querySelectorAll('.chip[data-t]').forEach(t=>t.onclick=()=>{tab=t.dataset.t;
+  document.querySelectorAll('.chip[data-t]').forEach(x=>x.classList.toggle('active',x===t));load();});
+let lastSeq=null, staticPolls=0;
+function heartbeat(seq){
+  const dot=document.getElementById('hb-dot'),txt=document.getElementById('hb-txt');
+  if(seq==null){dot.className='hb-dot red';txt.textContent='нет данных';return;}
+  if(lastSeq!==null&&seq>lastSeq){staticPolls=0;dot.className='hb-dot green';txt.textContent='seq '+seq+' · растёт';}
+  else if(++staticPolls<3){dot.className='hb-dot yellow';txt.textContent='seq '+seq+' · тихо';}
+  else{dot.className='hb-dot red';txt.textContent='seq '+seq+' · статично';}
+  lastSeq=seq;
+}
+const j=(id)=>document.getElementById(id);
+async function get(u){const r=await fetch(u);return r.json();}
+async function load(){
+  try{
+    const s=await get('/api/snapshot');
+    j('dbpath').textContent=s.db||'';
+    heartbeat(s.counters.lastSequence);
+    const c=s.counters;
+    j('summary').innerHTML=
+      '<div class="sum-item g"><b>'+c.events+'</b><span>событий</span></div>'+
+      '<div class="sum-item"><b>'+c.attempts+'</b><span>когниций</span></div>'+
+      '<div class="sum-item"><b>'+c.receipts+'</b><span>рецептов</span></div>'+
+      '<div class="sum-item g"><b>'+c.proofs+'</b><span>доказательств</span></div>'+
+      '<div class="sum-item y"><b>'+c.openObligations+'</b><span>обяз. открытых</span></div>'+
+      '<div class="sum-item y"><b>'+c.pendingWaits+'</b><span>ожиданий</span></div>'+
+      '<div class="sum-item"><b>'+c.workItems+'</b><span>work items</span></div>'+
+      '<div class="sum-item"><b>'+c.workplaces+'</b><span>цехов</span></div>';
+    const b=j('body');
+    if(tab==='board'){
+      b.innerHTML='<table><tr><th>work item</th><th>статус</th><th>лейн</th><th>цех</th><th>статус цеха</th><th>роли</th><th>терминал</th></tr>'+
+        s.cards.map(w=>'<tr><td class="mono">'+esc(w.work_item)+'</td><td>'+esc(w.item_status)+'</td>'+
+        '<td><span class="lane L'+w.lane+'">'+w.lane+'</span></td>'+
+        '<td class="mono">'+(w.workplace?esc(w.workplace):'<span class="muted">—</span>')+'</td>'+
+        '<td>'+(w.workplace_status?esc(w.workplace_status):'<span class="muted">—</span>')+'</td>'+
+        '<td>'+(w.roles||[]).map(r=>'<span class="task-badge '+r+'">'+r+'</span>').join('')+'</td>'+
+        '<td>'+(w.workplace_terminal?'<span class="'+(String(w.workplace_terminal).includes('failure')?'bad':'ok')+'">'+esc(w.workplace_terminal)+'</span>':'—')+'</td></tr>').join('')+'</table>';
+    } else if(tab==='tree'){
+      const t=await get('/api/tree');
+      b.innerHTML='<div class="tree">'+t.runs.map(r=>
+        '<div class="tnode"><span>'+esc(r.label)+'</span><span class="tid">'+esc(r.id)+'</span>'+
+        '<span class="tst">'+esc(r.status)+'</span>'+
+        (r.terminal?'<span class="tterm">'+esc(r.terminal)+'</span>':'')+
+        '<span class="tst small">rev '+r.revision+(r.first_sequence!=null?' · @'+r.first_sequence:'')+'</span></div>').join('')+
+        '<div class="t-kid">'+t.workplaces.map(w=>
+          '<div class="tnode"><span>🏭 Workplace</span><span class="tid">'+esc(w.instance_id)+'</span>'+
+          '<span class="tst">'+esc(w.status)+'</span>'+
+          (w.terminal?'<span class="tterm">'+esc(w.terminal)+'</span>':'')+
+          '<span class="tst small">rev '+w.revision+(w.first_sequence!=null?' · @'+w.first_sequence:'')+'</span>'+
+          (w.intents.length?'<div class="t-kid">'+w.intents.map(i=>
+            '<div class="tnode"><span class="task-badge '+i.role+'">'+i.role+'</span><span class="tid">'+esc(i.item)+'</span></div>').join('')+'</div>':'')+
+          '</div>').join('')+'</div></div>';
+    } else if(tab==='obligations'){
+      const o=await get('/api/obligations');
+      const open=o.openList||[];
+      b.innerHTML='<div class="h3">Открытые обязательства — '+open.length+'</div>'+
+        (open.length?'<table><tr><th>id</th><th>вид</th><th>источник</th><th>цель</th><th>агрегат</th></tr>'+
+        open.map(x=>'<tr><td>'+x.id+'</td><td class="mono warn">'+esc(x.kind)+'</td><td class="mono small">'+esc(x.source_instance_id||x.source||'')+'</td>'+
+        '<td class="mono">'+esc(x.target||'')+'</td><td class="small">'+esc(x.target_aggregate||'')+'</td></tr>').join('')+'</table>'
+        :'<p class="ok">Нет открытых обязательств.</p>')+
+        '<div class="h3">Реестр по видам</div><table><tr><th>вид</th><th>состояние</th><th>кол-во</th></tr>'+
+        o.byKind.map(x=>'<tr><td class="mono">'+esc(x.kind)+'</td><td class="'+(x.state==='open'?'warn':'ok')+'">'+x.state+'</td><td>'+x.n+'</td></tr>').join('')+'</table>';
+    } else if(tab==='waits'){
+      const w=await get('/api/waits');
+      b.innerHTML='<div class="h3">Незакрытые ожидания — '+w.pending.length+'</div>'+
+        (w.pending.length?'<table><tr><th>id</th><th>вид</th><th>владелец</th><th>wake-команды</th><th>wake-обязанности</th></tr>'+
+        w.pending.map(x=>'<tr><td>'+x.id+'</td><td class="mono warn">'+esc(x.kind)+'</td>'+
+        '<td class="mono"><a class="jlink" onclick="jumpInstance(\''+esc(x.owner_instance_id)+'\')" title="Показать в хронике">'+esc(x.owner_instance_id)+'</a></td>'+
+        '<td class="mono small">'+(x.wake_commands||[]).map(esc).join(', ')+'</td>'+
+        '<td class="mono small">'+(x.wake_obligation_kinds||[]).map(esc).join(', ')+'</td></tr>').join('')+'</table>'
+        :'<p class="ok">Нет незакрытых ожиданий — конвейер движется.</p>')+
+        (w.discharged.length?'<div class="h3">Закрытые ожидания — '+w.discharged.length+'</div><table><tr><th>id</th><th>вид</th><th>владелец</th><th>состояние</th></tr>'+
+        w.discharged.map(x=>'<tr><td>'+x.id+'</td><td class="mono muted">'+esc(x.kind)+'</td><td class="mono muted">'+esc(x.owner_instance_id)+'</td><td class="muted">'+esc(x.state)+'</td></tr>').join('')+'</table>':'');
+    } else if(tab==='events'){
+      const e=await get('/api/events?limit=120');
+      b.innerHTML='<div class="filter-bar" style="padding:0 0 10px"><input id="evfilter" placeholder="🔍 фильтр по инстансу/виду..." oninput="filterEvents()" style="width:320px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:8px;padding:8px 12px;font-size:12px"></div>'+
+        e.events.map(x=>{
+        const owner=x.kind&&x.kind.startsWith('WorkflowEvent:')?x.kind.slice('WorkflowEvent:'.length).split('.')[0]:'';
+        const kcls='K'+(owner||'Workplace');
+        return '<div class="evt"><span class="seq">#'+x.seq+'</span><span class="kind '+kcls+'">'+esc(x.kind)+'</span>'+
+        '<span class="inst">'+esc(x.source_instance_id||'')+'</span>'+
+        (x.source_status?'<span class="st">→ '+esc(x.source_status)+'</span>':'')+
+        (x.transition?'<span class="st mono muted">'+esc(x.transition)+'</span>':'')+'</div>';}).join('');
+    } else if(tab==='proofs'){
+      const p=await get('/api/proofs');
+      b.innerHTML='<table><tr><th>id</th><th>вид</th><th>scope</th><th>владелец</th><th>@sequence</th></tr>'+
+        p.proofs.map(x=>'<tr><td>'+x.id+'</td><td class="mono '+(String(x.proof_kind).includes('failure')?'bad':'ok')+'">'+esc(x.proof_kind)+'</td>'+
+        '<td>'+esc(x.scope)+'</td><td class="mono">'+esc(x.owner_instance_id)+'</td><td class="muted">'+x.created_sequence+'</td></tr>').join('')+'</table>';
+    }
+  }catch(e){j('body').textContent='ошибка: '+e.message}
+}
+let instFilter=null;
+function jumpInstance(id){instFilter=id;
+  document.querySelector('.chip[data-t="events"]').click();
+  setTimeout(()=>{const q=document.getElementById('evfilter');if(q){q.value=id;filterEvents();}},50);}
+async function filterEvents(){
+  const q=document.getElementById('evfilter');if(!q)return;
+  const v=q.value.toLowerCase();
+  document.querySelectorAll('.evt').forEach(el=>{el.style.display=el.textContent.toLowerCase().includes(v)?'':'none';});
+}
+load();
+setInterval(load,5000);
+</script></body></html>

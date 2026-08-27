@@ -1,0 +1,384 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tracker-view-ek — Saga Tracker</title>
+<style>
+/* === Визуальный язык legacy board-render (page()) — дословные блоки === */
+*{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d1117;color:#e6edf3}
+a{color:inherit;text-decoration:none}
+
+/* доска */
+.board-head{display:flex;align-items:center;gap:12px;padding:14px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.back{color:#58a6ff;font-size:13px} .back:hover{text-decoration:underline}
+.cur-proj{font-weight:700;font-size:15px}
+.mode-chip{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-radius:4px;padding:2px 8px;border:1px solid}
+.mode-live{color:#3fb950;border-color:#238636;background:rgba(63,185,80,.08)}
+.mode-safe{color:#d29922;border-color:#9e6a03;background:rgba(210,153,34,.08)}
+.board{display:flex;gap:14px;padding:16px;overflow-x:auto;min-height:calc(100vh - 240px)}
+.col{min-width:240px;flex:1;background:#161b22;border:1px solid #30363d;border-radius:8px;display:flex;flex-direction:column}
+.col-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid #30363d;font-size:13px;font-weight:600}
+.count{background:#21262d;color:#8b949e;border-radius:10px;padding:1px 8px;font-size:11px}
+.col-body{padding:10px;display:flex;flex-direction:column;gap:8px;overflow-y:auto} .col-empty{color:#30363d;text-align:center;padding:20px;font-size:20px}
+.card{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px}
+.card.needs-human{border-color:#e74c3c;animation:card-pulse 1.2s infinite;box-shadow:0 0 0 1px #e74c3c}
+@keyframes card-pulse{0%,100%{box-shadow:0 0 0 1px #e74c3c,0 0 6px rgba(231,76,60,.4)}50%{box-shadow:0 0 0 2px #e74c3c,0 0 14px rgba(231,76,60,.7)}}
+.ask-flag{font-size:10px;color:#e74c3c;font-weight:700;background:rgba(231,76,60,.12);border:1px solid #e74c3c;padding:1px 6px;border-radius:3px}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
+.prio{font-size:10px;text-transform:uppercase;font-weight:700;padding:2px 6px;border-radius:3px;color:#0d1117}
+.assigned{font-size:10px;background:#21262d;border:1px solid #30363d;color:#8b949e;padding:1px 6px;border-radius:3px;font-family:monospace}
+.card-title{font-size:13px;line-height:1.35;display:block;text-decoration:none;color:#e6edf3;cursor:pointer}
+.card-title:hover{color:#58a6ff;text-decoration:underline}
+.card-id{font-size:10px;color:#484f58;font-family:ui-monospace,Consolas,monospace}
+.card-meta{font-size:11px;color:#8b949e;margin-top:6px}
+.task-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+.task-badge{font-size:9px;padding:2px 5px;border-radius:8px;background:#21262d;color:#8b949e;border:1px solid #30363d}
+.task-badge.repo{color:#58a6ff}.task-badge.stage{color:#a371f7}.task-badge.kind{color:#3fb950}
+.task-badge.role-author{color:#3fb950;border-color:#238636}
+.task-badge.role-reviewer{color:#a371f7;border-color:#6e40c9}
+.task-badge.wp{color:#d29922;font-family:ui-monospace,Consolas,monospace}
+.task-badge.oblig{color:#ffa657;border-color:#bd561d}
+.task-badge.wait{color:#f85149;border-color:#da3633}
+.task-badge.proof{color:#3fb950;border-color:#238636}
+
+/* summary-хедер (как индексная страница legacy) */
+.summary{display:flex;gap:12px;padding:16px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.sum-item{flex:1;min-width:96px;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center}
+.sum-item b{display:block;font-size:22px;color:#58a6ff} .sum-item span{font-size:11px;color:#8b949e}
+.sum-item.g b{color:#3fb950}.sum-item.y b{color:#d29922}.sum-item.r b{color:#f85149}
+
+/* фильтр-бар */
+.filter-bar{display:flex;align-items:center;gap:6px;padding:10px 20px;background:#161b22;border-bottom:1px solid #30363d;flex-wrap:wrap}
+.filter-bar select{background:#21262d;border:1px solid #30363d;color:#c9d1d9;border-radius:5px;padding:4px 7px;font-size:11px}
+.filter-label{font-size:12px;color:#8b949e;margin-right:4px}
+.chip{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:14px;padding:4px 12px;font-size:12px;cursor:pointer;transition:all .15s}
+.chip:hover{border-color:#8b949e;color:#e6edf3}
+.chip.active{border-color:#58a6ff;color:#58a6ff;background:#0d1117;font-weight:600}
+.card[style*="display: none"]{display:none!important}
+
+/* heartbeat-индикатор активности */
+.heartbeat{display:flex;align-items:center;gap:6px;font-size:12px;color:#8b949e}
+.hb-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;transition:background .3s}
+.hb-dot.green{background:#3fb950;animation:hb-pulse 0.9s infinite}
+.hb-dot.yellow{background:#f1c40f;animation:hb-pulse 1.8s infinite}
+.hb-dot.red{background:#e74c3c}
+@keyframes hb-pulse{0%,100%{opacity:1;transform:scale(1.15);box-shadow:0 0 6px currentColor}50%{opacity:.25;transform:scale(.7);box-shadow:0 0 0 currentColor}}
+
+/* переключатель табов */
+.tabs{display:flex;gap:4px;margin-left:12px}
+.tab{background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s}
+.tab:hover{border-color:#8b949e;color:#e6edf3}
+.tab.active{border-color:#58a6ff;color:#58a6ff;background:#0d1117;font-weight:600}
+
+/* кнопки */
+.btn{display:inline-block;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;text-decoration:none;transition:all .15s}
+.btn:hover{border-color:#58a6ff;color:#58a6ff}
+.btn.primary{background:#238636;border-color:#238636;color:#fff;font-weight:600}
+.btn.primary:hover{background:#2ea043;border-color:#2ea043;color:#fff}
+.btn:disabled{opacity:.6;cursor:wait}
+.mono{font-family:ui-monospace,Consolas,monospace}
+.muted{color:#484f58}.small{font-size:11px}
+.empty-box{text-align:center;padding:60px 20px;color:#8b949e}
+.empty-icon{font-size:48px;margin-bottom:12px} .empty-box h2{color:#e6edf3;margin:0 0 8px}
+
+/* командный диалог */
+.dlg{position:fixed;inset:0;background:rgba(1,4,9,.55);z-index:200;display:none;align-items:flex-start;justify-content:center}
+.dlg.visible{display:flex}
+.dlg-in{width:620px;max-width:92vw;max-height:calc(100vh - 60px);margin:30px 0;background:#161b22;border:1px solid #30363d;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.dlg-head{padding:14px 18px;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:10px}
+.dlg-title{flex:1;font-size:15px;font-weight:600;color:#e6edf3}
+.dlg-close{flex-shrink:0;background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:3px 9px;font-size:14px;line-height:1;cursor:pointer}
+.dlg-close:hover{background:#30363d;color:#e6edf3}
+.dlg-body{overflow-y:auto;padding:14px 18px;font-size:12px}
+.dlg-facts{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px;margin-bottom:12px;font-size:11px;line-height:1.7}
+.dlg-body textarea{width:100%;min-height:150px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;resize:vertical}
+.dlg-body textarea:focus{outline:none;border-color:#58a6ff}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.act{font-size:11px;background:#21262d;color:#8b949e;border:1px solid #30363d;border-radius:5px;padding:5px 10px;cursor:pointer}
+.act:hover{color:#58a6ff;border-color:#58a6ff}
+.act.danger:hover{color:#f85149;border-color:#da3633}
+.dlg-actions{display:flex;gap:10px;justify-content:flex-end;padding:12px 18px;border-top:1px solid #30363d}
+.dlg-status{font-size:12px;min-height:1em;padding:0 18px 10px}
+
+/* журнал ответов */
+.out{white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:11px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px;margin:0 16px 16px;min-height:60px;max-height:200px;overflow:auto}
+
+/* хроника (вкладка «Мир») */
+.evt{padding:4px 8px;border-left:3px solid #30363d;margin:3px 0;background:#0d1117;border-radius:0 5px 5px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.evt .seq{font-family:ui-monospace,Consolas,monospace;color:#484f58;min-width:34px}
+.evt .kind{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:600;color:#58a6ff}
+.evt .inst{font-family:ui-monospace,Consolas,monospace;font-size:10px;color:#8b949e}
+.evt .st{font-size:10px;color:#8b949e}
+.world-grid{padding:0 16px 16px;display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.world-box{flex:1;min-width:320px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;font-size:12px}
+.world-box h4{margin:0 0 8px;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.world-box table{border-collapse:collapse;width:100%} .world-box td{border-bottom:1px solid #21262d;padding:4px 6px;font-size:11px}
+.ok{color:#3fb950}.warn{color:#d29922}.bad{color:#f85149}
+</style></head><body>
+<div class="board-head">
+  <span style="font-size:20px">📋</span>
+  <span class="cur-proj">Канбан нового ядра</span>
+  <span id="mode-chip" class="mode-chip mode-safe">safe</span>
+  <div class="tabs">
+    <a class="tab active" id="tab-board" onclick="showTab('board')">Канбан</a>
+    <a class="tab" id="tab-world" onclick="showTab('world')">Мир</a>
+  </div>
+  <span style="flex:1"></span>
+  <button class="btn" id="btn-rebuild" onclick="rebuild()" title="Проекция одноразовая: стереть и перестроить из авторитетных фактов">↻ Перестроить проекцию</button>
+  <button class="btn" onclick="refresh()">Обновить</button>
+  <div class="heartbeat"><span id="hb-dot" class="hb-dot red"></span><span id="hb-txt">…</span></div>
+</div>
+<div class="summary" id="summary">…</div>
+<div class="filter-bar">
+  <span class="filter-label">Роли:</span>
+  <button class="chip active" data-role="__all__">Все</button>
+  <button class="chip" data-role="author">author</button>
+  <button class="chip" data-role="reviewer">reviewer</button>
+  <span class="filter-label">Ждёт человека:</span>
+  <select id="wait-filter"><option value="__all__">Все</option><option value="has">с ожиданием</option><option value="none">без ожиданий</option></select>
+  <span class="filter-label">Obligation:</span>
+  <select id="oblig-filter"><option value="__all__">Все</option></select>
+  <span style="flex:1"></span>
+  <span class="filter-label small" id="src-note"></span>
+</div>
+<div class="board" id="board">загрузка…</div>
+<div id="world" style="display:none">
+  <div class="world-grid" id="world-grid">…</div>
+  <div class="out" id="world-events" style="max-height:280px">— хроника —</div>
+</div>
+<div class="out" id="out">— журнал ответов —</div>
+
+<div class="dlg" id="dlg"><div class="dlg-in">
+  <div class="dlg-head">
+    <div class="dlg-title" id="dlg-title">Карточка</div>
+    <button class="dlg-close" onclick="closeDlg()" aria-label="Close">×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="dlg-facts" id="dlg-facts"></div>
+    <div id="dlg-cmd-area">
+      <div class="quick" id="dlg-quick"></div>
+      <textarea id="dlg-body" spellcheck="false">{}</textarea>
+    </div>
+  </div>
+  <div class="dlg-actions" id="dlg-actions">
+    <button class="btn" onclick="closeDlg()">Закрыть</button>
+    <button class="btn primary" id="dlg-send" onclick="sendDlg()">Отправить команду</button>
+  </div>
+  <div class="dlg-status" id="dlg-status"></div>
+</div></div>
+
+<script>
+// Колонки = лейны нового ядра (projection/cards.js KANBAN_LANES), подписи в
+// традиции legacy доски.
+const LANES=[
+ ['todo','TODO','#8b949e'],
+ ['in-progress','В РАБОТЕ','#58a6ff'],
+ ['review','REVIEW+ПРОВЕРКА','#a371f7'],
+ ['repair','РЕМОНТ','#f0883e'],
+ ['waiting','ЖДЁТ','#d29922'],
+ ['terminal','ТЕРМИНАЛ','#3fb950']];
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let MODE='safe', cards=[], currentCard=null, identity=null;
+let activeRole='__all__';
+
+// --- heartbeat: пульс по росту sequence журнала (таймстампов в ядре нет) ---
+let lastSeq=null, staticPolls=0;
+function heartbeat(){
+  fetch('/api/heartbeat').then(r=>r.json()).then(d=>{
+    const dot=document.getElementById('hb-dot'),txt=document.getElementById('hb-txt');
+    if(lastSeq!==null&&d.last>lastSeq){staticPolls=0;dot.className='hb-dot green';txt.textContent='seq '+d.last+' · журнал растёт';}
+    else if(++staticPolls<3){dot.className='hb-dot yellow';txt.textContent='seq '+d.last+' · тихо';}
+    else{dot.className='hb-dot red';txt.textContent='seq '+d.last+' · статично';}
+    lastSeq=d.last;
+  }).catch(()=>{document.getElementById('hb-dot').className='hb-dot red';document.getElementById('hb-txt').textContent='ошибка';});
+}
+
+// --- доска ---
+async function refresh(){
+  try{
+    const [board,sum]=await Promise.all([fetch('/api/board').then(r=>r.json()),fetch('/api/summary').then(r=>r.json())]);
+    MODE=board.mode||'safe';
+    cards=board.cards||[];
+    const chip=document.getElementById('mode-chip');
+    chip.textContent=MODE==='live'?'live · команды открыты':'safe · readonly';
+    chip.className='mode-chip '+(MODE==='live'?'mode-live':'mode-safe');
+    document.getElementById('btn-rebuild').style.display=MODE==='live'?'':'none';
+    document.getElementById('src-note').textContent=MODE==='live'
+      ?'чтение: одноразовая проекция (kanban_card) · запись: только типизированные команды'
+      :'чтение: sqlite readonly (TRACKER_READONLY=1) · команды отключены';
+    document.getElementById('summary').innerHTML=
+      '<div class="sum-item"><b>'+sum.workItems+'</b><span>work items</span></div>'+
+      '<div class="sum-item"><b>'+sum.workplaces+'</b><span>цехов</span></div>'+
+      '<div class="sum-item y"><b>'+sum.openObligations+'</b><span>обяз. открытых</span></div>'+
+      '<div class="sum-item y"><b>'+sum.pendingWaits+'</b><span>ожиданий</span></div>'+
+      '<div class="sum-item g"><b>'+sum.proofs+'</b><span>доказательств</span></div>'+
+      '<div class="sum-item"><b>'+sum.events+'</b><span>событий</span></div>';
+    // obligation-виды для фильтра
+    const kinds=[...new Set(cards.flatMap(c=>c.openObligationKinds||[]))].sort();
+    const of=document.getElementById('oblig-filter');
+    const prev=of.value; of.innerHTML='<option value="__all__">Все</option>'+kinds.map(k=>'<option value="'+esc(k)+'">'+esc(k.replace(/^obligation:/,''))+'</option>').join('');
+    if([...of.options].some(o=>o.value===prev)) of.value=prev;
+    renderBoard();
+    if(MODE==='live') fetch('/api/identity').then(r=>r.json()).then(d=>{identity=d;}).catch(()=>{});
+  }catch(e){document.getElementById('board').textContent='ошибка: '+e.message}
+}
+function renderBoard(){
+  const board=document.getElementById('board');
+  if(!cards.length){
+    board.innerHTML='<div class="empty-box"><div class="empty-icon">🧾</div><h2>Проекция пуста</h2>'+
+      (MODE==='live'?'Нажми «↻ Перестроить проекцию» — доска соберётся из авторитетных событий.':'В БД нет work item-ов.')+'</div>';
+    return;
+  }
+  const obligFilter=document.getElementById('oblig-filter').value;
+  const waitFilter=document.getElementById('wait-filter').value;
+  const by={}; for(const [id] of LANES) by[id]=[];
+  for(const c of cards){
+    if(activeRole!=='__all__'&&!(c.roles||[]).includes(activeRole)) continue;
+    if(waitFilter==='has'&&!(c.pendingWaits||[]).length) continue;
+    if(waitFilter==='none'&&(c.pendingWaits||[]).length) continue;
+    if(obligFilter!=='__all__'&&!(c.openObligationKinds||[]).includes(obligFilter)) continue;
+    by[c.lane||'todo'].push(c);
+  }
+  const laneColor=Object.fromEntries(LANES.map(([id,,col])=>[id,col]));
+  const globSeq=cards.reduce((m,x)=>Math.max(m,x.globalSequence||0,x.lastSequence||0),0);
+  board.innerHTML=LANES.map(([id,label,col])=>{
+    const items=by[id]||[];
+    const cardsHtml=items.map(c=>{
+      const waits=c.pendingWaits||[];
+      const needsHuman=waits.length>0;
+      const obligs=c.openObligationKinds||[];
+      const last=c.lastSequence||0;
+      // точка свежести по sequence-дистанции (таймстампов в ядре нет):
+      const dist=globSeq-last;
+      const dotCls=dist<=5?'green':(dist<=20?'yellow':'red');
+      return '<div class="card'+(needsHuman?' needs-human':'')+'" data-ref="'+esc(c.workItemRef)+'" style="border-left:6px solid '+col+'">'+
+        '<div class="card-head">'+
+          '<span class="prio" style="background:'+col+'">'+esc((c.lane||'todo'))+'</span>'+
+          ((c.roles||[]).map(r=>'<span class="assigned">'+esc(r)+'</span>').join(''))+
+          (needsHuman?'<span class="ask-flag" title="'+esc(waits.map(w=>w.kind).join(', '))+'">⚠ needs human</span>':'')+
+          '<span style="flex:1"></span>'+
+          '<span class="card-id">#'+esc(c.workItemRef)+'</span>'+
+          (c.lane==='terminal'?'':'<span class="hb-dot '+dotCls+'" title="последняя активность @seq '+last+' (голова журнала '+globSeq+')"></span>')+
+        '</div>'+
+        '<a class="card-title" onclick="openCard(\''+esc(c.workItemRef)+'\')" title="Открыть карточку">'+esc(c.workItemInstanceId||c.workItemRef)+'</a>'+
+        '<div class="task-badges">'+
+          (obligs.length?'<span class="task-badge oblig" title="'+esc(obligs.join('\n'))+'">oblig '+obligs.length+'</span>':'')+
+          waits.map(w=>'<span class="task-badge wait">'+esc(String(w.kind).replace(/^TypedWait:/,''))+'</span>').join('')+
+          (c.workplaceStatus?'<span class="task-badge stage" title="статус цеха">'+esc(c.workplaceStatus)+'</span>':'<span class="task-badge">нет цеха</span>')+
+          (c.workItemStatus?'<span class="task-badge kind">'+esc(c.workItemStatus)+'</span>':'')+
+          (c.workplaceInstanceId?'<span class="task-badge wp" title="'+esc(c.workplaceInstanceId)+'">wp:'+esc(c.workplaceInstanceId.replace(/^workplace:/,''))+'</span>':'')+
+          (c.terminalProof?'<span class="task-badge proof" title="'+esc(c.terminalProof.scope||'')+'">✓ proof</span>':'')+
+        '</div>'+
+        '<div class="card-meta mono">'+esc(c.workplaceInstanceId||'—')+(c.revision!=null?' · rev '+c.revision:'')+'</div>'+
+      '</div>';
+    }).join('');
+    return '<div class="col"><div class="col-head"><span style="color:'+col+'">'+label+'</span><span class="count">'+items.length+'</span></div>'+
+      '<div class="col-body">'+(cardsHtml||'<div class="col-empty">—</div>')+'</div></div>';
+  }).join('');
+  // счётчики видимых карточек уже в .count
+}
+document.querySelectorAll('.chip[data-role]').forEach(chip=>{
+  chip.onclick=()=>{document.querySelectorAll('.chip[data-role]').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');activeRole=chip.dataset.role;renderBoard();};
+});
+document.getElementById('wait-filter').addEventListener('change',renderBoard);
+document.getElementById('oblig-filter').addEventListener('change',renderBoard);
+
+// --- карточка + командный диалог ---
+function openCard(ref){
+  currentCard=cards.find(c=>String(c.workItemRef)===String(ref))||null;
+  if(!currentCard) return;
+  document.getElementById('dlg-title').textContent='Карточка · work-item:'+ref;
+  const c=currentCard;
+  const facts=
+    'лейн: '+esc(c.lane)+' · work item: '+esc(c.workItemInstanceId||c.workItemRef)+' ('+esc(c.workItemStatus||'?')+')\n'+
+    'цех: '+esc(c.workplaceInstanceId||'—')+' · статус: '+esc(c.workplaceStatus||'—')+'\n'+
+    'роли: '+esc((c.roles||[]).join(', ')||'—')+'\n'+
+    'открытые обязательства ('+esc((c.openObligationKinds||[]).length)+'): '+esc((c.openObligationKinds||[]).join(', ')||'—')+'\n'+
+    'ожидания: '+esc((c.pendingWaits||[]).map(w=>w.kind).join(', ')||'—')+'\n'+
+    'терминальное доказательство: '+esc(c.terminalProof?c.terminalProof.scope:'—');
+  document.getElementById('dlg-facts').textContent=facts;
+  const cmdArea=document.getElementById('dlg-cmd-area');
+  const actions=document.getElementById('dlg-actions');
+  const quick=document.getElementById('dlg-quick');
+  if(MODE!=='live'){
+    cmdArea.style.display='none';actions.style.display='none';
+    document.getElementById('dlg-status').textContent='SAFE-режим (TRACKER_READONLY=1): команды отключены, БД открыта только на чтение.';
+  }else{
+    cmdArea.style.display='';actions.style.display='flex';
+    const launchKinds=[];try{for(const w of (identity?.workshops||[])) for(const k of w.launchKinds) launchKinds.push(k);}catch{}
+    quick.innerHTML=
+      actBtn('claim',"Claim (взять карточку)",JSON.stringify({action:'claim',workItemRef:c.workItemRef,launchKind:launchKinds[0]||'discovery.author'},null,1))+
+      actBtn('review',"Review: accept",JSON.stringify({action:'review',workItemRef:c.workItemRef,verdict:'accept'},null,1))+
+      actBtn('review-reject',"Review: reject",'danger',JSON.stringify({action:'review',workItemRef:c.workItemRef,verdict:'reject'},null,1))+
+      actBtn('human',"Human response",JSON.stringify({action:'human-response',workItemRef:c.workItemRef},null,1))+
+      actBtn('retry',"Retry",'danger',JSON.stringify({action:'retry',workItemRef:c.workItemRef},null,1))+
+      actBtn('stop',"Stop factory",'danger',JSON.stringify({action:'stop',factoryInstanceId:'factory-run:1'},null,1))+
+      actBtn('resume',"Resume factory",JSON.stringify({action:'resume',factoryInstanceId:'factory-run:1'},null,1));
+    quick.querySelectorAll('.act').forEach(b=>b.onclick=()=>{document.getElementById('dlg-body').value=b.dataset.cmd;sendDlg();});
+    document.getElementById('dlg-body').value=JSON.stringify({action:'human-response',workItemRef:c.workItemRef},null,1);
+    document.getElementById('dlg-status').textContent='';
+  }
+  document.getElementById('dlg').classList.add('visible');
+}
+function actBtn(name,label,cmdOrDanger,dangerCmd){
+  // поддерживаем (label, cmd) и (label, dangerClass, cmd)
+  const danger=typeof cmdOrDanger==='string'&&cmdOrDanger==='danger';
+  const cmd=danger?dangerCmd:cmdOrDanger;
+  return '<button type="button" class="act'+(danger?' danger':'')+'" data-cmd="'+esc(cmd)+'">'+esc(label)+'</button>';
+}
+function closeDlg(){document.getElementById('dlg').classList.remove('visible')}
+async function sendDlg(){
+  const st=document.getElementById('dlg-status');
+  st.textContent='отправляю…';st.style.color='#8b949e';
+  let body;
+  try{body=JSON.parse(document.getElementById('dlg-body').value);}
+  catch(e){st.textContent='JSON не парсится: '+e.message;st.style.color='#f85149';return;}
+  try{
+    const r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    document.getElementById('out').textContent='/api/command → HTTP '+r.status+'\n'+JSON.stringify(d,null,1);
+    st.textContent=d.refused?('отказ: '+d.code):(d.status||d.note||'принято');
+    st.style.color=d.refused?'#f85149':'#3fb950';
+    refresh();
+  }catch(e){st.textContent='ошибка: '+e.message;st.style.color='#f85149';}
+}
+async function rebuild(){
+  const r=await fetch('/api/projection/rebuild',{method:'POST'});
+  const d=await r.json();
+  document.getElementById('out').textContent='rebuild → '+JSON.stringify(d);
+  refresh();
+}
+
+// --- вкладка «Мир» ---
+function showTab(t){
+  document.getElementById('tab-board').classList.toggle('active',t==='board');
+  document.getElementById('tab-world').classList.toggle('active',t==='world');
+  document.getElementById('board').style.display=t==='board'?'':'none';
+  document.querySelector('.filter-bar').style.display=t==='board'?'':'none';
+  document.getElementById('world').style.display=t==='world'?'':'none';
+  if(t==='world') loadWorld();
+}
+async function loadWorld(){
+  try{
+    const ev=await fetch('/api/events?limit=100').then(r=>r.json());
+    document.getElementById('world-events').innerHTML=(ev.events||[]).map(x=>
+      '<div class="evt"><span class="seq">#'+x.seq+'</span><span class="kind">'+esc(x.kind)+'</span>'+
+      '<span class="inst">'+esc(x.source_instance_id||'')+'</span>'+
+      (x.source_status?'<span class="st">→ '+esc(x.source_status)+'</span>':'')+'</div>').join('');
+    const g=document.getElementById('world-grid');
+    if(MODE==='live'){
+      const w=await fetch('/api/world').then(r=>r.json());
+      const byKind={};for(const o of (w.obligations||[])){const k=o.kind+(o.state==='open'?' *':'');byKind[k]=(byKind[k]||0)+1;}
+      g.innerHTML=
+        '<div class="world-box"><h4>Обязательства (мир) — открыты звёздочкой</h4><table>'+
+        Object.entries(byKind).sort().map(([k,n])=>'<tr><td class="mono '+(k.includes('*')?'warn':'ok')+'">'+esc(k)+'</td><td>'+n+'</td></tr>').join('')+'</table></div>'+
+        '<div class="world-box"><h4>Ожидания (мир) — '+esc((w.waits||[]).length)+'</h4><table>'+
+        (w.waits||[]).map(x=>'<tr><td class="mono warn">'+esc(x.kind)+'</td><td class="mono">'+esc(x.state)+'</td></tr>').join('')+'</table>'+
+        '<h4>Доказательств: '+esc(w.proofs)+'</h4></div>';
+    }else{
+      g.innerHTML='<div class="world-box"><h4>SAFE-режим</h4>Мир ядра доступен только в LIVE-режиме (нужна композиция). Хроника ниже читается из журнала событий напрямую (readonly).</div>';
+    }
+  }catch(e){document.getElementById('world-events').textContent='ошибка: '+e.message}
+}
+
+refresh(); heartbeat(); setInterval(()=>{refresh();heartbeat();},5000);
+</script></body></html>

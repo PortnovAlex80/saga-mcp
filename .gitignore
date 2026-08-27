@@ -72,3 +72,4 @@ tests/golden-runs/
 docs/testing/WORKSHOP-STATUS-SHEET.pdf
 docs/testing/WORKSHOP-STATUS-SHEET.png
 docs/refactoring/event-kernel/specs/.ek-admission-vector.json
+*.pid
