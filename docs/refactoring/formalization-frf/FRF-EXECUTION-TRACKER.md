@@ -1,5 +1,16 @@
 # Formalization Scenario-First Refactoring — Execution Tracker
 
+> **BASE CAVEAT (operator correction, 2026-08-27):** this WP01 was taken at
+> `5c158608` — THREE COMMITS ABOVE the qualified EK closure `be0d5948`
+> (b218f42b model/rate-limit change + 07b9b1f2 single R1 flash verify +
+> 5c158608 front clones). Those commits had NOT passed full re-qualification
+> when this baseline was captured. Status: RESEARCH RESULT ONLY. The operator
+> directed the coordinator to officially qualify the post-closure commits
+> (full EK-11 + EK-12 series on the new kit) and re-take the baseline from
+> the advanced canonical saga4 before WP02 starts. The artifacts below are
+> valid as inventory/research; the FRF baseline of record will be re-captured
+> (the inventory script is committed and regenerable).
+
 Coordinator-owned: only the integration coordinator edits this tracker or
 the plan (`docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md`).
 One row per bounded work package. Conventions follow the EK tracker
