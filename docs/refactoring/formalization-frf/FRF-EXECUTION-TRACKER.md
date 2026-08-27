@@ -58,7 +58,7 @@ Every item verified with executable evidence at base `5c158608` on
 | FRF-WP07 | WHAT freeze and settlement: baseline sections (ledger D-10), exact-authority ingestion, settlement fences the settler (A2) | FRF-WP03, FRF-WP06 | subagent | NOT STARTED | — | — | — |
 | FRF-WP08 | SRS scenario realization: Elite/simple-server kill demonstrations at the handoff boundary | FRF-WP03, FRF-WP06 | subagent | NOT STARTED | — | — | — |
 | FRF-WP09 | Development handoff and planning: UC-FOREIGN kill (D-1/A1), handoff consumption (D-2/A3), identity preservation (D-3/A4), AC-complete-but-scenario-incomplete rejection (D-4) | FRF-WP07, FRF-WP08 | subagent | NOT STARTED | — | — | — |
-| FRF-WP10 | Scenario, resilience, capsule, project corpus: extend the post-EK engine; regenerate fixtures through public ingress; no second harness | FRF-WP04..09 | subagent | NOT STARTED | — | — | — |
+| FRF-WP10 | Scenario, resilience, capsule, and project corpus | FRF-WP04..09 | subagent | **DONE** | merge after ae0672de | 11 scenarios; smoke 5/5 + full 11/11 + tamper 11/11 RED; 26 crash windows settle identical | tools/frf-corpus + tests/frf-corpus 30/30 | WP03 digest-hardening residual noted |
 | FRF-WP11 | Package integration, deletion, CI, docs: coordinator-owned shared paths; the deletion patch (DELETION-MANIFEST.md sections A–C); stale-note retirement (D-14) | FRF-WP04..10 | coordinator + subagent | NOT STARTED | — | — | — |
 | FRF-WP12 | Independent qualification and closure: immutable kit, fresh DBs/repos, three consecutive real-agent projects, FORMALIZATION-SCENARIO-FIRST-FINAL-RECEIPT.md | FRF-WP11 | subagent + coordinator | NOT STARTED | — | — | — |
 
