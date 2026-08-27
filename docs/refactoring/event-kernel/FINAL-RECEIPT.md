@@ -147,3 +147,44 @@ NODE_UNDECLARED regression; concurrency diamond rung; model-answers-not-serves).
 
 No residual in an architecture law, legacy deletion, schema policy or
 qualifying run remains open.
+
+---
+
+## SUPERSEDING CLOSURE (2026-08-27, audit round 3 repair cycle)
+
+The first closure (commit containing this receipt's original text) was
+REJECTED by external audit round 3 (nine findings). This SUPERSEDING closure
+records the repaired cycle:
+
+- **qualificationSourceSha:** `7bc0e67b` (kit `a39e8c9c3b744d9b3e806520b4846f63f0d685deff5f7d40200a2b4cc28ae297`):
+  includes the audit repairs — zero quarantine (the last entry removed WITH
+  its file; G1a/G3 inverted to the zero-quarantine law; manifest row updated),
+  the shim T3 load-safe budget, the census classification of the post-cutover
+  kernel (0 unclassified / 0 violations), and the saga4 reconciliation MERGE
+  (origin/saga4 brought in by a true merge, supersession documented — never
+  a reset).
+- **admissionContractDigest:** ONE formula — the validator self-hashes via
+  fileURLToPath; validator == kit == `8665ed0fc3233edb4da6237d3befdb146f1058fec9e5276b1fffe44e8a5b181b`
+  (the historical d1d6f857/d1f9272c/b4ffd164 divergence was the Windows
+  URL-pathname mangling; fixed at the source).
+- **EK-11 re-qualification on kit a39e8c9c:** Development 10/10 identical
+  traces (`dev-20260826185605`); corpus 20/20 (`projects-20260826185618`);
+  concurrency GREEN 20/20 + 7/7 (`concurrency-20260826185705`).
+- **EK-12 re-qualification on kit a39e8c9c:** R1/R2/R3 consecutive GREEN,
+  37/37 checks each — 24 real provider requests per run (route zai/glm-4.7
+  via the opencode shim; pre-send receipt completeness 100%). Series record
+  `real-20260826185718` (allGreen), 137 evidence files, manifest `4ef474d4…`.
+  In-series incidents, honestly recorded: one 2h17m stalled provider call
+  killed by the coordinator and recovered by the kernel's crash-window
+  redrive (R2 development, still GREEN 2/2); the driver's authored-copy cwd
+  quirk (products swept to qualification/stray-products-r1).
+- **Full npm test at the final SHA:** 932 pass / 0 fail / 0 skip (`npmtest-final4`);
+  the two intermediate red runs are documented (mid-run .desk sweep by the
+  coordinator; the stale manifest row fixed in this closure).
+- **The complete matrix list (11 groups):** workflow-kernel 737, project-corpus
+  33, architecture 67, kept-tooling 27, ek-manifest-guard 7, ek-admission 1,
+  ek-removal-guard 10, ek-mutation-coverage 2, ek-evidence-kit 3,
+  cc-proof-registry 26, matrix-coverage 19.
+- **closureSha:** the commit containing this superseding section; the diff
+  from 7bc0e67b to it is docs-only (84 files, all under docs/) — the
+  executable tree is byte-identical to qualificationSourceSha.
