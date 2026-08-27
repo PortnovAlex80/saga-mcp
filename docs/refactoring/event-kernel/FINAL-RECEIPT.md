@@ -188,3 +188,19 @@ records the repaired cycle:
 - **closureSha:** the commit containing this superseding section; the diff
   from 7bc0e67b to it is docs-only (84 files, all under docs/) — the
   executable tree is byte-identical to qualificationSourceSha.
+---
+
+## POST-CLOSURE QUALIFICATION ADDENDUM (2026-08-27, operator correction cycle)
+
+The operator correction (2026-08-27): three post-closure commits (the
+GLM-5.3-flash default route + rate limit 6 b218f42b, the single-run engine
+verify 07b9b1f2, the front clones 5c158608, plus the manifest
+classification fix 97090928) had NOT passed full re-qualification when
+FRF-WP01 briefly built on them. Corrected path: OFFICIAL FULL QUALIFICATION
+of the advanced line, then saga4 advances, then FRF re-baselines.
+
+- qualificationSourceSha: 97090928 (kit f86dc68d2e03d2d224f98a6ad7041bd90e774dc97e83d4fb0ff9ed353749b6e4; route zai/glm-5.3-flash, ACD 8665ed0f)
+- EK-11 on kit f86dc68d: Development 10/10 identical traces; corpus 20/20; concurrency GREEN (20/20 + 7/7).
+- EK-12 on kit f86dc68d, REAL series on glm-5.3-flash: R1/R2/R3 consecutive GREEN, 37/37 checks each, 24 real provider requests per run (148/88/87 min; the flash route materially faster than the qualified glm-4.7 series 130/268/135). Series record real-20260827073118 (allGreen), 137 evidence files, manifest d7fb9620.
+- FRF-WP01 research captured at 5c158608 is stamped RESEARCH-ONLY with a BASE CAVEAT; the FRF baseline of record is re-taken from the advanced saga4.
+- saga4 advances to the commit carrying this addendum (docs-only diff 97090928 to addendum, the same closure-allowlist class as v2).

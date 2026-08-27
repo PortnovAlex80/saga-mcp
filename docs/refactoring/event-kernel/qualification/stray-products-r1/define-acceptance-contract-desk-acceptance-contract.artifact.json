@@ -1,0 +1,148 @@
+{
+  "artifactRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+  "artifactKind": "acceptance-contract",
+  "contentDigest": "95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+  "semanticCode": "AC-Define-Acceptance-Contract-001",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "author",
+  "content": {
+    "contractId": "AC-Define-Acceptance-Contract-001",
+    "contractDigest": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+    "deskRef": "define-acceptance-contract",
+    "role": "author",
+    "status": "formalized",
+    "contractStatement": "This acceptance contract defines the material authority, transport mechanism, and structural boundaries for the define-acceptance-contract desk in accordance with ADR-053 principles and factory architectural requirements for sealed Workplace production revisions.",
+    "corePrinciples": [
+      {
+        "principleId": "workplace-production-revision-authority",
+        "sourceClaimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "The define-acceptance-contract desk operates under the ADR-053 normative model where Workplace is the sole owner of material authority. All acceptance contracts derive from immutable sealed Workplace production revisions, with WorkerExecution serving only as provenance."
+      },
+      {
+        "principleId": "content-address-transport-foundation",
+        "sourceClaimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "Acceptance contract material transport uses exclusively content-addressed references. Material identity is determined solely by cryptographic content digest (SHA256), never by mutable identifiers such as execution refs, task IDs, or latest pointers."
+      },
+      {
+        "principleId": "sealed-revision-boundary",
+        "sourceClaimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "Before any acceptance contract material crosses QC boundaries, the desk must seal immutable Workplace production revisions that capture the exact content state with content-addressed references. This sealing occurs before gate submission and establishes the revision as the sole material authority."
+      },
+      {
+        "principleId": "zero-upstream-revision-transport",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "All material transport between define-acceptance-contract desk components uses content address referencing with zero accepted upstream revisions traveling by mutable identifiers. Transport is strictly by content digest only, ensuring architectural compliance with the Workplace production revision model."
+      }
+    ],
+    "architecturalStructure": {
+      "acceptanceContract": {
+        "contractId": "string",
+        "contractDigest": "string",
+        "deskRef": "string",
+        "sourceClaims": "SourceClaim[]",
+        "constraints": "Constraint[]",
+        "unknowns": "Unknown[]",
+        "terminalClaims": "TerminalClaim[]",
+        "traceRelationships": "TraceRelationship[]",
+        "sealedAt": "ISO8601Timestamp"
+      },
+      "sourceClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "constraint": {
+        "constraintId": "string",
+        "digest": "string",
+        "statement": "string",
+        "requirements": "string[]",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "terminalClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "derivation": "DerivationChain",
+        "acceptanceCriteria": "string[]",
+        "evidence": "string[]"
+      }
+    },
+    "deskScopeDefinition": {
+      "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "scope": [
+        "Direct Artifacts: All source claims (SC-1, SC-2, SC-3), constraints (CON-1), unknowns (UNK-1), and terminal claims (TC-1, TC-2)",
+        "Trace Relationships: All derivation, constraint, and resolution relationships between artifacts",
+        "Architectural References: ADR-053 material authority principles and factory mental model requirements",
+        "Contract Outputs: Sealed acceptance contracts ready for gate submission"
+      ]
+    },
+    "transportMechanism": [
+      "Artifact Creation: Desk produces content → SHA256 digest computed",
+      "Reference Assignment: Content digest becomes artifact identifier",
+      "Contract Sealing: Acceptance contract records all content digests",
+      "Transport Downstream: Only content digests travel across boundaries",
+      "Verification: Recompute SHA256 on receipt to verify integrity",
+      "Authority Resolution: Resolve content digest to exact artifact state"
+    ],
+    "acceptanceCriteria": [
+      "All desk artifacts are content-addressed with SHA256 digests",
+      "Acceptance contracts are immutable after sealing",
+      "Material transport uses content digests only (0 upstream revisions by mutable refs)",
+      "Complete trace graph coverage from source to terminal claims",
+      "Architectural compliance with ADR-053 Workplace production revision model",
+      "WorkerExecution role limited to provenance only",
+      "Workplace is sole material authority for all acceptance contracts"
+    ],
+    "traceRelationships": {
+      "TC-1": {
+        "terminalClaimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180", "description": "Workplace production revision authority foundation"},
+          {"type": "derived_from", "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", "description": "Content address transport principles"},
+          {"type": "derived_from", "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", "description": "Sealed revision boundary requirements"},
+          {"type": "constrained_by", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Zero upstream revision transport requirements"},
+          {"type": "resolves", "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276", "description": "Desk scope definition"}
+        ]
+      },
+      "TC-2": {
+        "terminalClaimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Zero upstream revision transport implementation"},
+          {"type": "supports", "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", "description": "Enables acceptance contract authority across boundaries"},
+          {"type": "constrained_by", "source": "ADR-053", "description": "Workplace production revision as sole authority"}
+        ]
+      }
+    },
+    "compliance": [
+      "ADR-053: Accepted material is sealed Workplace production revision; WorkerExecution is provenance only",
+      "Factory Principles: Content address transport, Workplace material authority, immutable sealing",
+      "CONVEYOR-MENTAL-MODEL.md: Structured derivation, trace coverage, desk authority",
+      "Workspace Requirements: 0 accepted upstream revisions, content address transport, desk artifacts only authority"
+    ],
+    "verification": [
+      "Content digest matches expected SHA256",
+      "Complete trace relationship coverage",
+      "Immutable artifact sealing before QC boundaries",
+      "Architectural compliance with ADR-053 principles",
+      "Workplace as sole material authority",
+      "WorkerExecution limited to provenance role",
+      "Structured derivation from source to terminal claims",
+      "Zero upstream revision transport by mutable identifiers"
+    ],
+    "adr053Alignment": [
+      "Workplace Ownership: All material authority derives from Workplace, not WorkerExecution",
+      "Production Revision Sealing: Contracts reference sealed immutable Workplace production revisions",
+      "Provenance Separation: Execution refs used only for audit/telemetry, not material authority",
+      "Content Address Transport: All material transport uses SHA256 digests, never mutable identifiers",
+      "Zero Upstream Revisions: Enforces 0 accepted upstream revisions travel by content address constraint"
+    ],
+    "status": "Formalized and ready for gate submission",
+    "nextAction": "Submit to acceptance contract gate for review and acceptance"
+  }
+}
