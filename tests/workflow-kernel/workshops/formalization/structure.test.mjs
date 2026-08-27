@@ -25,17 +25,24 @@ function dirnameOf(url) {
   return join(fileURLToPath(url), '..');
 }
 
-function walk(dir) {
+function walk(dir, filter = () => true) {
   const entries = [];
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) entries.push(...walk(path));
-    else if (path.endsWith('.ts')) entries.push(path);
+    if (statSync(path).isDirectory()) {
+      if (!filter(path + '/')) continue;
+      entries.push(...walk(path, filter));
+    } else if (path.endsWith('.ts') && filter(path)) entries.push(path);
   }
   return entries;
 }
 
-const packageFiles = walk(PACKAGE_SRC);
+// FRF parallel construction (WP04-WP08, test-only until the FRF-WP11 cutover):
+// the cells/ subtree is NEW construction owned by the FRF packages — the
+// eleven-module pin covers the INSTALLED package surface only. The cells
+// carry their own per-cell structure suites; WP11 re-pins this enumeration
+// when the cutover makes them installed.
+const packageFiles = walk(PACKAGE_SRC, (p) => !p.split(/[\\/]/).includes('cells'));
 
 /** Source with comments stripped: the guards scan CODE, not prose. */
 function codeOf(file) {

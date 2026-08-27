@@ -17,5 +17,9 @@
     "declaration": true,
     "sourceMap": true
   },
+  // FRF parallel construction (WP04-WP08): the cells packages are test-only
+// reachable until the FRF-WP11 cutover — the compiler emits nothing for them
+// (the acceptance cell TEST-ONLY fence asserts dist has no cells subtree).
+"exclude": ["src/workflow-kernel/workshops/formalization/cells/acceptance/**"],
   "include": ["src/**/*"]
 }

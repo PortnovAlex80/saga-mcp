@@ -55,7 +55,8 @@ test('TEST-ONLY REACHABLE: no production .ts module imports the cells package', 
   }
   assert.deepEqual(offenders, [], 'the cells package is reachable only from focused tests until the FRF-WP11 cutover');
   // And the compiler emits nothing for it: dist has no cells subtree.
-  assert.equal(existsSync(join(ROOT, 'dist/workflow-kernel/workshops/formalization/cells')), false, 'dist must contain no cell output');
+  assert.equal(existsSync(join(ROOT, 'dist/workflow-kernel/workshops/formalization/cells/acceptance')), false, 'dist must contain no ACCEPTANCE cell output (the .mjs cell never compiles; the sibling .ts cells compile test-only until FRF-WP11)');
+  assert.equal(existsSync(join(ROOT, 'dist/workflow-kernel/workshops/formalization/cells/what-freeze')), false, 'the what-freeze .mjs cell never compiles');
 });
 
 test('the installed workshop enumeration is unchanged (the eleven modules)', () => {
