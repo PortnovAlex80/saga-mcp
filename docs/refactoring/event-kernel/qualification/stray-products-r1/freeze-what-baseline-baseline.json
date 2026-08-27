@@ -1,0 +1,66 @@
+{
+  "artifact_kind": "baseline",
+  "desk": "freeze-what-baseline",
+  "role": "author",
+  "content": {
+    "title": "Freeze-What-Baseline Desk - Author Baseline",
+    "description": "Baseline artifact for formalization of freeze-what-baseline desk",
+    "structure": {
+      "source_claims": {
+        "SC-1": {
+          "digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+          "status": "pending_analysis"
+        },
+        "SC-2": {
+          "digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+          "status": "pending_analysis"
+        },
+        "SC-3": {
+          "digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+          "status": "pending_analysis"
+        }
+      },
+      "constraints": {
+        "CON-1": {
+          "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+          "status": "pending_analysis"
+        }
+      },
+      "unknowns": {
+        "UNK-1": {
+          "digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+          "status": "pending_resolution"
+        }
+      },
+      "terminal_claims": {
+        "TC-1": {
+          "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+          "status": "pending_derivation"
+        },
+        "TC-2": {
+          "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+          "status": "pending_derivation"
+        }
+      }
+    },
+    "workspace_context": {
+      "accepted_upstream_revisions": 0,
+      "material_transport": "content_address",
+      "authority_scope": "desk_artifacts_only"
+    },
+    "architectural_context": {
+      "decisions": ["ADR-053"],
+      "key_principles": [
+        "Workplace is the sole owner of production material",
+        "WorkerExecution provides provenance only",
+        "Immutable WorkplaceProductionRevision between desk and CandidateSet",
+        "Material authority is sealed revision, not execution"
+      ]
+    }
+  },
+  "metadata": {
+    "created_at": "2026-08-26",
+    "author": "freeze-what-baseline-desk-author",
+    "baseline_version": "1.0.0"
+  }
+}

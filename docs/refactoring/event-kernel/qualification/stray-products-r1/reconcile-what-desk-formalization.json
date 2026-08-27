@@ -1,0 +1,90 @@
+{
+  "desk_name": "define-acceptance-contract",
+  "task_type": "reconcile-what",
+  "author": "desk-author",
+  "reconciled_at": "2026-08-27T00:00:00Z",
+  "workplace_production_revision": {
+    "revision_ref": "sha256:reconcile-what-formalization-digest",
+    "workplace_ref": "define-acceptance-contract-desk",
+    "parent_revision_ref": null,
+    "presenter_ref": "desk-author",
+    "sealed_at": "2026-08-27T00:00:00Z",
+    "material_digest": "sha256:pending-computation",
+    "semantic_digest": "sha256:pending-computation"
+  },
+  "material_members": [
+    {
+      "product_ref": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "role": "source-claim",
+      "semantic_code": "SC-1",
+      "content_digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "title": "Workplace Material Authority"
+    },
+    {
+      "product_ref": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "role": "source-claim",
+      "semantic_code": "SC-2",
+      "content_digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "title": "Execution Provenance Separation"
+    },
+    {
+      "product_ref": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "role": "source-claim",
+      "semantic_code": "SC-3",
+      "content_digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "title": "Immutable Revision Sealing"
+    },
+    {
+      "product_ref": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "role": "constraint",
+      "semantic_code": "CON-1",
+      "content_digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "title": "Content Address Transport"
+    },
+    {
+      "product_ref": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "role": "unknown",
+      "semantic_code": "UNK-1",
+      "content_digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "title": "Acceptance Contract Scope"
+    },
+    {
+      "product_ref": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "role": "terminal-claim",
+      "semantic_code": "TC-1",
+      "content_digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "title": "Workplace Production Revision Authority"
+    },
+    {
+      "product_ref": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "role": "terminal-claim",
+      "semantic_code": "TC-2",
+      "content_digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "title": "Content Address Acceptance Contract Transport"
+    }
+  ],
+  "contributing_execution_refs": [],
+  "dependency_scope": {
+    "scope_type": "minimal-complete",
+    "includes_direct_artifacts": true,
+    "includes_transitive_dependencies": false,
+    "includes_external_references": false,
+    "includes_workspace_state": false,
+    "rationale": "Terminal claims TC-1 and TC-2 establish that acceptance contract freeze scope includes direct desk artifacts (SC-1, SC-2, SC-3, CON-1, UNK-1, TC-1, TC-2) and their immediate dependencies as captured in the WorkplaceProductionRevision structure."
+  },
+  "reconciliation_summary": {
+    "resolved_unknown": "UNK-1",
+    "resolution": "The acceptance contract scope is defined as minimal-complete: direct artifacts plus immediate dependencies as captured in WorkplaceProductionRevision. External references (ADR-053, CONVEYOR-MENTAL-MODEL.md) serve as evidence and authority but are not frozen as part of the acceptance contract material itself.",
+    "architectural_alignment": {
+      "adr_053_compliance": "WorkplaceProductionRevision as sole material authority, execution as provenance only",
+      "conveyor_model_compliance": "One logical desk, content address transport, immutable revision sealing",
+      "workspace_requirement": "0 accepted upstream revisions travel by content address"
+    },
+    "content_address_transport": {
+      "protocol": "sha256-digest",
+      "all_artifacts_content_addressed": true,
+      "mutable_identifiers_excluded": true,
+      "integrity_verification": "cryptographic"
+    }
+  }
+}

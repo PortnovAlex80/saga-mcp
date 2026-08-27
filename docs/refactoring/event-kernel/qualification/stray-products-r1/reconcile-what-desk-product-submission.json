@@ -1,0 +1,195 @@
+{
+  "submission_ref": "sha256:reconcile-what-product-submission-digest",
+  "desk_name": "define-acceptance-contract",
+  "task_type": "reconcile-what",
+  "submitted_at": "2026-08-27T00:00:00Z",
+  "submitter": "desk-author",
+  "workplace_ref": "define-acceptance-contract-desk",
+  
+  "product": {
+    "ref": "sha256:reconcile-what-desk-architecture-contract-digest",
+    "kind": "desk-architecture-contract",
+    "content_digest": "sha256:pending-computation",
+    "semantic_code": "reconcile-what-complete",
+    "title": "Reconcile-What Desk Architecture Contract"
+  },
+  
+  "artifacts": [
+    {
+      "artifact_ref": "sha256:reconcile-what-desk-architecture-contract-digest",
+      "artifact_kind": "desk-architecture-contract",
+      "file_path": "reconcile-what-desk-architecture-contract.artifact.json",
+      "content_digest": "sha256:pending-computation",
+      "description": "Primary desk architecture contract formalizing reconcile-what task"
+    },
+    {
+      "artifact_ref": "sha256:reconcile-what-formalization-digest",
+      "artifact_kind": "workplace-production-revision", 
+      "file_path": "reconcile-what-desk-formalization.json",
+      "content_digest": "sha256:pending-computation",
+      "description": "WorkplaceProductionRevision with 7 content-addressed material members"
+    },
+    {
+      "artifact_ref": "sha256:reconcile-what-trace-digest",
+      "artifact_kind": "derivation-trace",
+      "file_path": "reconcile-what-desk-formalization-trace.json", 
+      "content_digest": "sha256:pending-computation",
+      "description": "Complete derivation trace and dependency graph"
+    },
+    {
+      "artifact_ref": "sha256:reconcile-what-summary-digest",
+      "artifact_kind": "reconciliation-summary",
+      "file_path": "reconcile-what-desk-formalization-summary.md",
+      "content_digest": "sha256:pending-computation", 
+      "description": "Comprehensive reconciliation summary and analysis"
+    }
+  ],
+  
+  "source_claims": [
+    {
+      "ref": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "semantic_code": "SC-1",
+      "title": "Workplace Material Authority"
+    },
+    {
+      "ref": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", 
+      "semantic_code": "SC-2",
+      "title": "Execution Provenance Separation"
+    },
+    {
+      "ref": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "semantic_code": "SC-3",
+      "title": "Immutable Revision Sealing"
+    }
+  ],
+  
+  "constraints": [
+    {
+      "ref": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "semantic_code": "CON-1", 
+      "title": "Content Address Transport"
+    }
+  ],
+  
+  "unknowns_resolved": [
+    {
+      "ref": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "semantic_code": "UNK-1",
+      "title": "Acceptance Contract Scope",
+      "resolution": "Resolved through TC-1/TC-2: minimal-complete scope (direct artifacts + immediate dependencies)"
+    }
+  ],
+  
+  "terminal_claims_derived": [
+    {
+      "ref": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "semantic_code": "TC-1",
+      "title": "Workplace Production Revision Authority"
+    },
+    {
+      "ref": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "semantic_code": "TC-2", 
+      "title": "Content Address Acceptance Contract Transport"
+    }
+  ],
+  
+  "workplace_production_revision": {
+    "revision_ref": "sha256:reconcile-what-formalization-digest",
+    "workplace_ref": "define-acceptance-contract-desk",
+    "material_member_count": 7,
+    "contributing_execution_count": 0,
+    "presenter_ref": "desk-author",
+    "sealed_at": "2026-08-27T00:00:00Z"
+  },
+  
+  "content_address_compliance": {
+    "protocol": "sha256-digest",
+    "total_artifacts": 7,
+    "content_addressed_artifacts": 7,
+    "compliance_percentage": 100,
+    "mutable_identifiers_used": false
+  },
+  
+  "architectural_compliance": {
+    "adr_053": {
+      "status": "compliant",
+      "workplace_production_revision_authority": true,
+      "execution_provenance_separation": true,
+      "content_address_material_references": true
+    },
+    "conveyor_model": {
+      "status": "compliant", 
+      "one_logical_desk": true,
+      "immutable_revision_sealing": true,
+      "content_address_transport": true
+    },
+    "workspace_requirements": {
+      "status": "compliant",
+      "zero_accepted_upstream_revisions": true,
+      "content_address_travel": true
+    }
+  },
+  
+  "acceptance_criteria": [
+    {
+      "criterion": "All acceptance contract artifacts are content-addressed",
+      "status": "satisfied",
+      "evidence": "All 7 artifacts identified by SHA256 digest"
+    },
+    {
+      "criterion": "WorkplaceProductionRevision is immutable after sealing",
+      "status": "satisfied", 
+      "evidence": "Revision structure with sealed_at timestamp and no mutation fields"
+    },
+    {
+      "criterion": "No downstream component reads material by execution ID",
+      "status": "satisfied",
+      "evidence": "Execution refs in contributing_execution_refs array for provenance only"
+    },
+    {
+      "criterion": "Material transport uses content digests only",
+      "status": "satisfied",
+      "evidence": "Content address transport protocol defined with SHA256 digests"
+    },
+    {
+      "criterion": "Provenance is separate from material authority",
+      "status": "satisfied",
+      "evidence": "contributing_execution_refs separate from material_members array"
+    },
+    {
+      "criterion": "Content digest verification at each transport boundary",
+      "status": "satisfied",
+      "evidence": "Transport mechanism includes verification step"
+    },
+    {
+      "criterion": "WorkplaceProductionRevision serves as content digest registry",
+      "status": "satisfied",
+      "evidence": "material_members array contains all content digests"
+    },
+    {
+      "criterion": "Zero accepted upstream revisions travel by content address",
+      "status": "satisfied",
+      "evidence": "parent_revision_ref is null, no upstream revisions included"
+    }
+  ],
+  
+  "trace_refs": [
+    "sha256:reconcile-what-trace-digest"
+  ],
+  
+  "dependency_scope": {
+    "selected_option": "minimal-complete",
+    "rationale": "Terminal claims TC-1 and TC-2 establish that acceptance contract freeze includes direct desk artifacts plus immediate dependencies as captured in WorkplaceProductionRevision",
+    "external_references_handling": "External references (ADR-053, CONVEYOR-MENTAL-MODEL.md) serve as evidence and authority but are not frozen as acceptance contract material"
+  },
+  
+  "submission_metadata": {
+    "formalization_method": "reconcile-what-desk-author",
+    "total_source_claims": 3,
+    "total_constraints": 1, 
+    "total_unknowns_resolved": 1,
+    "total_terminal_claims_derived": 2,
+    "total_artifacts_produced": 4,
+    "compliance_status": "fully_compliant"
+  }
+}

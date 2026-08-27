@@ -1,0 +1,37 @@
+{
+  "artifactKind": "desk-architecture-contract",
+  "revisionRef": "sha256:define-acceptance-contract-desk-architecture-contract-v1",
+  "workplaceRef": "define-acceptance-contract",
+  "sealedAt": "2026-08-27T00:00:00Z",
+  "materialAuthority": {
+    "authoritySource": "WorkplaceProductionRevision",
+    "executionProvenance": "separate-from-material",
+    "immutableRevisionRequired": true,
+    "contentAddressTransport": true
+  },
+  "authorityModel": {
+    "materialOwner": "Workplace",
+    "executionRole": "provenance-only",
+    "revisionSealing": "before-qc-boundaries",
+    "authorityResolution": "content-digest-only"
+  },
+  "artifactAuthority": {
+    "sourceClaims": [
+      "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035"
+    ],
+    "constraints": [
+      "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"
+    ],
+    "unknowns": [
+      "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276"
+    ],
+    "terminalClaims": [
+      "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b"
+    ],
+    "transportMechanism": "content-address-digest",
+    "integrityVerification": "sha256-cryptographic"
+  }
+}

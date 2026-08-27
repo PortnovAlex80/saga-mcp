@@ -1,0 +1,67 @@
+{
+  "traceRef": "sha256:5f8a7c3d2e9b1f4a6d0c8b2e5a9f3d7c4b8e2a6d0f5c8b3e7a2d9f4b6c8e3a7d",
+  "traceKind": "architecture-contract-formalization",
+  "deskRef": "freeze-what-baseline",
+  "createdAt": "2026-08-26T00:00:00Z",
+  "relationships": [
+    {
+      "relationType": "derived_from",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "description": "TC-1 derived from SC-1: Workplace material authority foundation"
+    },
+    {
+      "relationType": "derived_from",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "description": "TC-1 derived from SC-2: Execution provenance separation principles"
+    },
+    {
+      "relationType": "derived_from",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "description": "TC-1 derived from SC-3: Immutable revision sealing requirement"
+    },
+    {
+      "relationType": "constrained_by",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "TC-1 constrained by CON-1: Content address transport requirements"
+    },
+    {
+      "relationType": "resolves",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "description": "TC-1 resolves UNK-1: Baseline scope definition"
+    },
+    {
+      "relationType": "derived_from",
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "TC-2 derived from CON-1: Content address transport implementation"
+    },
+    {
+      "relationType": "supports",
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "description": "TC-2 supports TC-1: Enables WorkplaceProductionRevision authority across boundaries"
+    }
+  ],
+  "graphStructure": {
+    "sourceClaims": [
+      "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035"
+    ],
+    "constraints": [
+      "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"
+    ],
+    "unknowns": [
+      "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276"
+    ],
+    "terminalClaims": [
+      "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b"
+    ]
+  }
+}

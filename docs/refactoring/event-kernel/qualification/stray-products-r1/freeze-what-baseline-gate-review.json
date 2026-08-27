@@ -1,0 +1,155 @@
+{
+  "reviewRef": "sha256:review-freeze-what-baseline-001",
+  "reviewKind": "architecture-contract-gate-review",
+  "deskRef": "freeze-what-baseline",
+  "role": "reviewer",
+  "reviewDate": "2026-08-27T00:00:00Z",
+  "productSubmissionRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "intakeReceiptRef": "sha256:e3f7a2b5c8d1e4f6a9b2c5d8e1f3a4b7c0d2e5f8a1b4c6d9e0f3a5b7c0d2e5f8",
+  "settlementRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "reviewDecision": "REQUEST_CHANGES",
+  "reviewSummary": "CRITICAL: Content integrity violation detected. All artifact SHA256 digests in the formalization files are incorrect - they reference expected/original digests but current file contents have different digests. This violates CON-1 (Content Address Transport) and undermines the entire WorkplaceProductionRevision authority model.",
+  "criticalFindings": [
+    {
+      "findingId": "CF-001",
+      "severity": "critical",
+      "category": "content-integrity-violation",
+      "description": "All 7 core artifacts contain incorrect SHA256 digests in their file headers",
+      "affectedArtifacts": ["SC-1", "SC-2", "SC-3", "CON-1", "UNK-1", "TC-1", "TC-2"],
+      "evidence": "File headers contain digests from task projection that don't match actual file content digests",
+      "adr053Violation": "Violates CON-1 content address transport - material identity is not determined by actual cryptographic content digest",
+      "impact": "Material authority foundation is compromised - WorkplaceProductionRevision would reference incorrect content"
+    },
+    {
+      "findingId": "CF-002", 
+      "severity": "critical",
+      "category": "workplace-authority-compromise",
+      "description": "WorkplaceProductionRevision authority model cannot function with incorrect content digests",
+      "affectedArtifacts": ["TC-1", "TC-2"],
+      "evidence": "TC-1 and TC-2 formalize WorkplaceProductionRevision structure but rely on incorrect content references",
+      "adr053Violation": "Direct violation of ADR-053 core principle - accepted material cannot be sealed revision with wrong content references",
+      "impact": "Downstream consumers would resolve to wrong material states, breaking the entire authority chain"
+    }
+  ],
+  "digestDiscrepancies": [
+    {
+      "artifact": "SC-1",
+      "claimedDigest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "actualDigest": "24ca5c74bd0ff3030ce6bbdd83fd5e6ae8c8937d973b743cefd45dbf2b5b4b36",
+      "status": "mismatch"
+    },
+    {
+      "artifact": "SC-2", 
+      "claimedDigest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "actualDigest": "a8215bb9e6787bd1572a1d6d4e8d12183e9b7667f1fe5c86a479c0534f4f0f82",
+      "status": "mismatch"
+    },
+    {
+      "artifact": "SC-3",
+      "claimedDigest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", 
+      "actualDigest": "b23918979ba5da00e14701a186b231bf249880692c68eb7e1c995f2c6059be7e",
+      "status": "mismatch"
+    },
+    {
+      "artifact": "CON-1",
+      "claimedDigest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "actualDigest": "d818d51df20701cf8d8b755416182634c06f0c6ffd588feebd77c2199aa23d9b",
+      "status": "mismatch"
+    },
+    {
+      "artifact": "UNK-1",
+      "claimedDigest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "actualDigest": "a264781160ba0c8eb8930cc6765445870a5c13f7d5015eb9f478824d5b3ed77c", 
+      "status": "mismatch"
+    },
+    {
+      "artifact": "TC-1",
+      "claimedDigest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "actualDigest": "9fcb3bf1f3b61c3b0aa83754b343a3e86a71256ad0e58810e5caa12e4843309c",
+      "status": "mismatch"
+    },
+    {
+      "artifact": "TC-2",
+      "claimedDigest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "actualDigest": "b533b807dc284afa596079f7049cacdb4bd682f699c2f3072b295b010bda44b5",
+      "status": "mismatch"
+    }
+  ],
+  "semanticReview": {
+    "adr053Compliance": "incomplete",
+    "adr053Details": "The artifacts correctly reference ADR-053 principles and proper authority separation concepts, but the implementation violates the core content integrity requirement that makes those principles operable.",
+    "workplaceAuthorityModel": "correctly_described_but_broken",
+    "contentAddressTransport": "correctly_described_but_not_implemented",
+    "executionProvenanceSeparation": "correct",
+    "terminalClaimDerivation": "logical",
+    "traceRelationships": "structurally_complete",
+    "baselineScopeDefinition": "adequate"
+  },
+  "architectureContractReview": {
+    "contractStructure": "adequate",
+    "workplaceProductionRevisionInterface": "well_designed",
+    "materialMemberStructure": "appropriate",
+    "acceptanceCriteria": "comprehensive",
+    "complianceAttestations": "invalid_due_to_digest_mismatch"
+  },
+  "requiredChanges": [
+    {
+      "changeId": "RC-001",
+      "priority": "critical",
+      "description": "Correct all SHA256 digests in artifact file headers to match actual file contents",
+      "affectedFiles": [
+        "freeze-what-baseline-SC-1.md",
+        "freeze-what-baseline-SC-2.md", 
+        "freeze-what-baseline-SC-3.md",
+        "freeze-what-baseline-CON-1.md",
+        "freeze-what-baseline-UNK-1.md",
+        "freeze-what-baseline-TC-1.md",
+        "freeze-what-baseline-TC-2.md"
+      ],
+      "verificationMethod": "Recompute SHA256 for each file and update digest field"
+    },
+    {
+      "changeId": "RC-002", 
+      "priority": "critical",
+      "description": "Update freeze-what-baseline-formalization.json with corrected digests",
+      "affectedFiles": ["freeze-what-baseline-formalization.json"],
+      "verificationMethod": "Synchronize formalization manifest with corrected artifact digests"
+    },
+    {
+      "changeId": "RC-003",
+      "priority": "high", 
+      "description": "Update freeze-what-baseline-settlement.json with corrected digests",
+      "affectedFiles": ["freeze-what-baseline-settlement.json"],
+      "verificationMethod": "Reconcile settlement record with corrected artifact digests"
+    },
+    {
+      "changeId": "RC-004",
+      "priority": "high",
+      "description": "Resubmit corrected formalization for gate intake with new content integrity verification",
+      "process": "Complete settlement process with corrected digests and resubmit"
+    }
+  ],
+  "workspaceRequirementsReview": {
+    "contentAddressTransport": "failed - digests don't match content",
+    "acceptedUpstreamRevisions": "verified - 0 revisions as specified",
+    "deskArtifactsOnlyAuthority": "correct - scope is appropriate",
+    "overallCompliance": "failed_due_to_content_integrity_violation"
+  },
+  "reviewProcess": {
+    "structuralVerification": "passed",
+    "semanticVerification": "passed", 
+    "integrityVerification": "failed",
+    "adr053Compliance": "failed_implementation",
+    "traceCompleteness": "passed",
+    "contentDigestVerification": "failed"
+  },
+  "recommendation": "The formalization demonstrates correct understanding of ADR-053 principles and proper architectural thinking, but contains a critical content integrity violation that undermines the entire WorkplaceProductionRevision authority model. The digest mismatches indicate that either: (1) file contents changed after digest calculation, or (2) digests were copied from specifications without verification. Either way, this violates CON-1 and makes the WorkplaceProductionRevision authority non-functional. Required changes must be completed before this can be accepted as an authoritative architecture contract.",
+  "nextActions": [
+    "Correct all SHA256 digests to match actual file contents",
+    "Update all formalization and settlement metadata", 
+    "Resubmit for gate intake with corrected content",
+    "Gate reviewer will perform follow-up verification of content integrity"
+  ],
+  "reviewConclusion": "Formalization cannot be accepted in current state due to critical content integrity violation. Architectural concepts are sound, but implementation breaks the core authority mechanism.",
+  "reviewStatus": "complete_awaiting_corrections"
+}

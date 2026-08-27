@@ -1,0 +1,132 @@
+{
+  "traceRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "traceKind": "architecture-contract-formalization-trace",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "traceDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifacts": [
+    {
+      "artifactRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "artifactKind": "source-claim",
+      "semanticCode": "SC-1",
+      "title": "Source Claim 1: Workplace Material Authority",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "artifactKind": "source-claim",
+      "semanticCode": "SC-2",
+      "title": "Source Claim 2: Execution Provenance Separation",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "artifactKind": "source-claim",
+      "semanticCode": "SC-3",
+      "title": "Source Claim 3: Immutable Revision Sealing",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "artifactKind": "constraint",
+      "semanticCode": "CON-1",
+      "title": "Constraint 1: Content Address Transport",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "artifactKind": "unknown",
+      "semanticCode": "UNK-1",
+      "title": "Unknown 1: Baseline Freeze Scope",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "artifactKind": "terminal-claim",
+      "semanticCode": "TC-1",
+      "title": "Terminal Claim 1: Workplace Production Revision Authority",
+      "status": "accepted",
+      "driftState": "clean"
+    },
+    {
+      "artifactRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "artifactKind": "terminal-claim",
+      "semanticCode": "TC-2",
+      "title": "Terminal Claim 2: Content Address Baseline Transport",
+      "status": "accepted",
+      "driftState": "clean"
+    }
+  ],
+  "relationships": [
+    {
+      "id": 1,
+      "linkType": "derived_from",
+      "sourceArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "targetArtifact": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "description": "TC-1 derived from SC-1: Workplace material authority foundation"
+    },
+    {
+      "id": 2,
+      "linkType": "derived_from",
+      "sourceArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "targetArtifact": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "description": "TC-1 derived from SC-2: Execution provenance separation principles"
+    },
+    {
+      "id": 3,
+      "linkType": "derived_from",
+      "sourceArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "targetArtifact": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "description": "TC-1 derived from SC-3: Immutable revision sealing requirement"
+    },
+    {
+      "id": 4,
+      "linkType": "constrained_by",
+      "sourceArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "targetArtifact": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "TC-1 constrained by CON-1: Content address transport requirements"
+    },
+    {
+      "id": 5,
+      "linkType": "resolves",
+      "sourceArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "targetArtifact": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "description": "TC-1 resolves UNK-1: Baseline freeze scope definition"
+    },
+    {
+      "id": 6,
+      "linkType": "derived_from",
+      "sourceArtifact": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "targetArtifact": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "TC-2 derived from CON-1: Content address transport implementation"
+    },
+    {
+      "id": 7,
+      "linkType": "supports",
+      "sourceArtifact": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "targetArtifact": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "description": "TC-2 supports TC-1: Enables architecture contract authority across boundaries"
+    }
+  ],
+  "coverageAnalysis": {
+    "sourceClaimsCovered": 3,
+    "constraintsCovered": 1,
+    "unknownsResolved": 1,
+    "terminalClaimsDerived": 2,
+    "traceCompleteness": "complete",
+    "driftStatus": "clean"
+  },
+  "workspaceContext": {
+    "acceptedUpstreamRevisions": 0,
+    "materialTransport": "content_address",
+    "authorityScope": "desk_artifacts_only"
+  },
+  "formalizationStatus": "complete",
+  "nextAction": "Submit architecture contract for gate review"
+}

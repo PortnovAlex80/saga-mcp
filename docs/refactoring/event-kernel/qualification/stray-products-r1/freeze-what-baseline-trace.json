@@ -1,0 +1,132 @@
+{
+  "trace_ref": "trace/freeze-what-baseline-author-v1",
+  "trace_digest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "created_at": "2026-08-26T00:00:00Z",
+  "desk": "freeze-what-baseline",
+  "role": "author",
+  "relations": [
+    {
+      "trace_id": 1,
+      "relation_type": "derived_from",
+      "source_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "SC-1", 
+        "digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "type": "source-claim"
+      },
+      "rationale": "TC-1 derives Workplace material authority from SC-1's foundational claim"
+    },
+    {
+      "trace_id": 2,
+      "relation_type": "derived_from",
+      "source_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "SC-2",
+        "digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "type": "source-claim"
+      },
+      "rationale": "TC-1 incorporates SC-2's execution provenance separation principles"
+    },
+    {
+      "trace_id": 3,
+      "relation_type": "derived_from",
+      "source_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "SC-3",
+        "digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "type": "source-claim"
+      },
+      "rationale": "TC-1 builds upon SC-3's immutable revision sealing requirement"
+    },
+    {
+      "trace_id": 4,
+      "relation_type": "constrained_by",
+      "source_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "CON-1",
+        "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "type": "constraint"
+      },
+      "rationale": "TC-1 must satisfy CON-1's content address transport requirements"
+    },
+    {
+      "trace_id": 5,
+      "relation_type": "resolves",
+      "source_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "UNK-1",
+        "digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "type": "unknown"
+      },
+      "rationale": "TC-1 resolves UNK-1 by defining baseline scope as direct artifacts + immediate dependencies"
+    },
+    {
+      "trace_id": 6,
+      "relation_type": "derived_from",
+      "source_artifact": {
+        "code": "TC-2",
+        "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "CON-1",
+        "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "type": "constraint"
+      },
+      "rationale": "TC-2 directly implements CON-1's content address transport constraint"
+    },
+    {
+      "trace_id": 7,
+      "relation_type": "supports",
+      "source_artifact": {
+        "code": "TC-2",
+        "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "type": "terminal-claim"
+      },
+      "target_artifact": {
+        "code": "TC-1",
+        "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "type": "terminal-claim"
+      },
+      "rationale": "TC-2's content address transport enables TC-1's WorkplaceProductionRevision authority across process boundaries"
+    }
+  ],
+  "authority_binding": {
+    "material_authority": "workplace-production-revision",
+    "provenance_authority": "worker-execution",
+    "transport_mechanism": "content-address-digest",
+    "architectural_decision": "ADR-053"
+  },
+  "workspace_context": {
+    "accepted_upstream_revisions": 0,
+    "material_transport": "content_address",
+    "authority_scope": "desk_artifacts_only"
+  },
+  "verification": {
+    "all_artifacts_content_addressed": true,
+    "no_execution_material_authority": true,
+    "immutable_revision_sealing": true,
+    "trace_completeness": true,
+    "architectural_compliance": true
+  }
+}

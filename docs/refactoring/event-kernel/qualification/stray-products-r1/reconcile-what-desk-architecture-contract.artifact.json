@@ -1,0 +1,183 @@
+{
+  "artifact_ref": "sha256:reconcile-what-desk-architecture-contract-digest",
+  "artifact_kind": "desk-architecture-contract",
+  "desk_name": "define-acceptance-contract",
+  "task_type": "reconcile-what",
+  "created_at": "2026-08-27T00:00:00Z",
+  "author": "desk-author",
+  "content_digest": "sha256:pending-computation",
+  "semantic_digest": "sha256:pending-computation",
+  
+  "source_claim_ref": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+  "constraint_ref": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+  "unknown_ref": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+  "terminal_claim_ref": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+  
+  "relations": [
+    {
+      "type": "derived_from",
+      "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "description": "Workplace material authority foundation"
+    },
+    {
+      "type": "derived_from", 
+      "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "description": "Execution provenance separation principles"
+    },
+    {
+      "type": "derived_from",
+      "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", 
+      "description": "Immutable revision sealing requirements"
+    },
+    {
+      "type": "constrained_by",
+      "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "Content address transport requirements"
+    },
+    {
+      "type": "derived_from",
+      "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "Content address transport implementation"
+    },
+    {
+      "type": "resolves",
+      "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "description": "Acceptance contract scope resolution"
+    },
+    {
+      "type": "supports",
+      "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "description": "WorkplaceProductionRevision authority architecture"
+    },
+    {
+      "type": "supports",
+      "source": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "description": "Content address transport mechanism"
+    }
+  ],
+  
+  "workplace_production_revision": {
+    "revision_ref": "sha256:reconcile-what-formalization-digest",
+    "workplace_ref": "define-acceptance-contract-desk", 
+    "parent_revision_ref": null,
+    "material_members": [
+      {
+        "product_ref": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "role": "source-claim",
+        "semantic_code": "SC-1",
+        "content_digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180"
+      },
+      {
+        "product_ref": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "role": "source-claim", 
+        "semantic_code": "SC-2",
+        "content_digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc"
+      },
+      {
+        "product_ref": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "role": "source-claim",
+        "semantic_code": "SC-3", 
+        "content_digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035"
+      },
+      {
+        "product_ref": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "role": "constraint",
+        "semantic_code": "CON-1",
+        "content_digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"
+      },
+      {
+        "product_ref": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "role": "unknown",
+        "semantic_code": "UNK-1",
+        "content_digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276"
+      },
+      {
+        "product_ref": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "role": "terminal-claim",
+        "semantic_code": "TC-1",
+        "content_digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0"
+      },
+      {
+        "product_ref": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "role": "terminal-claim",
+        "semantic_code": "TC-2",
+        "content_digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b"
+      }
+    ],
+    "contributing_execution_refs": [],
+    "presenter_ref": "desk-author",
+    "material_digest": "sha256:pending-computation",
+    "semantic_digest": "sha256:pending-computation", 
+    "sealed_at": "2026-08-27T00:00:00Z"
+  },
+  
+  "content_address_transport": {
+    "protocol": "sha256-digest",
+    "all_artifacts_content_addressed": true,
+    "mutable_identifiers_excluded": true,
+    "integrity_verification": "cryptographic",
+    "transport_boundaries": [
+      "desk_to_gate",
+      "gate_to_effect", 
+      "effect_to_downstream",
+      "cross_process"
+    ]
+  },
+  
+  "dependency_scope": {
+    "scope_type": "minimal-complete",
+    "includes_direct_artifacts": true,
+    "includes_transitive_dependencies": false,
+    "includes_external_references": false,
+    "rationale": "Terminal claims establish that acceptance contract freeze includes direct desk artifacts plus immediate dependencies as captured in WorkplaceProductionRevision structure"
+  },
+  
+  "architectural_compliance": {
+    "adr_053": {
+      "workplace_production_revision_authority": true,
+      "execution_provenance_separation": true,
+      "content_address_material_references": true
+    },
+    "conveyor_model": {
+      "one_logical_desk": true,
+      "immutable_revision_sealing": true,
+      "content_address_transport": true
+    },
+    "workspace_requirements": {
+      "zero_accepted_upstream_revisions": true,
+      "content_address_travel": true
+    }
+  },
+  
+  "acceptance_criteria": [
+    "All acceptance contract artifacts are content-addressed by SHA256 digest",
+    "WorkplaceProductionRevision is immutable after sealing",
+    "No downstream component reads material by execution ID", 
+    "Material transport uses content digests only",
+    "Provenance (execution refs) is separate from material authority",
+    "Content digest verification at each transport boundary",
+    "WorkplaceProductionRevision serves as content digest registry",
+    "Zero accepted upstream revisions travel by content address"
+  ],
+  
+  "formalization_artifacts": [
+    {
+      "artifact_ref": "sha256:reconcile-what-formalization-digest",
+      "artifact_type": "workplace-production-revision",
+      "file_path": "reconcile-what-desk-formalization.json"
+    },
+    {
+      "artifact_ref": "sha256:reconcile-what-trace-digest", 
+      "artifact_type": "derivation-trace",
+      "file_path": "reconcile-what-desk-formalization-trace.json"
+    },
+    {
+      "artifact_ref": "sha256:reconcile-what-summary-digest",
+      "artifact_type": "reconciliation-summary", 
+      "file_path": "reconcile-what-desk-formalization-summary.md"
+    }
+  ],
+  
+  "trace_ref": "sha256:reconcile-what-trace-digest",
+  "formalization_ref": "sha256:reconcile-what-formalization-digest"
+}

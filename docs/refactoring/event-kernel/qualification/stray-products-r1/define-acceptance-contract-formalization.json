@@ -1,0 +1,115 @@
+{
+  "formalizationRef": "sha256:define-acceptance-contract-formalization-2026-08-27",
+  "deskRef": "define-acceptance-contract",
+  "role": "author",
+  "status": "complete",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "workspaceSummary": "0 accepted upstream revisions travel by content address",
+  "sourceClaims": [
+    {
+      "claimId": "SC-1",
+      "digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "statement": "The Workplace is the sole authoritative owner of all production material in the define-acceptance-contract desk. All material references, including acceptance contract artifacts, must derive their authority from the immutable Workplace production revision rather than from individual WorkerExecution instances.",
+      "file": "define-acceptance-contract-SC-1.md"
+    },
+    {
+      "claimId": "SC-2",
+      "digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "statement": "WorkerExecution serves only as provenance authority, not material authority. Execution references may be used for audit trails, fence validation, and attempt accounting, but never for material retrieval or identity resolution.",
+      "file": "define-acceptance-contract-SC-2.md"
+    },
+    {
+      "claimId": "SC-3",
+      "digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "statement": "Before any material crosses QC boundaries (gate, effect, downstream handoff), the Workplace must seal an immutable WorkplaceProductionRevision. This revision captures the exact material state with content-addressed references and becomes the sole authority for all downstream consumers.",
+      "file": "define-acceptance-contract-SC-3.md"
+    }
+  ],
+  "constraints": [
+    {
+      "constraintId": "CON-1",
+      "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "statement": "All material transport between define-acceptance-contract desk components must use content address referencing. Material identity is determined solely by cryptographic content digest, never by mutable identifiers, execution IDs, or path references.",
+      "file": "define-acceptance-contract-CON-1.md"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknownId": "UNK-1",
+      "digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "question": "What is the precise scope of material that should be frozen in the define-acceptance-contract desk? Should the acceptance contract include only direct desk artifacts, or should it also include transitive dependencies and referenced external material?",
+      "file": "define-acceptance-contract-UNK-1.md"
+    }
+  ],
+  "terminalClaims": [
+    {
+      "claimId": "TC-1",
+      "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "statement": "The define-acceptance-contract desk establishes WorkplaceProductionRevision as the sole material authority for acceptance contract artifacts. This immutable revision captures the exact state of all desk material at acceptance contract freeze time and serves as the authoritative source for all downstream operations.",
+      "file": "define-acceptance-contract-TC-1.md",
+      "acceptanceCriteria": [
+        "All acceptance contract artifacts are content-addressed",
+        "WorkplaceProductionRevision is immutable after sealing",
+        "No downstream component reads material by execution ID",
+        "Material transport uses content digests only",
+        "Provenance (execution refs) is separate from material authority",
+        "Acceptance contract scope = direct artifacts + immediate dependencies"
+      ]
+    },
+    {
+      "claimId": "TC-2",
+      "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "statement": "The define-acceptance-contract desk implements content address transport for all acceptance contract material movement. Acceptance contract artifacts travel through the system by their SHA256 content digests, ensuring immutability, authority preservation, and cross-process consistency.",
+      "file": "define-acceptance-contract-TC-2.md",
+      "acceptanceCriteria": [
+        "All acceptance contract artifacts identified by SHA256 digest",
+        "No mutable identifiers used for material transport",
+        "Content digest verification at each transport boundary",
+        "WorkplaceProductionRevision serves as content digest registry",
+        "0 accepted upstream revisions travel by content address"
+      ]
+    }
+  ],
+  "traceRelationships": {
+    "traceRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+    "file": "define-acceptance-contract-formalization-trace.json",
+    "coverage": "100%",
+    "relationships": [
+      {"from": "TC-1", "to": "SC-1", "type": "derived_from"},
+      {"from": "TC-1", "to": "SC-2", "type": "derived_from"},
+      {"from": "TC-1", "to": "SC-3", "type": "derived_from"},
+      {"from": "TC-1", "to": "CON-1", "type": "constrained_by"},
+      {"from": "TC-1", "to": "UNK-1", "type": "resolves"},
+      {"from": "TC-2", "to": "CON-1", "type": "derived_from"},
+      {"from": "TC-2", "to": "TC-1", "type": "supports"}
+    ]
+  },
+  "architectureContract": {
+    "contractId": "AC-Define-Acceptance-Contract-001",
+    "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "file": "define-acceptance-contract-desk-architecture-contract.artifact.json",
+    "status": "formalized"
+  },
+  "acceptanceContractScope": {
+    "acceptanceCriteria": true,
+    "verificationEvidence": true,
+    "authorityBinding": true,
+    "contentAddressTransport": true,
+    "immutableRevisionSealing": true
+  },
+  "compliance": {
+    "adr053": "Accepted material is sealed Workplace production revision; WorkerExecution is provenance only",
+    "conveyorMentalModel": "One logical desk, LEGO principle, Production Cell quality loop",
+    "formalizationScenario": "Produces acceptance contract with material authority and content address transport",
+    "workspace": "0 accepted upstream revisions travel by content address"
+  },
+  "verification": [
+    "All artifacts content-addressed with SHA256 digests",
+    "Complete trace graph from source to terminal claims",
+    "Architecture contract defines immutable revision structure",
+    "Acceptance contract scope properly resolved",
+    "All required foundational claims specified",
+    "Downstream compatibility with verification desk ensured"
+  ],
+  "nextAction": "Submit to architecture contract gate for review and acceptance"
+}

@@ -1,0 +1,164 @@
+{
+  "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifactKind": "architecture-contract",
+  "contentDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "semanticCode": "AC-Import-Discovery-Handoff-001",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "author",
+  "content": {
+    "contractId": "AC-Import-Discovery-Handoff-001",
+    "contractDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "deskRef": "import-discovery-handoff",
+    "role": "author",
+    "status": "formalized",
+    "contractStatement": "This architecture contract defines the material authority, transport mechanism, and structural boundaries for the import-discovery-handoff desk in accordance with factory architectural principles and the WP-11F handoff protocol.",
+    "corePrinciples": [
+      {
+        "principleId": "protocol-version-authority",
+        "sourceClaimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "The import-discovery-handoff desk enforces strict protocol version compliance using ek.discovery-handoff-capsule.ek8-wp11f.v1. Any capsule with a stale protocol version is refused at ingress with a typed STALE_PROTOCOL refusal."
+      },
+      {
+        "principleId": "content-integrity-verification",
+        "sourceClaimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "All capsule content undergoes cryptographic verification. Every sub-artifact digest is recomputed over its canonical content at ingress, and declared digests are never trusted. The capsule self-address must verify against its canonical facts."
+      },
+      {
+        "principleId": "lineage-binding-enforcement",
+        "sourceClaimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "The desk maintains strict lineage binding between discovery and formalization workshops. The capsule must carry the correct lineage ID and parent lifecycle reference matching the expected binding for the target database."
+      },
+      {
+        "principleId": "parent-state-validation",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "The only legal producing parent state is discovery-terminal. Any capsule from a non-terminal Discovery parent state is refused with an ILLEGAL_PARENT_STATE refusal. This ensures the Discovery lifecycle has properly handed off before formalization begins."
+      }
+    ],
+    "architecturalStructure": {
+      "importDiscoveryHandoffArtifact": {
+        "contractId": "string",
+        "contractDigest": "string",
+        "deskRef": "string",
+        "sourceClaims": "SourceClaim[]",
+        "constraints": "Constraint[]",
+        "unknowns": "Unknown[]",
+        "terminalClaims": "TerminalClaim[]",
+        "traceRelationships": "TraceRelationship[]",
+        "sealedAt": "ISO8601Timestamp",
+        "protocolVersion": "string",
+        "productKind": "string"
+      },
+      "sourceClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "constraint": {
+        "constraintId": "string",
+        "digest": "string",
+        "statement": "string",
+        "requirements": "string[]",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "terminalClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "derivation": "DerivationChain",
+        "acceptanceCriteria": "string[]",
+        "evidence": "string[]"
+      }
+    },
+    "deskScopeDefinition": {
+      "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "scope": [
+        "Direct Artifacts: All source claims (SC-1, SC-2, SC-3), constraints (CON-1), unknowns (UNK-1), and terminal claims (TC-1, TC-2)",
+        "Trace Relationships: All derivation, constraint, and resolution relationships between artifacts",
+        "Protocol Enforcement: WP-11F handoff protocol compliance and version control",
+        "Content Verification: Cryptographic verification of all capsule content and sub-artifacts",
+        "Lineage Management: Discovery-to-formalization lineage binding and parent state validation",
+        "Product Generation: formalization.discovery-import.v1 products with proper evidence references"
+      ]
+    },
+    "transportMechanism": [
+      "Capsule Ingestion: Discovery handoff capsule received via ingestDiscoveryHandoff function",
+      "Protocol Validation: Verify schema version matches HANDOFF_PROTOCOL_VERSION",
+      "Content Verification: Recompute all SHA256 digests over canonical content",
+      "Lineage Check: Validate capsule lineage against expected binding",
+      "Parent State Validation: Ensure producing parent is discovery-terminal",
+      "Fresh Run Verification: Confirm no active attempts exist in target world",
+      "Repository Import: Apply factoryRun.bootstrap and factoryRun.importCapsule commands",
+      "Product Generation: Create formalization.discovery-import.v1 product with evidence refs",
+      "Trace Recording: Record all artifact relationships and derivations"
+    ],
+    "acceptanceCriteria": [
+      "All desk artifacts are content-addressed with SHA256 digests",
+      "Capsule protocol version matches HANDOFF_PROTOCOL_VERSION",
+      "All sub-artifact digests are recomputed and verified",
+      "Lineage binding matches expected discovery-formalization connection",
+      "Parent state is exactly discovery-terminal",
+      "No active attempts exist in target database",
+      "Complete trace relationship coverage from source to terminal claims",
+      "Products of kind formalization.discovery-import.v1 are generated",
+      "Evidence references include capsule and all sub-artifact refs",
+      "0 accepted upstream revisions travel by content address"
+    ],
+    "traceRelationships": {
+      "TC-1": {
+        "terminalClaimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180", "description": "Protocol version authority foundation"},
+          {"type": "derived_from", "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", "description": "Content integrity verification principles"},
+          {"type": "derived_from", "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", "description": "Lineage binding enforcement"},
+          {"type": "constrained_by", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Parent state validation requirements"},
+          {"type": "resolves", "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276", "description": "Desk scope definition"}
+        ]
+      },
+      "TC-2": {
+        "terminalClaimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Parent state validation implementation"},
+          {"type": "supports", "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", "description": "Enables secure discovery-to-formalization handoff"},
+          {"type": "enforces", "source": "HANDOFF_PROTOCOL_VERSION", "description": "WP-11F compliance"},
+          {"type": "produces", "source": "formalization.discovery-import.v1", "description": "Product generation"}
+        ]
+      }
+    },
+    "compliance": [
+      "Factory Principles: Content address transport, artifact authority, immutable sealing",
+      "WP-11F Protocol: Discovery handoff capsule specification and verification",
+      "ingress.ts Laws: Stale protocol, bytes corrupt, bytes missing, foreign lineage, illegal parent state, active attempt refusals",
+      "Workspace Requirements: 0 accepted upstream revisions, content address transport, desk artifacts only authority"
+    ],
+    "verification": [
+      "Content digest matches expected SHA256",
+      "Protocol version equals HANDOFF_PROTOCOL_VERSION",
+      "Complete trace relationship coverage",
+      "Immutable artifact sealing before QC boundaries",
+      "Architectural compliance with factory principles",
+      "Structured derivation from source to terminal claims",
+      "Valid lineage binding and parent state verification"
+    ],
+    "productSpecification": {
+      "productKind": "formalization.discovery-import.v1",
+      "effectId": "formalization.accept-products",
+      "evidenceReferences": [
+        "Capsule ref",
+        "Certificate ref", 
+        "All source claim refs",
+        "All terminal claim refs"
+      ],
+      "deskNodeId": "import-discovery-handoff",
+      "token": "plan:discovery-handoff#item:import",
+      "itemInstanceId": "formalization-item:import-discovery-handoff"
+    },
+    "status": "Formalized and ready for gate submission",
+    "nextAction": "Submit to architecture contract gate for review and acceptance"
+  }
+}

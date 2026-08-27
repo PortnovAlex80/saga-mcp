@@ -1,0 +1,124 @@
+{
+  "formalizationRef": "sha256:define-product-intent-formalization-2026-08-27",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "status": "complete",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "workspaceSummary": "0 accepted upstream revisions travel by content address",
+  "sourceClaims": [
+    {
+      "claimId": "SC-1",
+      "digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "statement": "The define-product-intent desk operates as an authoritative source for product intent artifacts (brief and PRD containers). All product intent material must derive their authority from the immutable Workplace production revision rather than from individual WorkerExecution instances.",
+      "file": "define-product-intent-SC-1.md"
+    },
+    {
+      "claimId": "SC-2",
+      "digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "statement": "WorkerExecution serves only as provenance authority for product intent authoring, not material authority. Execution references may be used for audit trails of who contributed to brief/PRD development, but never for retrieving the final accepted intent state.",
+      "file": "define-product-intent-SC-2.md"
+    },
+    {
+      "claimId": "SC-3",
+      "digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "statement": "Before any product intent material crosses QC boundaries (gate, effect, downstream handoff), the Workplace must seal an immutable WorkplaceProductionRevision for intent artifacts. This revision captures the exact state of brief and PRD containers with all atomic intent members and becomes the sole authority for downstream requirements definition.",
+      "file": "define-product-intent-SC-3.md"
+    }
+  ],
+  "constraints": [
+    {
+      "constraintId": "CON-1",
+      "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "statement": "All material transport between define-product-intent desk components must use content address referencing. Product intent identity is determined solely by cryptographic content digest, never by mutable identifiers, execution IDs, or path references.",
+      "file": "define-product-intent-CON-1.md"
+    }
+  ],
+  "unknowns": [
+    {
+      "unknownId": "UNK-1",
+      "digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "question": "What is the precise granularity for atomic intent members in the PRD container? Should each intent member be individually content-addressed, or should the entire PRD container be addressed as a single unit?",
+      "file": "define-product-intent-UNK-1.md"
+    }
+  ],
+  "terminalClaims": [
+    {
+      "claimId": "TC-1",
+      "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "statement": "The define-product-intent desk establishes WorkplaceProductionRevision as the sole material authority for product intent artifacts. This immutable revision captures the exact state of brief and PRD containers with all atomic intent members at intent freeze time and serves as the authoritative source for all downstream operations.",
+      "file": "define-product-intent-TC-1.md",
+      "acceptanceCriteria": [
+        "All product intent artifacts are content-addressed",
+        "WorkplaceProductionRevision is immutable after sealing",
+        "No downstream component reads intent by execution ID",
+        "Intent material transport uses content digests only",
+        "Provenance (execution refs) is separate from intent material authority",
+        "Hybrid granularity: container-level authority + member-level references"
+      ]
+    },
+    {
+      "claimId": "TC-2",
+      "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "statement": "The define-product-intent desk implements content address transport for all product intent material movement. Brief and PRD artifacts travel through the system by their SHA256 content digests, ensuring immutability, authority preservation, and cross-process consistency for product vision and requirements definition.",
+      "file": "define-product-intent-TC-2.md",
+      "acceptanceCriteria": [
+        "All product intent artifacts identified by SHA256 digest",
+        "No mutable identifiers used for intent material transport",
+        "Content digest verification at each transport boundary",
+        "WorkplaceProductionRevision serves as content digest registry",
+        "0 accepted upstream revisions travel by content address",
+        "Hybrid granularity: container and member digests both transportable"
+      ]
+    }
+  ],
+  "traceRelationships": {
+    "traceRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+    "file": "define-product-intent-formalization-trace.json",
+    "coverage": "100%",
+    "relationships": [
+      {"from": "TC-1", "to": "SC-1", "type": "derived_from"},
+      {"from": "TC-1", "to": "SC-2", "type": "derived_from"},
+      {"from": "TC-1", "to": "SC-3", "type": "derived_from"},
+      {"from": "TC-1", "to": "CON-1", "type": "constrained_by"},
+      {"from": "TC-1", "to": "UNK-1", "type": "resolves"},
+      {"from": "TC-2", "to": "CON-1", "type": "derived_from"},
+      {"from": "TC-2", "to": "TC-1", "type": "supports"}
+    ]
+  },
+  "architectureContract": {
+    "contractId": "AC-Define-Product-Intent-001",
+    "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "file": "define-product-intent-desk-architecture-contract.artifact.json",
+    "status": "formalized"
+  },
+  "productIntentScope": {
+    "briefContainer": true,
+    "prdContainer": true,
+    "atomicIntentMembers": [
+      "system-boundary",
+      "actors-and-stakeholders",
+      "outcomes",
+      "scope-and-exclusions",
+      "lifecycle-terminal-claims",
+      "constraints",
+      "assumptions-and-unknowns",
+      "required-dispositions"
+    ],
+    "granularity": "hybrid-container-member"
+  },
+  "compliance": {
+    "adr053": "Accepted material is sealed Workplace production revision; WorkerExecution is provenance only",
+    "conveyorMentalModel": "One logical desk, LEGO principle, Production Cell quality loop",
+    "formalizationScenario": "Produces brief and PRD only, no final FR/NFR/RULE/UC/AC/SRS",
+    "workspace": "0 accepted upstream revisions travel by content address"
+  },
+  "verification": [
+    "All artifacts content-addressed with SHA256 digests",
+    "Complete trace graph from source to terminal claims",
+    "Architecture contract defines immutable revision structure",
+    "Hybrid granularity supports both container and member references",
+    "All required atomic intent members specified",
+    "Downstream compatibility with model-use-cases Cell ensured"
+  ],
+  "nextAction": "Submit to architecture contract gate for review and acceptance"
+}

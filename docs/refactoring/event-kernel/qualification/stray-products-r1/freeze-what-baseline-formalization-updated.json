@@ -1,0 +1,287 @@
+{
+  "schemaVersion": "factory.proof.scenario-evidence-bundle.v1",
+  "scenario": {
+    "id": "formalization/freeze-what-baseline-author",
+    "digest": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+    "kind": "positive",
+    "faultClass": null,
+    "proves": [
+      "frm.submission.baseline-freeze",
+      "frm.submission.content-address-trace",
+      "freeze-what-baseline.desk.authority"
+    ],
+    "injectionBoundary": null,
+    "detectorRef": null,
+    "repairOwner": null,
+    "counterfactualFeedback": [],
+    "coverageItems": [
+      "obligation:frm.submission.baseline-freeze",
+      "obligation:freeze-what-baseline.desk.authority",
+      "transition:baseline-freeze->content-address-trace",
+      "binding:freeze-what-baseline:workplace-as-material-authority",
+      "binding:freeze-what-baseline:execution-as-provenance-only",
+      "handoff:baseline-freeze->terminal-claims"
+    ]
+  },
+  "proofModes": [
+    "Durable",
+    "CanonicalFast"
+  ],
+  "composition": {
+    "fingerprint": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+    "overlayKeys": [
+      "freeze-what-baseline.desk",
+      "content-address-transport"
+    ],
+    "sections": {
+      "lifecycle": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+      "modules": "95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+      "providers": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+      "overlay": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1"
+    }
+  },
+  "installationFingerprint": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+  "durableTraceDigest": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+  "normalizedTrace": {
+    "acceptedAuthorityHeads": [],
+    "artifacts": [
+      {
+        "accepted_hash": "24ca5c74bd0ff3030ce6bbdd83fd5e6ae8c8937d973b743cefd45dbf2b5b4b36",
+        "code": "SC-1",
+        "content_hash": "24ca5c74bd0ff3030ce6bbdd83fd5e6ae8c8937d973b743cefd45dbf2b5b4b36",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 1,
+        "path": "freeze-what-baseline-SC-1.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Source Claim 1: Workplace Material Authority",
+        "type": "source-claim"
+      },
+      {
+        "accepted_hash": "a8215bb9e6787bd1572a1d6d4e8d12183e9b7667f1fe5c86a479c0534f4f0f82",
+        "code": "SC-2",
+        "content_hash": "a8215bb9e6787bd1572a1d6d4e8d12183e9b7667f1fe5c86a479c0534f4f0f82",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 2,
+        "path": "freeze-what-baseline-SC-2.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Source Claim 2: Execution Provenance Separation",
+        "type": "source-claim"
+      },
+      {
+        "accepted_hash": "b23918979ba5da00e14701a186b231bf249880692c68eb7e1c995f2c6059be7e",
+        "code": "SC-3",
+        "content_hash": "b23918979ba5da00e14701a186b231bf249880692c68eb7e1c995f2c6059be7e",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 3,
+        "path": "freeze-what-baseline-SC-3.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Source Claim 3: Immutable Revision Sealing",
+        "type": "source-claim"
+      },
+      {
+        "accepted_hash": "d818d51df20701cf8d8b755416182634c06f0c6ffd588feebd77c2199aa23d9b",
+        "code": "CON-1",
+        "content_hash": "d818d51df20701cf8d8b755416182634c06f0c6ffd588feebd77c2199aa23d9b",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 4,
+        "path": "freeze-what-baseline-CON-1.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Constraint 1: Content Address Transport",
+        "type": "constraint"
+      },
+      {
+        "accepted_hash": "a264781160ba0c8eb8930cc6765445870a5c13f7d5015eb9f478824d5b3ed77c",
+        "code": "UNK-1",
+        "content_hash": "a264781160ba0c8eb8930cc6765445870a5c13f7d5015eb9f478824d5b3ed77c",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 5,
+        "path": "freeze-what-baseline-UNK-1.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Unknown 1: Baseline Freeze Scope",
+        "type": "unknown"
+      },
+      {
+        "accepted_hash": "9fcb3bf1f3b61c3b0aa83754b343a3e86a71256ad0e58810e5caa12e4843309c",
+        "code": "TC-1",
+        "content_hash": "9fcb3bf1f3b61c3b0aa83754b343a3e86a71256ad0e58810e5caa12e4843309c",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 6,
+        "path": "freeze-what-baseline-TC-1.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Terminal Claim 1: Workplace Production Revision Authority",
+        "type": "terminal-claim"
+      },
+      {
+        "accepted_hash": "b533b807dc284afa596079f7049cacdb4bd682f699c2f3072b295b010bda44b5",
+        "code": "TC-2",
+        "content_hash": "b533b807dc284afa596079f7049cacdb4bd682f699c2f3072b295b010bda44b5",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 7,
+        "path": "freeze-what-baseline-TC-2.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Terminal Claim 2: Content Address Baseline Transport",
+        "type": "terminal-claim"
+      },
+      {
+        "accepted_hash": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+        "code": "AC-001",
+        "content_hash": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 8,
+        "path": "freeze-what-baseline-architecture-contract.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Architecture Contract: Freeze-What-Baseline Desk",
+        "type": "architecture-contract"
+      },
+      {
+        "accepted_hash": "60f0f92199635b298fb1cda722aabee5269e502f7a76e85ee06a2918d30d88ae",
+        "code": "CIA-001",
+        "content_hash": "60f0f92199635b298fb1cda722aabee5269e502f7a76e85ee06a2918d30d88ae",
+        "drift_state": "clean",
+        "epic_id": null,
+        "id": 9,
+        "path": "freeze-what-baseline-content-integrity-analysis.md",
+        "project_id": null,
+        "project_repository_id": null,
+        "status": "accepted",
+        "title": "Content Integrity Analysis: Freeze-What-Baseline Desk",
+        "type": "analysis"
+      }
+    ],
+    "artifactTraces": [
+      {
+        "id": 1,
+        "link_type": "derived_from",
+        "source_id": 6,
+        "target_id": 1,
+        "target_type": "artifact"
+      },
+      {
+        "id": 2,
+        "link_type": "derived_from",
+        "source_id": 6,
+        "target_id": 2,
+        "target_type": "artifact"
+      },
+      {
+        "id": 3,
+        "link_type": "derived_from",
+        "source_id": 6,
+        "target_id": 3,
+        "target_type": "artifact"
+      },
+      {
+        "id": 4,
+        "link_type": "constrained_by",
+        "source_id": 6,
+        "target_id": 4,
+        "target_type": "artifact"
+      },
+      {
+        "id": 5,
+        "link_type": "resolves",
+        "source_id": 6,
+        "target_id": 5,
+        "target_type": "artifact"
+      },
+      {
+        "id": 6,
+        "link_type": "derived_from",
+        "source_id": 7,
+        "target_id": 4,
+        "target_type": "artifact"
+      },
+      {
+        "id": 7,
+        "link_type": "supports",
+        "source_id": 7,
+        "target_id": 6,
+        "target_type": "artifact"
+      },
+      {
+        "id": 8,
+        "link_type": "formalizes",
+        "source_id": 8,
+        "target_id": 6,
+        "target_type": "artifact"
+      },
+      {
+        "id": 9,
+        "link_type": "formalizes",
+        "source_id": 8,
+        "target_id": 7,
+        "target_type": "artifact"
+      },
+      {
+        "id": 10,
+        "link_type": "analyzes",
+        "source_id": 9,
+        "target_id": 8,
+        "target_type": "artifact"
+      }
+    ],
+    "candidateSets": [],
+    "cellEffectAttempts": [],
+    "cellEffectReceipts": [],
+    "cellEffectRepairIssues": [],
+    "checkReceipts": [],
+    "deliveryEffectActions": [],
+    "developmentVerificationLedger": [],
+    "effectReceipts": [],
+    "finalAcceptances": [],
+    "gateDecisions": [],
+    "lifecycleRuns": [],
+    "managedSubmissions": [],
+    "processOutcomeCertificates": [],
+    "reconciliationReports": [],
+    "recoveryIssues": [],
+    "taskContexts": [],
+    "traceDigest": "6bcf3742a038364dc1aabc3c18035aae7b11ab7c143c86709b71303c848cd1a1",
+    "workplaceContexts": [],
+    "workerExecutions": []
+  },
+  "workspaceSummary": {
+    "accepted_upstream_revisions": 0,
+    "material_transport": "content_address",
+    "authority_scope": "desk_artifacts_only"
+  },
+  "architecturalContext": {
+    "decisions": ["ADR-053"],
+    "key_principles": [
+      "Workplace is the sole owner of production material",
+      "WorkerExecution provides provenance only",
+      "Immutable WorkplaceProductionRevision between desk and CandidateSet",
+      "Material authority is sealed revision, not execution"
+    ]
+  },
+  "contentIntegrity": {
+    "analysis_performed": true,
+    "digest_mismatches_resolved": true,
+    "resolution_strategy": "hybrid_approach",
+    "current_state_valid": true
+  }
+}

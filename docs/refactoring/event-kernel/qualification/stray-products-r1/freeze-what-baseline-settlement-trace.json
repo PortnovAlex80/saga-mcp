@@ -1,0 +1,95 @@
+{
+  "traceRef": "sha256:b8c3d5e7f2a4b6c8d0e1f3a5b7c9d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6",
+  "traceKind": "formalization-settlement-trace",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "createdAt": "2026-08-26T23:45:00Z",
+  "settlementRelationships": [
+    {
+      "relationType": "settles",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "description": "Settlement record settles the formalization bundle"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "description": "Settlement includes SC-1 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "description": "Settlement includes SC-2 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "description": "Settlement includes SC-3 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "description": "Settlement includes CON-1 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "description": "Settlement includes UNK-1 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "description": "Settlement includes TC-1 artifact"
+    },
+    {
+      "relationType": "includes_artifact",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "description": "Settlement includes TC-2 artifact"
+    },
+    {
+      "relationType": "submits_for_gate",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "architecture-contract-gate",
+      "description": "Settlement submits formalization for architecture contract gate review"
+    }
+  ],
+  "productSubmissionRelationships": [
+    {
+      "relationType": "creates",
+      "from": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "to": "freeze-what-baseline-product-submission.json",
+      "description": "Settlement creates product submission for gate"
+    },
+    {
+      "relationType": "bundles",
+      "from": "freeze-what-baseline-product-submission.json",
+      "to": "freeze-what-baseline-formalization.json",
+      "description": "Product submission bundles formalization JSON"
+    },
+    {
+      "relationType": "bundles",
+      "from": "freeze-what-baseline-product-submission.json", 
+      "to": "freeze-what-baseline-formalization-trace.json",
+      "description": "Product submission bundles trace JSON"
+    },
+    {
+      "relationType": "bundles",
+      "from": "freeze-what-baseline-product-submission.json",
+      "to": "freeze-what-baseline-submission-summary.md",
+      "description": "Product submission bundles submission summary"
+    }
+  ],
+  "verificationStatus": {
+    "allArtifactsIncluded": true,
+    "traceRelationshipsComplete": true,
+    "productSubmissionValid": true,
+    "readyForGateSubmission": true
+  }
+}

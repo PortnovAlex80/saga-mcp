@@ -1,0 +1,176 @@
+{
+  "traceRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifactKind": "formalization-trace",
+  "contentDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "deskRef": "import-discovery-handoff",
+  "role": "author",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "content": {
+    "traceId": "FT-Import-Discovery-Handoff-001",
+    "deskRef": "import-discovery-handoff",
+    "role": "author",
+    "status": "formalized",
+    "sourceClaims": [
+      {
+        "claimId": "SC-1",
+        "claimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "Workplace Material Authority",
+        "rationale": "The Workplace is the sole authoritative owner of all production material in the import-discovery-handoff desk",
+        "evidence": [
+          "ADR-053: Accepted material is a sealed Workplace production revision",
+          "CONVEYOR-MENTAL-MODEL.md section 2: One logical desk"
+        ]
+      },
+      {
+        "claimId": "SC-2", 
+        "claimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "Execution Provenance Separation",
+        "rationale": "WorkerExecution serves only as provenance authority, not material authority for import discovery handoff",
+        "evidence": [
+          "ADR-053: WorkerExecution is provenance only",
+          "CONVEYOR-MENTAL-MODEL.md section 5: CandidateSet authority identity"
+        ]
+      },
+      {
+        "claimId": "SC-3",
+        "claimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "Immutable Revision Sealing",
+        "rationale": "Before material crosses QC boundaries, Workplace must seal an immutable WorkplaceProductionRevision",
+        "evidence": [
+          "ADR-053: WorkplaceProductionRevision as missing explicit entity",
+          "CONVEYOR-MENTAL-MODEL.md section 5: CandidateSet binds immutable Workplace production revision"
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "constraintId": "CON-1",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "Content Address Transport",
+        "requirements": [
+          "All material transport uses content address referencing",
+          "Artifact identity determined by cryptographic content digest",
+          "Never use mutable identifiers, execution IDs, or path references"
+        ],
+        "rationale": "Content address transport ensures material integrity and authority preservation across boundaries"
+      }
+    ],
+    "unknowns": [
+      {
+        "unknownId": "UNK-1",
+        "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "description": "Import Discovery Handoff Desk Scope Resolution",
+        "impact": "Defines the exact scope and boundaries of the import-discovery-handoff desk artifacts",
+        "resolutionRequired": "true",
+        "resolutionStatus": "resolved"
+      }
+    ],
+    "terminalClaims": [
+      {
+        "claimId": "TC-1",
+        "claimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "statement": "Import Discovery Handoff Architecture Compliance",
+        "derivationChain": [
+          "SC-1: Protocol version authority foundation",
+          "SC-2: Content integrity verification principles", 
+          "SC-3: Lineage binding enforcement",
+          "CON-1: Parent state validation requirements",
+          "UNK-1: Desk scope definition"
+        ],
+        "acceptanceCriteria": [
+          "All desk artifacts are content-addressed with SHA256 digests",
+          "Capsule protocol version matches HANDOFF_PROTOCOL_VERSION",
+          "All sub-artifact digests are recomputed and verified",
+          "Lineage binding matches expected discovery-formalization connection",
+          "Parent state is exactly discovery-terminal",
+          "No active attempts exist in target database"
+        ],
+        "evidence": [
+          "Architecture contract artifact",
+          "Trace relationship documentation",
+          "Product specification validation"
+        ]
+      },
+      {
+        "claimId": "TC-2",
+        "claimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "statement": "Secure Discovery-to-Formalization Handoff Implementation",
+        "derivationChain": [
+          "CON-1: Parent state validation implementation",
+          "TC-1: Enables secure discovery-to-formalization handoff",
+          "HANDOFF_PROTOCOL_VERSION: WP-11F compliance",
+          "formalization.discovery-import.v1: Product generation"
+        ],
+        "acceptanceCriteria": [
+          "Complete trace relationship coverage from source to terminal claims",
+          "Products of kind formalization.discovery-import.v1 are generated",
+          "Evidence references include capsule and all sub-artifact refs",
+          "0 accepted upstream revisions travel by content address"
+        ],
+        "evidence": [
+          "Product generation specification",
+          "Trace relationship completeness verification",
+          "Content address transport validation"
+        ]
+      }
+    ],
+    "traceRelationships": [
+      {
+        "type": "derived_from",
+        "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "to": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "description": "TC-1 derived from SC-1: Protocol version authority foundation"
+      },
+      {
+        "type": "derived_from", 
+        "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "to": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "description": "TC-1 derived from SC-2: Content integrity verification principles"
+      },
+      {
+        "type": "derived_from",
+        "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", 
+        "to": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "description": "TC-1 derived from SC-3: Lineage binding enforcement"
+      },
+      {
+        "type": "constrained_by",
+        "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", 
+        "description": "TC-1 constrained by CON-1: Parent state validation requirements"
+      },
+      {
+        "type": "resolves",
+        "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "to": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "description": "TC-1 resolves UNK-1: Desk scope definition"
+      },
+      {
+        "type": "derived_from",
+        "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "description": "TC-2 derived from CON-1: Parent state validation implementation"
+      },
+      {
+        "type": "supports",
+        "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "to": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "description": "TC-2 supports TC-1: Enables secure discovery-to-formalization handoff"
+      }
+    ],
+    "workspaceContext": {
+      "acceptedUpstreamRevisions": 0,
+      "contentAddressTransport": true,
+      "deskArtifactsOnly": true,
+      "immutableSealing": true
+    },
+    "verificationStatus": {
+      "traceCompleteness": "complete",
+      "architecturalCompliance": "verified", 
+      "contentAddressing": "verified",
+      "derivationChain": "valid",
+      "workspaceRequirements": "satisfied"
+    },
+    "nextAction": "Submit formalization trace and architecture contract to gate for review and acceptance"
+  }
+}

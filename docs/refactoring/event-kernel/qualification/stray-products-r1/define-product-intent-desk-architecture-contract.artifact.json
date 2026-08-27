@@ -1,0 +1,131 @@
+{
+  "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifactKind": "architecture-contract",
+  "contentDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "semanticCode": "AC-Define-Product-Intent-001",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "content": {
+    "contractId": "AC-Define-Product-Intent-001",
+    "contractDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "deskRef": "define-product-intent",
+    "role": "author",
+    "status": "formalized",
+    "contractStatement": "This architecture contract defines the material authority, transport mechanism, and structural boundaries for the define-product-intent desk in accordance with ADR-053, CONVEYOR-MENTAL-MODEL principles, and formalization scenario requirements.",
+    "corePrinciples": [
+      {
+        "principleId": "product-intent-artifact-authority",
+        "sourceClaimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "The define-product-intent desk operates as an authoritative source for product intent artifacts (brief and PRD containers). All product intent material maintains authority through immutable Workplace production revisions, not individual WorkerExecution instances."
+      },
+      {
+        "principleId": "intent-authoring-provenance-separation",
+        "sourceClaimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "WorkerExecution serves only as provenance authority for product intent authoring, not material authority. Execution references track who contributed to intent evolution but never for retrieving the final accepted intent state."
+      },
+      {
+        "principleId": "immutable-intent-revision-sealing",
+        "sourceClaimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "Before any product intent material crosses QC boundaries, the Workplace must seal an immutable WorkplaceProductionRevision. This revision captures the exact state of brief and PRD containers with all atomic intent members and becomes the sole authority for downstream requirements definition."
+      },
+      {
+        "principleId": "content-address-transport",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "All material transport between define-product-intent desk components uses content address referencing. Product intent identity is determined solely by cryptographic content digest, never by mutable identifiers, execution IDs, or path references."
+      }
+    ],
+    "architecturalStructure": {
+      "workplaceProductionRevision": {
+        "revisionRef": "string",
+        "workplaceRef": "define-product-intent",
+        "parentRevisionRef": "string | undefined",
+        "materialMembers": "MaterialMember[]",
+        "contributingExecutionRefs": "string[]",
+        "presenterRef": "string",
+        "materialDigest": "string",
+        "semanticDigest": "string",
+        "sealedAt": "ISO8601Timestamp"
+      },
+      "materialMember": {
+        "productRef": "string",
+        "role": "'brief-container' | 'prd-container' | 'atomic-intent-member'",
+        "contentDigest": "string",
+        "semanticCode": "string",
+        "containerRef": "string | undefined"
+      },
+      "atomicIntentMember": {
+        "memberType": "'system-boundary' | 'actor' | 'outcome' | 'scope' | 'constraint' | 'unknown'",
+        "content": "string",
+        "contentDigest": "string",
+        "dependencies": "string[]"
+      }
+    },
+    "productIntentScopeDefinition": {
+      "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "scope": [
+        "Direct Artifacts: Brief container, PRD container with atomic intent members",
+        "Atomic Intent Members: System boundary, actors, outcomes, scope, constraints, unknowns",
+        "Trace Relationships: All derivation, constraint, and resolution relationships",
+        "Architectural References: ADR-053, CONVEYOR-MENTAL-MODEL, formalization scenario plan",
+        "Contract Outputs: Sealed intent revisions ready for model-use-cases Cell"
+      ],
+      "granularity": "Hybrid: container-level authority + member-level references"
+    },
+    "transportMechanism": [
+      "Intent Artifact Creation: Author produces brief/PRD → SHA256 digest computed",
+      "Member-Level Addressing: Individual atomic intent members get their own digests",
+      "Container-Level Addressing: PRD container gets overall digest",
+      "Revision Sealing: WorkplaceProductionRevision records all content digests",
+      "Transport Downstream: Only content digests travel across boundaries",
+      "Verification: Recompute SHA256 on receipt to verify intent integrity",
+      "Authority Resolution: Resolve content digest to exact intent artifact state"
+    ],
+    "acceptanceCriteria": [
+      "All product intent artifacts are content-addressed with SHA256 digests",
+      "WorkplaceProductionRevision is immutable after sealing",
+      "No downstream component reads intent by execution ID",
+      "Intent material transport uses content digests only",
+      "Provenance (execution refs) is separate from intent material authority",
+      "Hybrid granularity: container and member digests both transportable",
+      "0 accepted upstream revisions travel by content address",
+      "Brief and PRD containers contain all required atomic intent members"
+    ],
+    "traceRelationships": {
+      "TC-1": {
+        "terminalClaimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180", "description": "Product intent artifact authority foundation"},
+          {"type": "derived_from", "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", "description": "Intent authoring provenance separation"},
+          {"type": "derived_from", "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", "description": "Immutable intent revision sealing"},
+          {"type": "constrained_by", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport requirements"},
+          {"type": "resolves", "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276", "description": "Product intent granularity resolution"}
+        ]
+      },
+      "TC-2": {
+        "terminalClaimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport implementation"},
+          {"type": "supports", "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", "description": "Enables intent authority across boundaries"}
+        ]
+      }
+    },
+    "compliance": [
+      "ADR-053: Accepted material is a sealed Workplace production revision; WorkerExecution is provenance only",
+      "CONVEYOR-MENTAL-MODEL.md: One logical desk, LEGO principle, Production Cell quality loop",
+      "FORMATS-FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md: define-product-intent produces brief and PRD only",
+      "Workspace Requirements: 0 accepted upstream revisions, content address transport, desk artifacts only authority"
+    ],
+    "verification": [
+      "Content digest matches expected SHA256",
+      "No execution-scoped intent material authority",
+      "Immutable revision sealing before QC boundaries",
+      "Complete trace graph coverage",
+      "Architectural compliance with ADR-053",
+      "Hybrid granularity properly implemented",
+      "All required atomic intent members present in PRD"
+    ],
+    "status": "Formalized and ready for gate submission",
+    "nextAction": "Submit to architecture contract gate for review and acceptance"
+  }
+}

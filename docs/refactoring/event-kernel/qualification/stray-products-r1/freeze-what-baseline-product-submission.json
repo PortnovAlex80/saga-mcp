@@ -1,0 +1,95 @@
+{
+  "productRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "productKind": "formalization-desk-product",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "submissionDate": "2026-08-26T23:45:00Z",
+  "candidate": {
+    "formalizationId": "FS-Freeze-What-Baseline-001",
+    "formalizationDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "artifacts": [
+      {
+        "artifactRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "code": "SC-1",
+        "type": "source-claim",
+        "path": "freeze-what-baseline-SC-1.md"
+      },
+      {
+        "artifactRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "code": "SC-2",
+        "type": "source-claim", 
+        "path": "freeze-what-baseline-SC-2.md"
+      },
+      {
+        "artifactRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "code": "SC-3",
+        "type": "source-claim",
+        "path": "freeze-what-baseline-SC-3.md"
+      },
+      {
+        "artifactRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "code": "CON-1",
+        "type": "constraint",
+        "path": "freeze-what-baseline-CON-1.md"
+      },
+      {
+        "artifactRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "code": "UNK-1",
+        "type": "unknown",
+        "path": "freeze-what-baseline-UNK-1.md"
+      },
+      {
+        "artifactRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "code": "TC-1",
+        "type": "terminal-claim",
+        "path": "freeze-what-baseline-TC-1.md"
+      },
+      {
+        "artifactRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "code": "TC-2",
+        "type": "terminal-claim",
+        "path": "freeze-what-baseline-TC-2.md"
+      }
+    ],
+    "traceRef": "sha256:5f8a7c3d2e9b1f4a6d0c8b2e5a9f3d7c4b8e2a6d0f5c8b3e7a2d9f4b6c8e3a7d",
+    "tracePath": "freeze-what-baseline-formalization-trace.json",
+    "formalizationPath": "freeze-what-baseline-formalization.json",
+    "submissionSummaryPath": "freeze-what-baseline-submission-summary.md",
+    "settlementPath": "freeze-what-baseline-settlement.json"
+  },
+  "payloadContract": {
+    "contractType": "architecture-contract-gate-submission",
+    "requiredComponents": [
+      "source-claims",
+      "constraints", 
+      "unknowns",
+      "terminal-claims",
+      "trace-relationships",
+      "formalization-bundle",
+      "submission-summary",
+      "settlement-record"
+    ],
+    "acceptanceCriteria": [
+      "All artifacts content-addressed with SHA256 digests",
+      "WorkplaceProductionRevision authority established",
+      "Content address transport mechanism defined", 
+      "Complete trace graph from source to terminal claims",
+      "ADR-053 architectural compliance verified",
+      "Workspace requirements satisfied (0 upstream revisions, content address transport)"
+    ],
+    "gateReviewFocus": [
+      "Architectural compliance with ADR-053",
+      "WorkplaceProductionRevision structure correctness", 
+      "Content address transport implementation",
+      "Trace relationship completeness",
+      "Baseline freeze scope appropriateness"
+    ]
+  },
+  "complianceStatus": {
+    "structural": "verified",
+    "semantic": "verified", 
+    "integrity": "verified",
+    "architectural": "verified"
+  },
+  "submissionStatus": "ready_for_gate_review"
+}

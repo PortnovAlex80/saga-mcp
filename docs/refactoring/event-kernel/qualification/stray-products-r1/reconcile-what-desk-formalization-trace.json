@@ -1,0 +1,106 @@
+{
+  "trace_ref": "sha256:reconcile-what-trace-digest",
+  "formalization_ref": "sha256:reconcile-what-formalization-digest",
+  "desk_name": "define-acceptance-contract",
+  "trace_type": "reconciliation-derivation",
+  "created_at": "2026-08-27T00:00:00Z",
+  "derivations": [
+    {
+      "trace_id": "derivation-1",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "terminal-claim-authority",
+      "description": "TC-1 establishes WorkplaceProductionRevision as the formalization structure",
+      "claim_code": "TC-1"
+    },
+    {
+      "trace_id": "derivation-2", 
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "terminal-claim-transport",
+      "description": "TC-2 establishes content address transport mechanism",
+      "claim_code": "TC-2"
+    },
+    {
+      "trace_id": "derivation-3",
+      "from": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "source-claim-foundation",
+      "description": "SC-1 provides Workplace material authority foundation",
+      "claim_code": "SC-1"
+    },
+    {
+      "trace_id": "derivation-4",
+      "from": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "source-claim-separation",
+      "description": "SC-2 provides execution provenance separation principles",
+      "claim_code": "SC-2"
+    },
+    {
+      "trace_id": "derivation-5",
+      "from": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "source-claim-sealing",
+      "description": "SC-3 provides immutable revision sealing requirements",
+      "claim_code": "SC-3"
+    },
+    {
+      "trace_id": "derivation-6",
+      "from": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "constraint-binding",
+      "description": "CON-1 provides content address transport requirements",
+      "claim_code": "CON-1"
+    },
+    {
+      "trace_id": "derivation-7",
+      "from": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "to": "sha256:reconcile-what-formalization-digest",
+      "relation_type": "unknown-resolution",
+      "description": "UNK-1 resolved through TC-1/TC-2 derivation to minimal-complete scope",
+      "claim_code": "UNK-1"
+    }
+  ],
+  "dependency_graph": {
+    "nodes": [
+      {"id": "SC-1", "type": "source-claim", "digest": "fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180"},
+      {"id": "SC-2", "type": "source-claim", "digest": "c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc"},
+      {"id": "SC-3", "type": "source-claim", "digest": "423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035"},
+      {"id": "CON-1", "type": "constraint", "digest": "d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"},
+      {"id": "UNK-1", "type": "unknown", "digest": "f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276"},
+      {"id": "TC-1", "type": "terminal-claim", "digest": "c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0"},
+      {"id": "TC-2", "type": "terminal-claim", "digest": "f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b"},
+      {"id": "FORMALIZATION", "type": "formalization", "digest": "reconcile-what-formalization-digest"}
+    ],
+    "edges": [
+      {"from": "SC-1", "to": "TC-1", "relation": "foundational"},
+      {"from": "SC-2", "to": "TC-1", "relation": "foundational"},
+      {"from": "SC-3", "to": "TC-1", "relation": "foundational"},
+      {"from": "CON-1", "to": "TC-1", "relation": "constrains"},
+      {"from": "CON-1", "to": "TC-2", "relation": "constrains"},
+      {"from": "SC-1", "to": "TC-2", "relation": "enables"},
+      {"from": "SC-3", "to": "TC-2", "relation": "enables"},
+      {"from": "TC-1", "to": "TC-2", "relation": "supports"},
+      {"from": "UNK-1", "to": "TC-1", "relation": "resolved-by"},
+      {"from": "TC-1", "to": "FORMALIZATION", "relation": "structures"},
+      {"from": "TC-2", "to": "FORMALIZATION", "relation": "transports"}
+    ]
+  },
+  "architectural_compliance": {
+    "adr_053": {
+      "workplace_production_revision": true,
+      "execution_provenance_only": true,
+      "content_address_authority": true
+    },
+    "conveyor_model": {
+      "one_logical_desk": true,
+      "immutable_revision_sealing": true,
+      "content_address_transport": true
+    },
+    "workspace_requirement": {
+      "zero_upstream_revisions": true,
+      "content_address_travel": true
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "settlementRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "settlementKind": "formalization-desk-settlement",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "settlementDate": "2026-08-26T23:45:00Z",
+  "formalizationDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "traceDigest": "5f8a7c3d2e9b1f4a6d0c8b2e5a9f3d7c4b8e2a6d0f5c8b3e7a2d9f4b6c8e3a7d",
+  "artifactsSettled": [
+    {
+      "artifactRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "code": "SC-1",
+      "title": "Source Claim 1: Workplace Material Authority",
+      "status": "accepted"
+    },
+    {
+      "artifactRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "code": "SC-2", 
+      "title": "Source Claim 2: Execution Provenance Separation",
+      "status": "accepted"
+    },
+    {
+      "artifactRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "code": "SC-3",
+      "title": "Source Claim 3: Immutable Revision Sealing", 
+      "status": "accepted"
+    },
+    {
+      "artifactRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "code": "CON-1",
+      "title": "Constraint 1: Content Address Transport",
+      "status": "accepted"
+    },
+    {
+      "artifactRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "code": "UNK-1",
+      "title": "Unknown 1: Baseline Freeze Scope",
+      "status": "resolved"
+    },
+    {
+      "artifactRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "code": "TC-1",
+      "title": "Terminal Claim 1: Workplace Production Revision Authority",
+      "status": "accepted"
+    },
+    {
+      "artifactRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "code": "TC-2",
+      "title": "Terminal Claim 2: Content Address Baseline Transport",
+      "status": "accepted"
+    }
+  ],
+  "traceRelationships": [
+    {
+      "relationType": "derived_from",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180"
+    },
+    {
+      "relationType": "derived_from", 
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc"
+    },
+    {
+      "relationType": "derived_from",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", 
+      "to": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035"
+    },
+    {
+      "relationType": "constrained_by",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"
+    },
+    {
+      "relationType": "resolves",
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276"
+    },
+    {
+      "relationType": "derived_from",
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b"
+    },
+    {
+      "relationType": "supports",
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0"
+    }
+  ],
+  "settlementStatus": "ready_for_gate_submission",
+  "complianceVerification": {
+    "adr053Compliance": true,
+    "conveyorMentalModelCompliance": true, 
+    "workspaceRequirementsCompliance": true,
+    "contentIntegrityVerified": true,
+    "traceCompletenessVerified": true
+  },
+  "nextAction": "Submit to architecture contract gate for review and acceptance"
+}

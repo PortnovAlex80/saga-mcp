@@ -1,0 +1,115 @@
+{
+  "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifactKind": "architecture-contract",
+  "contentDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "semanticCode": "AC-Freeze-What-Baseline-001",
+  "createdAt": "2026-08-26T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "content": {
+    "contractId": "AC-Freeze-What-Baseline-001",
+    "contractDigest": "sha256:pending",
+    "deskRef": "freeze-what-baseline",
+    "role": "author",
+    "status": "formalized",
+    "contractStatement": "This architecture contract defines the material authority, transport mechanism, and structural boundaries for the freeze-what-baseline desk in accordance with ADR-053 and CONVEYOR-MENTAL-MODEL principles.",
+    "corePrinciples": [
+      {
+        "principleId": "workplace-material-authority",
+        "sourceClaimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "The Workplace is the sole authoritative owner of all production material in the freeze-what-baseline desk. All material references derive their authority from the immutable Workplace production revision rather than from individual WorkerExecution instances."
+      },
+      {
+        "principleId": "execution-provenance-separation",
+        "sourceClaimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "WorkerExecution serves only as provenance authority, not material authority. Execution references are used for audit trails, fence validation, and attempt accounting, but never for material retrieval or identity resolution."
+      },
+      {
+        "principleId": "immutable-revision-sealing",
+        "sourceClaimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "Before any material crosses QC boundaries, the Workplace must seal an immutable WorkplaceProductionRevision. This revision captures the exact material state with content-addressed references and becomes the sole authority for all downstream consumers."
+      },
+      {
+        "principleId": "content-address-transport",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "All material transport between freeze-what-baseline desk components uses content address referencing. Material identity is determined solely by cryptographic content digest, never by mutable identifiers, execution IDs, or path references."
+      }
+    ],
+    "architecturalStructure": {
+      "workplaceProductionRevision": {
+        "revisionRef": "string",
+        "workplaceRef": "freeze-what-baseline",
+        "parentRevisionRef": "string | undefined",
+        "materialMembers": "MaterialMember[]",
+        "contributingExecutionRefs": "string[]",
+        "presenterRef": "string",
+        "materialDigest": "string",
+        "semanticDigest": "string",
+        "sealedAt": "ISO8601Timestamp"
+      },
+      "materialMember": {
+        "productRef": "string",
+        "role": "'source-claim' | 'constraint' | 'unknown' | 'terminal-claim'",
+        "contentDigest": "string",
+        "semanticCode": "string"
+      }
+    },
+    "baselineScopeDefinition": {
+      "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "scope": [
+        "Direct Artifacts: All source claims (SC-1, SC-2, SC-3), constraints (CON-1), unknowns (UNK-1), and terminal claims (TC-1, TC-2)",
+        "Immediate Dependencies: Architectural decisions directly referenced (ADR-053) and mental model principles",
+        "Trace Relationships: All derivation, constraint, and resolution relationships between artifacts"
+      ]
+    },
+    "transportMechanism": [
+      "Artifact Creation: Worker produces content → SHA256 digest computed",
+      "Reference Assignment: Content digest becomes artifact identifier",
+      "Revision Sealing: WorkplaceProductionRevision records all content digests",
+      "Transport Downstream: Only content digests travel across boundaries",
+      "Verification: Recompute SHA256 on receipt to verify integrity",
+      "Authority Resolution: Resolve content digest to exact artifact state"
+    ],
+    "acceptanceCriteria": [
+      "All baseline artifacts are content-addressed with SHA256 digests",
+      "WorkplaceProductionRevision is immutable after sealing",
+      "No downstream component reads material by execution ID",
+      "Material transport uses content digests only",
+      "Provenance (execution refs) is separate from material authority",
+      "0 accepted upstream revisions travel by content address"
+    ],
+    "traceRelationships": {
+      "TC-1": {
+        "terminalClaimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180", "description": "Workplace material authority foundation"},
+          {"type": "derived_from", "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", "description": "Execution provenance separation principles"},
+          {"type": "derived_from", "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", "description": "Immutable revision sealing requirement"},
+          {"type": "constrained_by", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport requirements"},
+          {"type": "resolves", "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276", "description": "Baseline scope definition"}
+        ]
+      },
+      "TC-2": {
+        "terminalClaimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport implementation"},
+          {"type": "supports", "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", "description": "Enables WorkplaceProductionRevision authority across boundaries"}
+        ]
+      }
+    },
+    "compliance": [
+      "ADR-053: Accepted material is a sealed Workplace production revision; WorkerExecution is provenance only",
+      "CONVEYOR-MENTAL-MODEL.md: One logical desk, LEGO principle, Production Cell quality loop",
+      "Workspace Requirements: 0 accepted upstream revisions, content address transport, desk artifacts only authority"
+    ],
+    "verification": [
+      "Content digest matches expected SHA256",
+      "No execution-scoped material authority",
+      "Immutable revision sealing before QC boundaries",
+      "Complete trace graph coverage",
+      "Architectural compliance with ADR-053"
+    ],
+    "status": "Formalized and ready for gate submission",
+    "nextAction": "Submit to architecture contract gate for review and acceptance"
+  }
+}

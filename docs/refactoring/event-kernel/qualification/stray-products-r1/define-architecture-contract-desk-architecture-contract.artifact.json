@@ -1,0 +1,135 @@
+{
+  "artifactRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "artifactKind": "architecture-contract",
+  "contentDigest": "a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+  "semanticCode": "AC-Define-Architecture-Contract-001",
+  "createdAt": "2026-08-27T00:00:00Z",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "content": {
+    "contractId": "AC-Define-Architecture-Contract-001",
+    "contractDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "deskRef": "define-architecture-contract",
+    "role": "author",
+    "status": "formalized",
+    "contractStatement": "This architecture contract defines the material authority, transport mechanism, and structural boundaries for the define-architecture-contract desk in accordance with factory architectural principles and desk protocols.",
+    "corePrinciples": [
+      {
+        "principleId": "desk-artifact-authority",
+        "sourceClaimRef": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "The define-architecture-contract desk operates as an authoritative source for architecture contract definitions. All desk artifacts maintain their own authority through content-addressing and formal review processes."
+      },
+      {
+        "principleId": "structured-derivation",
+        "sourceClaimRef": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "Architecture contracts follow structured derivation from source claims through constraints to terminal claims, ensuring logical consistency and traceability throughout the formalization process."
+      },
+      {
+        "principleId": "artifact-sealing",
+        "sourceClaimRef": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "statement": "Before any material crosses QC boundaries, the desk must seal immutable artifact revisions that capture the exact content state with content-addressed references."
+      },
+      {
+        "principleId": "content-address-transport",
+        "constraintRef": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "All material transport between define-architecture-contract desk components uses content address referencing. Material identity is determined solely by cryptographic content digest, never by mutable identifiers."
+      }
+    ],
+    "architecturalStructure": {
+      "architectureContract": {
+        "contractId": "string",
+        "contractDigest": "string",
+        "deskRef": "string",
+        "sourceClaims": "SourceClaim[]",
+        "constraints": "Constraint[]",
+        "unknowns": "Unknown[]",
+        "terminalClaims": "TerminalClaim[]",
+        "traceRelationships": "TraceRelationship[]",
+        "sealedAt": "ISO8601Timestamp"
+      },
+      "sourceClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "constraint": {
+        "constraintId": "string",
+        "digest": "string",
+        "statement": "string",
+        "requirements": "string[]",
+        "rationale": "string",
+        "evidence": "string[]",
+        "dependencies": "string[]"
+      },
+      "terminalClaim": {
+        "claimId": "string",
+        "digest": "string",
+        "statement": "string",
+        "derivation": "DerivationChain",
+        "acceptanceCriteria": "string[]",
+        "evidence": "string[]"
+      }
+    },
+    "deskScopeDefinition": {
+      "unknownRef": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "scope": [
+        "Direct Artifacts: All source claims (SC-1, SC-2, SC-3), constraints (CON-1), unknowns (UNK-1), and terminal claims (TC-1, TC-2)",
+        "Trace Relationships: All derivation, constraint, and resolution relationships between artifacts",
+        "Architectural References: Relevant architectural decisions and mental model principles",
+        "Contract Outputs: Sealed architecture contracts ready for gate submission"
+      ]
+    },
+    "transportMechanism": [
+      "Artifact Creation: Desk produces content → SHA256 digest computed",
+      "Reference Assignment: Content digest becomes artifact identifier",
+      "Contract Sealing: Architecture contract records all content digests",
+      "Transport Downstream: Only content digests travel across boundaries",
+      "Verification: Recompute SHA256 on receipt to verify integrity",
+      "Authority Resolution: Resolve content digest to exact artifact state"
+    ],
+    "acceptanceCriteria": [
+      "All desk artifacts are content-addressed with SHA256 digests",
+      "Architecture contracts are immutable after sealing",
+      "Material transport uses content digests only",
+      "Complete trace graph coverage from source to terminal claims",
+      "Architectural compliance with factory principles",
+      "0 accepted upstream revisions travel by content address"
+    ],
+    "traceRelationships": {
+      "TC-1": {
+        "terminalClaimRef": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180", "description": "Desk artifact authority foundation"},
+          {"type": "derived_from", "source": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc", "description": "Structured derivation principles"},
+          {"type": "derived_from", "source": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", "description": "Artifact sealing requirement"},
+          {"type": "constrained_by", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport requirements"},
+          {"type": "resolves", "source": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276", "description": "Desk scope definition"}
+        ]
+      },
+      "TC-2": {
+        "terminalClaimRef": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "derivations": [
+          {"type": "derived_from", "source": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b", "description": "Content address transport implementation"},
+          {"type": "supports", "source": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0", "description": "Enables architecture contract authority across boundaries"}
+        ]
+      }
+    },
+    "compliance": [
+      "Factory Principles: Content address transport, artifact authority, immutable sealing",
+      "CONVEYOR-MENTAL-MODEL.md: Structured derivation, trace coverage, desk authority",
+      "Workspace Requirements: 0 accepted upstream revisions, content address transport, desk artifacts only authority"
+    ],
+    "verification": [
+      "Content digest matches expected SHA256",
+      "Complete trace relationship coverage",
+      "Immutable artifact sealing before QC boundaries",
+      "Architectural compliance with factory principles",
+      "Structured derivation from source to terminal claims"
+    ],
+    "status": "Formalized and ready for gate submission",
+    "nextAction": "Submit to architecture contract gate for review and acceptance"
+  }
+}

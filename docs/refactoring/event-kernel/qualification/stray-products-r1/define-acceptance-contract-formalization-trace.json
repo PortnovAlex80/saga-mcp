@@ -1,0 +1,111 @@
+{
+  "traceKind": "formalization-trace",
+  "traceRef": "sha256:define-acceptance-contract-formalization-trace-v1",
+  "workplaceRef": "define-acceptance-contract",
+  "derivationChain": {
+    "sourceClaims": [
+      {
+        "claimId": "SC-1",
+        "digest": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "statement": "Workplace is the sole authoritative owner of all production material",
+        "contributesTo": ["TC-1", "TC-2"]
+      },
+      {
+        "claimId": "SC-2", 
+        "digest": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "statement": "WorkerExecution serves only as provenance authority, not material authority",
+        "contributesTo": ["TC-1"]
+      },
+      {
+        "claimId": "SC-3",
+        "digest": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035", 
+        "statement": "Workplace must seal an immutable WorkplaceProductionRevision before QC boundaries",
+        "contributesTo": ["TC-1", "TC-2"]
+      }
+    ],
+    "constraints": [
+      {
+        "constraintId": "CON-1",
+        "digest": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "statement": "All material transport must use content address referencing",
+        "binds": ["TC-1", "TC-2"],
+        "bindingType": "mandatory"
+      }
+    ],
+    "unknowns": [
+      {
+        "unknownId": "UNK-1",
+        "digest": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "question": "What is the precise scope of material that should be frozen?",
+        "resolvedBy": "TC-1",
+        "resolution": "Direct artifacts + immediate dependencies"
+      }
+    ],
+    "terminalClaims": [
+      {
+        "claimId": "TC-1",
+        "digest": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "statement": "WorkplaceProductionRevision is the sole material authority",
+        "derivedFrom": ["SC-1", "SC-2", "SC-3", "CON-1"],
+        "establishes": "authority-model"
+      },
+      {
+        "claimId": "TC-2", 
+        "digest": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "statement": "Content address transport for all acceptance contract material",
+        "derivedFrom": ["SC-1", "SC-3", "TC-1", "CON-1"],
+        "establishes": "transport-mechanism"
+      }
+    ]
+  },
+  "logicalFlow": [
+    {
+      "step": 1,
+      "action": "SC-1 establishes Workplace as material authority",
+      "inputs": ["ADR-053", "Run 011 evidence"],
+      "outputs": ["material-authority-foundation"]
+    },
+    {
+      "step": 2,
+      "action": "SC-2 separates execution provenance from material authority",
+      "inputs": ["SC-1"],
+      "outputs": ["provenance-separation-model"]
+    },
+    {
+      "step": 3, 
+      "action": "SC-3 mandates immutable revision sealing",
+      "inputs": ["SC-1", "SC-2"],
+      "outputs": ["revision-sealing-requirement"]
+    },
+    {
+      "step": 4,
+      "action": "CON-1 binds content address transport",
+      "inputs": ["SC-1", "SC-3"],
+      "outputs": ["transport-constraint"]
+    },
+    {
+      "step": 5,
+      "action": "UNK-1 questions acceptance contract scope",
+      "inputs": ["workspace-context"],
+      "outputs": ["scope-unknown"]
+    },
+    {
+      "step": 6,
+      "action": "TC-1 derives WorkplaceProductionRevision authority",
+      "inputs": ["SC-1", "SC-2", "SC-3", "CON-1", "UNK-1"],
+      "outputs": ["terminal-authority-model"]
+    },
+    {
+      "step": 7,
+      "action": "TC-2 establishes content address transport implementation",
+      "inputs": ["SC-1", "SC-3", "TC-1", "CON-1"],
+      "outputs": ["terminal-transport-mechanism"]
+    }
+  ],
+  "consistencyVerification": {
+    "authorityChain": "SC-1 → SC-2 → SC-3 → TC-1 (validated)",
+    "constraintBinding": "CON-1 → TC-1, TC-2 (mandatory-binding)", 
+    "unknownResolution": "UNK-1 → TC-1 (resolved: minimal-complete-scope)",
+    "crossClaimConsistency": "TC-2 supports TC-1 via content-address-transport (validated)"
+  }
+}

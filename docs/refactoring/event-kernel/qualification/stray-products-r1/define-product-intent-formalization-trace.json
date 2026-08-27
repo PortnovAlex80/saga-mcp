@@ -1,0 +1,62 @@
+{
+  "traceRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+  "traceKind": "formalization-trace",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "traceRelationships": [
+    {
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+      "relationType": "derived_from",
+      "description": "TC-1 derives from SC-1: Product intent artifact authority foundation"
+    },
+    {
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+      "relationType": "derived_from",
+      "description": "TC-1 derives from SC-2: Intent authoring provenance separation"
+    },
+    {
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+      "relationType": "derived_from",
+      "description": "TC-1 derives from SC-3: Immutable intent revision sealing"
+    },
+    {
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "relationType": "constrained_by",
+      "description": "TC-1 constrained by CON-1: Content address transport requirements"
+    },
+    {
+      "from": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "to": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+      "relationType": "resolves",
+      "description": "TC-1 resolves UNK-1: Product intent granularity (hybrid approach)"
+    },
+    {
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+      "relationType": "derived_from",
+      "description": "TC-2 derives from CON-1: Content address transport implementation"
+    },
+    {
+      "from": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+      "to": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+      "relationType": "supports",
+      "description": "TC-2 supports TC-1: Enables intent authority across boundaries"
+    }
+  ],
+  "completeness": {
+    "totalArtifacts": 7,
+    "tracedArtifacts": 7,
+    "coverage": "100%"
+  },
+  "verification": [
+    "All source claims (SC-1, SC-2, SC-3) are referenced by terminal claims",
+    "Constraint (CON-1) constrains terminal claims",
+    "Unknown (UNK-1) is resolved by terminal claim",
+    "Trace relationships are bidirectional where appropriate",
+    "No orphaned artifacts in the formalization graph"
+  ]
+}
