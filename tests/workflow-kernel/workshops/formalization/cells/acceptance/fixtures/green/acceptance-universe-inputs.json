@@ -1,0 +1,72 @@
+{
+  "description": "The accepted material carried by the domain.accepted transition of derive-system-requirements: the accepted requirements bundle, the accepted UC scenarios with their terminal branches, the accepted verifiable-statement set, and the accepted standalone evidence bindings. Derived from the frozen WP03 fixtures (accepted-id-sets.json + green/requirements-bundle.json) so the green path cross-validates against the frozen contracts.",
+  "requirementsBundle": {
+    "requirements": [
+      {
+        "requirementId": "fr:cart-1",
+        "requirementKind": "FR",
+        "statement": "The system shall compute cart totals, take payment and emit an order confirmation for the checkout scenario.",
+        "derivation": {
+          "prdIntentRefs": ["prd:outcome-1"],
+          "ucScenarioRefs": ["uc:checkout-1"],
+          "ucTerminalBranchRefs": ["branch:checkout-alt", "branch:checkout-main"]
+        }
+      },
+      {
+        "requirementId": "fr:batch-1",
+        "requirementKind": "FR",
+        "statement": "The system shall process the scheduled batch idempotently and record an observable batch result.",
+        "derivation": {
+          "prdIntentRefs": ["prd:scope-2"],
+          "ucScenarioRefs": ["uc:batch-1"],
+          "ucTerminalBranchRefs": ["branch:batch-error", "branch:batch-main"]
+        }
+      },
+      {
+        "requirementId": "nfr:retention-1",
+        "requirementKind": "NFR",
+        "statement": "Order records shall be retained for the compliance-pinned period.",
+        "derivation": {
+          "prdIntentRefs": ["prd:constraint-1"],
+          "sourceConstraintRefs": ["constraint:retention-1"]
+        }
+      },
+      {
+        "requirementId": "rule:audit-1",
+        "requirementKind": "RULE",
+        "statement": "Every emitted order confirmation shall be audit-logged inside the system boundary.",
+        "derivation": {
+          "prdIntentRefs": ["prd:boundary-1"]
+        }
+      },
+      {
+        "requirementId": "nfr:telemetry-1",
+        "requirementKind": "NFR",
+        "statement": "Operational telemetry shall be retained for the agreed window.",
+        "derivation": {
+          "prdIntentRefs": ["prd:unknown-1"]
+        }
+      }
+    ]
+  },
+  "useCases": {
+    "scenarioIds": ["uc:checkout-1", "uc:batch-1"],
+    "branchIdsByScenario": {
+      "uc:checkout-1": ["branch:checkout-alt", "branch:checkout-main"],
+      "uc:batch-1": ["branch:batch-error", "branch:batch-main"]
+    }
+  },
+  "verifiableStatementIds": [
+    "stmt:checkout-when-1",
+    "stmt:batch-when-1",
+    "stmt:retention-when-1"
+  ],
+  "evidenceBindings": [
+    {
+      "evidenceBindingId": "ev:audit-1",
+      "evidenceKind": "audit",
+      "ucTerminalBranchRefs": ["branch:batch-error"],
+      "observableTerminalResult": "Failed batch runs are recorded and audited"
+    }
+  ]
+}

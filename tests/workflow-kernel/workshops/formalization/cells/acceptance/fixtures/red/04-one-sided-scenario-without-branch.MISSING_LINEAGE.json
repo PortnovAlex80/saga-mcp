@@ -1,0 +1,107 @@
+{
+  "expectedReason": "MISSING_LINEAGE",
+  "mutation": "criterion ac:checkout-end-1 retains its UC scenario binding but strips the terminal scenario branch binding (keep AC coverage, remove terminal scenario binding)",
+  "detector": "wp03-seam (per-criterion, BOTH-citation-shapes)",
+  "bundle": {
+    "schemaVersion": "formalization.acceptance-bindings.v1",
+    "criteria": [
+      {
+        "schemaVersion": "frf-contracts.ac-binding.v1",
+        "criterionId": "ac:checkout-end-1",
+        "bindsTo": {
+          "requirementRefs": [
+            "fr:cart-1"
+          ],
+          "ucScenarioRefs": [
+            "uc:checkout-1"
+          ]
+        },
+        "evidence": {
+          "evidenceKind": "test",
+          "observableTerminalResult": "Order delivered and confirmed"
+        },
+        "verifiableStatementRefs": [
+          "stmt:checkout-when-1"
+        ]
+      },
+      {
+        "schemaVersion": "frf-contracts.ac-binding.v1",
+        "criterionId": "ac:checkout-alt-1",
+        "bindsTo": {
+          "requirementRefs": [
+            "fr:cart-1"
+          ],
+          "ucScenarioRefs": [
+            "uc:checkout-1"
+          ],
+          "ucTerminalBranchRefs": [
+            "branch:checkout-alt"
+          ]
+        },
+        "evidence": {
+          "evidenceKind": "test",
+          "observableTerminalResult": "Payment failure returns the customer to the cart with a retry option"
+        },
+        "verifiableStatementRefs": [
+          "stmt:checkout-when-1"
+        ]
+      },
+      {
+        "schemaVersion": "frf-contracts.ac-binding.v1",
+        "criterionId": "ac:batch-main-1",
+        "bindsTo": {
+          "requirementRefs": [
+            "fr:batch-1"
+          ],
+          "ucScenarioRefs": [
+            "uc:batch-1"
+          ],
+          "ucTerminalBranchRefs": [
+            "branch:batch-main"
+          ]
+        },
+        "evidence": {
+          "evidenceKind": "monitoring",
+          "observableTerminalResult": "Batch result recorded and observable"
+        },
+        "verifiableStatementRefs": [
+          "stmt:batch-when-1"
+        ]
+      },
+      {
+        "schemaVersion": "frf-contracts.ac-binding.v1",
+        "criterionId": "ac:retention-1",
+        "bindsTo": {
+          "requirementRefs": [
+            "nfr:retention-1"
+          ]
+        },
+        "evidence": {
+          "evidenceKind": "audit",
+          "observableTerminalResult": "Retained order records are retrievable for the compliance-pinned period"
+        },
+        "verifiableStatementRefs": [
+          "stmt:retention-when-1"
+        ]
+      }
+    ],
+    "deferrals": [
+      {
+        "requirementId": "nfr:telemetry-1",
+        "disposition": "deferred",
+        "owner": "platform-ops",
+        "reason": "Telemetry retention window not agreed with the customer; no AC can be verified yet"
+      }
+    ],
+    "standaloneEvidenceBindings": [
+      {
+        "evidenceBindingId": "ev:audit-1",
+        "evidenceKind": "audit",
+        "ucTerminalBranchRefs": [
+          "branch:batch-error"
+        ],
+        "observableTerminalResult": "Failed batch runs are recorded and audited"
+      }
+    ]
+  }
+}
