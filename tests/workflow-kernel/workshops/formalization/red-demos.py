@@ -1,13 +1,13 @@
 """WP-11F RED demonstration patcher: applies ONE deliberate source mutation,
 runs the pinned suite, and restores. Never leaves a mutation behind.
 
-One killed mutation per fence family:
+One killed mutation per fence family (FRF-WP11 cutover shape):
   ingress-digest-fence       capsule self-address verification (ingress.ts)
   gate-provider-fence        declared-provider fail-closed check (gates.ts)
   role-reresolve-fence       one-resolution-per-launch-kind cache (roles.ts)
-  material-chain-fence       accepted-material fold ignores the artifact (contribution.ts)
+  material-chain-fence       the accepted-chain fold drops the accepted set (cells/dispatch.mjs)
   effect-idempotency-fence   applied-key ledger ignored on re-execute (effects.ts)
-  baseline-drift-fence       exact member-set equality disabled (products.ts)
+  baseline-drift-fence       the freeze desk skips the WP03 baseline validation (cells/what-freeze/freeze.mjs)
   driver-universe-fence      an undeclared command id composed (driver.ts)
 """
 import io
@@ -48,24 +48,12 @@ MUTATIONS = {
         'suite': 'tests/workflow-kernel/workshops/formalization/roles.test.mjs',
     },
     'material-chain-fence': {
-        'file': 'src/workflow-kernel/workshops/formalization/contribution.ts',
-        'old': """      return {
-        ...accepted,
-        prd: {
-          revisionDigest,
-          memberIds: [...memberIds],
-          scenarioRequiredMemberIds: accepted.prd?.scenarioRequiredMemberIds ?? [],
-        },
-      };""",
-        'new': """      /* MUTATION: the fold drops the accepted member ids (the chain loses its lineage) */
-      return {
-        ...accepted,
-        prd: {
-          revisionDigest,
-          memberIds: [],
-          scenarioRequiredMemberIds: accepted.prd?.scenarioRequiredMemberIds ?? [],
-        },
-      };""",
+        'file': 'src/workflow-kernel/workshops/formalization/cells/dispatch.mjs',
+        'old': """    case 'define-product-intent':
+      return { ...chain, prd: { acceptedSet: fold.acceptedSet, bundle: fold.bundle } };""",
+        'new': """    case 'define-product-intent':
+      /* MUTATION: the fold drops the accepted intent set (the chain loses its lineage) */
+      return chain;""",
         'suite': 'tests/workflow-kernel/workshops/formalization/products.test.mjs',
     },
     'effect-idempotency-fence': {
@@ -83,12 +71,11 @@ MUTATIONS = {
         'suite': 'tests/workflow-kernel/workshops/formalization/effects.test.mjs',
     },
     'baseline-drift-fence': {
-        'file': 'src/workflow-kernel/workshops/formalization/products.ts',
-        'old': """  const expectedMembers = [...expected.memberDigests].sort();
-  const actualMembers = [...product.memberDigests].sort();
-  if (actualMembers.join(',') !== expectedMembers.join(',')) {""",
-        'new': """  const expectedMembers = [...expected.memberDigests].sort();
-  const actualMembers = [...product.memberDigests].sort();
+        'file': 'src/workflow-kernel/workshops/formalization/cells/what-freeze/freeze.mjs',
+        'old': """  const validation = validateWhatBaseline(baseline, universe);
+  if (validation.ok !== true) {""",
+        'new': """  const validation = validateWhatBaseline(baseline, universe);
+  /* MUTATION: the freeze desk skips the WP03 baseline validation */
   if (false) {""",
         'suite': 'tests/workflow-kernel/workshops/formalization/products.test.mjs',
     },

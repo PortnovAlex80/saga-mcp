@@ -597,7 +597,7 @@ function parseLegacy() {
 
 // --- DOCUMENT manifest parse -------------------------------------------------
 function parseDocument() {
-  const units = splitUnits(docMd, 'A', 'U');
+  const units = splitUnits(docMd, 'A', 'V');
   for (const u of units) {
     if (SECTION_BASE_OVERRIDES.has(u.id)) u.baseDir = SECTION_BASE_OVERRIDES.get(u.id);
   }

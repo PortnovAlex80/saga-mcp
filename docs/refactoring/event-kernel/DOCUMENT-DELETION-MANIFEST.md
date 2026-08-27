@@ -236,3 +236,14 @@ no-rot sweep).
 | Cutover artifacts | `src/workflow-kernel/development/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/delivery/EK8-DELETION-SET.md`, `src/workflow-kernel/workshops/discovery/EK8-CUTOVER-NOTES.md`, `src/workflow-kernel/workshops/formalization/EK8-DELETION-SET.md` (added 2026-08-26 — the WP-11F file was missed by the original sweep; classified in the same commit as the WP-12 cutover it stages) | KEEP | live refactoring artifacts consumed by WP-12's cutover |
 | Test fixture | `tests/infrastructure/ek-fixtures/elite-smoke/product/docs/srs.md` | KEEP | committed determinism fixture content (WP-13C) |
 | New-kernel front clones (2026-08-27, operator directive) | `core-view-ek/README.md`, `tracker-view-ek/README.md` | KEEP | the read-only observer and command kanban fronts for the event kernel — permanent tools (code files classified in the legacy manifest §D kept-tooling) |
+
+## V. FRF-wave additions — classified 2026-08-27 (FRF-WP11)
+
+The Formalization Scenario-First Refactoring docs (the successor plan of
+record; its tree arrived after the EK-10 purge, wave by wave FRF-WP01..11).
+All KEEP: the plan executes through FRF-WP12 qualification.
+
+| Group | Files | Verdict | Reason |
+|---|---|---|---|
+| FRF plan-of-record docs | `docs/refactoring/formalization-frf/**` — the tracker, DELETION-MANIFEST, TEST-CLASSIFICATION, INTENTIONAL-DIFFERENCE-LEDGER, baseline/ captures with their regenerable inventory scripts, and the frozen WP03 contract snapshots under contracts/ (validators, schemas, the green/red fixture corpus, the coverage-check and run-proof tools) | KEEP | the successor plan's execution evidence through FRF-WP12; since the FRF-WP11 cutover the contracts/ tree is the FROZEN SNAPSHOT of the canonical in-package contracts (src/workflow-kernel/workshops/formalization/contracts/) — the FRF removal guard asserts byte-equality per file |
+| Installed FRF cell docs | `src/workflow-kernel/workshops/formalization/cells/acceptance/README.md`, `src/workflow-kernel/workshops/formalization/cells/product-intent/README.md`, `src/workflow-kernel/workshops/formalization/cells/use-cases/README.md`, `src/workflow-kernel/workshops/formalization/cells/what-freeze/README.md`, `src/workflow-kernel/workshops/formalization/cells/system-requirements/SEAM.md` | KEEP | the installed FRF cells' documented seams (the FRF-WP11 cutover made the cells the installed desk authority; the prose documents the same laws the blocking suites pin) |
