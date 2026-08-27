@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execSync } from 'node:child_process';
 /**
  * FRF-WP01 — capture the INSTALLED Formalization process graph as a
  * versioned artifact (plan FRF-0: "Current graph capture").
@@ -34,7 +35,7 @@ const artifact = {
   schemaVersion: 'frf.installed-graph-capture.v1',
   capturedAt: new Date().toISOString(),
   capturedFrom: {
-    baseSha: '5c158608',
+    baseSha: execSync('git rev-parse --short HEAD').toString().trim(),
     installedArtifact: 'dist/workflow-kernel/workshops/formalization/manifest.js',
     sourceFile: 'src/workflow-kernel/workshops/formalization/manifest.ts',
   },

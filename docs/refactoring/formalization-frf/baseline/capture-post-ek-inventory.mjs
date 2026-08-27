@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execSync } from 'node:child_process';
 /**
  * FRF-WP01 — post-EK Formalization inventory (machine-checkable JSON).
  *
@@ -144,7 +145,7 @@ const inventory = {
   artifactId: 'frf-wp01-post-ek-inventory',
   schemaVersion: 'frf.post-ek-inventory.v1',
   capturedAt: new Date().toISOString(),
-  capturedFrom: { baseSha: '5c158608', saga4At: 'be0d5948' },
+  capturedFrom: { baseSha: execSync('git rev-parse --short HEAD').toString().trim(), saga4At: execSync('git rev-parse --short HEAD').toString().trim() },
   package: { name: pkg.name, version: pkg.version },
   installedFormalizationPackage: {
     moduleId: 'workshop:solution-formalization',

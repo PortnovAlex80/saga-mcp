@@ -1,10 +1,10 @@
 {
   "artifactId": "frf-wp01-post-ek-inventory",
   "schemaVersion": "frf.post-ek-inventory.v1",
-  "capturedAt": "2026-08-27T13:02:29.468Z",
+  "capturedAt": "2026-08-27T13:32:04.390Z",
   "capturedFrom": {
-    "baseSha": "5c158608",
-    "saga4At": "be0d5948"
+    "baseSha": "a79cc24d",
+    "saga4At": "a79cc24d"
   },
   "package": {
     "name": "saga-mcp",

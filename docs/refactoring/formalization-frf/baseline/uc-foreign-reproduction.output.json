@@ -1,7 +1,7 @@
 {
   "reproductionId": "UC-FOREIGN",
-  "recordedAt": "2026-08-27T13:02:29.639Z",
-  "baseSha": "5c158608",
+  "recordedAt": "2026-08-27T13:32:22.093Z",
+  "baseSha": "a79cc24d",
   "subject": "src/workflow-kernel/workshops/formalization/products.ts :: validateSolutionContract (~line 767 at base)",
   "installedArtifact": "dist/workflow-kernel/workshops/formalization/products.js",
   "acceptedMaterial": {

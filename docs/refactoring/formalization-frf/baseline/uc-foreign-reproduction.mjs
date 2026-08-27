@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execSync } from 'node:child_process';
 /**
  * FRF-WP01 — UC-FOREIGN counterexample reproduction (AUDIT MUST).
  *
@@ -184,7 +185,7 @@ const verdict = products.validateSolutionContract(foreign.product, accepted);
 const record = {
   reproductionId: 'UC-FOREIGN',
   recordedAt: new Date().toISOString(),
-  baseSha: '5c158608',
+  baseSha: execSync('git rev-parse --short HEAD').toString().trim(),
   subject: 'src/workflow-kernel/workshops/formalization/products.ts :: validateSolutionContract (~line 767 at base)',
   installedArtifact: 'dist/workflow-kernel/workshops/formalization/products.js',
   acceptedMaterial: {
