@@ -16,7 +16,7 @@
  * PURITY: pure functions. No I/O, no clock, no session.
  */
 
-import { sha256OfCanonical } from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+import { sha256OfCanonical } from '../../contracts/validators/common.mjs';
 import { ACCEPTANCE_CHECK_PROVIDER, acceptanceProviderDigest } from './check-plan.mjs';
 import { validateAcceptanceBundle } from './closure.mjs';
 

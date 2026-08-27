@@ -41,7 +41,7 @@ import { sha256OfCanonical } from '../../../../domain/digest.js';
 import type { CheckProviderDeclaration } from '../../manifest.js';
 import { FORMALIZATION_ROLE_BINDINGS, PROTOCOL_SKILL_ID, checkProviderOfDesk, nodeOf } from '../../manifest.js';
 import { checkPlanEvidenceFor } from '../../gates.js';
-import type { ProductRefusal } from '../../products.js';
+import type { ProductRefusal } from '../../contracts/artifacts.js';
 import {
   ARCHITECTURE_CONTRACT_KIND,
   CONTRACT_OBLIGATION_KINDS,

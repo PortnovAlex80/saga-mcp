@@ -43,7 +43,7 @@
  * No I/O, no clock, no session, no SQL.
  */
 
-import { sha256OfCanonical } from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+import { sha256OfCanonical } from '../../contracts/validators/common.mjs';
 import {
   ACCEPTANCE_BUNDLE_SCHEMA_VERSION,
   EVIDENCE_KINDS,

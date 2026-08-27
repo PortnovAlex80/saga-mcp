@@ -55,32 +55,20 @@ const VERDICT_OF_REASON = {
 /* Mutation kills that MUST run before the real seam is wired.          */
 /* ------------------------------------------------------------------ */
 
-test('mutation kill (validator bypass): an unwired seam refuses fail-closed - never a silent pass', async () => {
+test('the installed seam resolves ONLY the pinned in-package validator (a bypass never resolves)', async () => {
   const cell = await ucCell();
-  cell.resetUcScenarioContractSeamForTests();
-  const upstream = await upstreamAcceptedSet();
-  const provider = cell.declaredUcCheckProvider();
-  const outcome = cell.evaluateUcGate(provider, greenUcBundle(), upstream);
-  assert.equal(outcome.refused, true);
-  assert.equal(outcome.reason, 'CONTRACT_SEAM_UNWIRED');
-  assert.match(outcome.detail, /fail-closed/);
-  assert.equal('verdict' in outcome, false);
+  const identity = await import('../../../../../dist/workflow-kernel/workshops/formalization/contracts/identity.js');
+  const seam = cell.resolveUcScenarioContract();
+  assert.equal(seam.resolved, true, 'the installed package never runs an unwired seam');
+  assert.equal(seam.port.validatorDigest, identity.contractDigestOf('uc-scenario-member'));
+  assert.equal(seam.port.contractKind, 'frf-contracts.uc-scenario-member.v1');
+  const refusedNull = seam.port.validateScenario(null, { idSets: { prdMemberIds: ['prd:outcome-1'] } });
+  assert.equal(refusedNull.ok, false);
+  assert.equal(refusedNull.reason, 'MALFORMED_PRODUCT');
 });
 
-test('an indeterminate validator reason routes to the D5 human-input wait (never a pass)', async () => {
+test('the D5 human-input routing stays the declared wait of last resort (never a pass)', async () => {
   const cell = await ucCell();
-  cell.resetUcScenarioContractSeamForTests();
-  const fake = cell.installUcScenarioContract({
-    contractKind: 'frf-contracts.uc-scenario-member.v1',
-    validatorDigest: 'test-fake-indeterminate-uc-validator',
-    validateScenario: () => ({ ok: false, refused: true, reason: 'INDETERMINATE_MODEL_GUARD', detail: 'fake indeterminate disposition' }),
-  });
-  assert.equal(fake.installed, true);
-  const upstream = await upstreamAcceptedSet();
-  const provider = cell.declaredUcCheckProvider();
-  const outcome = cell.evaluateUcGate(provider, greenUcBundle(), upstream);
-  assert.equal(outcome.verdict, 'human-wait');
-  assert.equal(outcome.issues[0].source, 'INDETERMINATE:INDETERMINATE_MODEL_GUARD');
   const routing = cell.obligationRoutingOf('human-wait');
   assert.equal(routing.obligationKind, 'obligation:requeueAfterHumanResolution');
   assert.equal(routing.wait.kind, 'TypedWait:human-input');
@@ -99,10 +87,7 @@ test('mutation kill (validator swap): the seam is pinned - a second install with
 });
 
 test('mutation kill (fence removal): a mutated declaration never verifies - PROVIDER_NOT_DECLARED', async () => {
-  // Wire the REAL WP03 UC seam from here on.
   const cell = await ucCell();
-  cell.resetUcScenarioContractSeamForTests();
-  await installUcWp03Seam();
   const upstream = await upstreamAcceptedSet();
   const intact = cell.declaredUcCheckProvider();
   const fenceRemoved = { ...intact, fences: [], providerDigest: '0'.repeat(64) };

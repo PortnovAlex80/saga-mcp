@@ -47,28 +47,41 @@ test('the cell owns exactly its eleven modules plus the seam README', () => {
   assert.deepEqual(names, [...expectedModules, README].sort());
 });
 
-test('TEST-ONLY REACHABLE: no production .ts module imports the cells package', () => {
-  const offenders = [];
-  for (const file of walk(join(ROOT, 'src'), (p) => p.endsWith('.ts') && !p.endsWith('.d.ts'))) {
-    const source = readFileSync(file, 'utf8');
-    if (source.includes('cells/acceptance') || source.includes('cells\\acceptance')) offenders.push(file);
+test('INSTALLED REACHABLE (FRF-WP11): the cells package is an installed surface mirrored into dist', () => {
+  // The cutover landed: the installed workshop routes the desks through the
+  // cells, and the build mirrors the .mjs cells (acceptance, what-freeze,
+  // dispatch) into dist byte-identically - the pre-cutover TEST-ONLY fence
+  // (no .ts importer, no dist output) died with the test-time wiring.
+  for (const relative of [
+    'dist/workflow-kernel/workshops/formalization/cells/acceptance/index.mjs',
+    'dist/workflow-kernel/workshops/formalization/cells/what-freeze/freeze.mjs',
+    'dist/workflow-kernel/workshops/formalization/cells/dispatch.mjs',
+    'dist/workflow-kernel/workshops/formalization/contracts/validators/common.mjs',
+  ]) {
+    assert.equal(existsSync(join(ROOT, relative)), true, `${relative} must exist in the installed package output`);
   }
-  assert.deepEqual(offenders, [], 'the cells package is reachable only from focused tests until the FRF-WP11 cutover');
-  // And the compiler emits nothing for it: dist has no cells subtree.
-  assert.equal(existsSync(join(ROOT, 'dist/workflow-kernel/workshops/formalization/cells/acceptance')), false, 'dist must contain no ACCEPTANCE cell output (the .mjs cell never compiles; the sibling .ts cells compile test-only until FRF-WP11)');
-  assert.equal(existsSync(join(ROOT, 'dist/workflow-kernel/workshops/formalization/cells/what-freeze')), false, 'the what-freeze .mjs cell never compiles');
+  // The dist mirrors are byte-equal to the src surfaces (tools/copy-installed-mjs.mjs).
+  for (const relative of [
+    'workflow-kernel/workshops/formalization/cells/acceptance/index.mjs',
+    'workflow-kernel/workshops/formalization/contracts/validators/what-baseline.mjs',
+  ]) {
+    const srcBytes = readFileSync(join(ROOT, 'src', relative));
+    const distBytes = readFileSync(join(ROOT, 'dist', relative));
+    assert.equal(srcBytes.equals(distBytes), true, `${relative}: the dist mirror drifted from src`);
+  }
 });
 
-test('the installed workshop enumeration is unchanged (the eleven modules)', () => {
-  // The pinned law of the installed structure test, restated for this
-  // package's blast radius: WP06 adds ONLY the cells/acceptance subtree.
+test('the installed workshop enumeration is the FRF-WP11 root shape', () => {
+  // The pinned law of the installed structure test, restated for the
+  // cutover: products.ts + contribution.ts died (replaced by the cells and
+  // the in-package contracts); the root carries the mechanics modules only.
   const installed = readdirSync(INSTALLED_SRC)
     .filter((name) => name.endsWith('.ts'))
     .map((name) => name)
     .sort();
   assert.deepEqual(installed, [
-    'actors.ts', 'contribution.ts', 'driver.ts', 'effects.ts', 'envelope.ts',
-    'gates.ts', 'index.ts', 'ingress.ts', 'manifest.ts', 'products.ts', 'roles.ts',
+    'actors.ts', 'driver.ts', 'effects.ts', 'envelope.ts',
+    'gates.ts', 'index.ts', 'ingress.ts', 'manifest.ts', 'roles.ts',
   ]);
 });
 

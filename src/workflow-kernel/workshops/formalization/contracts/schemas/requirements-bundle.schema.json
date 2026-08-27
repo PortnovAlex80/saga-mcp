@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "requirementMember": {
+      "additionalProperties": false,
+      "description": "One FR, NFR or RULE member with exact derivation lineage and verification surface references.",
+      "properties": {
+        "derivation": {
+          "additionalProperties": false,
+          "description": "Derivation source references. prdIntentRefs are required for every kind (reverse edges 0054/0057/0060). ucScenarioRefs/ucTerminalBranchRefs carry the scenario lineage when scenario-derived or scenario-local (edges 0055/0056/0058/0061); a scenario-derived FR must also bind terminal branches. sourceConstraintRefs carry the cross-cutting direct lineage (edges 0059/0062).",
+          "properties": {
+            "prdIntentRefs": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            },
+            "sourceConstraintRefs": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "ucScenarioRefs": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "ucTerminalBranchRefs": {
+              "items": {
+                "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "prdIntentRefs"
+          ],
+          "type": "object"
+        },
+        "requirementId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "requirementKind": {
+          "description": "Closed requirement-kind vocabulary.",
+          "enum": [
+            "FR",
+            "NFR",
+            "RULE"
+          ]
+        },
+        "statement": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "verificationSurfaceRefs": {
+          "description": "The verification surfaces by which this requirement will be verified; resolved against the exact accepted verification-surface id set.",
+          "items": {
+            "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "derivation",
+        "requirementId",
+        "requirementKind",
+        "statement",
+        "verificationSurfaceRefs"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:saga:frf-contract:requirements-bundle:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "FRF-WP03 requirements bundle payload contract (derive-system-requirements desk). FR/NFR/RULE members derive from exact accepted PRD and UC material: every member binds exact PRD intent; scenario-derived FRs bind UC scenario AND terminal-branch identities; cross-cutting NFR/RULE may bind source constraints directly and are never forced into a fictional scenario. The bundle pins the accepted PRD/UC revisions it derives from. Payload contract only.",
+  "properties": {
+    "prdRevisionRef": {
+      "description": "The exact accepted PRD revision this bundle derives from.",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/requirementMember"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "frf-contracts.requirements-bundle.v1",
+      "description": "Versioned contract identity."
+    },
+    "ucRevisionRef": {
+      "description": "The exact accepted UC revision (required whenever any member cites UC material).",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "prdRevisionRef",
+    "requirements",
+    "schemaVersion"
+  ],
+  "title": "FRF requirements bundle (frf-contracts.requirements-bundle.v1)",
+  "type": "object"
+}

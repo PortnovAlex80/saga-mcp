@@ -14,7 +14,7 @@
  * PURITY: pure data + the WP03 canonical digest rule. No I/O.
  */
 
-import { sha256OfCanonical } from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+import { sha256OfCanonical } from '../../contracts/validators/common.mjs';
 import { ACCEPTANCE_CELL_NODE_ID, ACCEPTANCE_CELL_PRODUCT_KIND } from './protocol.mjs';
 
 /** The cell's declared check provider. */

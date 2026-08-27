@@ -21,7 +21,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc",
+    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc && node tools/copy-installed-mjs.mjs",
     "watch": "tsc --watch",
     "start": "node dist/workflow-kernel/composition/entry.js",
     "dev": "tsc && node dist/workflow-kernel/composition/entry.js",

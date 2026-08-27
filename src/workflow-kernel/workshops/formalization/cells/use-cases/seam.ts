@@ -1,20 +1,27 @@
 /**
- * workflow-kernel/workshops/formalization/cells/use-cases/seam.ts -
- * THE WP03 CONTRACT SEAM of the model-use-cases Production Cell
- * (FRF-WP04; plan "Desk contracts/model-use-cases").
+ * cells/use-cases/seam.ts - THE WP03 CONTRACT SEAM of the
+ * model-use-cases Production Cell (FRF-WP04; INSTALLED wiring since the
+ * FRF-WP11 cutover; plan "Desk contracts/model-use-cases").
  *
  * Same honest seam contract as the product-intent cell (see
  * ../product-intent/seam.ts and README.md in this directory): the
  * semantic authority for a UC scenario member is the FRF-WP03 contract
- * frf-contracts.uc-scenario-member.v1 (schema + pure validator in the
- * docs tree). This cell NEVER re-implements it and NEVER imports the
- * docs tree; it validates every scenario through this port, installed
- * exactly once. Until installation the gate refuses fail-closed
- * (CONTRACT_SEAM_UNWIRED).
+ * frf-contracts.uc-scenario-member.v1 whose CANONICAL HOME is the
+ * in-package contracts tree (src/workflow-kernel/workshops/
+ * formalization/contracts/validators/uc-scenario-member.mjs; the
+ * docs-tree copy is a frozen byte-equal snapshot, removal-guarded).
+ * This cell NEVER re-implements the contract; it validates every
+ * scenario through this port. Since FRF-WP11 the port SELF-INSTALLS on
+ * first resolution from the in-package validator, pinned by the
+ * package identity table (contracts/identity.ts) - a swap to a
+ * different digest is refused (CONTRACT_SEAM_REPINNED).
  *
  * PURITY: no I/O, no clock, no session. Single-slot registry with a
  * typed re-pin fence.
  */
+
+import { validateUcScenarioMember } from '../../contracts/validators/uc-scenario-member.mjs';
+import { contractDigestOf } from '../../contracts/identity.js';
 
 /** The WP03 contract identity this cell adopts (never re-declared as logic). */
 export const UC_SCENARIO_CONTRACT_KIND = 'frf-contracts.uc-scenario-member.v1';
@@ -86,35 +93,38 @@ export function installUcScenarioContract(port: UcScenarioContractPort): { reado
       detail: `the UC scenario contract port must carry contractKind ${UC_SCENARIO_CONTRACT_KIND}, a validatorDigest and a validateScenario function`,
     };
   }
-  if (installedPort !== undefined && installedPort.validatorDigest !== port.validatorDigest) {
+  const pinned = contractDigestOf('uc-scenario-member');
+  if (port.validatorDigest !== pinned) {
     return {
       refused: true,
       reason: 'CONTRACT_SEAM_REPINNED',
-      detail: `the UC scenario contract seam is pinned to validator ${installedPort.validatorDigest}; a swap to ${port.validatorDigest} is refused (install once; never silently exchanged)`,
+      detail: `the UC scenario contract seam is pinned to the installed validator ${pinned} (contracts/identity.ts); a port carrying ${port.validatorDigest} is refused (the pin is the package identity table; never silently exchanged)`,
     };
   }
   installedPort = port;
   return { installed: true, validatorDigest: port.validatorDigest };
 }
 
-/** Resolve the installed port (fail-closed when nothing is wired). */
-export function resolveUcScenarioContract(): SeamResolution {
-  if (installedPort === undefined) {
-    return {
-      refused: true,
-      reason: 'CONTRACT_SEAM_UNWIRED',
-      detail: 'no WP03 UC scenario contract validator is wired into the seam; the cell gate refuses fail-closed instead of guessing validity (see cells/use-cases/README.md)',
-    };
-  }
-  return { resolved: true, port: installedPort };
-}
+/**
+ * The INSTALLED port (FRF-WP11): the in-package WP03 validator behind the
+ * pinned digest from the package identity table. Self-installed on first
+ * resolution - the seam is never unwired in the installed package.
+ */
+const INSTALLED_PORT: UcScenarioContractPort = {
+  contractKind: UC_SCENARIO_CONTRACT_KIND,
+  validatorDigest: contractDigestOf('uc-scenario-member'),
+  validateScenario: (scenario, universe) => validateUcScenarioMember(scenario, universe) as UcScenarioContractValidation,
+};
 
 /**
- * TEST-ONLY seam reset (named honestly). Production code never calls
- * this; the focused suite proves the UNWIRED and INDETERMINATE
- * behaviors before wiring the real WP03 validator. FRF-11 deletes it
- * together with the test-time injection.
+ * Resolve the installed port. Since the FRF-WP11 cutover the resolution
+ * SELF-INSTALLS the in-package validator port on first use (installed
+ * wiring); an external install of the same pinned digest stays an
+ * idempotent no-op.
  */
-export function resetUcScenarioContractSeamForTests(): void {
-  installedPort = undefined;
+export function resolveUcScenarioContract(): SeamResolution {
+  if (installedPort === undefined) {
+    installedPort = INSTALLED_PORT;
+  }
+  return { resolved: true, port: installedPort };
 }

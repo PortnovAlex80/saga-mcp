@@ -1,23 +1,26 @@
 /**
  * workflow-kernel/workshops/formalization/cells/what-freeze/shared.mjs -
  * the FRF-WP07 WHAT-freeze cell: shared typed-refusal surface and the
- * FRF-WP03 contract seam.
+ * FRF-WP03 contract seam (INSTALLED wiring since the FRF-WP11 cutover).
  *
  * FRF-WP07 (plan phase FRF-7, "Replace the baseline and settlement
  * authority") owns the replacement whole-WHAT baseline, the exact
  * accepted-authority ingestion, persistence, settlement, the solution
- * contract, and the authority mutations. This cell package is TEST-ONLY
- * REACHABLE until the FRF-WP11 coordinator lands the package integration:
- * no production entrypoint imports it, and it is not wired into the
- * installed workshop manifest (the installed `freeze-what-baseline` /
- * `settle-formalization` desks still run the folded EK-8 contracts until
- * the controlled cutover).
+ * contract, and the authority mutations. Since the FRF-WP11 cutover this
+ * cell package is an INSTALLED package surface: the installed workshop
+ * routes the freeze-what-baseline and settle-formalization desks through
+ * it (the folded EK-8 baseline/settlement contracts died at the cutover).
  *
  * THE WP03 VALIDATOR SEAM (documented law of this cell):
  *   The cell does NOT re-implement the whole-WHAT baseline contract. It
  *   imports the FRF-WP03 typed validator and canonical digest helpers by
- *   exact relative path:
- *     docs/refactoring/formalization-frf/contracts/validators/
+ *   exact relative path from the CANONICAL in-package contracts tree
+ *   (FRF-WP11: the contracts moved to
+ *   src/workflow-kernel/workshops/formalization/contracts/; the docs-tree
+ *   copies are frozen byte-equal snapshots, removal-guarded - the
+ *   pre-cutover relative docs/ import died at the cutover exactly as this
+ *   seam documented it would):
+ *     contracts/validators/
  *       what-baseline.mjs   (validateWhatBaseline, CONTRACT_KIND, vocabularies)
  *       common.mjs          (sha256OfCanonical, digestExcluding, ... - the
  *                            canonical rule byte-identical to
@@ -26,21 +29,20 @@
  *   `frf-contracts.what-baseline.v1` payload that MUST seal via
  *   validateWhatBaseline(baseline, universe) with the exact accepted id
  *   sets carried by the transition (fail-closed; the freezer never scans,
- *   guesses or reselects). At FRF-WP11 integration the seam flips to the
- *   compiled in-package validator and the relative docs/ import dies; the
- *   blocking seam test (tests/.../cells/what-freeze/seam.test.mjs) pins
- *   both sides of that flip: contract identity equality and canonical
- *   digest parity with dist/workflow-kernel/domain/digest.js.
+ *   guesses or reselects). The blocking seam test
+ *   (tests/.../cells/what-freeze/seam.test.mjs) pins both sides: contract
+ *   identity equality and canonical digest parity with
+ *   dist/workflow-kernel/domain/digest.js.
  *
  * PURITY: node:crypto (via the WP03 helpers) and pure functions only.
  * No session, no SQL, no clock, no network, no filesystem reads.
  */
 
-/** Relative import prefix from this cell to the FRF-WP03 contracts. */
+/** The in-package canonical seam import sites (single import site for the whole cell). */
 export const WP03_SEAM = Object.freeze({
   contractId: 'frf-contracts.what-baseline.v1',
-  validatorPath: '../../../../../../docs/refactoring/formalization-frf/contracts/validators/what-baseline.mjs',
-  commonPath: '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs',
+  validatorPath: '../../contracts/validators/what-baseline.mjs',
+  commonPath: '../../contracts/validators/common.mjs',
 });
 
 // The seam imports (single import site for the whole cell; imported as
@@ -50,14 +52,14 @@ import {
   CONTRACT_KIND,
   HANDOFF_BINDING_KINDS,
   WORK_ITEM_OBLIGATION_KINDS,
-} from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/what-baseline.mjs';
+} from '../../contracts/validators/what-baseline.mjs';
 import {
   canonicalJson,
   digestExcluding,
   findDuplicates,
   setIdentical,
   sha256OfCanonical,
-} from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/common.mjs';
+} from '../../contracts/validators/common.mjs';
 
 export {
   validateWhatBaseline,

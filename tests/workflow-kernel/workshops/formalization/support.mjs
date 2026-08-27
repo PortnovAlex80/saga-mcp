@@ -1,19 +1,28 @@
 /**
- * support.mjs - shared WP-11F Formalization-workshop test fixtures: fresh
- * database, the Discovery handoff capsule, compiled role contracts + the
- * one runtime, the shared admitting transport (durable admission store),
- * the authored product chain (PRD -> UC -> FR/NFR/RULE -> AC ->
- * reconciliation -> whole-WHAT baseline -> SRS -> solution contract) and
- * the full-run configuration builder.
+ * support.mjs - shared Formalization-workshop test fixtures (FRF-WP11
+ * cutover shape): fresh database, the Discovery handoff capsule (seeded
+ * from the FROZEN WP03 accepted-id-set fixture so the capsule's claim
+ * universe and the corpus green material are one universe), compiled role
+ * contracts + the one runtime, the shared admitting transport, the
+ * authored desk chain over the FRF cells (WP03 member bundles - the same
+ * authored green material the FRF scenario corpus drives) and the
+ * full-run configuration builder.
+ *
+ * The authored chain is AUTHORED DATA over the frozen WP03 fixture
+ * corpus (never derived from the validators under test): the corpus's
+ * green material (tools/frf-corpus/lib/material.mjs) is the single
+ * source; the driver gates it through the installed cells exactly the
+ * way the corpus drives the same cells.
  */
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = dirname(dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url))))));
 const EXAMPLE_TABLE_PATH = join(REPO_ROOT, 'docs', 'refactoring', 'event-kernel', 'specs', 'examples', 'provider-model-limit-table.example.json');
+const CORPUS = join(REPO_ROOT, 'tools', 'frf-corpus', 'lib', 'material.mjs');
 
 /** The frozen example provider/model limit table (production-scale pins). */
 export function frozenExampleTable() {
@@ -29,7 +38,7 @@ export const sha256 = (value) => createHash('sha256').update(value, 'utf8').dige
 /* Database                                                            */
 /* ------------------------------------------------------------------ */
 
-export function freshDatabase(prefix = 'ek-wp11f-') {
+export function freshDatabase(prefix = 'frf-wp11-') {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   const path = join(dir, 'kernel.sqlite');
   return {
@@ -44,7 +53,17 @@ export function freshDatabase(prefix = 'ek-wp11f-') {
 }
 
 /* ------------------------------------------------------------------ */
-/* The accepted Discovery handoff capsule                              */
+/* The accepted id-set fixture (the one universe of the green chain)    */
+/* ------------------------------------------------------------------ */
+
+/** The corpus material lib (the single source of the authored green data). */
+export const corpusMaterial = () => import(pathToFileURL(CORPUS).href);
+
+/** The frozen WP03 accepted id sets (capsule seed + authored chain ids). */
+export const fixtureIdSets = async () => (await corpusMaterial()).acceptedIdSets();
+
+/* ------------------------------------------------------------------ */
+/* The accepted Discovery handoff capsule (seeded from the fixture)     */
 /* ------------------------------------------------------------------ */
 
 export const LINEAGE = {
@@ -59,10 +78,11 @@ export const HANDOFF_BINDING = {
   expectedParentLifecycleRef: LINEAGE.parentLifecycleRef,
 };
 
-export const SOURCE_CLAIM_IDS = ['SC-1', 'SC-2', 'SC-3'];
-export const CONSTRAINT_IDS = ['CON-1'];
-export const UNKNOWN_IDS = ['UNK-1'];
-export const TERMINAL_CLAIM_IDS = ['TC-1', 'TC-2'];
+/** The capsule's claim/constraint/unknown/terminal ids (the fixture universe). */
+export const SOURCE_CLAIM_IDS = ['claim:scope-1', 'claim:scope-2', 'claim:constraint-1', 'claim:outcome-1'];
+export const CONSTRAINT_IDS = ['constraint:retention-1'];
+export const UNKNOWN_IDS = ['unknown:browser-matrix-1'];
+export const TERMINAL_CLAIM_IDS = ['terminal:audited-1', 'terminal:delivered-1'];
 
 /** Build one fully-verified Discovery handoff capsule. */
 export async function buildHandoffCapsule({ lineage = LINEAGE, packageBytes = HANDOFF_BYTES, parentStatus = 'discovery-terminal' } = {}) {
@@ -93,6 +113,9 @@ export async function handoffRefOf(capsule) {
     constraints: capsule.constraints.map((artifact, index) => refOf(artifact, CONSTRAINT_IDS[index])),
     unknowns: capsule.unknowns.map((artifact, index) => refOf(artifact, UNKNOWN_IDS[index])),
     terminalClaims: capsule.terminalLifecycleClaims.map((artifact, index) => refOf(artifact, TERMINAL_CLAIM_IDS[index])),
+    // The exact lineage-universe ids (the chain seed resolves against ids, never artifact refs).
+    constraintIds: CONSTRAINT_IDS,
+    unknownIds: UNKNOWN_IDS,
   };
 }
 
@@ -160,7 +183,7 @@ export async function sharedTransport(session, attempts = []) {
     });
   }
   const transport = envelope.createAdmittingTransport({
-    transportId: 'ek-wp11f-formalization-transport',
+    transportId: 'frf-wp11-formalization-transport',
     routePin: ROUTE_PIN,
     maxOutputTokens: 4096,
     pins: { profile, limitTable: artifact },
@@ -172,219 +195,73 @@ export async function sharedTransport(session, attempts = []) {
 }
 
 /* ------------------------------------------------------------------ */
-/* The authored product chain (exact digests, folded like the driver)   */
+/* The authored desk chain over the FRF cells (WP03 member bundles)     */
 /* ------------------------------------------------------------------ */
 
-export const PRD_MEMBER_IDS = ['PRD-M1', 'PRD-M2', 'PRD-M3', 'PRD-M4'];
-export const UC_SCENARIO_IDS = ['UC-1', 'UC-2'];
-export const REQUIREMENT_IDS = ['FR-1', 'FR-2', 'FR-3'];
-export const AC_IDS = ['AC-1', 'AC-2', 'AC-3'];
+export const PRD_MEMBER_IDS = ['prd:boundary-1', 'prd:constraint-1', 'prd:outcome-1', 'prd:scope-2', 'prd:terminal-1', 'prd:unknown-1'];
+export const UC_SCENARIO_IDS = ['uc:checkout-1', 'uc:batch-1'];
+export const REQUIREMENT_IDS = ['fr:cart-1', 'fr:batch-1', 'nfr:retention-1', 'rule:audit-1', 'nfr:telemetry-1'];
+export const AC_IDS = ['ac:checkout-end-1', 'ac:checkout-alt-1', 'ac:batch-main-1', 'ac:retention-1'];
 
-/** Build the complete authored chain: every product + the fold states. */
-export async function buildAuthoredChain(handoffDigest, acceptedTraceDigest = handoffDigest) {
-  const products = await dist('workflow-kernel/workshops/formalization/products.js');
-  const contribution = await dist('workflow-kernel/workshops/formalization/contribution.js');
-
-  const accepted0 = contribution.acceptedMaterialOfHandoff({
-    digest: handoffDigest,
-    sourceClaimIds: SOURCE_CLAIM_IDS,
-    constraintIds: CONSTRAINT_IDS,
-    unknownIds: UNKNOWN_IDS,
-    terminalClaimIds: TERMINAL_CLAIM_IDS,
+/**
+ * Build the complete authored desk chain (the corpus green material over
+ * the frozen WP03 fixture ids): every desk's authored bundle, the freeze
+ * surfaces, the SRS draft + revision pin and the lawful twelve-kind
+ * handoff. Returns the per-desk handles the tests mutate + the authored
+ * candidates the driver consumes.
+ */
+export async function buildAuthoredChain() {
+  const m = await corpusMaterial();
+  const sets = await fixtureIdSets();
+  const prdBundle = m.greenPrdBundle();
+  const ucBundle = m.greenUcBundle();
+  const reqMembers = m.greenReqMembers();
+  // The deferred-at-acceptance telemetry NFR is AUTHORED here (the fifth
+  // accepted requirement): the corpus acceptance universe carries it as
+  // accepted material, so the honest chain accepts it at this desk and the
+  // acceptance desk's deferral resolves against the sealed bundle.
+  reqMembers.push({
+    requirementId: 'nfr:telemetry-1',
+    requirementKind: 'NFR',
+    statement: 'Operational telemetry shall be retained for the agreed window.',
+    prdIntentRefs: ['prd:unknown-1'],
+    verificationSurfaceRefs: ['surface:batch-audit-1'],
   });
+  const acceptanceInputs = m.greenAcceptanceInputs();
+  const acceptanceBundle = m.greenAcceptanceBundle();
+  const surfaces = m.acceptedSurfacesOf();
+  const draft = m.greenRealizationDraft();
+  const srs = m.srsAuthorityOf();
+  const handoff = m.lawfulHandoffOf();
+  const repositoryPolicyRefs = m.repositoryPolicyRefsOf();
 
-  const prdProduct = {
-    schemaVersion: 'formalization.prd-intent.v1',
-    brief: 'A deterministic message service with a browser-rendered frontend.',
-    members: [
-      { memberId: 'PRD-M1', memberKind: 'system-boundary', statement: 'The service exposes HTTP endpoints and a served frontend.', sourceClaimRefs: ['SC-1'] },
-      { memberId: 'PRD-M2', memberKind: 'outcome', statement: 'Operators receive deterministic JSON responses.', sourceClaimRefs: ['SC-2'] },
-      { memberId: 'PRD-M3', memberKind: 'outcome', statement: 'Users see the API value rendered in the browser.', sourceClaimRefs: ['SC-3'] },
-      { memberId: 'PRD-M4', memberKind: 'constraint', statement: 'Responses are deterministic; no nondeterministic content.', sourceClaimRefs: ['SC-1'] },
-    ],
-    dispositions: [
-      { memberId: 'PRD-M1', disposition: 'scenario_required' },
-      { memberId: 'PRD-M2', disposition: 'scenario_required' },
-      { memberId: 'PRD-M3', disposition: 'scenario_required' },
-      { memberId: 'PRD-M4', disposition: 'direct_requirement', reason: 'An operational constraint with no meaningful interaction scenario.' },
-    ],
+  const chain = {
+    prd: { product: prdBundle, memberIds: PRD_MEMBER_IDS, scenarioRequired: ['prd:outcome-1', 'prd:boundary-1', 'prd:terminal-1'] },
+    uc: { product: ucBundle, memberIds: UC_SCENARIO_IDS },
+    requirements: { product: reqMembers, memberIds: REQUIREMENT_IDS, deskInput: { verificationSurfaceIds: sets.verificationSurfaceIds } },
+    acceptance: { product: acceptanceBundle, memberIds: AC_IDS, deskInput: { verifiableStatementIds: acceptanceInputs.verifiableStatementIds, evidenceBindings: acceptanceInputs.evidenceBindings } },
+    reconciliation: { memberIds: [] },
+    baseline: { surfaces, memberIds: [] },
+    srs: { product: draft, memberIds: UC_SCENARIO_IDS, deskInput: { srsRevisionDigest: srs.revisionDigest }, authority: srs },
+    solution: { product: handoff, memberIds: [], deskInput: { repositoryPolicyRefs } },
+    fixtureSets: sets,
   };
-  const prdArtifact = products.artifactOf(prdProduct);
-  const acceptedPrd = contribution.acceptedScenarioRequiredAfter(
-    ['PRD-M1', 'PRD-M2', 'PRD-M3'],
-    contribution.acceptedMaterialAfter(accepted0, 'formalization.prd-intent.v1', prdArtifact, PRD_MEMBER_IDS),
-  );
-
-  const ucProduct = {
-    schemaVersion: 'formalization.uc-scenarios.v1',
-    scenarios: [
-      {
-        scenarioId: 'UC-1',
-        actorKind: 'operator',
-        actorIdentity: 'on-call operator',
-        goal: 'Check service health and read a deterministic message.',
-        trigger: 'Operator opens the endpoints.',
-        preconditions: ['service started'],
-        mainFlow: ['GET /healthz', 'GET /api/message'],
-        alternateFlows: [],
-        errorFlows: ['retry on 5xx'],
-        postcondition: 'The operator holds the deterministic health and message payloads.',
-        prdIntentRefs: ['PRD-M1', 'PRD-M2'],
-      },
-      {
-        scenarioId: 'UC-2',
-        actorKind: 'human',
-        actorIdentity: 'end user',
-        goal: 'See the API value rendered in the browser.',
-        trigger: 'User loads the browser entry.',
-        preconditions: ['frontend served'],
-        mainFlow: ['load entry', 'frontend fetches the API', 'value renders'],
-        alternateFlows: [],
-        errorFlows: ['error banner on failure'],
-        postcondition: 'The rendered view shows the API value.',
-        prdIntentRefs: ['PRD-M3'],
-      },
-    ],
-  };
-  const ucArtifact = products.artifactOf(ucProduct);
-  const acceptedUc = contribution.acceptedMaterialAfter(acceptedPrd, 'formalization.uc-scenarios.v1', ucArtifact, UC_SCENARIO_IDS);
-
-  const requirementsProduct = {
-    schemaVersion: 'formalization.system-requirements.v1',
-    prdRevisionRef: `sha256:${acceptedPrd.prd.revisionDigest}`,
-    ucRevisionRef: `sha256:${acceptedUc.useCases.revisionDigest}`,
-    requirements: [
-      { requirementId: 'FR-1', requirementKind: 'FR', statement: 'The service exposes /healthz returning {"status":"ok"}.', prdIntentRefs: ['PRD-M1'], ucScenarioRefs: ['UC-1'] },
-      { requirementId: 'FR-2', requirementKind: 'FR', statement: 'The service exposes /api/message returning a deterministic JSON message.', prdIntentRefs: ['PRD-M2'], ucScenarioRefs: ['UC-1'] },
-      { requirementId: 'FR-3', requirementKind: 'FR', statement: 'A served HTML+JS frontend fetches the API and renders the value.', prdIntentRefs: ['PRD-M3'], ucScenarioRefs: ['UC-2'] },
-    ],
-  };
-  const requirementsArtifact = products.artifactOf(requirementsProduct);
-  const acceptedRequirements = contribution.acceptedMaterialAfter(acceptedUc, 'formalization.system-requirements.v1', requirementsArtifact, REQUIREMENT_IDS);
-
-  const acceptanceProduct = {
-    schemaVersion: 'formalization.acceptance-bindings.v1',
-    criteria: [
-      { criterionId: 'AC-1', given: 'server started', when: 'GET /healthz', then: '200 {"status":"ok"}', requirementRefs: ['FR-1'], ucTerminalBranchRefs: ['UC-1'], evidenceMethod: 'test' },
-      { criterionId: 'AC-2', given: 'server started', when: 'GET /api/message', then: '200 deterministic message', requirementRefs: ['FR-2'], ucTerminalBranchRefs: ['UC-1'], evidenceMethod: 'test' },
-      { criterionId: 'AC-3', given: 'browser entry loaded', when: 'frontend script runs', then: 'the API value renders', requirementRefs: ['FR-3'], ucTerminalBranchRefs: ['UC-2'], evidenceMethod: 'test' },
-    ],
-  };
-  const acceptanceArtifact = products.artifactOf(acceptanceProduct);
-  const acceptedAcceptance = contribution.acceptedMaterialAfter(acceptedRequirements, 'formalization.acceptance-bindings.v1', acceptanceArtifact, AC_IDS);
-
-  const reconciliationProduct = {
-    schemaVersion: 'formalization.what-reconciliation.v1',
-    verdict: 'consistent',
-    gaps: [],
-    rows: SOURCE_CLAIM_IDS.map((claimId, index) => ({
-      sourceClaimRef: claimId,
-      memberRef: PRD_MEMBER_IDS[index],
-      scenarioRef: index === 3 ? 'direct' : UC_SCENARIO_IDS[index % 2],
-      requirementRefs: index === 3 ? [] : [REQUIREMENT_IDS[index]],
-      criterionRefs: index === 3 ? [] : [AC_IDS[index]],
-    })),
-  };
-  const reconciliationArtifact = products.artifactOf(reconciliationProduct);
-  const acceptedReconciliation = contribution.acceptedMaterialAfter(acceptedAcceptance, 'formalization.what-reconciliation.v1', reconciliationArtifact, []);
-
-  const baselineInputs = {
-    handoffDigest,
-    prdRevisionDigest: acceptedPrd.prd.revisionDigest,
-    ucRevisionDigest: acceptedUc.useCases.revisionDigest,
-    requirementsRevisionDigest: acceptedRequirements.requirements.revisionDigest,
-    acceptanceRevisionDigest: acceptedAcceptance.acceptance.revisionDigest,
-    reconciliationRevisionDigest: acceptedReconciliation.reconciliation.revisionDigest,
-    memberDigests: [
-      acceptedPrd.prd.revisionDigest,
-      acceptedUc.useCases.revisionDigest,
-      acceptedRequirements.requirements.revisionDigest,
-      acceptedAcceptance.acceptance.revisionDigest,
-      acceptedReconciliation.reconciliation.revisionDigest,
-    ],
-    acceptedTraceDigest,
-  };
-  const baseline = products.freezeWhatBaseline(baselineInputs);
-  if (!baseline.ok) throw new Error(`baseline freeze failed: ${JSON.stringify(baseline)}`);
-  const acceptedBaseline = contribution.acceptedBaselineAfter(acceptedReconciliation, baselineArtifactDigest(baseline.artifact), baseline.product.wholeWhatDigest);
-
-  const srsProduct = {
-    schemaVersion: 'formalization.srs.v1',
-    baselineRef: `sha256:${acceptedBaseline.baseline.revisionDigest}`,
-    scenarioRealizations: [
-      {
-        scenarioId: 'UC-1',
-        entrypoint: 'http-gateway',
-        participatingModules: ['http-gateway', 'health-handler', 'message-handler'],
-        runtimeEdges: [{ from: 'http-gateway', to: 'health-handler' }, { from: 'http-gateway', to: 'message-handler' }, { from: 'health-handler', to: 'operator-visible-result' }, { from: 'message-handler', to: 'operator-visible-result' }],
-        externalInterfaces: ['GET /healthz', 'GET /api/message'],
-        compositionOwner: 'platform',
-        implementationSurfaces: ['src/server.js'],
-        terminalResult: 'operator-visible-result',
-        evidenceBinding: 'AC-1, AC-2',
-      },
-      {
-        scenarioId: 'UC-2',
-        entrypoint: 'static-frontend',
-        participatingModules: ['static-frontend', 'browser-runtime'],
-        runtimeEdges: [{ from: 'static-frontend', to: 'browser-runtime' }, { from: 'browser-runtime', to: 'rendered-value' }],
-        externalInterfaces: ['GET /', 'GET /app.js'],
-        compositionOwner: 'frontend',
-        implementationSurfaces: ['public/app.js'],
-        terminalResult: 'rendered-value',
-        evidenceBinding: 'AC-3',
-      },
-    ],
-    decomposition: [
-      { criterionRef: 'AC-1', moduleRef: 'health-handler' },
-      { criterionRef: 'AC-2', moduleRef: 'message-handler' },
-      { criterionRef: 'AC-3', moduleRef: 'browser-runtime' },
-    ],
-  };
-  const srsArtifact = products.artifactOf(srsProduct);
-  const acceptedSrs = contribution.acceptedMaterialAfter(acceptedBaseline, 'formalization.srs.v1', srsArtifact, UC_SCENARIO_IDS);
-
-  const solution = products.settleSolutionContract(
-    { revisionDigest: acceptedBaseline.baseline.revisionDigest, wholeWhatDigest: acceptedBaseline.baseline.wholeWhatDigest },
-    { revisionDigest: acceptedSrs.srs.revisionDigest, realizedScenarioIds: UC_SCENARIO_IDS },
-    {
-      certificateRef: 'sha256:' + sha256('discovery-certificate'),
-      prdIntentBindings: PRD_MEMBER_IDS,
-      scenarioBindings: UC_SCENARIO_IDS,
-      requirementBindings: REQUIREMENT_IDS,
-      acceptanceBindings: AC_IDS,
-      scenarioRealizationBindings: UC_SCENARIO_IDS,
-      terminalClaimBindings: TERMINAL_CLAIM_IDS,
-      integrationObligations: ['seam:frontend-to-api'],
-      repositoryPolicyBindings: ['policy:deterministic-responses'],
-    },
-  );
-  if (!solution.ok) throw new Error(`solution settlement failed: ${JSON.stringify(solution)}`);
-
-  return {
-    accepted0,
-    prd: { product: prdProduct, artifact: prdArtifact, memberIds: PRD_MEMBER_IDS, scenarioRequired: ['PRD-M1', 'PRD-M2', 'PRD-M3'] },
-    uc: { product: ucProduct, artifact: ucArtifact, memberIds: UC_SCENARIO_IDS },
-    requirements: { product: requirementsProduct, artifact: requirementsArtifact, memberIds: REQUIREMENT_IDS },
-    acceptance: { product: acceptanceProduct, artifact: acceptanceArtifact, memberIds: AC_IDS },
-    reconciliation: { product: reconciliationProduct, artifact: reconciliationArtifact, memberIds: [] },
-    baseline: { product: baseline.product, artifact: baseline.artifact, expected: baselineInputs, memberIds: [] },
-    srs: { product: srsProduct, artifact: srsArtifact, memberIds: UC_SCENARIO_IDS },
-    solution: { product: solution.product, artifact: solution.artifact, memberIds: [] },
-    acceptedAt: {
-      prd: acceptedPrd,
-      uc: acceptedUc,
-      requirements: acceptedRequirements,
-      acceptance: acceptedAcceptance,
-      reconciliation: acceptedReconciliation,
-      baseline: acceptedBaseline,
-      srs: acceptedSrs,
-    },
-  };
+  chain.authored = authoredOf(chain);
+  return chain;
 }
 
-function baselineArtifactDigest(artifact) {
-  return artifact.digest;
+/** The per-desk authored candidates the driver config consumes. */
+export function authoredOf(chain) {
+  return {
+    'define-product-intent': { candidate: { kind: 'frf-cell.product-intent.v1', product: chain.prd.product } },
+    'model-use-cases': { candidate: { kind: 'frf-cell.uc-scenarios.v1', product: chain.uc.product } },
+    'derive-system-requirements': { candidate: { kind: 'formalization.system-requirements.v1', product: chain.requirements.product, deskInput: chain.requirements.deskInput } },
+    'define-acceptance-contract': { candidate: { kind: 'formalization.acceptance-bindings.v1', product: chain.acceptance.product, deskInput: chain.acceptance.deskInput } },
+    'reconcile-what': { candidate: { kind: 'formalization.what-reconciliation.v1' } },
+    'freeze-what-baseline': { candidate: { kind: 'frf-contracts.what-baseline.v1', surfaces: chain.baseline.surfaces } },
+    'define-architecture-contract': { candidate: { kind: 'formalization.srs.v1', product: chain.srs.product, deskInput: chain.srs.deskInput } },
+    'settle-formalization': { candidate: { kind: 'frf-contracts.solution-contract.v1', product: chain.solution.product, deskInput: chain.solution.deskInput } },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -403,27 +280,14 @@ export function shellScripts() {
 
 export function chainScripts(chain) {
   return {
-    'define-product-intent': { author: productScript('formalization.prd-intent.v1', chain.prd.product, 'authored the brief and PRD intent members'), reviewer: textScript('reviewed the PRD intent members against the source claims') },
-    'model-use-cases': { author: productScript('formalization.uc-scenarios.v1', chain.uc.product, 'modeled the UC scenarios'), reviewer: textScript('reviewed the scenarios against the accepted PRD revision') },
+    'define-product-intent': { author: productScript('frf-cell.product-intent.v1', chain.prd.product, 'authored the brief and PRD intent members'), reviewer: textScript('reviewed the PRD intent members against the source claims') },
+    'model-use-cases': { author: productScript('frf-cell.uc-scenarios.v1', chain.uc.product, 'modeled the UC scenarios'), reviewer: textScript('reviewed the scenarios against the accepted PRD revision') },
     'derive-system-requirements': { author: productScript('formalization.system-requirements.v1', chain.requirements.product, 'derived FR/NFR from accepted PRD and UC material'), reviewer: textScript('reviewed the requirement lineage') },
     'define-acceptance-contract': { author: productScript('formalization.acceptance-bindings.v1', chain.acceptance.product, 'authored the acceptance criteria'), reviewer: textScript('reviewed the AC bindings') },
-    'reconcile-what': { author: productScript('formalization.what-reconciliation.v1', chain.reconciliation.product, 'reconciled the WHAT chain'), reviewer: textScript('verified the reconciliation report') },
-    'freeze-what-baseline': { author: textScript('froze the whole-WHAT baseline over the exact accepted inputs'), reviewer: textScript('verified the frozen baseline') },
+    'reconcile-what': { author: textScript('reconciled the WHAT chain (report-only)'), reviewer: textScript('verified the computed reconciliation report') },
+    'freeze-what-baseline': { author: textScript('froze the whole-WHAT baseline over the exact accepted surfaces'), reviewer: textScript('verified the frozen baseline') },
     'define-architecture-contract': { author: productScript('formalization.srs.v1', chain.srs.product, 'authored the SRS with scenario realization'), reviewer: textScript('reviewed the SRS realization graph') },
     'settle-formalization': { author: textScript('settled the solution contract over both authorities'), reviewer: textScript('verified the solution contract references') },
-  };
-}
-
-export function authoredOf(chain) {
-  return {
-    'define-product-intent': { candidate: { kind: 'formalization.prd-intent.v1', product: chain.prd.product }, memberIds: chain.prd.memberIds, scenarioRequiredMemberIds: chain.prd.scenarioRequired },
-    'model-use-cases': { candidate: { kind: 'formalization.uc-scenarios.v1', product: chain.uc.product }, memberIds: chain.uc.memberIds },
-    'derive-system-requirements': { candidate: { kind: 'formalization.system-requirements.v1', product: chain.requirements.product }, memberIds: chain.requirements.memberIds },
-    'define-acceptance-contract': { candidate: { kind: 'formalization.acceptance-bindings.v1', product: chain.acceptance.product }, memberIds: chain.acceptance.memberIds },
-    'reconcile-what': { candidate: { kind: 'formalization.what-reconciliation.v1', product: chain.reconciliation.product }, memberIds: chain.reconciliation.memberIds },
-    'freeze-what-baseline': { candidate: { kind: 'formalization.what-baseline.v1', product: chain.baseline.product, expected: chain.baseline.expected }, memberIds: chain.baseline.memberIds },
-    'define-architecture-contract': { candidate: { kind: 'formalization.srs.v1', product: chain.srs.product }, memberIds: chain.srs.memberIds },
-    'settle-formalization': { candidate: { kind: 'formalization.solution-contract.v1', product: chain.solution.product }, memberIds: chain.solution.memberIds },
   };
 }
 
@@ -466,7 +330,7 @@ export async function fullRunConfig(session, { chain, transport } = {}) {
       throw new Error(`handoff ingress refused: ${ingested.reason}: ${ingested.detail}`);
     }
   }
-  const authoredChain = chain ?? (await buildAuthoredChain(capsule.capsuleDigest, capsule.capsuleRef));
+  const authoredChain = chain ?? (await buildAuthoredChain());
   const handoffView = await handoffRefOf(capsule);
   const externalEvidence = [
     ...gates.formalizationExternalEvidence(manifest.FORMALIZATION_CHECK_PROVIDERS, { ok: true, digest: sha256('product-verification') }),
@@ -482,7 +346,7 @@ export async function fullRunConfig(session, { chain, transport } = {}) {
     externalEvidence,
     handoff: handoffView,
     shellCheckPlan: externalEvidence[externalEvidence.length - 1],
-    authored: authoredOf(authoredChain),
+    authored: authoredChain.authored,
     shellScripts: shellScripts(),
     scripts: chainScripts(authoredChain),
     effectSink: (effectId, contentDigest) => {

@@ -54,7 +54,7 @@ import type {
   SrsRealizationSection,
   SrsRealizationUniverse,
 } from './contract.js';
-import type { ProductRefusal, ProductValidation } from '../../products.js';
+import type { ProductRefusal, ProductValidation } from '../../contracts/artifacts.js';
 
 function refused(reason: ProductRefusal['reason'], detail: string): ProductRefusal {
   return { ok: false, refused: true, reason, detail };

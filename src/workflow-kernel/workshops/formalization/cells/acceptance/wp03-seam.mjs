@@ -1,5 +1,6 @@
 /**
- * FRF-WP06 define-acceptance-contract cell - THE WP03 VALIDATOR SEAM.
+ * FRF-WP06 define-acceptance-contract cell - THE WP03 VALIDATOR SEAM
+ * (installed wiring since the FRF-WP11 cutover).
  *
  * This module is the ONE place the acceptance cell touches the FRF-WP03
  * semantic contracts. WP03 declared its five payload contracts "payload
@@ -15,6 +16,10 @@
  * documented"):
  *   adopted contract : frf-contracts.ac-binding.v1 (schemas/ac-binding.schema.json)
  *   adopted validator: validateAcBinding (validators/ac-binding.mjs)
+ *   canonical home   : src/workflow-kernel/workshops/formalization/contracts/
+ *                      (FRF-WP11: the in-package tree IS the canonical home;
+ *                      the docs-tree copy is a frozen byte-equal snapshot,
+ *                      removal-guarded - the seam import resolves in-package)
  *   call law         : the cell gate runs validateAcBinding once per
  *                      criterion with the accepted id-set universe built
  *                      by protocol.mjs/acceptanceUniverseFrom(); every
@@ -29,23 +34,22 @@
  *                      is MISSING_LINEAGE (the plan's killed mutation
  *                      "keep AC coverage but remove its terminal scenario
  *                      binding").
- *   digest pin       : WP03_AC_BINDING_VALIDATOR_SHA256 pins the adopted
- *                      validator file bytes; the focused test re-hashes
- *                      the docs file and refuses on drift (the frozen
- *                      contract may only change through a new WP03
- *                      version, never silently).
+ *   digest pin       : validatorSha256/commonSha256 pin the adopted
+ *                      validator + helper file bytes; the focused test
+ *                      re-hashes the canonical files and refuses on drift
+ *                      (the frozen contract may only change through a new
+ *                      WP03 version, never silently).
  *
  * PURITY: re-exports pure functions only. No I/O, no clock, no session.
- * Reachability: focused tests only until the FRF-WP11 cutover installs
- * the cells package (the installed workshop keeps its own validators;
- * nothing under src (no .ts module) imports this file - law tested in
- * tests/.../cells/acceptance/structure.test.mjs).
+ * Reachability: an INSTALLED package surface since the FRF-WP11 cutover
+ * (the installed workshop routes the define-acceptance-contract desk
+ * through this cell).
  */
 
 import {
   CONTRACT_KIND as WP03_AC_BINDING_KIND,
   validateAcBinding,
-} from '../../../../../../docs/refactoring/formalization-frf/contracts/validators/ac-binding.mjs';
+} from '../../contracts/validators/ac-binding.mjs';
 
 export {
   WP03_AC_BINDING_KIND,
@@ -56,10 +60,12 @@ export {
 export const WP03_SEAM = Object.freeze({
   adoptedContract: 'frf-contracts.ac-binding.v1',
   adoptedValidator: 'validateAcBinding',
+  // FRF-WP11 cutover: the canonical home is the in-package contracts tree;
+  // the docs-tree copy is a frozen byte-equal snapshot (removal-guarded).
   adoptedFrom:
-    'docs/refactoring/formalization-frf/contracts/validators/ac-binding.mjs',
+    'src/workflow-kernel/workshops/formalization/contracts/validators/ac-binding.mjs',
   adoptedSchema:
-    'docs/refactoring/formalization-frf/contracts/schemas/ac-binding.schema.json',
+    'src/workflow-kernel/workshops/formalization/contracts/schemas/ac-binding.schema.json',
   /** sha256 over the adopted validator file bytes (drift tripwire). */
   validatorSha256:
     '74bbe6c257b878d6fd2f295925b62298c789327fb108f409d3851a3669f9a412',

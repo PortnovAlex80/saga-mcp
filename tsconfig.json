@@ -17,9 +17,10 @@
     "declaration": true,
     "sourceMap": true
   },
-  // FRF parallel construction (WP04-WP08): the cells packages are test-only
-// reachable until the FRF-WP11 cutover — the compiler emits nothing for them
-// (the acceptance cell TEST-ONLY fence asserts dist has no cells subtree).
-"exclude": ["src/workflow-kernel/workshops/formalization/cells/acceptance/**"],
+  // FRF-WP11 cutover: the cells and the WP03 contracts are INSTALLED
+// package surfaces (tsc compiles the .ts cells; tools/copy-installed-mjs.mjs
+// mirrors the .mjs cells, the contracts tree and the Development handoff
+// desks into dist as the build's second step - the pre-cutover exclusion
+// of the acceptance cell died with its TEST-ONLY fence).
   "include": ["src/**/*"]
 }

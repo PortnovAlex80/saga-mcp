@@ -135,7 +135,9 @@ test('the manifest digest is deterministic and covers the whole manifest', async
   const second = m.installedWorkshopManifest();
   assert.equal(first.manifestDigest, second.manifestDigest);
   assert.match(first.manifestDigest, /^[0-9a-f]{64}$/);
-  // The identity is compound (never a bare workshop-name literal).
+  // The identity is compound (never a bare workshop-name literal); 3.0.0 is
+  // the FRF-WP11 semantic cutover (the scenario-first cells became the desk
+  // authority - the module version is the bumped semantic-contract identity).
   assert.equal(first.moduleId, 'workshop:solution-formalization');
-  assert.equal(first.moduleVersion, '2.0.0');
+  assert.equal(first.moduleVersion, '3.0.0');
 });

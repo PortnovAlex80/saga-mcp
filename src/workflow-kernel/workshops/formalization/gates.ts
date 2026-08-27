@@ -1,21 +1,25 @@
 /**
  * workflow-kernel/workshops/formalization/gates.ts - the CheckPlans and
- * semantic gates of the Formalization workshop (WP-11F, plan phase EK-8
- * workshop conversion; R15: CheckPlan is installed-manifest input evidence).
+ * semantic gates of the Formalization workshop (WP-11F; R15: CheckPlan is
+ * installed-manifest input evidence). FRF-WP11 CUTOVER: the gate surface
+ * stays (declared providers, verdict routing, CheckPlan evidence); the
+ * semantic AUTHORITY is the FRF cells package (WP04-09) through
+ * ./cells/dispatch.mjs - the old products.ts desk validators (the folded
+ * what-baseline shape, the hardcoded-consistent reconciliation, the
+ * binding-blind settlement) are DELETED; there is no forwarding facade
+ * and no dual path.
  *
  * Laws implemented here:
  *   - Every gate runs over a DECLARED, deterministic provider from the
  *     installed manifest (checkProviderOfDesk). An undeclared provider is
  *     a typed fail-closed refusal - never a silent pass, never a fallback.
- *   - The semantic gate maps the pure product validators (products.ts) onto
- *     the kernel's frozen verdict vocabulary:
- *       MALFORMED_PRODUCT / MISSING_LINEAGE / STALE_LINEAGE / COVERAGE_GAP
- *         -> repair (the author desk is re-staffed; obligation:requeueRepair)
- *       FOREIGN_LINEAGE -> upstream-repair (the defect belongs to the owning
- *         upstream material; obligation:routeUpstreamRepair - never a
- *         silent scope widen)
- *       DRIFT_DETECTED -> human-wait (operator clarification; TypedWait
- *         via the D5/D12 vocabulary) or terminal-reject on repeated drift
+ *   - The dispatch runs the OWNING cell's gate with the universe derived
+ *     from the accepted chain (ADR-053: revision material decides); the
+ *     cell's own provider fence (impostor digest, kind mismatch) fails
+ *     closed before any validator runs.
+ *   - The verdict vocabulary stays the kernel's frozen five; the cells'
+ *     outcome routing (repair / upstream-repair / human-wait / terminal-
+ *     reject) propagates verbatim - never widened here.
  *   - The CheckPlan evidence fact this module emits is exactly what the
  *     kernel gate guards require (workplace.runAuthorGate / runFinalGate
  *     refuse without CheckPlan evidence in context).
@@ -24,102 +28,47 @@
  */
 
 import type { EvidenceFact } from '../../domain/types.js';
-import type {
-  AcceptanceContractProduct,
-  AcceptedMaterial,
-  BaselineFreezeInputs,
-  PrdIntentProduct,
-  ProductRefusalReason,
-  SolutionContractProduct,
-  SrsProduct,
-  SystemRequirementsProduct,
-  UseCaseScenariosProduct,
-  WhatBaselineProduct,
-  WhatReconciliationProduct,
-} from './products.js';
-import {
-  validateAcceptanceContract,
-  validatePrdIntent,
-  validateSolutionContract,
-  validateSrs,
-  validateSystemRequirements,
-  validateUseCaseScenarios,
-  validateWhatBaseline,
-  validateWhatReconciliation,
-} from './products.js';
 import type { CheckProviderDeclaration } from './manifest.js';
 import { FORMALIZATION_CHECK_PROVIDERS } from './manifest.js';
 import { sha256OfCanonical } from '../../domain/digest.js';
+import type { AcceptedChain, DeskCandidate, DeskDispatch } from './cells/dispatch.mjs';
+import { evaluateDeskCandidate } from './cells/dispatch.mjs';
 
 /** The gate verdict surface (the kernel's frozen five). */
 export type SemanticGateVerdict = 'accepted' | 'repair' | 'upstream-repair' | 'human-wait' | 'terminal-reject';
 
-export interface SemanticGateOutcome {
-  readonly verdict: SemanticGateVerdict;
-  /** Exact typed issues (the RecoveryIssue feedback a repair requeue carries). */
-  readonly issues: readonly { readonly source: ProductRefusalReason | 'check-plan'; readonly detail: string }[];
-  readonly providerId: string;
-  readonly productRef?: string;
-}
-
-/** Fail-closed gate refusal (an undeclared provider or unknown desk). */
-export interface SemanticGateRefusal {
-  readonly refused: true;
-  readonly reason: 'PROVIDER_NOT_DECLARED' | 'DESK_NOT_DECLARED';
+/** One typed gate issue (the RecoveryIssue feedback a repair requeue carries). */
+export interface SemanticGateIssue {
+  readonly source: string;
   readonly detail: string;
 }
 
-/** One authored candidate as presented to the gate. */
-export type GateCandidate =
-  | { readonly kind: 'formalization.prd-intent.v1'; readonly product: PrdIntentProduct }
-  | { readonly kind: 'formalization.uc-scenarios.v1'; readonly product: UseCaseScenariosProduct }
-  | { readonly kind: 'formalization.system-requirements.v1'; readonly product: SystemRequirementsProduct }
-  | { readonly kind: 'formalization.acceptance-bindings.v1'; readonly product: AcceptanceContractProduct }
-  | { readonly kind: 'formalization.what-reconciliation.v1'; readonly product: WhatReconciliationProduct }
-  | { readonly kind: 'formalization.what-baseline.v1'; readonly product: WhatBaselineProduct; readonly expected: BaselineFreezeInputs }
-  | { readonly kind: 'formalization.srs.v1'; readonly product: SrsProduct }
-  | { readonly kind: 'formalization.solution-contract.v1'; readonly product: SolutionContractProduct };
-
-/** Run one declared provider's pure validator (deterministic dispatch). */
-function runValidator(provider: CheckProviderDeclaration, candidate: GateCandidate, accepted: AcceptedMaterial): ReturnType<typeof validatePrdIntent> {
-  if (provider.productKind !== candidate.kind) {
-    return {
-      ok: false,
-      refused: true as const,
-      reason: 'MALFORMED_PRODUCT' as ProductRefusalReason,
-      detail: `provider ${provider.providerId} gates product kind ${provider.productKind}; the desk presented ${candidate.kind}`,
-    };
-  }
-  switch (candidate.kind) {
-    case 'formalization.prd-intent.v1':
-      return validatePrdIntent(candidate.product, accepted);
-    case 'formalization.uc-scenarios.v1':
-      return validateUseCaseScenarios(candidate.product, accepted);
-    case 'formalization.system-requirements.v1':
-      return validateSystemRequirements(candidate.product, accepted);
-    case 'formalization.acceptance-bindings.v1':
-      return validateAcceptanceContract(candidate.product, accepted);
-    case 'formalization.what-reconciliation.v1':
-      return validateWhatReconciliation(candidate.product, accepted);
-    case 'formalization.what-baseline.v1':
-      return validateWhatBaseline(candidate.product, candidate.expected);
-    case 'formalization.srs.v1':
-      return validateSrs(candidate.product, accepted);
-    case 'formalization.solution-contract.v1':
-      return validateSolutionContract(candidate.product, accepted);
-  }
+export interface SemanticGateOutcome {
+  readonly verdict: SemanticGateVerdict;
+  readonly issues: readonly SemanticGateIssue[];
+  readonly providerId: string;
+  readonly productRef?: string;
+  /** The chain-advancing fold (present only on an accepted desk). */
+  readonly fold?: unknown;
+  /** The typed wait a freeze-drift/indeterminate desk opened (D5/D12 vocabulary). */
+  readonly wait?: unknown;
+  /** The desk-level outcome of a non-accepting kernel desk (frozen/drift/indeterminate; inconsistent/failed). */
+  readonly deskOutcome?: string;
 }
 
-/** The refusal-reason -> verdict mapping (the frozen routing table). */
-const VERDICT_OF_REASON: Readonly<Record<ProductRefusalReason, SemanticGateVerdict>> = {
-  MALFORMED_PRODUCT: 'repair',
-  MISSING_LINEAGE: 'repair',
-  STALE_LINEAGE: 'repair',
-  COVERAGE_GAP: 'repair',
-  FOREIGN_LINEAGE: 'upstream-repair',
-  DRIFT_DETECTED: 'human-wait',
-  SCOPE_VIOLATION: 'terminal-reject',
-};
+/** Fail-closed gate refusal (an undeclared provider, an unknown desk, or a cell-side infrastructure miss). */
+export type SemanticGateRefusalReason =
+  | 'PROVIDER_NOT_DECLARED'
+  | 'DESK_NOT_DECLARED'
+  | 'PRODUCT_KIND_MISMATCH'
+  | 'CONTRACT_SEAM_UNWIRED'
+  | 'UPSTREAM_NOT_SUPPLIED';
+
+export interface SemanticGateRefusal {
+  readonly refused: true;
+  readonly reason: SemanticGateRefusalReason;
+  readonly detail: string;
+}
 
 /**
  * Evaluate one desk's semantic gate over its declared provider. The verdict
@@ -130,8 +79,8 @@ const VERDICT_OF_REASON: Readonly<Record<ProductRefusalReason, SemanticGateVerdi
  */
 export function evaluateProductGate(
   provider: CheckProviderDeclaration,
-  candidate: GateCandidate,
-  accepted: AcceptedMaterial,
+  candidate: DeskCandidate,
+  accepted: AcceptedChain,
 ): SemanticGateOutcome | SemanticGateRefusal {
   const installed = FORMALIZATION_CHECK_PROVIDERS.find((entry) => entry.providerId === provider.providerId);
   if (
@@ -139,6 +88,7 @@ export function evaluateProductGate(
     installed.providerDigest !== provider.providerDigest ||
     installed.productKind !== provider.productKind ||
     installed.validator !== provider.validator ||
+    installed.nodeId !== provider.nodeId ||
     provider.providerDigest !== sha256OfCanonical({ providerId: provider.providerId, version: provider.version, nodeId: provider.nodeId, productKind: provider.productKind, validator: provider.validator })
   ) {
     return {
@@ -154,19 +104,26 @@ export function evaluateProductGate(
       detail: `provider ${provider.providerId} declares product kind ${provider.productKind}; the presented kind ${candidate.kind} has no declared provider for this desk`,
     };
   }
-  const validation = runValidator(provider, candidate, accepted);
-  if (!validation.ok) {
+  const dispatch: DeskDispatch = evaluateDeskCandidate(provider.nodeId, candidate, accepted);
+  if (!('verdict' in dispatch)) {
+    const reason: SemanticGateRefusalReason =
+      dispatch.reason === 'DESK_NOT_INSTALLED' ? 'DESK_NOT_DECLARED'
+        : dispatch.reason === 'PRODUCT_KIND_MISMATCH' || dispatch.reason === 'CONTRACT_SEAM_UNWIRED' || dispatch.reason === 'UPSTREAM_NOT_SUPPLIED' ? dispatch.reason
+          : 'PROVIDER_NOT_DECLARED';
     return {
-      verdict: VERDICT_OF_REASON[validation.reason],
-      issues: [{ source: validation.reason, detail: validation.detail }],
-      providerId: provider.providerId,
+      refused: true,
+      reason,
+      detail: dispatch.detail,
     };
   }
   return {
-    verdict: 'accepted',
-    issues: [],
-    providerId: provider.providerId,
-    productRef: validation.artifact.ref,
+    verdict: dispatch.verdict,
+    issues: [...dispatch.issues],
+    providerId: dispatch.providerId,
+    ...(dispatch.productRef !== undefined && dispatch.productRef !== null ? { productRef: dispatch.productRef } : {}),
+    ...(dispatch.fold !== undefined ? { fold: dispatch.fold } : {}),
+    ...(dispatch.wait !== undefined && dispatch.wait !== null ? { wait: dispatch.wait } : {}),
+    ...(dispatch.outcome !== undefined ? { deskOutcome: dispatch.outcome } : {}),
   };
 }
 
