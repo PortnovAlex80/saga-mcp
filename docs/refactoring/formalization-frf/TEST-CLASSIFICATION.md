@@ -10,6 +10,17 @@ through public ingress), **DELETE** (exists only to preserve the old flow).
 Base: `5c158608` (branch `frf/wp01-baseline`). Counts from
 `post-ek-inventory.json` (per-file sha256 recorded there).
 
+**CUTOVER RECORD (FRF-WP11, 2026-08-27):** every SPLIT landed. The
+scenario full-run drives the INSTALLED cells over public commands; the
+products-suite fence battery re-pointed at the dispatch through the corpus
+mutation materializers; the structure suite re-pinned to the FRF-WP11
+package shape (products.ts/contribution.ts died; cells/ + contracts/ are
+installed); the settlement/UC-FOREIGN and AC-complete-scenario-incomplete
+kills are blocking (the settle desk fences the twelve binding kinds). The
+26 orphaned old-flow fixtures (DELETE) are gone; the cells' suites and
+tests/frf-corpus are blocking-hosted (workflow-kernel + frf-corpus matrix
+groups).
+
 ## Focused suite — `tests/workflow-kernel/workshops/formalization/` (68/68 green at base)
 
 | File | Tests | Classification | Rationale |

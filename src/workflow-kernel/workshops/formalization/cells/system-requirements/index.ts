@@ -3,10 +3,10 @@
  * index.ts - the public surface of the derive-system-requirements
  * Production Cell package (FRF-WP05).
  *
- * REACHABILITY LAW (test-only until FRF-WP11): nothing outside this
- * directory imports it; no installed manifest, driver or composition root
- * wires it yet. The coordinator lands the package wiring in FRF-WP11
- * (installed handler bindings) after WP04-WP10 close.
+ * REACHABILITY LAW (INSTALLED since FRF-WP11): the installed semantic
+ * dispatch (cells/dispatch.mjs) routes the derive-system-requirements
+ * desk through this cell; the manifest keeps this desk's provider row
+ * (formalization.requirements-structure.v1) that the cell pins back.
  *
  * PURITY: re-exports only; no behavior of its own.
  */

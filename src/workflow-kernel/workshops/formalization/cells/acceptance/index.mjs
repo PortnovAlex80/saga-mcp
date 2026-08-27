@@ -4,7 +4,7 @@
  * report-only reconciliation, skill, template, CheckPlan, reviewer,
  * role binding, gate).
  *
- * Test-only reachable until the FRF-WP11 cutover installs the cells
+ * INSTALLED since the FRF-WP11 cutover (the cells package is the
  * package. Purity: re-exports pure modules only.
  */
 

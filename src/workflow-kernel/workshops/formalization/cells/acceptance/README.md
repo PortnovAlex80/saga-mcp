@@ -3,8 +3,8 @@
 Owner: FRF-WP06 (Acceptance and reconciliation). Plan:
 `docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md`
 ("#Desk contracts/define-acceptance-contract", "#Desk
-contracts/reconcile-what", "#Phase FRF-6"). Status: test-only reachable
-until the FRF-WP11 cutover installs the cells package; the installed
+contracts/reconcile-what", "#Phase FRF-6"). Status: INSTALLED since the
+FRF-WP11 cutover (the cells package is the desk authority; the installed
 workshop (`../manifest.ts`, `../products.ts`, `../gates.ts`) is
 untouched by this package.
 
@@ -102,7 +102,7 @@ is the replacement surface:
   persistence import. The canonical digest rule comes from the WP03
   shared helpers (byte-identical to `src/workflow-kernel/domain/digest.ts`
   — continuity asserted by the focused test against `dist/`).
-- Test-only reachable: nothing under `src` (no compiled `.ts` module)
+- Installed (since FRF-WP11): the .mjs cell mirrors into dist and the
   imports this package, and `dist/` contains no cell output; the
   installed workshop's eleven-module enumeration is unchanged. Law
   tested in `tests/.../cells/acceptance/structure.test.mjs`.
@@ -124,7 +124,8 @@ is the replacement surface:
 - `reconciliation.test.mjs` — report-only laws: computed verdict (the
   F-2 kill), gap naming forward and reverse, input immutability,
   frozen report, deterministic digest;
-- `structure.test.mjs` — the cell's structural fences (test-only
-  reachability, purity, no SQL/clock literals, closed vocabularies);
+- `structure.test.mjs` — the cell's structural fences (installed
+  reachability (dist mirrors), purity, no SQL/clock literals, closed
+  vocabularies);
 - `fixtures/` — the green chain and the typed RED seeds (naming
   convention follows WP03: `NN-description.REASON.json`).

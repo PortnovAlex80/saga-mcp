@@ -74,6 +74,18 @@ const GROUPS = {
     globs: ['tests/project-corpus/**/*.test.mjs'],
     note: '20-project scripted corpus format + drivers + elite-kit replay',
   },
+  // FRF-WP11 cutover hosting: the scenario corpus over the NEW semantic
+  // chain and the FRF removal guards are BLOCKING groups (the plan's
+  // FRF-10 exit: "Host every test and driver in blocking CI with removal
+  // guards").
+  'frf-corpus': {
+    globs: ['tests/frf-corpus/*.test.mjs'],
+    note: 'FRF-WP10/WP11: the Formalization scenario corpus over the NEW semantic chain (11 scenarios, smoke/full/tamper modes) - the installed cells are the desk authority since the WP11 cutover',
+  },
+  'frf-removal-guard': {
+    globs: ['tests/infrastructure/frf-removal-guard.test.mjs'],
+    note: 'FRF-WP11 removal guards: the deletion manifest validated (every listed old-flow artifact absent), the old desk validators gone (no dual path), the docs contract snapshots byte-equal to the canonical in-package tree, the dist mirrors byte-equal to src',
+  },
   'workflow-kernel': {
     globs: ['tests/workflow-kernel/**/*.test.mjs'],
     note: 'EK event-projected kernel: model, persistence, roles, engine, application, context envelope, development vertical, projection, workshops, the EK-8 production composition',

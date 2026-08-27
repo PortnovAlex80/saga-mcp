@@ -1,4 +1,4 @@
-# FRF-WP01 — Deletion Manifest (first cut)
+# FRF-WP01 — Deletion Manifest (first cut; EXECUTED by FRF-WP11 2026-08-27)
 
 The Formalization surfaces the plan will REPLACE, enumerated with
 dispositions, per plan §"Current defect to remove" + §FRF-10 ("Delete old
@@ -6,6 +6,18 @@ product semantics … Remove old node and contract identities …"). This is
 the FIRST-CUT inventory from base `5c158608`; FRF-11 owns the final
 deletion patch. Nothing here is deleted by FRF-WP01 (inventory/baseline
 only).
+
+**EXECUTION RECORD (FRF-WP11, 2026-08-27):** the deletion patch landed.
+A1-A5 (the replaced semantic surfaces) died with products.ts/
+contribution.ts at the cutover (the installed desks route through the FRF
+cells; the settlement is binding-aware - cr-02; the reconciliation verdict
+is COMPUTED; the baseline is the sectioned whole-WHAT contract). B1+B2
+(the orphaned pre-EK harvest, 84 files) deleted. C1 (the stale
+reachability header) rewritten. C3 (the structure test) re-pinned to the
+FRF-WP11 package shape. C2 (EK8-DELETION-SET.md) KEPT as history per the
+E-manifest guard. The blocking validation lives in
+tests/infrastructure/frf-removal-guard.test.mjs (matrix group
+frf-removal-guard).
 
 Legend: REPLACE = code surface whose current semantics are deleted and
 rewritten in-place by the named phase; DELETE = file/surface removed;

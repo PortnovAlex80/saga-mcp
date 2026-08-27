@@ -1,8 +1,10 @@
 # FRF-WP04 Production Cell: `model-use-cases`
 
 New parallel construction (plan FRF-WP04, desk contract
-"model-use-cases"). Test-only reachable until the FRF-11 package
-wiring; the old flow stays authoritative until that cutover.
+"model-use-cases"). INSTALLED since the FRF-WP11 cutover: the installed
+workshop routes the model-use-cases desk through this cell (provider
+`frf-cell.uc-scenarios.v1`); the old products.ts validator died at the
+cutover.
 
 ## Package contents
 
@@ -28,10 +30,10 @@ tree; every scenario is validated through `seam.ts`
 (`UcScenarioContractPort`, install-once, digest-pinned, fail-closed
 `CONTRACT_SEAM_UNWIRED` resolution). Today the focused test suite
 installs the real WP03 validator with
-`validatorDigest = sha256(validator file bytes)`; FRF-11 replaces the
-test-time injection with installed-package wiring (same port shape).
-`resetUcScenarioContractSeamForTests()` is the test-only hook FRF-11
-deletes.
+`validatorDigest = sha256(validator file bytes)`. Since the FRF-WP11
+cutover the seam SELF-INSTALLS the in-package validator (installed
+wiring, pinned by contracts/identity.ts); a same-digest install stays an
+idempotent no-op and the test-only reset hook is deleted.
 
 ## Cross-desk lineage (the UC-FOREIGN fix at Cell level)
 

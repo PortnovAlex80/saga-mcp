@@ -51,6 +51,19 @@ jobs:
         # WP-13D: scripted project corpus + elite-kit replay tests.
         run: node tools/run-acceptance-matrix.mjs --group project-corpus
 
+      - name: Matrix - FRF scenario corpus (the new semantic chain)
+        # FRF-WP11: the 11-scenario Formalization corpus over the NEW
+        # semantic chain (smoke/full/tamper) - the installed cells are the
+        # desk authority since the cutover.
+        run: node tools/run-acceptance-matrix.mjs --group frf-corpus
+
+      - name: Matrix - FRF removal guards (FRF-WP11)
+        # The FRF deletion manifest validated: every listed old-flow
+        # artifact absent, the old desk validators gone (no dual path),
+        # the docs contract snapshots byte-equal to the canonical
+        # in-package tree, the dist mirrors byte-equal to src.
+        run: node tools/run-acceptance-matrix.mjs --group frf-removal-guard
+
       - name: Matrix - architecture invariants (ADR-053 gates, ratchets)
         run: node tools/run-acceptance-matrix.mjs --group architecture
 
