@@ -1,0 +1,2108 @@
+{
+  "ambiguities": [
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Desk contracts/define-product-intent"
+      ],
+      "id": "a-1",
+      "resolution": "Modeled as material/terminal-claim: originates from a PRD lifecycle-terminal-claim intent member (edge/0047), evidenced by UC terminal results (edge/0048), recorded as the SRS terminal observable result (edge/0046), bound through terminal-claim-bindings (edge/0027), and verified by the product verifier (edge/0092).",
+      "statement": "The plan never defines a container for 'terminal claim bindings' targets: terminal claims appear as PRD 'lifecycle terminal claims', UC 'observable postcondition or terminal result', and SRS 'terminal observable result' without a single named artifact."
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "id": "a-2",
+      "resolution": "Both are modeled as DevelopmentCase typed values; edge/0015 asserts the byte-for-byte mapping law so reconciliation can check the installed field names against the plan's value list.",
+      "statement": "The plan's DevelopmentCase value list says 'formalization certificate' and 'solution contract' as values, while ledger D-17 shows the installed DevelopmentHandoff carries certificateRef and is itself carried by the Solution Contract."
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)",
+        "plan:§Phase FRF-12"
+      ],
+      "id": "a-3",
+      "resolution": "Modeled as material/verifier-obligation citing terminal claims (edge/0092) and evidence bindings (edge/0093), plus plan coverage rule cr-01 requiring the plan to cover the verifier.",
+      "statement": "'Product-verifier obligations' (the reverse-input clause) is not defined as a contract anywhere else in the plan."
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "id": "a-4",
+      "resolution": "Kept as five obligation kinds exactly as the plan lists them; the verifier is modeled as a plan-level coverage requirement (edge/0032, cr-01), not a sixth WorkItem obligation kind.",
+      "statement": "The plan-invalid omission list includes 'verifier', but the five WorkItem obligation kinds do not include a verifier kind."
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "id": "a-5",
+      "resolution": "Two separate edges are used: FR->uc-scenario (edge/0055) and FR->uc-terminal-branch (edge/0056), and likewise AC->uc-scenario (edge/0051) plus AC->uc-terminal-branch (edge/0052).",
+      "statement": "The grammar says scenario-derived FR derives from 'PRD and one or more UC branches' while the desk contract says FRs bind 'exact PRD intent and UC branch identities'; whether scenario-level and branch-level lineage are one binding or two is unstated."
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "id": "a-6",
+      "resolution": "One node material/discovery-source-claim serves both roles; the baseline edge (edge/0072) names both manifests in its via list.",
+      "statement": "The plan names 'source claim and constraint manifests' as one frozen baseline item but the grammar distinguishes source claims (PRD lineage) from source constraints (cross-cutting NFR/RULE lineage)."
+    },
+    {
+      "authority": [
+        "plan:§Target process graph"
+      ],
+      "id": "a-7",
+      "resolution": "Their claims cite reference authorities only (gate-decision record; frozen baseline; trace set) and carry no accepted-material chain; this is recorded so reconciliation does not read the shallow chains of the negative terminals as missing evidence.",
+      "statement": "complete-inconsistent and complete-failed assert detections rather than positive evidence, so their reverse chains are one hop deep."
+    }
+  ],
+  "artifact": "frf-reverse-graph",
+  "authorities": {
+    "ledger:D-1": {
+      "doc": "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md",
+      "summary": "REQUIRED fix target: validateSolutionContract accepts FOREIGN handoff bindings; target is FOREIGN_LINEAGE refusal for any handoff binding outside the exact accepted id sets."
+    },
+    "ledger:D-17": {
+      "doc": "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md",
+      "summary": "DevelopmentHandoff interface fields match the plan's Development handoff requirements one-for-one; the contract exists and is produced; the consumer does not."
+    },
+    "ledger:D-2": {
+      "doc": "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md",
+      "summary": "REQUIRED fix target: Development consumes NO scenario/realization bindings today; the plan's Development handoff requirements list typed REQUIRED values that planning must consume."
+    },
+    "ledger:D-3": {
+      "doc": "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md",
+      "summary": "REQUIRED fix target: planning does not preserve UC/scenario identities; WorkItems must bind typed obligations and preserve exact identities."
+    },
+    "ledger:D-4": {
+      "doc": "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md",
+      "summary": "REQUIRED fix target: no validator rejects an AC-complete but scenario-incomplete Development plan (omitting scenario entrypoint, runtime edge, composition owner, terminal result, or verifier)."
+    },
+    "plan:§Current defect to remove": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Authority loss: UC remains provenance but does not remain required planning material through SRS and Development - the defect this chain repairs."
+    },
+    "plan:§Decision": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Concept budget: scenario and realization bindings added to existing Solution Contract, DevelopmentCase, and WorkItem contracts; GateDecision and post-acceptance effects unchanged."
+    },
+    "plan:§Decision analysis (red-team conditions)": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Source-to-intent coverage is checked against the exact Discovery handoff; scenario bindings are mandatory Development planning inputs, not payload decoration."
+    },
+    "plan:§Definition of complete": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Source, intent, scenario, requirements, acceptance, SRS realization, and Development handoff are content-addressed and closed in both directions; Development planning consumes exact scenario and realization bindings."
+    },
+    "plan:§Desk contracts/define-acceptance-contract": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "AC binds exact FR/NFR material; scenario-facing AC retains exact UC and terminal-branch binding; every required UC terminal result has at least one end-to-end AC or accepted evidence binding of type test, monitoring, audit, or independent agent review."
+    },
+    "plan:§Desk contracts/define-architecture-contract": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Mandatory SRS scenario-realization section per required UC: scenario identity, entrypoint or trigger, participating modules, required producer-consumer/runtime edges, external interfaces, composition owner, required implementation and integration surfaces, terminal observable result, evidence binding."
+    },
+    "plan:§Desk contracts/define-product-intent": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "PRD must contain stable atomic intent members for system boundary, actors and stakeholders, outcomes, scope and exclusions, lifecycle terminal claims, constraints, assumptions and unknowns, required dispositions."
+    },
+    "plan:§Desk contracts/derive-system-requirements": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Scenario-derived FRs bind exact PRD intent and UC branch identities; every material UC system response has at least one FR, RULE, or scenario-local NFR obligation; every accepted UC produces at least one observable behavior obligation; cross-cutting NFR/RULE may bind directly to PRD intent or source constraints; no requirement derives from foreign, stale, superseded, or unaccepted material."
+    },
+    "plan:§Desk contracts/freeze-what-baseline": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Whole-WHAT baseline contains exact content-addressed references for case identity, source claim and constraint manifests, accepted CellFinalAcceptance/CandidateSet/WorkplaceProductionRevision, PRD/UC/FR/NFR/RULE/AC containers and members, trace/member-binding set and canonical digest, dispositions, evidence-method bindings, one canonical whole-WHAT digest."
+    },
+    "plan:§Desk contracts/model-use-cases": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "UC is an interaction or operational scenario that always declares an actor (closed five-kind vocabulary); contains stable scenario identity, exact PRD intent references, actor, goal, trigger, preconditions, main flow, material alternate and error flows, observable postcondition or terminal result; must not require a pre-existing FR."
+    },
+    "plan:§Desk contracts/reconcile-what": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Validates and reports the closed chain Discovery source claim -> PRD intent member or explicit disposition -> UC or justified direct requirement -> FR/NFR/RULE -> AC/evidence obligation; may not add, delete, or patch an accepted artifact, member, or trace."
+    },
+    "plan:§Desk contracts/settle-formalization": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Settlement consumes the exact whole-WHAT baseline and exact accepted SRS revision and emits one content-addressed Solution Contract containing exact references to both authorities and their atomic manifests."
+    },
+    "plan:§Development handoff requirements": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "DevelopmentCase must carry twelve typed, required values; Development planning must consume them; a WorkItem binds one or more of five obligation kinds; a plan is invalid if it covers every AC but omits a scenario entrypoint, runtime edge, composition owner, terminal result, or verifier."
+    },
+    "plan:§Graph and test model (reverse input)": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Reverse input: Solution Contract, DevelopmentCase, SRS realization, terminal evidence, and product-verifier obligations; derivations frozen before comparison."
+    },
+    "plan:§Objective": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Every required interaction or operational scenario survives unchanged through the WHAT baseline, SRS, Solution Contract, DevelopmentCase, and Development WorkItems; every accepted Discovery scope item has an exact PRD intent member or explicit disposition."
+    },
+    "plan:§Phase FRF-12": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Independent verification of install, build, tests, start, public interaction, terminal evidence, and local delivery result."
+    },
+    "plan:§Phase FRF-6": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Require evidence type and observable terminal result; forward and reverse closure over source, intent, scenario, requirements, acceptance, and evidence."
+    },
+    "plan:§Phase FRF-7": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Architecture consumes only the exact frozen baseline; settlement consumes only the exact baseline and exact accepted SRS; no reselection."
+    },
+    "plan:§Phase FRF-8": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "SRS realization requires every frozen required UC exactly once; rejects extra, duplicate, stale, foreign, and disconnected scenarios."
+    },
+    "plan:§Phase FRF-9": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Required whole-WHAT, intent, UC, requirement, realization, terminal, and construction bindings on Solution Contract and DevelopmentCase; WorkItems preserve scenario and requirement identities; reject AC-complete but scenario-incomplete task graphs."
+    },
+    "plan:§Required semantic mutations": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Must-be-killed mutations including: keep AC coverage but remove its terminal scenario binding; strip scenario realization from SRS or DevelopmentCase; substitute foreign material; strip UC/scenario bindings while retaining AC IDs."
+    },
+    "plan:§Required test layers/Contract and pure validator tests": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "DevelopmentCase rejects missing scenario and realization bindings; reconciliation detects forward and reverse gaps."
+    },
+    "plan:§Required test layers/Elite and simple-server kill tests": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Reject: removed browser bootstrap before Development execution; removed input-to-controller runtime edge; removed state-to-renderer runtime edge; removed composition owner; retained AC IDs with stripped UC/scenario bindings; AC-complete disconnected graph given to the planner."
+    },
+    "plan:§Required test layers/Formalization-to-Development tests": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Formalization output maps byte-for-byte to Development input for every authoritative field; removing PRD intent, UC, realization, terminal-claim, or construction bindings fails before planning; AC-complete but scenario-incomplete plans are rejected; replan/adoption/settlement/verification preserve exact scenario identities and hashes."
+    },
+    "plan:§Required test layers/Process graph tests": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Every reviewed Cell has accepted and failed exits; settlement has formalized, inconsistent, and failed exits."
+    },
+    "plan:§Target process graph": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "Terminal nodes complete-formalized, complete-inconsistent, complete-failed; kernel nodes freeze-what-baseline and settle-formalization; reviewed Cells have accepted and failed exits."
+    },
+    "plan:§Target semantic trace grammar": {
+      "doc": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md",
+      "summary": "PRD from brief and source claims; UC from PRD and exact intent members; FR from PRD plus UC branches when scenario-derived; NFR/RULE from PRD optionally UC; AC from FR or NFR; scenario-facing AC from UC and terminal scenario branch; SRS from frozen whole-WHAT baseline; each required intent member has exactly one of four dispositions."
+    }
+  },
+  "coverageRules": [
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Required test layers/Elite and simple-server kill tests",
+        "ledger:D-4"
+      ],
+      "id": "cr-01",
+      "statement": "A Development plan that covers every AC but omits any of scenario entrypoint, runtime edge, composition owner, terminal result, or verifier is invalid and must be rejected before Development execution."
+    },
+    {
+      "authority": [
+        "plan:§Required test layers/Elite and simple-server kill tests",
+        "ledger:D-1"
+      ],
+      "id": "cr-02",
+      "statement": "Retaining all AC IDs while stripping UC/scenario bindings from the handoff must be rejected; every handoff binding must resolve against the exact accepted id sets (FOREIGN_LINEAGE refusal)."
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Required test layers/Formalization-to-Development tests",
+        "ledger:D-3"
+      ],
+      "id": "cr-03",
+      "statement": "Every required UC scenario keeps the same identity and hash through the WHAT baseline, SRS realization, Solution Contract, DevelopmentCase, and Development WorkItems, including replan, adoption, settlement, and verification."
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar"
+      ],
+      "id": "cr-04",
+      "statement": "Every required PRD intent member has exactly one disposition in {scenario_required, direct_requirement, deferred, out_of_scope}; deferred and out_of_scope require owner and reason; direct_requirement requires a reason why no meaningful interaction or operational scenario exists; every scenario_required member has UC coverage."
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Phase FRF-6"
+      ],
+      "id": "cr-05",
+      "statement": "Every required UC terminal result has at least one end-to-end AC or an accepted evidence binding of type test, monitoring, audit, or independent agent review, with evidence type and observable terminal result declared."
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "id": "cr-06",
+      "statement": "Every material system response in a UC has at least one FR, RULE, or scenario-local NFR obligation, and every accepted UC produces at least one observable behavior obligation."
+    },
+    {
+      "authority": [
+        "plan:§Phase FRF-8",
+        "plan:§Desk contracts/define-architecture-contract"
+      ],
+      "id": "cr-07",
+      "statement": "Every frozen required UC appears exactly once in the SRS scenario-realization section; extra, duplicate, stale, foreign, and disconnected scenarios are rejected; a flat complete file list cannot pass as a connected realization."
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/derive-system-requirements",
+        "plan:§Required semantic mutations"
+      ],
+      "id": "cr-08",
+      "statement": "No requirement, AC, or handoff binding may cite foreign, stale, superseded, unaccepted, cross-run, or substituted material; a well-formed but semantically unrelated graph substitution is rejected."
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Desk contracts/model-use-cases"
+      ],
+      "id": "cr-09",
+      "statement": "The reverse chain holds for all five actor kinds (human, operator, external_system, scheduler_or_clock, sensor_or_environment): interactive, external-system, scheduled/batch, and autonomous products use the same Formalization flow with no game-specific or human-only branch."
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Phase FRF-9",
+        "ledger:D-2",
+        "ledger:D-17"
+      ],
+      "id": "cr-10",
+      "statement": "All twelve DevelopmentCase handoff values are typed and required; Development planning consumes them; removing PRD intent, UC, realization, terminal-claim, or construction bindings fails before planning."
+    },
+    {
+      "authority": [
+        "plan:§Definition of complete",
+        "plan:§Desk contracts/settle-formalization",
+        "plan:§Phase FRF-7"
+      ],
+      "id": "cr-11",
+      "statement": "The whole-WHAT baseline is the only WHAT freeze authority; settlement and architecture perform no latest/status/type/chronology reselection of accepted material."
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Required test layers/Contract and pure validator tests"
+      ],
+      "id": "cr-12",
+      "statement": "The WHAT chain is closed in both directions over source, intent, scenario, requirements, acceptance, and evidence; reconciliation detects forward and reverse gaps without mutating accepted material; every non-empty blocking difference is rejected rather than warned."
+    }
+  ],
+  "derivation": {
+    "authorRole": "FRF-WP02 reverse-graph author (independent agent)",
+    "base": "a79cc24d",
+    "graphFile": "docs/refactoring/formalization-frf/graphs/reverse/reverse-graph.json",
+    "independence": {
+      "forbiddenInputsNotRead": [
+        "the forward expected graph (authored by the other FRF-WP02 agent)",
+        "installed production source under src/",
+        "production validators and production flow output",
+        "tests and fixtures"
+      ],
+      "planClause": "Forward and reverse expected graphs must be authored independently ... Neither author may read the other result before both hashes are recorded. Expected graphs must not be generated from production validators or production flow output."
+    },
+    "inputs": [
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Development handoff requirements",
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Target semantic trace grammar",
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Desk contracts",
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Graph and test model (reverse input clause)",
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Required test layers and Required semantic mutations (what must be rejectable)",
+      "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md - Objective, Target process graph, Phases FRF-6..FRF-9, FRF-12, Definition of complete",
+      "docs/refactoring/formalization-frf/INTENTIONAL-DIFFERENCE-LEDGER.md - rows D-1, D-2, D-3, D-4, D-17 (the plan's handoff requirements restated as fix targets)"
+    ],
+    "method": "Read the plan's Development handoff requirements and terminal-evidence obligations backwards: each terminal claim of the three terminal nodes asserts something proved; each assertion demands citations into accepted material; each accepted artifact demands handoff bindings; each binding resolves down to PRD intent members, UC scenarios and terminal branches, requirements, acceptance criteria, SRS scenario realization, and finally the Discovery source claims and brief. The graph states what the plan REQUIRES, not what installed code does; installed-behavior gaps must emerge from the coordinator's reconciliation diff, never from this artifact.",
+    "reverseInputClause": "reverse input: Solution Contract, DevelopmentCase, SRS realization, terminal evidence, and product-verifier obligations"
+  },
+  "edges": [
+    {
+      "authority": [
+        "plan:§Target process graph",
+        "plan:§Required test layers/Process graph tests",
+        "plan:§Decision"
+      ],
+      "constraint": "A failed gate emits no CellFinalAcceptance and no WorkplaceProductionRevision for the failed desk; the claim's evidence is the failed GateDecision plus the absence of downstream accepted authority.",
+      "from": "claim/complete-failed/gate-failed",
+      "id": "edge/0001",
+      "kind": "cites-failed-gate",
+      "to": "material/gate-decision"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/settle-formalization"
+      ],
+      "constraint": "Exactly one content-addressed Solution Contract referencing both authorities and their atomic manifests.",
+      "from": "claim/complete-formalized/both-authorities-sealed",
+      "id": "edge/0002",
+      "kind": "cites-settled-contract",
+      "to": "material/solution-contract"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Required test layers/Contract and pure validator tests",
+        "ledger:D-2"
+      ],
+      "constraint": "All twelve handoff binding kinds are typed, required values; DevelopmentCase rejects missing scenario and realization bindings.",
+      "from": "claim/complete-formalized/development-handoff-complete",
+      "id": "edge/0003",
+      "kind": "requires-typed-required-values",
+      "to": "material/development-case"
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Current defect to remove",
+        "plan:§Required test layers/Formalization-to-Development tests"
+      ],
+      "constraint": "Same scenario identity and hash at every hop; replan, adoption, settlement, and verification preserve them.",
+      "from": "claim/complete-formalized/scenario-survival-through-development",
+      "id": "edge/0004",
+      "kind": "requires-identity-survival",
+      "to": "material/uc-scenario",
+      "via": [
+        "DevelopmentCase",
+        "Development WorkItem",
+        "Solution Contract",
+        "WHAT baseline",
+        "SRS"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-product-intent"
+      ],
+      "constraint": "Every accepted Discovery scope item maps to an exact intent member or an explicit deferred/out-of-scope disposition.",
+      "from": "claim/complete-formalized/source-intent-coverage",
+      "id": "edge/0005",
+      "kind": "requires-coverage-or-disposition",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Decision analysis (red-team conditions)"
+      ],
+      "constraint": "Coverage is checked against the exact Discovery handoff, not against self-generated PRD content only.",
+      "from": "claim/complete-formalized/source-intent-coverage",
+      "id": "edge/0006",
+      "kind": "coverage-checked-against-exact-handoff",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "Every required UC terminal result has at least one end-to-end AC or an accepted evidence binding.",
+      "from": "claim/complete-formalized/terminal-results-provable",
+      "id": "edge/0007",
+      "kind": "requires-provable-terminal-claims",
+      "to": "material/terminal-claim"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Phase FRF-6"
+      ],
+      "constraint": "Evidence kind is one of test, monitoring, audit, independent-agent-review; evidence type and observable terminal result are declared.",
+      "from": "claim/complete-formalized/terminal-results-provable",
+      "id": "edge/0008",
+      "kind": "requires-accepted-evidence-binding",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Phase FRF-7"
+      ],
+      "constraint": "Exact content-addressed references for every authority class; no scanning by epic, lifecycle, status, type, chronology, or latest.",
+      "from": "claim/complete-formalized/what-baseline-complete",
+      "id": "edge/0009",
+      "kind": "cites-frozen-authority",
+      "to": "material/whole-what-baseline"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Required test layers/Contract and pure validator tests"
+      ],
+      "constraint": "Closed in both directions with no non-empty difference; reconciliation may not patch accepted material.",
+      "from": "claim/complete-formalized/what-chain-closed",
+      "id": "edge/0010",
+      "kind": "cites-reconciled-closed-chain",
+      "to": "material/semantic-trace"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Drift is detected against the frozen baseline reference; missing, extra, duplicated, substituted, stale, foreign, or drifted material is rejected.",
+      "from": "claim/complete-inconsistent/drift-detected-no-mutation",
+      "id": "edge/0011",
+      "kind": "drift-detected-against-frozen-reference",
+      "to": "material/whole-what-baseline"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Required test layers/Contract and pure validator tests"
+      ],
+      "constraint": "Gaps are detected in both directions; a lawful repair creates a new immutable upstream revision and invalidates the dependent cone.",
+      "from": "claim/complete-inconsistent/drift-detected-no-mutation",
+      "id": "edge/0012",
+      "kind": "gap-detected-in-trace-closure",
+      "to": "material/semantic-trace"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/settle-formalization",
+        "plan:§Development handoff requirements"
+      ],
+      "bindingKind": "what-baseline-reference-and-hash",
+      "constraint": "Exact frozen baseline reference pinned with canonical digest; settlement must not rediscover accepted artifacts.",
+      "from": "material/solution-contract",
+      "id": "edge/0013",
+      "kind": "requires-exact-reference-and-hash",
+      "to": "material/whole-what-baseline"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/settle-formalization",
+        "plan:§Development handoff requirements"
+      ],
+      "bindingKind": "srs-reference-and-hash",
+      "constraint": "Exact accepted SRS revision pinned; no reparse of mutable documents after member-manifest acceptance.",
+      "from": "material/solution-contract",
+      "id": "edge/0014",
+      "kind": "requires-exact-reference-and-hash",
+      "to": "material/srs"
+    },
+    {
+      "authority": [
+        "plan:§Required test layers/Formalization-to-Development tests",
+        "ledger:D-2"
+      ],
+      "bindingKind": "solution-contract",
+      "constraint": "Formalization output maps byte-for-byte to Development input for every authoritative field.",
+      "from": "material/solution-contract",
+      "id": "edge/0015",
+      "kind": "hands-off-byte-for-byte",
+      "to": "material/development-case"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "formalization-certificate",
+      "from": "material/development-case",
+      "id": "edge/0016",
+      "kind": "carries-required-value",
+      "to": "material/formalization-certificate"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "solution-contract",
+      "from": "material/development-case",
+      "id": "edge/0017",
+      "kind": "carries-required-value",
+      "to": "material/solution-contract"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "what-baseline-reference-and-hash",
+      "from": "material/development-case",
+      "id": "edge/0018",
+      "kind": "carries-required-value",
+      "to": "material/whole-what-baseline"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "srs-reference-and-hash",
+      "from": "material/development-case",
+      "id": "edge/0019",
+      "kind": "carries-required-value",
+      "to": "material/srs"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "prd-intent-bindings",
+      "constraint": "Must resolve exactly against the accepted PRD intent-member id set; foreign bindings are FOREIGN_LINEAGE refusals.",
+      "from": "material/development-case",
+      "id": "edge/0020",
+      "kind": "carries-required-value",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "scenario-bindings",
+      "constraint": "Must resolve exactly against accepted UC scenario ids; retaining all AC IDs while stripping UC/scenario bindings is rejected.",
+      "from": "material/development-case",
+      "id": "edge/0021",
+      "kind": "carries-required-value",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "requirement-bindings",
+      "constraint": "Must resolve exactly against accepted FR member ids.",
+      "from": "material/development-case",
+      "id": "edge/0022",
+      "kind": "carries-required-value",
+      "to": "material/fr"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "requirement-bindings",
+      "constraint": "Must resolve exactly against accepted NFR member ids.",
+      "from": "material/development-case",
+      "id": "edge/0023",
+      "kind": "carries-required-value",
+      "to": "material/nfr"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "requirement-bindings",
+      "constraint": "Must resolve exactly against accepted RULE member ids.",
+      "from": "material/development-case",
+      "id": "edge/0024",
+      "kind": "carries-required-value",
+      "to": "material/rule"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "acceptance-bindings",
+      "constraint": "Must resolve exactly against accepted AC atomic criterion ids.",
+      "from": "material/development-case",
+      "id": "edge/0025",
+      "kind": "carries-required-value",
+      "to": "material/ac-criterion"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "scenario-realization-bindings",
+      "constraint": "Must resolve exactly against accepted SRS scenario-realization entry ids; stripping scenario realization from the DevelopmentCase is a killed mutation.",
+      "from": "material/development-case",
+      "id": "edge/0026",
+      "kind": "carries-required-value",
+      "to": "material/srs-scenario-realization"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-1",
+        "ledger:D-17"
+      ],
+      "bindingKind": "terminal-claim-bindings",
+      "constraint": "Must resolve exactly against the accepted product terminal claim id set; removing terminal-claim bindings fails before planning.",
+      "from": "material/development-case",
+      "id": "edge/0027",
+      "kind": "carries-required-value",
+      "to": "material/terminal-claim"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "integration-and-construction-obligations",
+      "constraint": "Integration and construction obligations are typed required values, not payload decoration.",
+      "from": "material/development-case",
+      "id": "edge/0028",
+      "kind": "carries-required-value",
+      "to": "material/integration-obligation"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-17"
+      ],
+      "bindingKind": "repository-and-policy-bindings",
+      "from": "material/development-case",
+      "id": "edge/0029",
+      "kind": "carries-required-value",
+      "to": "material/repository-policy-binding"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Phase FRF-9",
+        "ledger:D-2"
+      ],
+      "constraint": "Development planning must consume these values; scenario bindings are mandatory planning inputs, not optional metadata.",
+      "from": "material/development-case",
+      "id": "edge/0030",
+      "kind": "consumed-by-planning",
+      "to": "material/development-plan"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-3"
+      ],
+      "constraint": "Every WorkItem binds one or more of the five obligation kinds.",
+      "from": "material/development-plan",
+      "id": "edge/0031",
+      "kind": "composed-of-workitems",
+      "to": "material/workitem"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-4"
+      ],
+      "constraint": "A plan covering every AC but omitting the verifier is invalid.",
+      "from": "material/development-plan",
+      "id": "edge/0032",
+      "kind": "must-cover-verifier",
+      "to": "material/verifier-obligation"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Acceptance obligation: the WorkItem cites the AC criteria it discharges.",
+      "from": "material/workitem",
+      "id": "edge/0033",
+      "kind": "obligation-binding",
+      "obligationKind": "acceptance-obligation",
+      "to": "material/ac-criterion"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Scenario-realization obligation: the WorkItem cites the realization entry whose entrypoint, terminal result, and evidence it covers.",
+      "from": "material/workitem",
+      "id": "edge/0034",
+      "kind": "obligation-binding",
+      "obligationKind": "scenario-realization-obligation",
+      "to": "material/srs-scenario-realization"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Requirement obligation: the WorkItem preserves FR identities in addition to AC identities.",
+      "from": "material/workitem",
+      "id": "edge/0035",
+      "kind": "obligation-binding",
+      "obligationKind": "requirement-obligation",
+      "to": "material/fr"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Requirement obligation: the WorkItem preserves NFR identities in addition to AC identities.",
+      "from": "material/workitem",
+      "id": "edge/0036",
+      "kind": "obligation-binding",
+      "obligationKind": "requirement-obligation",
+      "to": "material/nfr"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Requirement obligation: the WorkItem preserves RULE identities in addition to AC identities.",
+      "from": "material/workitem",
+      "id": "edge/0037",
+      "kind": "obligation-binding",
+      "obligationKind": "requirement-obligation",
+      "to": "material/rule"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Required test layers/Formalization-to-Development tests"
+      ],
+      "constraint": "Integration or composition obligation: a multi-module scenario cannot be represented by one disconnected local task.",
+      "from": "material/workitem",
+      "id": "edge/0038",
+      "kind": "obligation-binding",
+      "obligationKind": "integration-or-composition-obligation",
+      "to": "material/integration-obligation"
+    },
+    {
+      "authority": [
+        "plan:§Required test layers/Formalization-to-Development tests",
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Typed infrastructure obligation used when the WorkItem does not map one-to-one to an AC.",
+      "from": "material/workitem",
+      "id": "edge/0039",
+      "kind": "obligation-binding",
+      "obligationKind": "infrastructure-obligation",
+      "to": "material/infrastructure-obligation"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Required test layers/Elite and simple-server kill tests"
+      ],
+      "constraint": "Removing the input-to-controller edge, the state-to-renderer edge, or the composition owner must be rejected before Development execution.",
+      "from": "material/integration-obligation",
+      "id": "edge/0040",
+      "kind": "defined-by-realization",
+      "to": "material/srs-scenario-realization",
+      "via": [
+        "composition owner",
+        "external interfaces",
+        "participating modules",
+        "required producer-consumer/runtime edges"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Required test layers/Formalization-to-Development tests"
+      ],
+      "constraint": "Construction surfaces are cited from the realization entry's required implementation and integration surfaces.",
+      "from": "material/infrastructure-obligation",
+      "id": "edge/0041",
+      "kind": "defined-by-realization",
+      "to": "material/srs-scenario-realization",
+      "via": [
+        "required implementation and integration surfaces"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Phase FRF-7"
+      ],
+      "constraint": "Architecture consumes only the exact frozen baseline.",
+      "from": "material/srs",
+      "grammarRule": "srs-derived-from-frozen-what-baseline",
+      "id": "edge/0042",
+      "kind": "derived-from-frozen-baseline",
+      "to": "material/whole-what-baseline"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Phase FRF-8"
+      ],
+      "constraint": "One mandatory scenario-realization section; every frozen required UC appears exactly once; extra, duplicate, stale, foreign, and disconnected scenarios are rejected.",
+      "from": "material/srs",
+      "id": "edge/0043",
+      "kind": "mandatory-realization-section",
+      "to": "material/srs-scenario-realization"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Phase FRF-8"
+      ],
+      "constraint": "Exactly-once per frozen required UC; a flat file list is not proof of runtime connectivity.",
+      "from": "material/srs-scenario-realization",
+      "id": "edge/0044",
+      "kind": "realizes-required-uc",
+      "to": "material/uc-scenario",
+      "via": [
+        "entrypoint or trigger",
+        "scenario identity",
+        "terminal observable result"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract"
+      ],
+      "constraint": "Each realization entry declares an evidence binding; the Elite missing-browser-bootstrap mutation is rejected before Development execution.",
+      "from": "material/srs-scenario-realization",
+      "id": "edge/0045",
+      "kind": "declares-evidence-binding",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract"
+      ],
+      "constraint": "The realization entry records the terminal observable result for the realized scenario.",
+      "from": "material/srs-scenario-realization",
+      "id": "edge/0046",
+      "kind": "records-terminal-observable-result",
+      "to": "material/terminal-claim"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-product-intent",
+        "plan:§Development handoff requirements"
+      ],
+      "constraint": "Product terminal claims originate as PRD lifecycle-terminal-claim intent members.",
+      "from": "material/terminal-claim",
+      "id": "edge/0047",
+      "kind": "originates-from-lifecycle-terminal-claim",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "Each terminal claim is evidenced by the UC's observable postcondition or terminal result.",
+      "from": "material/terminal-claim",
+      "id": "edge/0048",
+      "kind": "evidenced-by-uc-terminal-result",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "Every AC binds exact FR material.",
+      "from": "material/ac-criterion",
+      "grammarRule": "ac-derived-from-fr-or-nfr",
+      "id": "edge/0049",
+      "kind": "derived-from-requirement",
+      "to": "material/fr"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "Every AC binds exact NFR material.",
+      "from": "material/ac-criterion",
+      "grammarRule": "ac-derived-from-fr-or-nfr",
+      "id": "edge/0050",
+      "kind": "derived-from-requirement",
+      "to": "material/nfr"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Required test layers/Elite and simple-server kill tests"
+      ],
+      "constraint": "A scenario-facing AC must retain its exact UC binding.",
+      "from": "material/ac-criterion",
+      "grammarRule": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+      "id": "edge/0051",
+      "kind": "scenario-facing-binding",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Required semantic mutations"
+      ],
+      "constraint": "Keeping AC coverage while removing the terminal scenario binding is a killed mutation.",
+      "from": "material/ac-criterion",
+      "grammarRule": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+      "id": "edge/0052",
+      "kind": "terminal-branch-binding",
+      "to": "material/uc-terminal-branch"
+    },
+    {
+      "authority": [
+        "plan:§Phase FRF-6",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "Evidence type and observable terminal result required; evidence kind in the closed four-kind vocabulary.",
+      "from": "material/ac-criterion",
+      "id": "edge/0053",
+      "kind": "requires-evidence-method",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Binds exact PRD intent; an FR with no exact PRD/UC source is rejected.",
+      "from": "material/fr",
+      "grammarRule": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+      "id": "edge/0054",
+      "kind": "derived-from-intent",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Scenario-derived FR binds the exact UC scenario identity.",
+      "from": "material/fr",
+      "grammarRule": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+      "id": "edge/0055",
+      "kind": "scenario-lineage",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/derive-system-requirements",
+        "plan:§Target semantic trace grammar"
+      ],
+      "constraint": "Scenario-derived FR binds exact UC branch identities; the restored UC-covers-pre-existing-FR direction is a killed mutation.",
+      "from": "material/fr",
+      "grammarRule": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+      "id": "edge/0056",
+      "kind": "branch-lineage",
+      "to": "material/uc-terminal-branch"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Binds exact PRD intent.",
+      "from": "material/nfr",
+      "grammarRule": "nfr-derived-from-prd-optionally-uc-when-scenario-local",
+      "id": "edge/0057",
+      "kind": "derived-from-intent",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Optional: present only when the NFR is scenario-local; never forced into a fictional user scenario.",
+      "from": "material/nfr",
+      "grammarRule": "nfr-derived-from-prd-optionally-uc-when-scenario-local",
+      "id": "edge/0058",
+      "kind": "optional-scenario-local-lineage",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Cross-cutting NFRs may bind directly to source constraints.",
+      "from": "material/nfr",
+      "id": "edge/0059",
+      "kind": "source-constraint-lineage",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Binds exact PRD intent.",
+      "from": "material/rule",
+      "grammarRule": "rule-derived-from-prd-optionally-uc-when-scenario-local",
+      "id": "edge/0060",
+      "kind": "derived-from-intent",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Optional: present only when the rule is scenario-local.",
+      "from": "material/rule",
+      "grammarRule": "rule-derived-from-prd-optionally-uc-when-scenario-local",
+      "id": "edge/0061",
+      "kind": "optional-scenario-local-lineage",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "constraint": "Cross-cutting rules may bind directly to source constraints.",
+      "from": "material/rule",
+      "id": "edge/0062",
+      "kind": "source-constraint-lineage",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/model-use-cases"
+      ],
+      "constraint": "Exact PRD intent references; no pre-existing-FR input; every scenario_required intent member is covered by at least one UC.",
+      "from": "material/uc-scenario",
+      "grammarRule": "uc-derived-from-prd-intent-members",
+      "id": "edge/0063",
+      "kind": "derived-from-exact-intent",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases"
+      ],
+      "constraint": "Removing an actor, trigger, alternate flow, error flow, or observable postcondition is a killed mutation.",
+      "from": "material/uc-scenario",
+      "id": "edge/0064",
+      "kind": "declares-material-branches",
+      "to": "material/uc-terminal-branch",
+      "via": [
+        "main flow",
+        "material alternate flows",
+        "material error flows",
+        "observable postcondition or terminal result"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar"
+      ],
+      "from": "material/prd-intent-member",
+      "grammarRule": "prd-derived-from-brief-and-source-claims",
+      "id": "edge/0065",
+      "kind": "derived-from-brief",
+      "to": "material/brief"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Objective"
+      ],
+      "constraint": "Every accepted Discovery scope item has an exact PRD intent member.",
+      "from": "material/prd-intent-member",
+      "grammarRule": "prd-derived-from-brief-and-source-claims",
+      "id": "edge/0066",
+      "kind": "derived-from-exact-source-claims",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar"
+      ],
+      "constraint": "Exactly one of scenario_required, direct_requirement, deferred, out_of_scope; deferred/out_of_scope require owner and reason; direct_requirement requires a reason why no meaningful scenario exists.",
+      "from": "material/prd-intent-member",
+      "id": "edge/0067",
+      "kind": "declares-exactly-one-disposition",
+      "to": "material/disposition"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-product-intent"
+      ],
+      "constraint": "Stable atomic members including lifecycle terminal claims, constraints, assumptions/unknowns, and required dispositions.",
+      "from": "material/prd",
+      "id": "edge/0068",
+      "kind": "atomic-intent-members",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Stable scenario identities with actor kind and identity.",
+      "from": "material/uc",
+      "id": "edge/0069",
+      "kind": "atomic-scenarios",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Atomic criterion identities; AC is WHAT-side verification only.",
+      "from": "material/ac",
+      "id": "edge/0070",
+      "kind": "atomic-criteria",
+      "to": "material/ac-criterion"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "FormalizationCase identity and Discovery certificate/proposal identity are frozen exactly.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0071",
+      "kind": "freezes-case-identity",
+      "to": "material/formalization-certificate",
+      "via": [
+        "Discovery certificate/proposal identity",
+        "FormalizationCase identity"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Source claim manifests and source constraint manifests are frozen exactly.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0072",
+      "kind": "freezes-source-manifests",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Each accepted CellFinalAcceptance, CandidateSet, and WorkplaceProductionRevision used as material authority is frozen exactly.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0073",
+      "kind": "freezes-acceptance-authority",
+      "to": "material/accepted-authority",
+      "via": [
+        "CandidateSet",
+        "CellFinalAcceptance",
+        "WorkplaceProductionRevision"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "PRD container and intent-member IDs and hashes; accepted UC material cannot disappear after freeze.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0074",
+      "kind": "freezes-container-and-members",
+      "to": "material/prd"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Objective"
+      ],
+      "constraint": "UC container, scenario, and branch IDs and hashes; accepted UC material cannot disappear after freeze.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0075",
+      "kind": "freezes-container-and-members",
+      "to": "material/uc"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "FR container and member IDs and hashes.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0076",
+      "kind": "freezes-container-and-members",
+      "to": "material/fr"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "NFR container and member IDs and hashes.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0077",
+      "kind": "freezes-container-and-members",
+      "to": "material/nfr"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "RULE container and member IDs and hashes.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0078",
+      "kind": "freezes-container-and-members",
+      "to": "material/rule"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "AC container and atomic criterion IDs and hashes; freezing only AC members while omitting UC or requirements is a killed mutation.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0079",
+      "kind": "freezes-container-and-members",
+      "to": "material/ac"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Accepted trace/member-binding set and canonical digest are frozen exactly.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0080",
+      "kind": "freezes-trace-set-and-digest",
+      "to": "material/semantic-trace"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Deferral, constraint, assumption, and unknown dispositions are frozen as distinct named content.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0081",
+      "kind": "freezes-dispositions",
+      "to": "material/disposition",
+      "via": [
+        "assumption dispositions",
+        "constraint dispositions",
+        "deferral dispositions",
+        "unknown dispositions"
+      ]
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "Evidence-method bindings are frozen exactly.",
+      "from": "material/whole-what-baseline",
+      "id": "edge/0082",
+      "kind": "freezes-evidence-method-bindings",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain head: the Discovery source claim layer of the closed chain.",
+      "from": "material/semantic-trace",
+      "id": "edge/0083",
+      "kind": "chain-endpoint",
+      "to": "material/discovery-source-claim"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: PRD intent member.",
+      "from": "material/semantic-trace",
+      "id": "edge/0084",
+      "kind": "chain-layer",
+      "to": "material/prd-intent-member"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain alternative: an explicit disposition may stand in for UC coverage where lawfully justified.",
+      "from": "material/semantic-trace",
+      "id": "edge/0085",
+      "kind": "chain-alternative",
+      "to": "material/disposition"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: UC or justified direct requirement.",
+      "from": "material/semantic-trace",
+      "id": "edge/0086",
+      "kind": "chain-layer",
+      "to": "material/uc-scenario"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: FR.",
+      "from": "material/semantic-trace",
+      "id": "edge/0087",
+      "kind": "chain-layer",
+      "to": "material/fr"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: NFR.",
+      "from": "material/semantic-trace",
+      "id": "edge/0088",
+      "kind": "chain-layer",
+      "to": "material/nfr"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: RULE.",
+      "from": "material/semantic-trace",
+      "id": "edge/0089",
+      "kind": "chain-layer",
+      "to": "material/rule"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain layer: AC.",
+      "from": "material/semantic-trace",
+      "id": "edge/0090",
+      "kind": "chain-layer",
+      "to": "material/ac-criterion"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what"
+      ],
+      "constraint": "Chain tail: the evidence obligation layer of the closed chain.",
+      "from": "material/semantic-trace",
+      "id": "edge/0091",
+      "kind": "chain-endpoint",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)",
+        "plan:§Phase FRF-12"
+      ],
+      "constraint": "The product verifier independently verifies terminal evidence against the product terminal claims.",
+      "from": "material/verifier-obligation",
+      "id": "edge/0092",
+      "kind": "verifies-terminal-evidence",
+      "to": "material/terminal-claim"
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)",
+        "plan:§Phase FRF-12",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "constraint": "The product verifier verifies that the declared evidence method was demonstrated.",
+      "from": "material/verifier-obligation",
+      "id": "edge/0093",
+      "kind": "verifies-evidence-demonstrated",
+      "to": "material/evidence-binding"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "constraint": "A terminal branch resolves within exactly one owning UC scenario; branch identities resolve against the owning scenario's frozen branch id set.",
+      "from": "material/uc-terminal-branch",
+      "id": "edge/0094",
+      "kind": "belongs-to-scenario",
+      "to": "material/uc-scenario"
+    }
+  ],
+  "exclusions": [
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)"
+      ],
+      "id": "x-1",
+      "statement": "The installed production source, production validators, and production flow output were not read; expected graphs must not be generated from them."
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)"
+      ],
+      "id": "x-2",
+      "statement": "The forward expected graph (authored by the other FRF-WP02 agent) was not read; this artifact was frozen before any comparison."
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)"
+      ],
+      "id": "x-3",
+      "statement": "Known installed-behavior gaps (UC-FOREIGN acceptance, absent Development consumption) are NOT encoded here as absences; this graph states only what the plan requires, so those gaps must emerge from the coordinator's reconciliation diff."
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)"
+      ],
+      "id": "x-4",
+      "statement": "No process-transition (node/edge count) model is asserted here; the reverse derivation is over the semantic evidence chain, not the installed transition graph."
+    }
+  ],
+  "nodes": [
+    {
+      "authority": [
+        "plan:§Target process graph",
+        "plan:§Required test layers/Process graph tests",
+        "plan:§Decision"
+      ],
+      "chainRole": "claim",
+      "description": "Reaching complete-failed asserts a reviewed Cell gate failed: no CellFinalAcceptance and no WorkplaceProductionRevision was emitted for the failed desk, and downstream accepted authority is absent, never partial.",
+      "id": "claim/complete-failed/gate-failed",
+      "kind": "terminal-claim",
+      "label": "complete-failed: a reviewed Cell gate failed",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/settle-formalization",
+        "plan:§Phase FRF-7"
+      ],
+      "chainRole": "claim",
+      "description": "Reaching complete-formalized via domain.formalized asserts one content-addressed Solution Contract exists binding exact references to both authorities (the frozen whole-WHAT baseline and the exact accepted SRS revision) with their atomic manifests.",
+      "id": "claim/complete-formalized/both-authorities-sealed",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: settlement sealed both authorities",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Required test layers/Contract and pure validator tests",
+        "ledger:D-2",
+        "ledger:D-3",
+        "ledger:D-17"
+      ],
+      "chainRole": "claim",
+      "description": "The DevelopmentCase carries all twelve typed, required values; Development planning consumes them; WorkItems bind typed obligations; stripping any binding or producing an AC-complete but scenario-incomplete plan must be rejected before planning.",
+      "id": "claim/complete-formalized/development-handoff-complete",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: Development handoff is complete and consumed",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Current defect to remove",
+        "plan:§Required test layers/Formalization-to-Development tests"
+      ],
+      "chainRole": "claim",
+      "description": "Every required interaction or operational scenario survives unchanged (same identity and hash) through the WHAT baseline, SRS, Solution Contract, DevelopmentCase, and Development WorkItems, including replan, adoption, settlement, and verification.",
+      "id": "claim/complete-formalized/scenario-survival-through-development",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: every required scenario survived to Development",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-product-intent",
+        "plan:§Decision analysis (red-team conditions)"
+      ],
+      "chainRole": "claim",
+      "description": "Every accepted Discovery scope item has an exact PRD intent member or an explicit deferred/out-of-scope disposition, checked against the exact Discovery handoff, not against self-generated PRD content only.",
+      "id": "claim/complete-formalized/source-intent-coverage",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: source intent fully covered",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Phase FRF-6"
+      ],
+      "chainRole": "claim",
+      "description": "Every required UC terminal result has at least one end-to-end AC or an accepted evidence binding of type test, monitoring, audit, or independent agent review; evidence type and observable terminal result are declared.",
+      "id": "claim/complete-formalized/terminal-results-provable",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: terminal results are provable",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Phase FRF-7"
+      ],
+      "chainRole": "claim",
+      "description": "The whole-WHAT baseline holds exact content-addressed references for every authority class (case identity, source manifests, acceptance records, containers and atomic members, trace set, dispositions, evidence bindings) plus one canonical digest; it reselects nothing.",
+      "id": "claim/complete-formalized/what-baseline-complete",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: whole-WHAT baseline is complete",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Required test layers/Contract and pure validator tests"
+      ],
+      "chainRole": "claim",
+      "description": "The closed chain reconciles in both directions: Discovery source claim -> PRD intent member or explicit disposition -> UC or justified direct requirement -> FR/NFR/RULE -> AC/evidence obligation, with no non-empty difference.",
+      "id": "claim/complete-formalized/what-chain-closed",
+      "kind": "terminal-claim",
+      "label": "complete-formalized: WHAT chain is closed both directions",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Target process graph",
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "claim",
+      "description": "Reaching complete-inconsistent asserts drift or a closure gap was detected against the frozen baseline or trace, and that no accepted artifact, member, or trace was mutated in place.",
+      "id": "claim/complete-inconsistent/drift-detected-no-mutation",
+      "kind": "terminal-claim",
+      "label": "complete-inconsistent: drift detected, history preserved",
+      "layer": "terminal"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-acceptance-contract"
+      ],
+      "chainRole": "material",
+      "description": "The AC container with atomic criterion identities; WHAT-side verification only, never architecture or file allocation.",
+      "id": "material/ac",
+      "kind": "acceptance-contract",
+      "label": "AC container",
+      "layer": "acceptance"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Required semantic mutations"
+      ],
+      "chainRole": "material",
+      "description": "An atomic acceptance criterion. Must bind exact FR or NFR material; a scenario-facing criterion must retain its exact UC and terminal-branch binding (keeping AC coverage while removing the terminal scenario binding is a killed mutation).",
+      "id": "material/ac-criterion",
+      "kind": "acceptance-criterion",
+      "label": "atomic AC criterion",
+      "layer": "acceptance"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "Each accepted CellFinalAcceptance, CandidateSet, and WorkplaceProductionRevision used as material authority, frozen with identity and hash by the baseline.",
+      "id": "material/accepted-authority",
+      "kind": "kernel-acceptance-record",
+      "label": "accepted authority records",
+      "layer": "kernel"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "The brief produced by define-product-intent; the head of source intent.",
+      "id": "material/brief",
+      "kind": "product-brief",
+      "label": "brief",
+      "layer": "source"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-2",
+        "ledger:D-17"
+      ],
+      "chainRole": "material",
+      "description": "The Development-side case that must carry the twelve typed, required handoff values and whose input validation and workspace preparation consume them; missing scenario or realization bindings must be rejected.",
+      "id": "material/development-case",
+      "kind": "development-input",
+      "label": "DevelopmentCase",
+      "layer": "development"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-3",
+        "ledger:D-4"
+      ],
+      "chainRole": "material",
+      "description": "The Development task plan: consumes the DevelopmentCase values, is composed of WorkItems with typed obligations, and is invalid when AC-complete but scenario-incomplete.",
+      "id": "material/development-plan",
+      "kind": "development-plan",
+      "label": "Development plan",
+      "layer": "development"
+    },
+    {
+      "authority": [
+        "plan:§Objective",
+        "plan:§Decision analysis (red-team conditions)",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "Exact Discovery source claims and source constraints; the origin of all intent and the reference against which source-to-intent coverage is checked.",
+      "id": "material/discovery-source-claim",
+      "kind": "source-claim",
+      "label": "Discovery source claim / source constraint",
+      "layer": "source"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "Deferral, constraint, assumption, and unknown dispositions with owner and reason where required; frozen by the baseline as distinct named content.",
+      "id": "material/disposition",
+      "kind": "disposition-record",
+      "label": "dispositions",
+      "layer": "intent"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "An accepted evidence binding of type test, monitoring, audit, or independent agent review; the terminal-evidence method record.",
+      "id": "material/evidence-binding",
+      "kind": "evidence-record",
+      "label": "evidence binding",
+      "layer": "evidence"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "The FormalizationCase and Discovery certificate/proposal identity carried by the handoff and frozen by the baseline.",
+      "id": "material/formalization-certificate",
+      "kind": "case-identity",
+      "label": "formalization certificate / case identity",
+      "layer": "freeze"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements",
+        "plan:§Required semantic mutations"
+      ],
+      "chainRole": "material",
+      "description": "A functional requirement. Scenario-derived FRs bind exact PRD intent and UC branch identities; an FR with no exact PRD/UC source is a killed mutation; never foreign, stale, superseded, or unaccepted revisions.",
+      "id": "material/fr",
+      "kind": "functional-requirement",
+      "label": "FR",
+      "layer": "requirements"
+    },
+    {
+      "authority": [
+        "plan:§Decision",
+        "plan:§Required test layers/Process graph tests"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "The kernel GateDecision evidencing a failed gate; the evidence cited by complete-failed (by absence of downstream accepted authority).",
+      "id": "material/gate-decision",
+      "kind": "gate-decision-record",
+      "label": "failed-gate decision record",
+      "layer": "kernel"
+    },
+    {
+      "authority": [
+        "plan:§Required test layers/Formalization-to-Development tests",
+        "plan:§Development handoff requirements"
+      ],
+      "chainRole": "material",
+      "description": "A typed infrastructure obligation bound to required implementation and integration surfaces when a WorkItem does not map one-to-one to an AC.",
+      "id": "material/infrastructure-obligation",
+      "kind": "construction-obligation",
+      "label": "typed infrastructure obligation",
+      "layer": "development"
+    },
+    {
+      "authority": [
+        "plan:§Required test layers/Formalization-to-Development tests",
+        "plan:§Development handoff requirements",
+        "plan:§Required test layers/Elite and simple-server kill tests"
+      ],
+      "chainRole": "material",
+      "description": "An integration/composition obligation: composition owner, producer-consumer/runtime edges, external interfaces; removing any of these must be rejected before Development execution.",
+      "id": "material/integration-obligation",
+      "kind": "composition-obligation",
+      "label": "integration/composition obligation",
+      "layer": "development"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "chainRole": "material",
+      "description": "A non-functional requirement. Derives from PRD, optionally from a UC when scenario-local; cross-cutting NFRs may bind directly to PRD intent or source constraints and must not be forced into a fictional scenario.",
+      "id": "material/nfr",
+      "kind": "quality-requirement",
+      "label": "NFR",
+      "layer": "requirements"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-product-intent",
+        "plan:§Desk contracts/freeze-what-baseline"
+      ],
+      "chainRole": "material",
+      "description": "The PRD container holding stable atomic intent members with IDs and hashes, frozen by the baseline.",
+      "id": "material/prd",
+      "kind": "product-contract",
+      "label": "PRD container",
+      "layer": "intent"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-product-intent",
+        "plan:§Target semantic trace grammar"
+      ],
+      "chainRole": "material",
+      "description": "A stable atomic PRD intent member (boundary, actors, outcomes, scope, lifecycle terminal claims, constraints, assumptions/unknowns, dispositions); each has exactly one of the four dispositions.",
+      "id": "material/prd-intent-member",
+      "kind": "intent-member",
+      "label": "PRD intent member",
+      "layer": "intent"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements"
+      ],
+      "chainRole": "leaf-authority",
+      "description": "Repository and policy references carried as a typed required handoff value.",
+      "id": "material/repository-policy-binding",
+      "kind": "policy-binding",
+      "label": "repository and policy binding",
+      "layer": "development"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/derive-system-requirements"
+      ],
+      "chainRole": "material",
+      "description": "A system rule. Derives from PRD, optionally from a UC when scenario-local; cross-cutting rules may bind directly to PRD intent or source constraints.",
+      "id": "material/rule",
+      "kind": "system-rule",
+      "label": "RULE",
+      "layer": "requirements"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/reconcile-what",
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Phase FRF-6"
+      ],
+      "chainRole": "material",
+      "description": "The accepted trace/member-binding set with canonical digest: the closure of the semantic grammar edges over accepted material; reconciliation validates it forward and reverse without mutating it.",
+      "id": "material/semantic-trace",
+      "kind": "settlement-trace-set",
+      "label": "accepted trace/member-binding set",
+      "layer": "freeze"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/settle-formalization",
+        "plan:§Required test layers/Formalization-to-Development tests"
+      ],
+      "chainRole": "material",
+      "description": "The content-addressed Solution Contract emitted by settlement: exact references to the whole-WHAT baseline and accepted SRS revision with atomic manifests, carrying the DevelopmentHandoff that maps byte-for-byte to Development input.",
+      "id": "material/solution-contract",
+      "kind": "settlement-output",
+      "label": "Solution Contract",
+      "layer": "settlement"
+    },
+    {
+      "authority": [
+        "plan:§Target semantic trace grammar",
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Phase FRF-7"
+      ],
+      "chainRole": "material",
+      "description": "The SRS architecture contract; derives from the frozen whole-WHAT baseline only and contains the mandatory scenario-realization section.",
+      "id": "material/srs",
+      "kind": "architecture-contract",
+      "label": "SRS",
+      "layer": "architecture"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/define-architecture-contract",
+        "plan:§Phase FRF-8",
+        "plan:§Required test layers/Elite and simple-server kill tests"
+      ],
+      "chainRole": "material",
+      "description": "One mandatory scenario-realization entry per frozen required UC: scenario identity, entrypoint/trigger, participating modules, runtime edges, external interfaces, composition owner, implementation/integration surfaces, terminal observable result, evidence binding; a disconnected runtime graph is rejected.",
+      "id": "material/srs-scenario-realization",
+      "kind": "realization-entry",
+      "label": "SRS scenario-realization entry",
+      "layer": "architecture"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "plan:§Desk contracts/define-product-intent",
+        "plan:§Desk contracts/define-acceptance-contract",
+        "plan:§Desk contracts/define-architecture-contract"
+      ],
+      "chainRole": "material",
+      "description": "A product-level terminal claim: originates as a PRD lifecycle-terminal-claim intent member, is evidenced by UC terminal results, and is recorded as the SRS terminal observable result; bound through terminal-claim bindings.",
+      "id": "material/terminal-claim",
+      "kind": "product-terminal-claim",
+      "label": "product terminal claim",
+      "layer": "intent"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Desk contracts/model-use-cases"
+      ],
+      "chainRole": "material",
+      "description": "The UC container with scenario and branch IDs and hashes, frozen by the baseline.",
+      "id": "material/uc",
+      "kind": "scenario-container",
+      "label": "UC container",
+      "layer": "scenarios"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases",
+        "plan:§Target semantic trace grammar",
+        "plan:§Current defect to remove"
+      ],
+      "chainRole": "material",
+      "description": "An interaction or operational scenario with declared actor (closed five-kind vocabulary), exact PRD intent references, trigger, preconditions, main flow, material alternate/error flows, and observable postcondition or terminal result; must not require a pre-existing FR; must remain required planning material through SRS and Development.",
+      "id": "material/uc-scenario",
+      "kind": "scenario",
+      "label": "UC scenario",
+      "layer": "scenarios"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/model-use-cases",
+        "plan:§Target semantic trace grammar"
+      ],
+      "chainRole": "material",
+      "description": "A terminal scenario branch (main, alternate, or error flow ending in a terminal result); the exact binding target of scenario-facing ACs and scenario-derived FRs.",
+      "id": "material/uc-terminal-branch",
+      "kind": "scenario-branch",
+      "label": "UC terminal branch",
+      "layer": "scenarios"
+    },
+    {
+      "authority": [
+        "plan:§Graph and test model (reverse input)",
+        "plan:§Phase FRF-12",
+        "plan:§Development handoff requirements"
+      ],
+      "chainRole": "material",
+      "description": "The product-verifier obligation: independently verify terminal evidence and that the declared evidence method was demonstrated (install, build, tests, start, public interaction, terminal evidence, local delivery result).",
+      "id": "material/verifier-obligation",
+      "kind": "verifier-obligation",
+      "label": "product-verifier obligation",
+      "layer": "evidence"
+    },
+    {
+      "authority": [
+        "plan:§Desk contracts/freeze-what-baseline",
+        "plan:§Phase FRF-7",
+        "plan:§Definition of complete"
+      ],
+      "chainRole": "material",
+      "description": "The replacement whole-WHAT baseline: the only WHAT freeze authority, built from exact accepted transition inputs with one canonical digest; drift is detected against it, never patched through it.",
+      "id": "material/whole-what-baseline",
+      "kind": "freeze-authority",
+      "label": "whole-WHAT baseline",
+      "layer": "freeze"
+    },
+    {
+      "authority": [
+        "plan:§Development handoff requirements",
+        "ledger:D-3"
+      ],
+      "chainRole": "material",
+      "description": "A Development WorkItem; must bind one or more typed obligations (acceptance, scenario-realization, requirement, integration/composition, infrastructure) and preserve the exact scenario/requirement identities and hashes through replan, adoption, settlement, and verification.",
+      "id": "material/workitem",
+      "kind": "development-plan-unit",
+      "label": "WorkItem",
+      "layer": "development"
+    }
+  ],
+  "residuals": [
+    {
+      "id": "r-1",
+      "statement": "This graph is kind-level (artifact kinds and binding vocabularies), not instance-level; per-project instance fixtures belong to FRF-2 RED fixtures and FRF-10 regenerated corpora."
+    },
+    {
+      "id": "r-2",
+      "statement": "Reconciliation against the forward graph and the installed graph is coordinator-owned (FRF-WP02 reconciliation step) and must classify every non-empty difference; this artifact is frozen before that comparison by construction."
+    },
+    {
+      "id": "r-3",
+      "statement": "Ledger D-10's question (whether the installed baseline folds dispositions/evidence bindings into digests where the plan enumerates them as named sections) cannot be resolved from the handoff side alone; edges edge/0081 and edge/0082 require those sections to be addressable frozen content, so the coordinator must reconcile the fold during FRF-7."
+    },
+    {
+      "id": "r-4",
+      "statement": "Two two-edge citation cycles are intentional: material/solution-contract vs material/development-case (edge/0015 hands off byte-for-byte; edge/0017 carries the contract as a required value) and material/uc-scenario vs material/uc-terminal-branch (edge/0064 declares branches; edge/0094 resolves a branch to its owning scenario); reconciliation should not read either as an accidental loop."
+    }
+  ],
+  "version": 1,
+  "vocabularies": {
+    "actorKinds": {
+      "constraint": "closed vocabulary; a UC may be human-neutral but never actorless",
+      "values": [
+        "external_system",
+        "human",
+        "operator",
+        "scheduler_or_clock",
+        "sensor_or_environment"
+      ]
+    },
+    "evidenceKinds": {
+      "constraint": "accepted evidence binding types for terminal results",
+      "values": [
+        "audit",
+        "independent-agent-review",
+        "monitoring",
+        "test"
+      ]
+    },
+    "handoffBindingKinds": {
+      "constraint": "the twelve typed, required DevelopmentCase values; a missing or stripped value must fail before planning",
+      "values": {
+        "acceptance-bindings": {
+          "installedField": "acceptanceBindings",
+          "label": "acceptance criteria bindings",
+          "resolvesTo": "accepted AC atomic criterion ids"
+        },
+        "formalization-certificate": {
+          "installedField": "certificateRef",
+          "label": "formalization certificate",
+          "resolvesTo": "FormalizationCase / Discovery certificate identity"
+        },
+        "integration-and-construction-obligations": {
+          "installedField": "integrationObligations",
+          "label": "integration and construction obligations",
+          "resolvesTo": "SRS composition and construction obligations"
+        },
+        "prd-intent-bindings": {
+          "installedField": "prdIntentBindings",
+          "label": "PRD intent bindings",
+          "resolvesTo": "accepted PRD intent-member ids"
+        },
+        "repository-and-policy-bindings": {
+          "installedField": "repositoryPolicyBindings",
+          "label": "repository and policy bindings",
+          "resolvesTo": "repository and policy references"
+        },
+        "requirement-bindings": {
+          "installedField": "requirementBindings",
+          "label": "FR/NFR/RULE bindings",
+          "resolvesTo": "accepted FR/NFR/RULE member ids"
+        },
+        "scenario-bindings": {
+          "installedField": "scenarioBindings",
+          "label": "interaction/operational scenario bindings",
+          "resolvesTo": "accepted UC scenario ids"
+        },
+        "scenario-realization-bindings": {
+          "installedField": "scenarioRealizationBindings",
+          "label": "scenario realization bindings",
+          "resolvesTo": "accepted SRS scenario-realization entry ids"
+        },
+        "solution-contract": {
+          "installedField": "(settlement output referenced by the DevelopmentCase)",
+          "label": "solution contract",
+          "resolvesTo": "settled Solution Contract reference"
+        },
+        "srs-reference-and-hash": {
+          "installedField": "srsRef / srsDigest",
+          "label": "SRS reference and hash",
+          "resolvesTo": "exact accepted SRS revision and digest"
+        },
+        "terminal-claim-bindings": {
+          "installedField": "terminalClaimBindings",
+          "label": "terminal claim bindings",
+          "resolvesTo": "product terminal claim ids"
+        },
+        "what-baseline-reference-and-hash": {
+          "installedField": "baselineRef / baselineDigest",
+          "label": "whole-WHAT baseline reference and hash",
+          "resolvesTo": "frozen whole-WHAT baseline reference and canonical digest"
+        }
+      }
+    },
+    "intentDispositions": {
+      "constraint": "every required PRD intent member has exactly one disposition",
+      "values": {
+        "deferred": "requires owner and reason; no downstream UC obligation",
+        "direct_requirement": "requires a reason why no meaningful interaction or operational scenario exists; routes straight to FR/NFR/RULE",
+        "out_of_scope": "requires owner and reason; no downstream UC obligation",
+        "scenario_required": "must be covered by at least one UC scenario"
+      }
+    },
+    "nodeKinds": {
+      "acceptance-contract": "AC container artifact",
+      "acceptance-criterion": "atomic AC identity",
+      "architecture-contract": "SRS artifact",
+      "case-identity": "FormalizationCase / Discovery certificate identity block",
+      "composition-obligation": "integration/composition obligation derived from SRS realization",
+      "construction-obligation": "typed infrastructure/construction obligation derived from SRS surfaces",
+      "development-input": "DevelopmentCase artifact",
+      "development-plan": "Development task plan composed of WorkItems",
+      "development-plan-unit": "WorkItem",
+      "disposition-record": "deferral/constraint/assumption/unknown disposition",
+      "evidence-record": "accepted evidence binding of a declared kind",
+      "freeze-authority": "whole-WHAT baseline",
+      "functional-requirement": "FR artifact",
+      "gate-decision-record": "kernel GateDecision evidence of a failed gate",
+      "intent-member": "atomic PRD intent member",
+      "kernel-acceptance-record": "CellFinalAcceptance / CandidateSet / WorkplaceProductionRevision authority record",
+      "policy-binding": "repository and policy reference",
+      "product-brief": "brief artifact",
+      "product-contract": "PRD container artifact",
+      "product-terminal-claim": "product-level terminal claim (lifecycle terminal claim)",
+      "quality-requirement": "NFR artifact",
+      "realization-entry": "one mandatory SRS scenario-realization entry",
+      "scenario": "atomic UC scenario",
+      "scenario-branch": "main/alternate/error flow branch ending in a terminal result",
+      "scenario-container": "UC container artifact",
+      "settlement-output": "Solution Contract artifact",
+      "settlement-trace-set": "accepted trace/member-binding set frozen in the baseline",
+      "source-claim": "Discovery source claim or source constraint",
+      "system-rule": "RULE artifact",
+      "terminal-claim": "assertion made by reaching a terminal node",
+      "verifier-obligation": "product-verifier obligation"
+    },
+    "planInvalidOmissions": {
+      "constraint": "a Development plan covering every AC but omitting any of these is invalid",
+      "values": [
+        "composition-owner",
+        "runtime-edge",
+        "scenario-entrypoint",
+        "terminal-result",
+        "verifier"
+      ]
+    },
+    "traceGrammarRules": {
+      "ac-derived-from-fr-or-nfr": "AC --derived_from--> FR or NFR",
+      "fr-derived-from-prd-and-uc-branches-when-scenario-derived": "FR --derived_from--> PRD and one or more UC branches when scenario-derived",
+      "nfr-derived-from-prd-optionally-uc-when-scenario-local": "NFR --derived_from--> PRD and optionally UC when scenario-local",
+      "prd-derived-from-brief-and-source-claims": "PRD --derived_from--> brief and exact Discovery source claims",
+      "rule-derived-from-prd-optionally-uc-when-scenario-local": "RULE --derived_from--> PRD and optionally UC when scenario-local",
+      "scenario-facing-ac-derived-from-uc-and-terminal-branch": "scenario-facing AC --derived_from--> UC and terminal scenario branch",
+      "srs-derived-from-frozen-what-baseline": "SRS --derived_from--> frozen whole-WHAT baseline",
+      "uc-derived-from-prd-intent-members": "UC --derived_from--> PRD and exact PRD intent members"
+    },
+    "workItemObligationKinds": {
+      "constraint": "a WorkItem must bind one or more of these five kinds",
+      "values": {
+        "acceptance-obligation": "binds AC criteria",
+        "infrastructure-obligation": "binds typed SRS construction obligations not one-to-one with AC",
+        "integration-or-composition-obligation": "binds composition owners, runtime edges, external interfaces",
+        "requirement-obligation": "binds FR/NFR/RULE identities",
+        "scenario-realization-obligation": "binds SRS scenario-realization entries (entrypoint, terminal result, evidence)"
+      }
+    }
+  }
+}
