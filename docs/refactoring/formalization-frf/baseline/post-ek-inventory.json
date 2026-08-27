@@ -1,7 +1,7 @@
 {
   "artifactId": "frf-wp01-post-ek-inventory",
   "schemaVersion": "frf.post-ek-inventory.v1",
-  "capturedAt": "2026-08-27T07:21:43.203Z",
+  "capturedAt": "2026-08-27T13:02:29.468Z",
   "capturedFrom": {
     "baseSha": "5c158608",
     "saga4At": "be0d5948"

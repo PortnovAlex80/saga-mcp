@@ -1,7 +1,7 @@
 {
   "artifactId": "frf-wp01-installed-formalization-graph",
   "schemaVersion": "frf.installed-graph-capture.v1",
-  "capturedAt": "2026-08-27T07:08:06.017Z",
+  "capturedAt": "2026-08-27T13:02:29.545Z",
   "capturedFrom": {
     "baseSha": "5c158608",
     "installedArtifact": "dist/workflow-kernel/workshops/formalization/manifest.js",
