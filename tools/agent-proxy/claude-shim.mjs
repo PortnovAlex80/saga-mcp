@@ -146,9 +146,10 @@ function buildSessionPinning(parsedValues, fallbackCwd) {
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
-// Model registry mapping (opencode zai-coding-plan provider, checked against
-// `opencode models` on 2026-08-18). glm-5.3 is not yet in the opencode registry
-// → falls back to glm-5.2 with a loud stderr note (same plan, same quota).
+// Model registry mapping (opencode zai-coding-plan provider). glm-5.3-flash
+// is natively in the opencode registry (rechecked 2026-08-27). An explicit
+// but UNMAPPED model now fails closed (exit 86) - it never silently serves
+// the default; the default applies only when no model is passed at all.
 // ---------------------------------------------------------------------------
 
 const MODEL_MAP = new Map([
@@ -162,6 +163,7 @@ const MODEL_MAP = new Map([
   ['glm-5.2', 'zai-coding-plan/glm-5.2'],
   ['glm-5.2-highspeed', 'zai-coding-plan/glm-5.2-highspeed'],
   ['glm-5.3', 'zai-coding-plan/glm-5.3'],
+  ['glm-5.3-flash', 'zai-coding-plan/glm-5.3-flash'],
 ]);
 const DEFAULT_MODEL = process.env.SAGA_PROXY_DEFAULT_MODEL || 'zai-coding-plan/glm-4.7';
 
@@ -216,8 +218,14 @@ function resolveModel(claudeModel) {
     if (MODEL_MAP.has(via)) return MODEL_MAP.get(via);
     return DEFAULT_MODEL;
   }
-  process.stderr.write(`[agent-proxy] unmapped claude model '${claudeModel}' — using ${DEFAULT_MODEL}\n`);
-  return DEFAULT_MODEL;
+  // Fail closed: an explicit model the registry does not know is a
+  // misconfigured pin. Serving a DIFFERENT model silently would mislabel
+  // every kernel receipt - observed 2026-08-27: every glm-5.3-flash request
+  // of a whole qualification series degraded to the glm-4.7 default and only
+  // the executor-side opencode session records exposed it. The stderr note
+  // below was invisible to the channel then; the exit is not negotiable now.
+  process.stderr.write(`[agent-proxy] unmapped model '${claudeModel}' - REFUSING to serve ${DEFAULT_MODEL} instead (fail-closed; add the model to MODEL_MAP)\n`);
+  process.exit(86);
 }
 
 // ---------------------------------------------------------------------------
