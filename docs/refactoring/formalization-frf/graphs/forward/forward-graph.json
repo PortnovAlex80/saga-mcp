@@ -1,0 +1,1957 @@
+{
+  "artifactId": "frf-wp02-forward-graph",
+  "graph": {
+    "baseSha": "a79cc24d",
+    "counts": {
+      "edges": 18,
+      "kernelNodes": 2,
+      "nodes": 11,
+      "productionCells": 6,
+      "terminalNodes": 3
+    },
+    "derivation": {
+      "direction": "forward",
+      "inputs": [
+        {
+          "note": "Normative target shape: primary path, six Production Cells, two kernel nodes, three terminal nodes, expected transition universe.",
+          "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+        },
+        {
+          "note": "The eight desk contracts (define-product-intent through settle-formalization) - the forward derivation's primary semantic input.",
+          "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts"
+        },
+        {
+          "note": "Artifact vocabulary (brief PRD UC FR NFR RULE AC SRS) and the minimum concept budget.",
+          "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Decision"
+        },
+        {
+          "note": "Installed workshop manifest: FLOW_EDGE_EVENTS (39-46), FORMALIZATION_FLOW_NODES (76-136), FORMALIZATION_FLOW_EDGES (139-158), check providers table (290-310), role bindings (343-346).",
+          "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:39-346"
+        },
+        {
+          "note": "Content-addressed product schemas and the eight pure validators (desks' inputs, fences, evidence-method vocabulary, handoff fields).",
+          "ref": "src/workflow-kernel/workshops/formalization/products.ts:116-791"
+        },
+        {
+          "note": "Declared check providers, verdict routing table (114-122), CheckPlan and external evidence kinds (184-212).",
+          "ref": "src/workflow-kernel/workshops/formalization/gates.ts:55-212"
+        },
+        {
+          "note": "Declared effect ids and the two lawful effect outcome kinds.",
+          "ref": "src/workflow-kernel/workshops/formalization/effects.ts:30-38"
+        },
+        {
+          "note": "Accepted-material chain folds (which desk produces which accepted-material entry; the reconciliation verdict fold).",
+          "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:76-144"
+        },
+        {
+          "note": "The public command path of every desk (enterDeskNode 627-676, driveDesk 488-611, settleDeskNode 678-702), the shell import desk (738-769), the desk loop (780-826), the settlement ladder (828-836), typed waits (843-900).",
+          "ref": "src/workflow-kernel/workshops/formalization/driver.ts:19-900"
+        },
+        {
+          "note": "The frozen kernel universe: OBLIGATION_KINDS (192-242), EVIDENCE_KINDS (286-355), and the CommandDescriptors (createsObligations/waits/proofs) for every command the desks consume.",
+          "ref": "src/workflow-kernel/domain/universe.ts:192-810"
+        },
+        {
+          "note": "The required-info manifest every desk envelope must carry (sourceClaims, constraints, unknowns, terminalClaims, upstreamAccepted).",
+          "ref": "src/workflow-kernel/workshops/formalization/envelope.ts:28-39"
+        },
+        {
+          "note": "The public Discovery-capsule ingress (the accepted-material seed of the whole flow).",
+          "ref": "src/workflow-kernel/workshops/formalization/ingress.ts:189-318"
+        },
+        {
+          "note": "The two launch kinds (author/reviewer) every desk - cell and kernel alike - is staffed through.",
+          "ref": "src/workflow-kernel/workshops/formalization/roles.ts:48-54"
+        }
+      ],
+      "notDerivedFrom": [
+        "docs/refactoring/formalization-frf/baseline/installed-formalization-graph.json (the WP01 machine capture - not an input; this derivation walks the plan text and the TypeScript source directly and records its own citations)",
+        "docs/refactoring/formalization-frf/graphs/reverse/** (independently owned by the reverse-graph author; unread)"
+      ]
+    },
+    "edgeEventVocabulary": [
+      "domain.accepted",
+      "domain.drift-detected",
+      "domain.failed",
+      "domain.formalized",
+      "domain.frozen",
+      "domain.inconsistent"
+    ],
+    "edges": [
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 256: define-architecture-contract --domain.accepted--> settle-formalization.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 153.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:153"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations - the advance obligations that carry the flow to the successor desk's processRun.enterNode.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode commits the node terminal, kernel result and cell acceptance.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "define-architecture-contract",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "settle-formalization"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 257.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 154.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:154"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics: nodeRun.fail creates obligation:propagateNodeFailure; processRun.settleFailure creates obligation:recordStageOutcome.failed.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "define-architecture-contract",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 237.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 140.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:140"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode; the successor is entered through the enterNode obligation lane (driver.ts 639-644).",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:627-702"
+          }
+        ],
+        "from": "define-product-intent",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "model-use-cases"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 238.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 141.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:141"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "define-product-intent",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 243.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 144.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:144"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "derive-system-requirements",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "define-acceptance-contract"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 244.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 145.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:145"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "derive-system-requirements",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 253: freeze-what-baseline --domain.drift-detected--> complete-inconsistent.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 151.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:151"
+          },
+          {
+            "note": "The installed semantic route for DRIFT_DETECTED is a typed human-input wait (verdict routing line 120), discharged via workplace.resolveHumanResponse; the universe has no dedicated inconsistent command, so the lawful stop is the failure settlement pair.",
+            "ref": "src/workflow-kernel/workshops/formalization/gates.ts:114-122"
+          },
+          {
+            "note": "freezeDriftHumanWait - the drift wait scenario through the public command path.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:848-876"
+          },
+          {
+            "note": "nodeRun.fail / processRun.settleFailure createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "freeze-what-baseline",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.drift-detected",
+        "to": "complete-inconsistent"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 254.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 152.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:152"
+          },
+          {
+            "note": "nodeRun.fail / processRun.settleFailure createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "freeze-what-baseline",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 252: freeze-what-baseline --domain.frozen--> define-architecture-contract.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 150.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:150"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "freeze-what-baseline",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.frozen",
+        "to": "define-architecture-contract"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 240.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 142.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:142"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "model-use-cases",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "derive-system-requirements"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 241.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 143.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:143"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "model-use-cases",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 249: reconcile-what --domain.accepted--> freeze-what-baseline.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 148.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:148"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "reconcile-what",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "freeze-what-baseline"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 250.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 149.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:149"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "reconcile-what",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 261.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 157.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:157"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "settle-formalization",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 259: settle-formalization --domain.formalized--> complete-formalized (the flow-terminal edge; the process then settles).",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 155.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:155"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations (the settle-formalization node settles like every desk).",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "processRun.settle createsObligations: obligation:recordStageOutcome - the process-level settlement that the terminal edge triggers.",
+            "ref": "src/workflow-kernel/domain/universe.ts:538-545"
+          },
+          {
+            "note": "The settlement ladder the driver runs after the last desk (process settle, stage outcome, route verify-terminal-claims, verify, lifecycle proof, run settlement).",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:828-836"
+          }
+        ],
+        "from": "settle-formalization",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate",
+          "obligation:recordStageOutcome"
+        ],
+        "on": "domain.formalized",
+        "to": "complete-formalized"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 260.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 156.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:156"
+          },
+          {
+            "note": "The universe has no dedicated inconsistent command; the lawful stop is the failure settlement pair (see also gates.ts human-wait routing).",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "settle-formalization",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.inconsistent",
+        "to": "complete-inconsistent"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 246.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 146.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:146"
+          },
+          {
+            "note": "processRun.recordNodeTerminal createsObligations.",
+            "ref": "src/workflow-kernel/domain/universe.ts:530-537"
+          },
+          {
+            "note": "settleDeskNode.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:678-702"
+          }
+        ],
+        "from": "define-acceptance-contract",
+        "obligationsCreated": [
+          "obligation:advanceProcessFlow",
+          "obligation:advanceProcessFlow.settle",
+          "obligation:freezeCandidate"
+        ],
+        "on": "domain.accepted",
+        "to": "reconcile-what"
+      },
+      {
+        "citations": [
+          {
+            "note": "Expected transition universe line 247.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "FORMALIZATION_FLOW_EDGES row 147.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:147"
+          },
+          {
+            "note": "The kernel's lawful failure mechanics to a failed terminal.",
+            "ref": "src/workflow-kernel/domain/universe.ts:546-617"
+          }
+        ],
+        "from": "define-acceptance-contract",
+        "obligationsCreated": [
+          "obligation:propagateNodeFailure",
+          "obligation:recordStageOutcome.failed"
+        ],
+        "on": "domain.failed",
+        "to": "complete-failed"
+      }
+    ],
+    "entry": "define-product-intent",
+    "nodes": {
+      "complete-failed": {
+        "citations": [
+          {
+            "note": "Terminal nodes list (line 230-232).",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "Terminal node declaration with emitsOutcome 'failed' (row 135).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:133-135"
+          }
+        ],
+        "emitsOutcome": "failed",
+        "kind": "terminal",
+        "label": "Complete: failed",
+        "obligationsCreated": [
+          "obligation:recordStageOutcome.failed",
+          "obligation:propagateNodeFailure"
+        ]
+      },
+      "complete-formalized": {
+        "citations": [
+          {
+            "note": "Terminal nodes list (line 230-232).",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "Terminal node declaration with emitsOutcome 'formalized' (row 133).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:133"
+          },
+          {
+            "note": "Post-flow settlement ladder the terminal triggers (process -> stage -> lifecycle -> run).",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:828-836"
+          }
+        ],
+        "emitsOutcome": "formalized",
+        "kind": "terminal",
+        "label": "Complete: formalized",
+        "obligationsCreated": [
+          "obligation:recordStageOutcome",
+          "obligation:replayCaptureSweep",
+          "obligation:routeLifecycle",
+          "obligation:runSettlement"
+        ]
+      },
+      "complete-inconsistent": {
+        "citations": [
+          {
+            "note": "Terminal nodes list (line 230-232).",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Target process graph"
+          },
+          {
+            "note": "Terminal node declaration with emitsOutcome 'inconsistent' (row 134).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:134"
+          }
+        ],
+        "emitsOutcome": "inconsistent",
+        "kind": "terminal",
+        "label": "Complete: inconsistent",
+        "obligationsCreated": [
+          "obligation:recordStageOutcome.failed",
+          "obligation:propagateNodeFailure"
+        ]
+      },
+      "define-acceptance-contract": {
+        "citations": [
+          {
+            "note": "Desk contract: every AC binds exact FR/NFR material; scenario-facing AC retains UC terminal-branch binding; terminal coverage via test/monitoring/audit/independent agent review; AC stays WHAT-side.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>define-acceptance-contract"
+          },
+          {
+            "note": "Node + desk descriptor (rows 97-103).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:97-103"
+          },
+          {
+            "note": "Check provider row: formalization.acceptance-structure.v1 / validateAcceptanceContract.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:295"
+          },
+          {
+            "note": "AcceptanceContractProduct (evidenceMethod vocabulary line 389) and validateAcceptanceContract (394-439).",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:378-439"
+          },
+          {
+            "note": "Accepted-material fold: acceptance { revisionDigest, criterionIds }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:97-98"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "requirements",
+            "useCases"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.acceptance-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.acceptance-bindings.v1",
+          "validator": "validateAcceptanceContract"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Define Acceptance Contract",
+        "produces": {
+          "acceptedMaterial": [
+            "acceptance"
+          ],
+          "artifactTypes": [
+            "AC"
+          ],
+          "memberIdField": "criterionId",
+          "vocabulary": {
+            "evidenceMethods": [
+              "audit",
+              "independent-agent-review",
+              "monitoring",
+              "test"
+            ]
+          }
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "Forbidden architecture/allocation keys participatingModules/moduleAllocation/files -> SCOPE_VIOLATION (WHAT-side fence).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:399-402"
+              }
+            ],
+            "refusal": "SCOPE_VIOLATION",
+            "rule": "AC remains WHAT-side verification and must not contain architecture or file allocation decisions"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE on empty requirementRefs; FOREIGN_LINEAGE outside accepted requirementIds.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:420-425"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "every AC binds at least one exact FR or NFR member of the accepted requirements revision"
+          },
+          {
+            "citations": [
+              {
+                "note": "FOREIGN_LINEAGE on ucTerminalBranchRefs outside accepted scenarioIds.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:426-431"
+              }
+            ],
+            "refusal": "FOREIGN_LINEAGE",
+            "rule": "a scenario-facing AC's UC terminal-branch binding resolves inside the accepted UC revision"
+          },
+          {
+            "citations": [
+              {
+                "note": "COVERAGE_GAP when a required UC terminal result has no end-to-end AC.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:433-437"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "every required UC terminal result has at least one end-to-end AC or accepted evidence binding"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "define-architecture-contract": {
+        "citations": [
+          {
+            "note": "Desk contract: existing SRS + one mandatory scenario-realization section with the nine recorded fields; flat file lists are not proof of runtime connectivity.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>define-architecture-contract"
+          },
+          {
+            "note": "Node + desk descriptor (rows 118-124).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:118-124"
+          },
+          {
+            "note": "Check provider row: formalization.srs-structure.v1 / validateSrs.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:298"
+          },
+          {
+            "note": "SrsScenarioRealization (616-626), SrsProduct (628-633), validateSrs (636-698): baseline pin, per-scenario runtime reachability closure, every required UC exactly once.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:614-698"
+          },
+          {
+            "note": "Accepted-material fold: srs { revisionDigest, realizedScenarioIds }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:101-102"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "baseline",
+            "useCases"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.srs-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.srs.v1",
+          "validator": "validateSrs"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Define Architecture Contract",
+        "produces": {
+          "acceptedMaterial": [
+            "srs"
+          ],
+          "artifactTypes": [
+            "SRS"
+          ],
+          "memberIdField": "scenarioId (realizedScenarioIds)",
+          "sections": [
+            "decomposition (criterionRef -> moduleRef)",
+            "scenarioRealizations (mandatory scenario-realization section)"
+          ],
+          "vocabulary": {
+            "realizationFields": [
+              "compositionOwner",
+              "entrypoint",
+              "evidenceBinding",
+              "externalInterfaces",
+              "implementationSurfaces",
+              "participatingModules",
+              "runtimeEdges",
+              "scenarioId",
+              "terminalResult"
+            ]
+          }
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE when useCases or baseline absent from the chain.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:640-644"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "the SRS realizes the frozen whole-WHAT baseline and the accepted UC set"
+          },
+          {
+            "citations": [
+              {
+                "note": "STALE_LINEAGE when baselineRef is not the frozen baseline content address.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:645-647"
+              }
+            ],
+            "refusal": "STALE_LINEAGE",
+            "rule": "the SRS pins exactly the frozen WHAT baseline revision"
+          },
+          {
+            "citations": [
+              {
+                "note": "FOREIGN_LINEAGE on a scenario outside the accepted revision; MALFORMED_PRODUCT on incomplete realization fields.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:649-664"
+              }
+            ],
+            "refusal": "FOREIGN_LINEAGE",
+            "rule": "every realization names an accepted UC scenario and carries entrypoint, modules, runtime edges, composition owner, terminal result and evidence binding"
+          },
+          {
+            "citations": [
+              {
+                "note": "COVERAGE_GAP: entrypoint must be a participating module, every node reachable from it, and every required UC realized exactly once.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:668-696"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "the runtime graph is connected from the entrypoint and covers every required UC exactly once (a flat file list is not proof of connectivity)"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "define-product-intent": {
+        "citations": [
+          {
+            "note": "Desk contract: brief + PRD containers only; atomic intent members for the eight listed categories; required dispositions; must not produce final FR/NFR/RULE/UC/AC/SRS.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>define-product-intent"
+          },
+          {
+            "note": "Node + desk descriptor (rows 77-83): outputProductKind formalization.prd-intent.v1, provider formalization.prd-structure.v1, effect formalization.accept-products.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:77-83"
+          },
+          {
+            "note": "Check provider row: formalization.prd-structure.v1 / validatePrdIntent.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:292"
+          },
+          {
+            "note": "PRD_MEMBER_KINDS (119-127), PRD_DISPOSITIONS (131-137), PrdIntentProduct (139-154), validatePrdIntent (157-215).",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:116-215"
+          },
+          {
+            "note": "Accepted-material fold: prd { revisionDigest, memberIds, scenarioRequiredMemberIds }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:84-92"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "handoff"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.prd-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.prd-intent.v1",
+          "validator": "validatePrdIntent"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Define Product Intent",
+        "produces": {
+          "acceptedMaterial": [
+            "prd"
+          ],
+          "artifactTypes": [
+            "PRD",
+            "brief"
+          ],
+          "memberIdField": "memberId",
+          "vocabulary": {
+            "dispositions": [
+              "deferred",
+              "direct_requirement",
+              "out_of_scope",
+              "scenario_required"
+            ],
+            "memberKinds": [
+              "actor-stakeholder",
+              "assumption-unknown",
+              "constraint",
+              "outcome",
+              "scope-exclusion",
+              "system-boundary",
+              "terminal-claim"
+            ]
+          }
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "Forbidden container keys requirements/useCases/acceptanceCriteria/srs/scenarios -> SCOPE_VIOLATION.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:162-165"
+              }
+            ],
+            "refusal": "SCOPE_VIOLATION",
+            "rule": "the product-intent Cell must not produce final FR/NFR/RULE, UC, AC or SRS content"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE on empty sourceClaimRefs; FOREIGN_LINEAGE outside the accepted handoff claims.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:186-191"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "every PRD intent member derives from at least one Discovery source claim of the accepted handoff"
+          },
+          {
+            "citations": [
+              {
+                "note": "COVERAGE_GAP on a member without a disposition; owner+reason fences for deferred/out_of_scope; reason fence for direct_requirement.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:194-208"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "every intent member carries exactly one of the four required dispositions (deferred/out_of_scope need owner+reason; direct_requirement needs a reason)"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "derive-system-requirements": {
+        "citations": [
+          {
+            "note": "Desk contract: the only new Production Cell; FR/NFR/RULE from exact accepted PRD and UC material; per-UC behavior obligation; cross-cutting NFR/RULE may bind PRD intent or source constraints; no foreign/stale/unaccepted derivation.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>derive-system-requirements"
+          },
+          {
+            "note": "Node + desk descriptor (rows 90-96).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:90-96"
+          },
+          {
+            "note": "Check provider row: formalization.requirements-structure.v1 / validateSystemRequirements.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:294"
+          },
+          {
+            "note": "REQUIREMENT_KINDS (309), SystemRequirementsProduct (312-323), validateSystemRequirements (326-372): revision pins, lineage, per-UC coverage.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:307-372"
+          },
+          {
+            "note": "Accepted-material fold: requirements { revisionDigest, requirementIds }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:95-96"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "prd",
+            "useCases"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.requirements-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.system-requirements.v1",
+          "validator": "validateSystemRequirements"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Derive System Requirements",
+        "produces": {
+          "acceptedMaterial": [
+            "requirements"
+          ],
+          "artifactTypes": [
+            "FR",
+            "NFR",
+            "RULE"
+          ],
+          "memberIdField": "requirementId",
+          "revisionPins": [
+            "prdRevisionRef",
+            "ucRevisionRef"
+          ]
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE when PRD or UC absent from the accepted chain.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:330-334"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "requirements derive only from accepted PRD and UC material"
+          },
+          {
+            "citations": [
+              {
+                "note": "STALE_LINEAGE when prdRevisionRef/ucRevisionRef is not the accepted revision content address.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:335-340"
+              }
+            ],
+            "refusal": "STALE_LINEAGE",
+            "rule": "no requirement derives from a stale, superseded or unaccepted material revision"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE on empty prdIntentRefs; FOREIGN_LINEAGE on PRD-member or UC-scenario refs outside the accepted revisions.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:352-363"
+              }
+            ],
+            "refusal": "FOREIGN_LINEAGE",
+            "rule": "every requirement binds exact accepted PRD intent (and UC branches when scenario-derived)"
+          },
+          {
+            "citations": [
+              {
+                "note": "COVERAGE_GAP when an accepted UC scenario produces no FR, RULE or scenario-local NFR obligation.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:365-370"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "every accepted UC yields at least one observable behavior obligation"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "freeze-what-baseline": {
+        "citations": [
+          {
+            "note": "Desk contract: replacement whole-WHAT baseline; exact content-addressed references; the freezer consumes exact accepted inputs and may not scan by epic/lifecycle/task/status/type/chronology.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>freeze-what-baseline"
+          },
+          {
+            "note": "Node + desk descriptor (rows 111-117): kind kernel, operatorStaffed true, effect formalization.freeze-what-baseline.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:111-117"
+          },
+          {
+            "note": "Check provider row: formalization.baseline-freeze.v1 / validateWhatBaseline.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:297"
+          },
+          {
+            "note": "WhatBaselineProduct (515-528), BaselineFreezeInputs (530-540), freezeWhatBaseline (543-575), validateWhatBaseline drift fences (578-608).",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:513-608"
+          },
+          {
+            "note": "baselineInputsOf: the exact accepted-digest set, never a rescan; acceptedTraceDigest carries the capsule ref.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:469-486"
+          },
+          {
+            "note": "Accepted-material fold: baseline { revisionDigest, wholeWhatDigest }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:119-125"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "acceptance",
+            "handoff",
+            "prd",
+            "reconciliation",
+            "requirements",
+            "useCases"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.baseline-freeze.v1",
+          "effectId": "formalization.freeze-what-baseline",
+          "operatorStaffed": true,
+          "outputProductKind": "formalization.what-baseline.v1",
+          "validator": "validateWhatBaseline"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "kernel",
+        "label": "Freeze WHAT Baseline",
+        "produces": {
+          "acceptedMaterial": [
+            "baseline"
+          ],
+          "artifactTypes": [
+            "what-baseline"
+          ],
+          "canonicalDigestField": "wholeWhatDigest",
+          "exactInputs": [
+            "acceptedTraceDigest",
+            "handoffDigest",
+            "memberDigests",
+            "prdRevisionDigest",
+            "acceptanceRevisionDigest",
+            "reconciliationRevisionDigest",
+            "requirementsRevisionDigest",
+            "ucRevisionDigest"
+          ]
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "DRIFT_DETECTED on duplicate member digests (substitution or double emission).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:543-546"
+              }
+            ],
+            "refusal": "DRIFT_DETECTED",
+            "rule": "the member digest set contains no duplicates"
+          },
+          {
+            "citations": [
+              {
+                "note": "DRIFT_DETECTED fences: input digests, member-set exact equality, accepted trace digest, canonical re-freeze of wholeWhatDigest.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:578-608"
+              }
+            ],
+            "refusal": "DRIFT_DETECTED",
+            "rule": "missing, extra, substituted, stale, foreign or drifted material is refused (exact set equality; the freezer never rescans)"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "model-use-cases": {
+        "citations": [
+          {
+            "note": "Desk contract: UC keeps the existing artifact type; closed actor vocabulary; scenario identity, actor kind+identity, goal, trigger, preconditions, main flow, alternate/error flows, postcondition; no pre-existing FR requirement; no FR/NFR/RULE/AC production.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>model-use-cases"
+          },
+          {
+            "note": "Node + desk descriptor (rows 84-89).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:84-89"
+          },
+          {
+            "note": "Check provider row: formalization.uc-structure.v1 / validateUseCaseScenarios.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:293"
+          },
+          {
+            "note": "UC_ACTOR_KINDS (224-231), UseCaseScenariosProduct (233-248), validateUseCaseScenarios (251-301).",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:221-301"
+          },
+          {
+            "note": "Accepted-material fold: useCases { revisionDigest, scenarioIds }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:93-94"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "prd"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.uc-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.uc-scenarios.v1",
+          "validator": "validateUseCaseScenarios"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Model Use Cases",
+        "produces": {
+          "acceptedMaterial": [
+            "useCases"
+          ],
+          "artifactTypes": [
+            "UC"
+          ],
+          "memberIdField": "scenarioId",
+          "vocabulary": {
+            "actorKinds": [
+              "external_system",
+              "human",
+              "operator",
+              "scheduler_or_clock",
+              "sensor_or_environment"
+            ]
+          }
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "SCOPE_VIOLATION on requirementRefs/requirements keys: no pre-existing FR requirement, no requirement artifacts.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:256-258"
+              }
+            ],
+            "refusal": "SCOPE_VIOLATION",
+            "rule": "the UC Cell must not require a pre-existing FR and must not create FR/NFR/RULE or AC artifacts"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE when no accepted PRD; MALFORMED_PRODUCT on actorless scenarios (actor kind outside the closed vocabulary).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:259-281"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "UCs derive from the accepted PRD revision and every scenario declares an actor of the closed vocabulary"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE on empty prdIntentRefs; FOREIGN_LINEAGE outside accepted memberIds.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:284-289"
+              }
+            ],
+            "refusal": "FOREIGN_LINEAGE",
+            "rule": "every UC binds exact accepted PRD intent members"
+          },
+          {
+            "citations": [
+              {
+                "note": "COVERAGE_GAP when a scenario_required PRD member is covered by no UC.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:294-299"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "every scenario_required PRD intent member is covered by at least one UC scenario"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "reconcile-what": {
+        "citations": [
+          {
+            "note": "Desk contract: validate and report the closed chain claim -> intent/disposition -> scenario or direct requirement -> FR/NFR/RULE -> AC/evidence; report-only, repairs only as new immutable upstream revisions.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>reconcile-what"
+          },
+          {
+            "note": "Node + desk descriptor (rows 104-110).",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:104-110"
+          },
+          {
+            "note": "Check provider row: formalization.reconciliation-structure.v1 / validateWhatReconciliation.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:296"
+          },
+          {
+            "note": "WhatReconciliationProduct (447-458), validateWhatReconciliation (461-507): complete-chain requirement, verdict rules, row lineage, per-claim coverage.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:445-507"
+          },
+          {
+            "note": "Accepted-material fold: reconciliation { revisionDigest, verdict: 'consistent' }.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:99-100"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "acceptance",
+            "handoff",
+            "prd",
+            "requirements",
+            "useCases"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.reconciliation-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false,
+          "outputProductKind": "formalization.what-reconciliation.v1",
+          "validator": "validateWhatReconciliation"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "production-cell",
+        "label": "Reconcile WHAT Contract",
+        "produces": {
+          "acceptedMaterial": [
+            "reconciliation"
+          ],
+          "artifactTypes": [
+            "what-reconciliation report"
+          ],
+          "chain": [
+            "Discovery source claim",
+            "PRD intent member or explicit disposition",
+            "UC or justified direct requirement",
+            "FR/NFR/RULE",
+            "AC/evidence obligation"
+          ],
+          "vocabulary": {
+            "verdicts": [
+              "consistent",
+              "gaps"
+            ]
+          }
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE when any chain link is absent from the accepted material.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:465-472"
+              }
+            ],
+            "refusal": "MISSING_LINEAGE",
+            "rule": "the reconciler validates the complete accepted chain (claim -> intent -> scenario -> requirement -> criterion)"
+          },
+          {
+            "citations": [
+              {
+                "note": "A gaps verdict must enumerate typed gaps; a consistent verdict must carry none (473-480). Rows resolve against every accepted id set (482-498); every source claim has a chain row (501-505).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:473-505"
+              }
+            ],
+            "refusal": "MALFORMED_PRODUCT",
+            "rule": "verdict and gaps agree, row lineage resolves, and every source claim has a chain row"
+          },
+          {
+            "citations": [
+              {
+                "note": "Structural purity: products.ts validators are pure functions - reconciliation can emit typed refusals only; it cannot patch accepted material (see finding F-2 for the fold consequence).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:1-27"
+              }
+            ],
+            "refusal": "COVERAGE_GAP",
+            "rule": "report-only: a repair must create a new immutable revision in the owning upstream Cell, never mutate accepted history"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      },
+      "settle-formalization": {
+        "citations": [
+          {
+            "note": "Desk contract: consumes the exact whole-WHAT baseline and exact accepted SRS revision; no rediscovery, no reparsing; emits one content-addressed Solution Contract referencing both authorities.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>settle-formalization"
+          },
+          {
+            "note": "Node + desk descriptor (rows 125-132): kind kernel, operatorStaffed true, effect formalization.settle-solution-contract.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:125-132"
+          },
+          {
+            "note": "Check provider row: formalization.settlement-structure.v1 / validateSolutionContract.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:299"
+          },
+          {
+            "note": "DevelopmentHandoff (707-721), settleSolutionContract (736-765), validateSolutionContract (768-791): both-authority pins, baseline digest pin, canonical digest verification.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:704-791"
+          },
+          {
+            "note": "No accepted-material fold exists for the solution contract (the switch's default is a no-op) - see finding F-5.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:82-106"
+          }
+        ],
+        "consumes": {
+          "acceptedMaterial": [
+            "baseline",
+            "srs"
+          ],
+          "requiredInfo": [
+            "constraints",
+            "sourceClaims",
+            "terminalClaims",
+            "unknowns",
+            "upstreamAccepted"
+          ]
+        },
+        "desk": {
+          "checkProviderId": "formalization.settlement-structure.v1",
+          "effectId": "formalization.settle-solution-contract",
+          "operatorStaffed": true,
+          "outputProductKind": "formalization.solution-contract.v1",
+          "validator": "validateSolutionContract"
+        },
+        "evidenceKinds": [
+          "CheckPlan",
+          "ProductVerificationEvidence"
+        ],
+        "kind": "kernel",
+        "label": "Settle Formalization",
+        "produces": {
+          "acceptedMaterial": [],
+          "artifactTypes": [
+            "solution contract"
+          ],
+          "canonicalDigestField": "canonicalDigest",
+          "handoffFields": [
+            "acceptanceBindings",
+            "baselineDigest",
+            "baselineRef",
+            "certificateRef",
+            "integrationObligations",
+            "prdIntentBindings",
+            "repositoryPolicyBindings",
+            "requirementBindings",
+            "scenarioBindings",
+            "scenarioRealizationBindings",
+            "srsDigest",
+            "srsRef",
+            "terminalClaimBindings"
+          ]
+        },
+        "semanticFences": [
+          {
+            "citations": [
+              {
+                "note": "settleSolutionContract refuses a handoff with any missing or empty typed value.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:741-747"
+              }
+            ],
+            "refusal": "MALFORMED_PRODUCT",
+            "rule": "the Development handoff carries typed non-empty values for every required binding"
+          },
+          {
+            "citations": [
+              {
+                "note": "MISSING_LINEAGE without both authorities; STALE_LINEAGE on any drifted pin (whatBaselineRef, srsRef, baselineDigest).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:772-784"
+              }
+            ],
+            "refusal": "STALE_LINEAGE",
+            "rule": "settlement pins exactly the frozen whole-WHAT baseline and the accepted SRS revision"
+          },
+          {
+            "citations": [
+              {
+                "note": "DRIFT_DETECTED when the canonical solution-contract digest does not verify.",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:786-789"
+              }
+            ],
+            "refusal": "DRIFT_DETECTED",
+            "rule": "the canonical solution-contract digest verifies against the sealed content"
+          },
+          {
+            "citations": [
+              {
+                "note": "Observed gap: the validator never resolves developmentHandoff binding arrays against the accepted id sets - foreign bindings validate ok (finding F-6).",
+                "ref": "src/workflow-kernel/workshops/formalization/products.ts:768-791"
+              }
+            ],
+            "refusal": "FOREIGN_LINEAGE",
+            "rule": "DERIVED EXPECTATION (not installed): handoff bindings must resolve against the accepted material's id sets"
+          }
+        ],
+        "sharedEvidenceKinds": true
+      }
+    },
+    "postFlowSettlementLadder": {
+      "citations": [
+        {
+          "note": "The settlement ladder the driver runs after the flow graph terminates at complete-formalized.",
+          "ref": "src/workflow-kernel/workshops/formalization/driver.ts:828-836"
+        }
+      ],
+      "position": "after the terminal edge settle-formalization --domain.formalized--> complete-formalized; graph-external lifecycle epilogue, not flow nodes",
+      "steps": [
+        {
+          "command": "processRun.settle",
+          "createsObligations": [
+            "obligation:recordStageOutcome"
+          ]
+        },
+        {
+          "command": "stageRun.recordLocalOutcome",
+          "createsObligations": [
+            "obligation:routeLifecycle"
+          ]
+        },
+        {
+          "command": "lifecycleRun.routeOutcome",
+          "createsObligations": [
+            "obligation:enterStage.solution-development",
+            "obligation:enterStage.delivery-release",
+            "obligation:enterStage.solution-formalization",
+            "obligation:verifyTerminalClaims"
+          ]
+        },
+        {
+          "command": "lifecycleRun.verifyTerminalClaims",
+          "createsObligations": []
+        },
+        {
+          "command": "lifecycleRun.issueTerminalProof",
+          "createsObligations": [
+            "obligation:replayCaptureSweep",
+            "obligation:runSettlement"
+          ]
+        },
+        {
+          "command": "factoryRun.recordRunTerminalProof",
+          "createsObligations": []
+        }
+      ]
+    },
+    "preFlowShellDesk": {
+      "citations": [
+        {
+          "note": "The imported-Discovery shell stage and desk: capsule ingress is the accepted material; routing into the Formalization stage (771-778).",
+          "ref": "src/workflow-kernel/workshops/formalization/driver.ts:738-778"
+        },
+        {
+          "note": "ingestDiscoveryHandoff: the one public ingress of the Discovery capsule (verify-everything, then factoryRun.bootstrap + factoryRun.importCapsule).",
+          "ref": "src/workflow-kernel/workshops/formalization/ingress.ts:189-318"
+        }
+      ],
+      "deskNodeId": "import-discovery-handoff",
+      "notes": [
+        "a NINTH desk outside the 11-node flow (finding F-9): the accepted Discovery capsule IS its accepted material",
+        "seeds the accepted-material chain: handoff { digest, sourceClaimIds, constraintIds, unknownIds, terminalClaimIds } (contribution.ts 128-144)"
+      ],
+      "productKind": "formalization.discovery-import.v1"
+    },
+    "primaryPath": [
+      "define-product-intent",
+      "model-use-cases",
+      "derive-system-requirements",
+      "define-acceptance-contract",
+      "reconcile-what",
+      "freeze-what-baseline",
+      "define-architecture-contract",
+      "settle-formalization",
+      "complete-formalized"
+    ],
+    "sharedDeskPath": {
+      "citations": [
+        {
+          "note": "The full public command path of every desk (cells and kernel nodes alike), per the driver header and driveDesk.",
+          "ref": "src/workflow-kernel/workshops/formalization/driver.ts:19-35"
+        },
+        {
+          "note": "driveDesk: admit intents, actor rounds, contribution, seal, candidates, gates, effect, acceptance, closure, workplace terminal proof (488-611); enterDeskNode (627-676); settleDeskNode (678-702).",
+          "ref": "src/workflow-kernel/workshops/formalization/driver.ts:488-702"
+        },
+        {
+          "note": "CommandDescriptors: createsObligations / waits / proofs per command.",
+          "ref": "src/workflow-kernel/domain/universe.ts:385-810"
+        },
+        {
+          "note": "EVIDENCE_KINDS registry.",
+          "ref": "src/workflow-kernel/domain/universe.ts:286-355"
+        }
+      ],
+      "commands": [
+        {
+          "command": "processRun.enterNode",
+          "createsObligations": [],
+          "note": "consumes the enterNode/advance obligation lane (driver.ts 639-644)"
+        },
+        {
+          "command": "nodeRun.create",
+          "createsObligations": [
+            "obligation:materializeWorkplace.production-cell"
+          ]
+        },
+        {
+          "command": "nodeRun.materializeCell",
+          "createsObligations": [
+            "obligation:materializeWorkplace.verificationItems-fanout",
+            "obligation:materializeWorkplace.workItems-fanout"
+          ]
+        },
+        {
+          "command": "workplace.materialize",
+          "createsObligations": []
+        },
+        {
+          "command": "workItem.planGraph",
+          "createsObligations": [
+            "obligation:instantiateDependantWorkplaces",
+            "obligation:openUnknownObligation"
+          ]
+        },
+        {
+          "command": "workplace.admitWorkIntent",
+          "createsObligations": [],
+          "note": "author via obligation:openUnknownObligation row, reviewer via obligation:openReviewerDesk (driver.ts 361-387); waits TypedWait:readiness"
+        },
+        {
+          "command": "activityAttempt.create",
+          "createsObligations": [
+            "obligation:launchAdmission"
+          ]
+        },
+        {
+          "command": "cognition.sendProviderRequest",
+          "createsObligations": [],
+          "note": "consumes obligation:providerSend; the cognition port at the exact pre-send boundary"
+        },
+        {
+          "command": "activityAttempt.recordOutcome",
+          "createsObligations": [
+            "obligation:submitContribution"
+          ]
+        },
+        {
+          "command": "workplace.recordContribution",
+          "createsObligations": [
+            "obligation:sealRevision"
+          ]
+        },
+        {
+          "command": "workplace.sealProductionRevision",
+          "createsObligations": [
+            "obligation:presentCandidates"
+          ]
+        },
+        {
+          "command": "workplace.presentCandidateSet",
+          "createsObligations": [
+            "obligation:runGate.author",
+            "obligation:runGate.final"
+          ]
+        },
+        {
+          "command": "workplace.runAuthorGate",
+          "createsObligations": [
+            "obligation:openReviewerDesk"
+          ],
+          "note": "runs the desk's DECLARED check provider (gates.ts 131-171); waits TypedWait:human-input"
+        },
+        {
+          "command": "workplace.runFinalGate",
+          "createsObligations": [
+            "obligation:routeUpstreamRepair",
+            "obligation:runEffects"
+          ],
+          "note": "waits TypedWait:human-input"
+        },
+        {
+          "command": "workplace.settleEffect",
+          "createsObligations": [
+            "obligation:effectRedrive"
+          ],
+          "note": "idempotent per action key (effects.ts 79-115); waits TypedWait:human-input and TypedWait:effect-uncertainty"
+        },
+        {
+          "command": "workplace.recordFinalAcceptance",
+          "createsObligations": [
+            "obligation:closePresentation",
+            "obligation:completeCellNode"
+          ],
+          "note": "issues proof TerminalProof:cell.success"
+        },
+        {
+          "command": "workplace.closePresentation",
+          "createsObligations": []
+        },
+        {
+          "command": "workplace.issueWorkplaceTerminalProof",
+          "createsObligations": [
+            "obligation:markDependantsUnreachable",
+            "obligation:propagateCellFailure"
+          ],
+          "note": "issues TerminalProof:workplace.*"
+        },
+        {
+          "command": "processRun.recordNodeTerminal",
+          "createsObligations": [
+            "obligation:advanceProcessFlow",
+            "obligation:advanceProcessFlow.settle",
+            "obligation:freezeCandidate"
+          ]
+        },
+        {
+          "command": "nodeRun.recordKernelResult",
+          "createsObligations": [],
+          "note": "consumes obligation:freezeCandidate (driver.ts 697)"
+        },
+        {
+          "command": "nodeRun.recordCellAcceptance",
+          "createsObligations": [],
+          "note": "consumes obligation:completeCellNode (driver.ts 699); issues proof TerminalProof:node.success"
+        }
+      ],
+      "deskEvidenceKinds": [
+        "ActivityAttempt:completed",
+        "ActivityAttemptContribution",
+        "CandidateSet:author",
+        "CandidateSet:reviewer",
+        "CanonicalRoleContractBinding",
+        "CellFinalAcceptance",
+        "CheckPlan",
+        "EffectReceipt:already-applied",
+        "EffectReceipt:success",
+        "GateDecision:accepted",
+        "ObligationCompletionReceipt",
+        "ProductVerificationEvidence",
+        "PromptAssemblyReceipt:admitted",
+        "ProviderSendOutcome",
+        "TerminalProof:cell.success",
+        "TerminalProof:node.success",
+        "TerminalProof:workplace.success",
+        "WorkIntent",
+        "WorkplaceProductionRevision"
+      ],
+      "repairEvidenceKinds": [
+        "GateDecision:human-wait",
+        "GateDecision:repair",
+        "GateDecision:terminal-reject",
+        "GateDecision:upstream-repair",
+        "RecoveryIssue",
+        "TypedWaitDisposition",
+        "WakeDischarge:human-response-command"
+      ],
+      "verdictOfReason": {
+        "COVERAGE_GAP": "repair",
+        "DRIFT_DETECTED": "human-wait",
+        "FOREIGN_LINEAGE": "upstream-repair",
+        "MALFORMED_PRODUCT": "repair",
+        "MISSING_LINEAGE": "repair",
+        "SCOPE_VIOLATION": "terminal-reject",
+        "STALE_LINEAGE": "repair"
+      }
+    },
+    "structuralFindings": [
+      {
+        "citations": [
+          {
+            "note": "Plan lists eight intent-member categories including 'required dispositions'.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>define-product-intent"
+          },
+          {
+            "note": "PRD_MEMBER_KINDS is seven kinds; dispositions are a separate array over members.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:119-137"
+          }
+        ],
+        "detail": "The plan's eight PRD intent categories are realized as seven member kinds plus a separate dispositions array; 'required dispositions' is not an eighth member kind.",
+        "id": "F-1"
+      },
+      {
+        "citations": [
+          {
+            "note": "The reconciliation fold hardcodes verdict 'consistent'.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:99-100"
+          },
+          {
+            "note": "An accepted 'gaps' verdict validates ok and still enters the chain.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:473-477"
+          }
+        ],
+        "detail": "The accepted-material fold hardcodes reconciliation verdict 'consistent' regardless of the product's actual verdict: an accepted 'gaps' report still folds as consistent, and the baseline consumes only the reconciliation revision digest.",
+        "id": "F-2"
+      },
+      {
+        "citations": [
+          {
+            "note": "The desk loop iterates deskNodeIds() - the authored node-array order.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:781-826"
+          },
+          {
+            "note": "edgeTarget is a fail-closed lookup over the declared edges; no runtime router consumes the edge table.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:184-189"
+          }
+        ],
+        "detail": "The driver walks desks in authored node-array order, not by traversing FORMALIZATION_FLOW_EDGES; the edge table is installed-manifest data (plus a fail-closed edgeTarget lookup), so the runtime order guarantee is the node array order matching the edge chain.",
+        "id": "F-3"
+      },
+      {
+        "citations": [
+          {
+            "note": "The driver stops at refusals (blockedAt) instead of traversing failure edges.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:730-740"
+          },
+          {
+            "note": "DRIFT_DETECTED routes to human-wait; the drift wait scenario.",
+            "ref": "src/workflow-kernel/workshops/formalization/gates.ts:120"
+          },
+          {
+            "note": "freezeDriftHumanWait.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:848-876"
+          }
+        ],
+        "detail": "The failure-class edges (domain.failed x8, domain.drift-detected, domain.inconsistent) are declared but no driver step traverses them: refusals stop the run (blockedAt) and DRIFT_DETECTED routes to a typed human-input wait. The ten success+failure edges are declared; demonstrating all eighteen is owed by the plan's declared==demonstrated test layer.",
+        "id": "F-4"
+      },
+      {
+        "citations": [
+          {
+            "note": "acceptedMaterialAfter has no solution-contract case; the default fold is a no-op.",
+            "ref": "src/workflow-kernel/workshops/formalization/contribution.ts:82-107"
+          }
+        ],
+        "detail": "The solution contract does not fold into AcceptedMaterial: settle-formalization is the chain terminator; its product leaves the workshop only through the Development handoff.",
+        "id": "F-5"
+      },
+      {
+        "citations": [
+          {
+            "note": "validateSolutionContract pins authorities and verifies the canonical digest but never resolves the handoff binding arrays.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:768-791"
+          },
+          {
+            "note": "settleSolutionContract only requires the binding arrays non-empty.",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:736-748"
+          }
+        ],
+        "detail": "validateSolutionContract is binding-blind: developmentHandoff binding arrays are never resolved against the accepted material's id sets, so foreign bindings validate ok.",
+        "id": "F-6"
+      },
+      {
+        "citations": [
+          {
+            "note": "solutionContract/developmentHandoff references appear only inside the formalization workshop package (source-wide search).",
+            "ref": "src/workflow-kernel/workshops/formalization/products.ts:704-791"
+          }
+        ],
+        "detail": "No consumer of the Development handoff exists outside the formalization package in this tree: the Solution Contract is produced here and read by nothing (the forward derivation ends at emission).",
+        "id": "F-7"
+      },
+      {
+        "citations": [
+          {
+            "note": "acceptedTraceDigest is the capsule ref; memberDigests fold the five revision digests.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:469-486"
+          },
+          {
+            "note": "The plan enumerates dispositions and evidence-method bindings as distinct baseline sections.",
+            "ref": "docs/plans/FORMALIZATION-SCENARIO-FIRST-REFACTORING-PLAN.md#Desk contracts>freeze-what-baseline"
+          }
+        ],
+        "detail": "The plan's §freeze-what-baseline enumerates deferral/constraint/assumption/unknown dispositions and evidence-method bindings as distinct named baseline sections; the installed baseline folds them into memberDigests (the five revision digests) plus acceptedTraceDigest (the capsule ref).",
+        "id": "F-8"
+      },
+      {
+        "citations": [
+          {
+            "note": "The imported-Discovery shell desk runs before the eight flow desks.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:747-769"
+          }
+        ],
+        "detail": "The driver runs NINE desks: the import-discovery-handoff shell desk (stage 1) plus the eight flow desks; the shell desk is outside the 11-node graph (recorded here as preFlowShellDesk).",
+        "id": "F-9"
+      },
+      {
+        "citations": [
+          {
+            "note": "operatorStaffed is manifest data; the kernel sees only author/reviewer.",
+            "ref": "src/workflow-kernel/workshops/formalization/manifest.ts:55-66"
+          },
+          {
+            "note": "driveDesk resolves the same two launch kinds for every desk.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:498-502"
+          }
+        ],
+        "detail": "Kernel desks (freeze-what-baseline, settle-formalization) are operator-staffed by manifest data only; the driver staffs them identically to cells through the same author/reviewer launch kinds.",
+        "id": "F-10"
+      },
+      {
+        "citations": [
+          {
+            "note": "Terminal-claim verification and lifecycle proof run after the flow settles.",
+            "ref": "src/workflow-kernel/workshops/formalization/driver.ts:828-836"
+          }
+        ],
+        "detail": "Lifecycle terminal-claim verification (route verify-terminal-claims -> verifyTerminalClaims -> lifecycle terminal proof -> run settlement) is a post-flow ladder, not a graph node: the flow graph terminates before the lifecycle handoff.",
+        "id": "F-11"
+      }
+    ],
+    "terminals": [
+      "complete-failed",
+      "complete-formalized",
+      "complete-inconsistent"
+    ],
+    "vocabularies": {
+      "acceptedMaterialKinds": [
+        "acceptance",
+        "baseline",
+        "handoff",
+        "prd",
+        "reconciliation",
+        "requirements",
+        "srs",
+        "useCases"
+      ],
+      "evidenceMethodKinds": [
+        "audit",
+        "independent-agent-review",
+        "monitoring",
+        "test"
+      ],
+      "gateVerdicts": [
+        "accepted",
+        "human-wait",
+        "repair",
+        "terminal-reject",
+        "upstream-repair"
+      ],
+      "productKinds": [
+        "formalization.acceptance-bindings.v1",
+        "formalization.prd-intent.v1",
+        "formalization.solution-contract.v1",
+        "formalization.srs.v1",
+        "formalization.system-requirements.v1",
+        "formalization.uc-scenarios.v1",
+        "formalization.what-baseline.v1",
+        "formalization.what-reconciliation.v1"
+      ],
+      "refusalReasons": [
+        "COVERAGE_GAP",
+        "DRIFT_DETECTED",
+        "FOREIGN_LINEAGE",
+        "MALFORMED_PRODUCT",
+        "MISSING_LINEAGE",
+        "SCOPE_VIOLATION",
+        "STALE_LINEAGE"
+      ]
+    }
+  },
+  "graphDigest": "sha256:d697938a47c037aa297bcae9533f7b1d2e076e127ffd7091b974ae4604b4c10f",
+  "schemaVersion": "frf.forward-graph.v1"
+}
