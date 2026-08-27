@@ -177,8 +177,15 @@ export function composeProduction(config: ProductionCompositionConfig): Producti
   const tripwire = new ClaudeSettingsTripwire();
 
   // The REAL production channel: the opencode shim behind LAW 1 (fail-closed
-  // executor resolution happens inside its constructor).
-  const channel = config.channel ?? new OpenCodeShimChannel({ routePin: config.routePin ?? PRODUCTION_ROUTE_PIN, env: config.env });
+  // executor resolution happens inside its constructor). The send-rate cap is
+  // the operator quota: SAGA_OPENCODE_MAX_CONCURRENT_SENDS per factory copy
+  // (2026-08-28 directive: default 3; three parallel qualification copies at
+  // 3 each). An unset/invalid value falls to the default - never unlimited:
+  // production may not silently hammer the provider past the plan limit.
+  const envSource = config.env ?? process.env;
+  const parsedSendCap = Number.parseInt(String(envSource.SAGA_OPENCODE_MAX_CONCURRENT_SENDS ?? ''), 10);
+  const maxConcurrentSends = Number.isInteger(parsedSendCap) && parsedSendCap >= 1 ? parsedSendCap : 3;
+  const channel = config.channel ?? new OpenCodeShimChannel({ routePin: config.routePin ?? PRODUCTION_ROUTE_PIN, env: envSource, maxConcurrentSends });
 
   // The durable admission store + the WP-18 admitting transport with the
   // pinned production admission pins (RUNNING_COUNTER_IDENTITY inside).
