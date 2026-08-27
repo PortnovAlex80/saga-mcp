@@ -1,0 +1,396 @@
+{
+  "acceptanceRecords": [
+    {
+      "candidateSetRef": "sha256:472073e531c4fcdd57ce3507653240c9f49fe93142d6ae176211afe37dbe9075",
+      "cellFinalAcceptanceRef": "sha256:2c4f598ac1087bb43db9e71d6fbd67cea725745e8dc96834e60cf75fc8de7b01",
+      "deskId": "define-acceptance-contract",
+      "workplaceProductionRevisionRef": "sha256:028d838b7f233b1e9a7dd46c56d1067a6e8d2a9dfb3c1090788bf09e1dcd405a"
+    },
+    {
+      "candidateSetRef": "sha256:e111ac9880949488cceb478197e1d59f47677f34eb00d0d245e41d5086fa0014",
+      "cellFinalAcceptanceRef": "sha256:12d0a4297fcfa2e09c17d32dde934bf3c2f9d400c1c87af268537913f376876b",
+      "deskId": "define-product-intent",
+      "workplaceProductionRevisionRef": "sha256:6d1981c45ff85db8ac88b9c66536cde8c32aa4bc9e72b815d24c2385646cbd92"
+    },
+    {
+      "candidateSetRef": "sha256:5f151227af0c7749ceb50396168e560e858e97442c7a2ec984d12dc38990e17f",
+      "cellFinalAcceptanceRef": "sha256:bb57253d7c1a64b20fad333b8430b62412b06d99a33815f4a4b12fd076195453",
+      "deskId": "derive-system-requirements",
+      "workplaceProductionRevisionRef": "sha256:97cc689f541a9ef547bc8bd05d7af166219a950d548517d0dbc96f620f59a44b"
+    },
+    {
+      "candidateSetRef": "sha256:e8b6358bf770fda2c7246aa965eb6bfa5a84bd5f53dcc156e4bb29dc53a9bef2",
+      "cellFinalAcceptanceRef": "sha256:77f71d55b35bfac27fa504c90fccfdb3e33f0be488244e533289676786bace52",
+      "deskId": "model-use-cases",
+      "workplaceProductionRevisionRef": "sha256:259b2802ada943b3039ad4b08f73d11dda27ba66ac3b0c594383f2a01cd808c3"
+    },
+    {
+      "candidateSetRef": "sha256:c0777682bb7754f11db924e3f99aea3a3721381a93fd3b8a798d810165822edd",
+      "cellFinalAcceptanceRef": "sha256:bdb247e158e9c8be3be60bdfdaf307522f0c7910f71c5218bdad41e03ccc7473",
+      "deskId": "reconcile-what",
+      "workplaceProductionRevisionRef": "sha256:dd835fe83c7180246fb65ed542cecccc207bfd5a5ce34fc7c5a46d6fd84ae12b"
+    }
+  ],
+  "caseIdentity": {
+    "discoveryCertificateRef": "cert:disc-1",
+    "formalizationCaseRef": "case:form-1"
+  },
+  "containers": {
+    "ac": {
+      "members": [
+        {
+          "criterionId": "ac:batch-error-1",
+          "digest": "aadbbae06577d2aea08ab37b24af6a7797a32db19406a042a26550ef82e580df"
+        },
+        {
+          "criterionId": "ac:checkout-end-1",
+          "digest": "9fd20cf2c669897b9852f3c7e7c4b706bed02f60d30b9404a262989286f35280"
+        }
+      ],
+      "revisionDigest": "0ea9f940afba0a1fc51e88c36f57e492bab8ed13aa7c7b502ccec93d9fd84362"
+    },
+    "fr": {
+      "members": [
+        {
+          "digest": "958faacf9925350c2c92dfdf77c2e65aa623edd17929f79479b16c0c3435fe92",
+          "memberId": "fr:batch-1"
+        },
+        {
+          "digest": "afe700db3938e7f4a04c51345a1d2b1c00b11144c873dae711005c43af535a18",
+          "memberId": "fr:cart-1"
+        }
+      ],
+      "revisionDigest": "46c94ce016e8d8e06faf4449e957d0324c4dc70f4e40ffd74cc0ebd42f26205c"
+    },
+    "nfr": {
+      "members": [
+        {
+          "digest": "da4bb7360d88aaa167668919c549a840b3fad8021c982f86d1c56c5da56f87e9",
+          "memberId": "nfr:retention-1"
+        }
+      ],
+      "revisionDigest": "24224370fd2f8ea8ad0134100f6bcfb067000ed6e51232e90cccca5d160bc99f"
+    },
+    "prd": {
+      "members": [
+        {
+          "digest": "dece8933d24ff0f0ec3a0294c0931004a9bbda32f451cea564d3fe509d44766d",
+          "memberId": "prd:boundary-1"
+        },
+        {
+          "digest": "a83b66343a106d3c9cb23a9a30ca11ee0991d79a02ed7d53e5cb9a17730e56bc",
+          "memberId": "prd:constraint-1"
+        },
+        {
+          "digest": "f30e70d22c313c8d8f97f1fa042a7528ad78c1ea169ab6af4afd57412c4ef675",
+          "memberId": "prd:outcome-1"
+        },
+        {
+          "digest": "84115fd40004bc04ad2a4b1f7ddb17f77c4b89ade222cee59c069e5b8a0f566c",
+          "memberId": "prd:scope-1"
+        },
+        {
+          "digest": "036361d0420de0d31b03e40de6cb2aa3a1a78f1dce09195f2786b254af18212c",
+          "memberId": "prd:scope-2"
+        },
+        {
+          "digest": "88ddc6322c4dd8e2d14f80492c2740d2c3c557a1493bb71a068d343bb8c78990",
+          "memberId": "prd:terminal-1"
+        },
+        {
+          "digest": "ef0ed66f1833c94dc911f9336dc7ae7a57c9196037b0136261a13a6ae5d3da46",
+          "memberId": "prd:unknown-1"
+        }
+      ],
+      "revisionDigest": "d497ad89312544713a29b52048c61ced49ca0b14cf89bc5bca44fefa887f0d04"
+    },
+    "rule": {
+      "members": [
+        {
+          "digest": "c69d58f90d95776120cb8d3432864e7b749af96c852c99984edea73dd03fd5f6",
+          "memberId": "rule:audit-1"
+        }
+      ],
+      "revisionDigest": "ff8c858b43ec1d613bd1b1a08345545ce2134dc631cf6304dbde3025c08c4187"
+    },
+    "uc": {
+      "members": [
+        {
+          "branches": [
+            {
+              "branchId": "branch:batch-error",
+              "digest": "3261eafaca8f4e13eb209802f26613eeee205a3a4fda5ebbdcc050d7f4861f00"
+            },
+            {
+              "branchId": "branch:batch-main",
+              "digest": "63d6bbba0133d344383508474ead465ec86fcccff8c59d32ac075aa776e7da7b"
+            }
+          ],
+          "digest": "89cd5afb480097a6dd4d76f3e8d42b6d5ad5135154ed5092c4f0cf8701c44023",
+          "scenarioId": "uc:batch-1"
+        },
+        {
+          "branches": [
+            {
+              "branchId": "branch:checkout-alt",
+              "digest": "c06613007df288ae46125b8113782d231b549d764e26d5c578340aa5af1cee5d"
+            },
+            {
+              "branchId": "branch:checkout-main",
+              "digest": "74c868f92a2bd2b39fe4eb9b2d845f0e878a9f77d4d20985205cc5c1f3c53a9e"
+            }
+          ],
+          "digest": "5371a62d5a70914917205d20be5f908660472ae66c4e858b78ec8c66b61de557",
+          "scenarioId": "uc:checkout-1"
+        }
+      ],
+      "revisionDigest": "ec185f9e132c43c13f8961bd2d134eab4be66a57e2f7cb050995fbdacd33d631"
+    }
+  },
+  "developmentSurface": {
+    "handoffBindingKinds": {
+      "acceptance-bindings": {
+        "resolvesAgainst": [
+          "containers.ac.criterionIds"
+        ]
+      },
+      "formalization-certificate": {
+        "resolvesAgainst": [
+          "caseIdentity.discoveryCertificateRef",
+          "caseIdentity.formalizationCaseRef"
+        ]
+      },
+      "integration-and-construction-obligations": {
+        "resolvesAgainst": [
+          "postFreeze.srs.realizationEntryIds",
+          "postFreeze.srs.surfaces"
+        ]
+      },
+      "prd-intent-bindings": {
+        "resolvesAgainst": [
+          "containers.prd.memberIds"
+        ]
+      },
+      "repository-and-policy-bindings": {
+        "resolvesAgainst": [
+          "postFreeze.development.repositoryPolicyRefs"
+        ]
+      },
+      "requirement-bindings": {
+        "resolvesAgainst": [
+          "containers.fr.memberIds",
+          "containers.nfr.memberIds",
+          "containers.rule.memberIds"
+        ]
+      },
+      "scenario-bindings": {
+        "resolvesAgainst": [
+          "containers.uc.scenarioIds"
+        ]
+      },
+      "scenario-realization-bindings": {
+        "resolvesAgainst": [
+          "postFreeze.srs.realizationEntryIds"
+        ]
+      },
+      "solution-contract": {
+        "resolvesAgainst": [
+          "postFreeze.settlement.solutionContractDigest"
+        ]
+      },
+      "srs-reference-and-hash": {
+        "resolvesAgainst": [
+          "postFreeze.srs.revisionDigest"
+        ]
+      },
+      "terminal-claim-bindings": {
+        "resolvesAgainst": [
+          "sourceManifests.terminalClaimIds"
+        ]
+      },
+      "what-baseline-reference-and-hash": {
+        "resolvesAgainst": [
+          "wholeWhatDigest"
+        ]
+      }
+    },
+    "workItemObligationKinds": {
+      "acceptance-obligation": {
+        "resolvesAgainst": [
+          "containers.ac.criterionIds"
+        ]
+      },
+      "infrastructure-obligation": {
+        "resolvesAgainst": [
+          "postFreeze.srs.surfaces"
+        ]
+      },
+      "integration-or-composition-obligation": {
+        "resolvesAgainst": [
+          "postFreeze.srs.realizationEntryIds"
+        ]
+      },
+      "requirement-obligation": {
+        "resolvesAgainst": [
+          "containers.fr.memberIds",
+          "containers.nfr.memberIds",
+          "containers.rule.memberIds"
+        ]
+      },
+      "scenario-realization-obligation": {
+        "resolvesAgainst": [
+          "postFreeze.srs.realizationEntryIds"
+        ]
+      }
+    }
+  },
+  "dispositions": {
+    "assumption": [],
+    "constraint": [
+      {
+        "reason": "Retention period pinned by compliance input.",
+        "subjectRef": "constraint:retention-1"
+      }
+    ],
+    "deferred": [],
+    "outOfScope": [],
+    "unknown": [
+      {
+        "subjectRef": "prd:unknown-1"
+      }
+    ]
+  },
+  "evidenceBindings": [
+    {
+      "evidenceBindingId": "ev:audit-1",
+      "evidenceKind": "audit",
+      "subjectRef": "uc:batch-1"
+    },
+    {
+      "evidenceBindingId": "ev:test-1",
+      "evidenceKind": "test",
+      "subjectRef": "ac:checkout-end-1"
+    }
+  ],
+  "schemaVersion": "frf-contracts.what-baseline.v1",
+  "sourceManifests": {
+    "claims": {
+      "ids": [
+        "claim:constraint-1",
+        "claim:outcome-1",
+        "claim:scope-1",
+        "claim:scope-2"
+      ],
+      "manifestDigest": "0bf592b6082b3262506055714b892b56c090a2fa8542be63f1fb0ca4e7ddbdf5"
+    },
+    "constraints": {
+      "ids": [
+        "constraint:retention-1"
+      ],
+      "manifestDigest": "089191a94fcd6c16afe5edef1177da4bd6749c4c939db5009500117b909290b6"
+    },
+    "terminalClaims": {
+      "ids": [
+        "terminal:audited-1",
+        "terminal:delivered-1"
+      ],
+      "manifestDigest": "ff6517bf10060b974d08fcabebd616e112267195b8e8fbf172e9de35be33fe9b"
+    }
+  },
+  "traceSet": {
+    "traceDigest": "564c8d22d034817c8fd5a668951215ad33ef266914b87d5baad29c5f30c37421",
+    "traces": [
+      {
+        "fromRef": "claim:outcome-1",
+        "kind": "prd-derived-from-brief-and-source-claims",
+        "toRef": "prd:outcome-1"
+      },
+      {
+        "fromRef": "claim:scope-1",
+        "kind": "prd-derived-from-brief-and-source-claims",
+        "toRef": "prd:scope-1"
+      },
+      {
+        "fromRef": "claim:scope-2",
+        "kind": "prd-derived-from-brief-and-source-claims",
+        "toRef": "prd:scope-2"
+      },
+      {
+        "fromRef": "prd:outcome-1",
+        "kind": "uc-derived-from-prd-intent-members",
+        "toRef": "uc:checkout-1"
+      },
+      {
+        "fromRef": "prd:scope-2",
+        "kind": "uc-derived-from-prd-intent-members",
+        "toRef": "uc:batch-1"
+      },
+      {
+        "fromRef": "prd:boundary-1",
+        "kind": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+        "toRef": "fr:cart-1"
+      },
+      {
+        "fromRef": "branch:checkout-main",
+        "kind": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+        "toRef": "fr:cart-1"
+      },
+      {
+        "fromRef": "branch:checkout-alt",
+        "kind": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+        "toRef": "fr:cart-1"
+      },
+      {
+        "fromRef": "prd:scope-2",
+        "kind": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+        "toRef": "fr:batch-1"
+      },
+      {
+        "fromRef": "branch:batch-main",
+        "kind": "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+        "toRef": "fr:batch-1"
+      },
+      {
+        "fromRef": "prd:constraint-1",
+        "kind": "nfr-derived-from-prd-optionally-uc-when-scenario-local",
+        "toRef": "nfr:retention-1"
+      },
+      {
+        "fromRef": "prd:boundary-1",
+        "kind": "rule-derived-from-prd-optionally-uc-when-scenario-local",
+        "toRef": "rule:audit-1"
+      },
+      {
+        "fromRef": "fr:cart-1",
+        "kind": "ac-derived-from-fr-or-nfr",
+        "toRef": "ac:checkout-end-1"
+      },
+      {
+        "fromRef": "fr:batch-1",
+        "kind": "ac-derived-from-fr-or-nfr",
+        "toRef": "ac:batch-error-1"
+      },
+      {
+        "fromRef": "uc:checkout-1",
+        "kind": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+        "toRef": "ac:checkout-end-1"
+      },
+      {
+        "fromRef": "branch:checkout-main",
+        "kind": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+        "toRef": "ac:checkout-end-1"
+      },
+      {
+        "fromRef": "uc:batch-1",
+        "kind": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+        "toRef": "ac:batch-error-1"
+      },
+      {
+        "fromRef": "branch:batch-error",
+        "kind": "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+        "toRef": "ac:batch-error-1"
+      }
+    ]
+  },
+  "wholeWhatDigest": "c9aef89f1195101fa4255b247a1eeaa8ca3373de098472a662b87851ac8191f9"
+}

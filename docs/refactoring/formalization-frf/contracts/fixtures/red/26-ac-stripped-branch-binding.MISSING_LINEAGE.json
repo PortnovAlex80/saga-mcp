@@ -1,0 +1,19 @@
+{
+  "bindsTo": {
+    "requirementRefs": [
+      "fr:cart-1"
+    ],
+    "ucScenarioRefs": [
+      "uc:checkout-1"
+    ]
+  },
+  "criterionId": "ac:checkout-end-1",
+  "evidence": {
+    "evidenceKind": "test",
+    "observableTerminalResult": "Order delivered and confirmed"
+  },
+  "schemaVersion": "frf-contracts.ac-binding.v1",
+  "verifiableStatementRefs": [
+    "stmt:checkout-when-1"
+  ]
+}

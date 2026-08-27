@@ -1,0 +1,180 @@
+{
+  "$defs": {
+    "materialFlow": {
+      "additionalProperties": false,
+      "description": "A material alternate or error flow; its branchId must be declared in terminalBranches with the matching branch kind.",
+      "properties": {
+        "branchId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "branchId",
+        "steps"
+      ],
+      "type": "object"
+    },
+    "terminalBranch": {
+      "additionalProperties": false,
+      "description": "A terminal scenario branch: the identity level the reverse grammar distinguishes from the scenario level (reverse ambiguity a-5, edges 0051/0052 vs 0055/0056); the exact binding target of scenario-facing ACs and scenario-derived FRs.",
+      "properties": {
+        "branchId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "branchKind": {
+          "description": "Closed branch-kind vocabulary; exactly one main branch per scenario.",
+          "enum": [
+            "alternate",
+            "error",
+            "main"
+          ]
+        },
+        "terminalResult": {
+          "description": "The observable terminal result of this branch (reverse edge/0064).",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "branchId",
+        "branchKind",
+        "terminalResult"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:saga:frf-contract:uc-scenario-member:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "FRF-WP03 UC scenario-member payload contract. One interaction or operational scenario of the UC container (model-use-cases desk). A UC may be human-neutral but never actorless: actorKind is the closed five-value vocabulary and actor identity is required. Terminal branch identities are declared separately from the scenario identity (the level distinction the reverse grammar requires). The member must not carry requirement references (the UC Cell must not require a pre-existing FR; forbidden keys are typed SCOPE_VIOLATION). Payload contract only.",
+  "properties": {
+    "actorIdentity": {
+      "description": "Who/what the actor concretely is.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "actorKind": {
+      "description": "Closed actor-kind vocabulary (plan 'Desk contracts/model-use-cases').",
+      "enum": [
+        "external_system",
+        "human",
+        "operator",
+        "scheduler_or_clock",
+        "sensor_or_environment"
+      ]
+    },
+    "alternateFlows": {
+      "description": "Material alternate flows; each resolves to a declared alternate terminal branch.",
+      "items": {
+        "$ref": "#/$defs/materialFlow"
+      },
+      "type": "array"
+    },
+    "errorFlows": {
+      "description": "Material error flows; each resolves to a declared error terminal branch.",
+      "items": {
+        "$ref": "#/$defs/materialFlow"
+      },
+      "type": "array"
+    },
+    "evidenceKindRefs": {
+      "description": "Evidence kinds this scenario's terminal results will be evidenced by (closed four-value vocabulary).",
+      "items": {
+        "enum": [
+          "audit",
+          "independent-agent-review",
+          "monitoring",
+          "test"
+        ]
+      },
+      "type": "array",
+      "uniqueItems": true
+    },
+    "goal": {
+      "description": "Goal or protected outcome.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "operationalSteps": {
+      "description": "The main flow operational steps.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "postcondition": {
+      "description": "Observable postcondition or terminal result of the scenario.",
+      "minLength": 1,
+      "type": "string"
+    },
+    "prdIntentRefs": {
+      "description": "Exact PRD intent member references (reverse edge/0063 derived-from-exact-intent).",
+      "items": {
+        "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "preconditions": {
+      "description": "Scenario preconditions (may be empty).",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "scenarioId": {
+      "description": "Stable scenario identity (namespace:id).",
+      "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "frf-contracts.uc-scenario-member.v1",
+      "description": "Versioned contract identity."
+    },
+    "terminalBranches": {
+      "description": "The terminal branch identities of this scenario (main, material alternate and error branches); exactly one main branch.",
+      "items": {
+        "$ref": "#/$defs/terminalBranch"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "trigger": {
+      "description": "Scenario trigger.",
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "actorIdentity",
+    "actorKind",
+    "alternateFlows",
+    "errorFlows",
+    "evidenceKindRefs",
+    "goal",
+    "operationalSteps",
+    "postcondition",
+    "prdIntentRefs",
+    "preconditions",
+    "scenarioId",
+    "schemaVersion",
+    "terminalBranches",
+    "trigger"
+  ],
+  "title": "FRF UC scenario member (frf-contracts.uc-scenario-member.v1)",
+  "type": "object"
+}

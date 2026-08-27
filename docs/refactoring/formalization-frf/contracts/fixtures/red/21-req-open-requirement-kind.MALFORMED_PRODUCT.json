@@ -1,0 +1,75 @@
+{
+  "prdRevisionRef": "sha256:d497ad89312544713a29b52048c61ced49ca0b14cf89bc5bca44fefa887f0d04",
+  "requirements": [
+    {
+      "derivation": {
+        "prdIntentRefs": [
+          "prd:outcome-1"
+        ],
+        "ucScenarioRefs": [
+          "uc:checkout-1"
+        ],
+        "ucTerminalBranchRefs": [
+          "branch:checkout-alt",
+          "branch:checkout-main"
+        ]
+      },
+      "requirementId": "fr:cart-1",
+      "requirementKind": "BR",
+      "statement": "The system shall compute cart totals, take payment and emit an order confirmation for the checkout scenario.",
+      "verificationSurfaceRefs": [
+        "surface:test-suite-1"
+      ]
+    },
+    {
+      "derivation": {
+        "prdIntentRefs": [
+          "prd:scope-2"
+        ],
+        "ucScenarioRefs": [
+          "uc:batch-1"
+        ],
+        "ucTerminalBranchRefs": [
+          "branch:batch-main"
+        ]
+      },
+      "requirementId": "fr:batch-1",
+      "requirementKind": "FR",
+      "statement": "The system shall process the scheduled batch idempotently and record an observable batch result.",
+      "verificationSurfaceRefs": [
+        "surface:batch-audit-1"
+      ]
+    },
+    {
+      "derivation": {
+        "prdIntentRefs": [
+          "prd:constraint-1"
+        ],
+        "sourceConstraintRefs": [
+          "constraint:retention-1"
+        ]
+      },
+      "requirementId": "nfr:retention-1",
+      "requirementKind": "NFR",
+      "statement": "Order records shall be retained for the compliance-pinned period.",
+      "verificationSurfaceRefs": [
+        "surface:batch-audit-1"
+      ]
+    },
+    {
+      "derivation": {
+        "prdIntentRefs": [
+          "prd:boundary-1"
+        ]
+      },
+      "requirementId": "rule:audit-1",
+      "requirementKind": "RULE",
+      "statement": "Every emitted order confirmation shall be audit-logged inside the system boundary.",
+      "verificationSurfaceRefs": [
+        "surface:batch-audit-1"
+      ]
+    }
+  ],
+  "schemaVersion": "frf-contracts.requirements-bundle.v1",
+  "ucRevisionRef": "sha256:ec185f9e132c43c13f8961bd2d134eab4be66a57e2f7cb050995fbdacd33d631"
+}

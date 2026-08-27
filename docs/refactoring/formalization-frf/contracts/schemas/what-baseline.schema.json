@@ -1,0 +1,654 @@
+{
+  "$defs": {
+    "branchMember": {
+      "additionalProperties": false,
+      "description": "One frozen terminal branch identity with its digest.",
+      "properties": {
+        "branchId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "branchId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "criterionMember": {
+      "additionalProperties": false,
+      "properties": {
+        "criterionId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "digest": {
+          "description": "Content digest of the accepted atomic criterion payload.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterionId",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "dispositionRecord": {
+      "additionalProperties": false,
+      "description": "One frozen disposition as distinct named content (reverse edge/0081). deferred and outOfScope records require owner and reason (enforced by the validator).",
+      "properties": {
+        "owner": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subjectRef": {
+          "description": "The claim/member/constraint/unknown this disposition disposes.",
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subjectRef"
+      ],
+      "type": "object"
+    },
+    "evidenceBindingRecord": {
+      "additionalProperties": false,
+      "description": "One frozen evidence-method binding (reverse edge/0082).",
+      "properties": {
+        "evidenceBindingId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "evidenceKind": {
+          "description": "Closed evidence-kind vocabulary.",
+          "enum": [
+            "audit",
+            "independent-agent-review",
+            "monitoring",
+            "test"
+          ]
+        },
+        "subjectRef": {
+          "description": "The frozen member this evidence binding is accepted for.",
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidenceBindingId",
+        "evidenceKind",
+        "subjectRef"
+      ],
+      "type": "object"
+    },
+    "handoffSurfaceEntry": {
+      "additionalProperties": false,
+      "description": "One DevelopmentCase handoff binding kind and the exact frozen surface(s) its values must resolve against (cr-02: every handoff binding resolves against the exact accepted id sets; FOREIGN_LINEAGE otherwise).",
+      "properties": {
+        "resolvesAgainst": {
+          "items": {
+            "description": "Closed resolution-surface vocabulary: baseline-internal frozen id sets/digests, or the explicitly-named post-freeze authority that will own the set downstream.",
+            "enum": [
+              "caseIdentity.discoveryCertificateRef",
+              "caseIdentity.formalizationCaseRef",
+              "containers.ac.criterionIds",
+              "containers.fr.memberIds",
+              "containers.nfr.memberIds",
+              "containers.prd.memberIds",
+              "containers.rule.memberIds",
+              "containers.uc.scenarioIds",
+              "postFreeze.development.repositoryPolicyRefs",
+              "postFreeze.settlement.solutionContractDigest",
+              "postFreeze.srs.realizationEntryIds",
+              "postFreeze.srs.revisionDigest",
+              "postFreeze.srs.surfaces",
+              "sourceManifests.claimIds",
+              "sourceManifests.constraintIds",
+              "sourceManifests.terminalClaimIds",
+              "wholeWhatDigest"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "resolvesAgainst"
+      ],
+      "type": "object"
+    },
+    "idDigestMember": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "description": "Content digest of the accepted atomic member payload.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "memberId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "memberId"
+      ],
+      "type": "object"
+    },
+    "sourceManifest": {
+      "additionalProperties": false,
+      "description": "One frozen source manifest: the exact id set plus the content digest of the manifest (reverse edge/0072).",
+      "properties": {
+        "ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "manifestDigest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ids",
+        "manifestDigest"
+      ],
+      "type": "object"
+    },
+    "traceRecord": {
+      "additionalProperties": false,
+      "description": "One accepted trace/member binding of the closed eight-rule semantic grammar (reverse vocabularies.traceGrammarRules).",
+      "properties": {
+        "fromRef": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ac-derived-from-fr-or-nfr",
+            "fr-derived-from-prd-and-uc-branches-when-scenario-derived",
+            "nfr-derived-from-prd-optionally-uc-when-scenario-local",
+            "prd-derived-from-brief-and-source-claims",
+            "rule-derived-from-prd-optionally-uc-when-scenario-local",
+            "scenario-facing-ac-derived-from-uc-and-terminal-branch",
+            "srs-derived-from-frozen-what-baseline",
+            "uc-derived-from-prd-intent-members"
+          ]
+        },
+        "toRef": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fromRef",
+        "kind",
+        "toRef"
+      ],
+      "type": "object"
+    },
+    "ucScenarioMember": {
+      "additionalProperties": false,
+      "properties": {
+        "branches": {
+          "description": "The frozen terminal branch identities of this scenario, each with its digest.",
+          "items": {
+            "$ref": "#/$defs/branchMember"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "digest": {
+          "description": "Content digest of the accepted scenario payload.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "scenarioId": {
+          "pattern": "^[a-z][a-z0-9]*(:[A-Za-z0-9][A-Za-z0-9._-]*)+$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "branches",
+        "digest",
+        "scenarioId"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:saga:frf-contract:what-baseline:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "FRF-WP03 whole-WHAT baseline payload contract (freeze-what-baseline kernel desk). The frozen container that replaces the acceptance-only baseline: case identity, source claim/constraint/terminal-claim manifests, each accepted CellFinalAcceptance/CandidateSet/WorkplaceProductionRevision, every container's atomic member and branch ids+digests, the accepted trace set with its canonical digest, deferral/constraint/assumption/unknown/out-of-scope dispositions as distinct named content, evidence-method bindings, the Development handoff/obligation resolution surface, and one canonical whole-WHAT digest (sha256 over the canonical JSON of this object minus wholeWhatDigest). Exact set equality against the accepted id sets: missing, extra, duplicated, substituted, stale, foreign or drifted material is refused. Payload contract only: no storage owner is added.",
+  "properties": {
+    "acceptanceRecords": {
+      "description": "Exactly one record per accepted pre-freeze desk (reverse edge/0073).",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateSetRef": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "cellFinalAcceptanceRef": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "deskId": {
+            "description": "Closed desk vocabulary: the five reviewed desks accepted before the freeze.",
+            "enum": [
+              "define-acceptance-contract",
+              "define-product-intent",
+              "derive-system-requirements",
+              "model-use-cases",
+              "reconcile-what"
+            ]
+          },
+          "workplaceProductionRevisionRef": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidateSetRef",
+          "cellFinalAcceptanceRef",
+          "deskId",
+          "workplaceProductionRevisionRef"
+        ],
+        "type": "object"
+      },
+      "minItems": 5,
+      "type": "array"
+    },
+    "caseIdentity": {
+      "additionalProperties": false,
+      "description": "FormalizationCase and Discovery certificate/proposal identity frozen exactly (reverse edge/0071).",
+      "properties": {
+        "discoveryCertificateRef": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "formalizationCaseRef": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "discoveryCertificateRef",
+        "formalizationCaseRef"
+      ],
+      "type": "object"
+    },
+    "containers": {
+      "additionalProperties": false,
+      "description": "The six frozen WHAT containers with atomic member ids and digests (reverse edges 0074-0079).",
+      "properties": {
+        "ac": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/criterionMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        },
+        "fr": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/idDigestMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        },
+        "nfr": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/idDigestMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        },
+        "prd": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/idDigestMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        },
+        "rule": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/idDigestMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        },
+        "uc": {
+          "additionalProperties": false,
+          "properties": {
+            "members": {
+              "items": {
+                "$ref": "#/$defs/ucScenarioMember"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "revisionDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "members",
+            "revisionDigest"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ac",
+        "fr",
+        "nfr",
+        "prd",
+        "rule",
+        "uc"
+      ],
+      "type": "object"
+    },
+    "developmentSurface": {
+      "additionalProperties": false,
+      "description": "The frozen Development handoff/obligation resolution surface: the twelve DevelopmentCase handoff binding kinds (reverse vocabularies.handoffBindingKinds) and the five WorkItem obligation kinds (vocabularies.workItemObligationKinds), each mapped to the exact frozen surface its binding values must resolve against. Payload contract for the FRF-09 cells.",
+      "properties": {
+        "handoffBindingKinds": {
+          "additionalProperties": false,
+          "properties": {
+            "acceptance-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "formalization-certificate": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "integration-and-construction-obligations": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "prd-intent-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "repository-and-policy-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "requirement-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "scenario-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "scenario-realization-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "solution-contract": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "srs-reference-and-hash": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "terminal-claim-bindings": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "what-baseline-reference-and-hash": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            }
+          },
+          "required": [
+            "acceptance-bindings",
+            "formalization-certificate",
+            "integration-and-construction-obligations",
+            "prd-intent-bindings",
+            "repository-and-policy-bindings",
+            "requirement-bindings",
+            "scenario-bindings",
+            "scenario-realization-bindings",
+            "solution-contract",
+            "srs-reference-and-hash",
+            "terminal-claim-bindings",
+            "what-baseline-reference-and-hash"
+          ],
+          "type": "object"
+        },
+        "workItemObligationKinds": {
+          "additionalProperties": false,
+          "properties": {
+            "acceptance-obligation": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "infrastructure-obligation": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "integration-or-composition-obligation": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "requirement-obligation": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            },
+            "scenario-realization-obligation": {
+              "$ref": "#/$defs/handoffSurfaceEntry"
+            }
+          },
+          "required": [
+            "acceptance-obligation",
+            "infrastructure-obligation",
+            "integration-or-composition-obligation",
+            "requirement-obligation",
+            "scenario-realization-obligation"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "handoffBindingKinds",
+        "workItemObligationKinds"
+      ],
+      "type": "object"
+    },
+    "dispositions": {
+      "additionalProperties": false,
+      "description": "Dispositions frozen as distinct named content (reverse edge/0081: deferral, constraint, assumption, unknown; plus the plan's explicit out-of-scope records for the epic-scope-equality law).",
+      "properties": {
+        "assumption": {
+          "items": {
+            "$ref": "#/$defs/dispositionRecord"
+          },
+          "type": "array"
+        },
+        "constraint": {
+          "items": {
+            "$ref": "#/$defs/dispositionRecord"
+          },
+          "type": "array"
+        },
+        "deferred": {
+          "items": {
+            "$ref": "#/$defs/dispositionRecord"
+          },
+          "type": "array"
+        },
+        "outOfScope": {
+          "items": {
+            "$ref": "#/$defs/dispositionRecord"
+          },
+          "type": "array"
+        },
+        "unknown": {
+          "items": {
+            "$ref": "#/$defs/dispositionRecord"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "assumption",
+        "constraint",
+        "deferred",
+        "outOfScope",
+        "unknown"
+      ],
+      "type": "object"
+    },
+    "evidenceBindings": {
+      "description": "The frozen evidence-method bindings (reverse edge/0082).",
+      "items": {
+        "$ref": "#/$defs/evidenceBindingRecord"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schemaVersion": {
+      "const": "frf-contracts.what-baseline.v1",
+      "description": "Versioned contract identity."
+    },
+    "sourceManifests": {
+      "additionalProperties": false,
+      "description": "Source claim and source constraint manifests frozen exactly (reverse edge/0072), plus the terminal-claim manifest the terminal-claim bindings resolve against.",
+      "properties": {
+        "claims": {
+          "$ref": "#/$defs/sourceManifest"
+        },
+        "constraints": {
+          "$ref": "#/$defs/sourceManifest"
+        },
+        "terminalClaims": {
+          "$ref": "#/$defs/sourceManifest"
+        }
+      },
+      "required": [
+        "claims",
+        "constraints",
+        "terminalClaims"
+      ],
+      "type": "object"
+    },
+    "traceSet": {
+      "additionalProperties": false,
+      "description": "The accepted trace/member-binding set and its canonical digest (reverse edge/0080): the closure of the eight-rule semantic grammar over the frozen members.",
+      "properties": {
+        "traceDigest": {
+          "description": "sha256 over the canonical JSON of the traces array.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "traces": {
+          "items": {
+            "$ref": "#/$defs/traceRecord"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "traceDigest",
+        "traces"
+      ],
+      "type": "object"
+    },
+    "wholeWhatDigest": {
+      "description": "One canonical whole-WHAT digest: sha256 over the canonical JSON of this object minus wholeWhatDigest.",
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "acceptanceRecords",
+    "caseIdentity",
+    "containers",
+    "developmentSurface",
+    "dispositions",
+    "evidenceBindings",
+    "schemaVersion",
+    "sourceManifests",
+    "traceSet",
+    "wholeWhatDigest"
+  ],
+  "title": "FRF whole-WHAT baseline (frf-contracts.what-baseline.v1)",
+  "type": "object"
+}

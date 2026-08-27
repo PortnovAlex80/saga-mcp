@@ -1,0 +1,81 @@
+{
+  "caseIdentity": {
+    "discoveryCertificateRef": "cert:disc-1",
+    "formalizationCaseRef": "case:form-1"
+  },
+  "idSets": {
+    "briefRefs": [
+      "brief:source-1"
+    ],
+    "criterionIds": [
+      "ac:batch-error-1",
+      "ac:checkout-end-1"
+    ],
+    "evidenceBindingIds": [
+      "ev:audit-1",
+      "ev:test-1"
+    ],
+    "frIds": [
+      "fr:batch-1",
+      "fr:cart-1"
+    ],
+    "nfrIds": [
+      "nfr:retention-1"
+    ],
+    "prdMemberIds": [
+      "prd:boundary-1",
+      "prd:constraint-1",
+      "prd:outcome-1",
+      "prd:scope-1",
+      "prd:scope-2",
+      "prd:terminal-1",
+      "prd:unknown-1"
+    ],
+    "ruleIds": [
+      "rule:audit-1"
+    ],
+    "sourceClaimIds": [
+      "claim:constraint-1",
+      "claim:outcome-1",
+      "claim:scope-1",
+      "claim:scope-2"
+    ],
+    "sourceConstraintIds": [
+      "constraint:retention-1"
+    ],
+    "terminalClaimIds": [
+      "terminal:audited-1",
+      "terminal:delivered-1"
+    ],
+    "ucBranchIdsByScenario": {
+      "uc:batch-1": [
+        "branch:batch-error",
+        "branch:batch-main"
+      ],
+      "uc:checkout-1": [
+        "branch:checkout-alt",
+        "branch:checkout-main"
+      ]
+    },
+    "ucScenarioIds": [
+      "uc:batch-1",
+      "uc:checkout-1"
+    ],
+    "verifiableStatementIds": [
+      "stmt:batch-when-1",
+      "stmt:checkout-when-1"
+    ],
+    "verificationSurfaceIds": [
+      "surface:batch-audit-1",
+      "surface:test-suite-1"
+    ]
+  },
+  "revisionPins": {
+    "ac": "0ea9f940afba0a1fc51e88c36f57e492bab8ed13aa7c7b502ccec93d9fd84362",
+    "fr": "46c94ce016e8d8e06faf4449e957d0324c4dc70f4e40ffd74cc0ebd42f26205c",
+    "nfr": "24224370fd2f8ea8ad0134100f6bcfb067000ed6e51232e90cccca5d160bc99f",
+    "prd": "d497ad89312544713a29b52048c61ced49ca0b14cf89bc5bca44fefa887f0d04",
+    "rule": "ff8c858b43ec1d613bd1b1a08345545ce2134dc631cf6304dbde3025c08c4187",
+    "uc": "ec185f9e132c43c13f8961bd2d134eab4be66a57e2f7cb050995fbdacd33d631"
+  }
+}

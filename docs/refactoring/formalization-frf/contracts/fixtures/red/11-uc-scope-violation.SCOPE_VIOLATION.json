@@ -1,0 +1,50 @@
+{
+  "actorIdentity": "shopper with a browser session",
+  "actorKind": "human",
+  "alternateFlows": [
+    {
+      "branchId": "branch:checkout-alt",
+      "steps": [
+        "The shopper edits the shipping address",
+        "The system revalidates the cart total",
+        "The order is delivered to the edited address"
+      ]
+    }
+  ],
+  "errorFlows": [],
+  "evidenceKindRefs": [
+    "test"
+  ],
+  "goal": "Receive a delivered order confirmation for the cart",
+  "operationalSteps": [
+    "The shopper opens the cart",
+    "The shopper confirms the order",
+    "The system computes the total and takes payment",
+    "The system emits an order confirmation"
+  ],
+  "postcondition": "The order is delivered and observable in the shopper's order history",
+  "prdIntentRefs": [
+    "prd:outcome-1"
+  ],
+  "preconditions": [
+    "The cart holds at least one item"
+  ],
+  "requirementRefs": [
+    "fr:cart-1"
+  ],
+  "scenarioId": "uc:checkout-1",
+  "schemaVersion": "frf-contracts.uc-scenario-member.v1",
+  "terminalBranches": [
+    {
+      "branchId": "branch:checkout-main",
+      "branchKind": "main",
+      "terminalResult": "Order delivered and confirmed"
+    },
+    {
+      "branchId": "branch:checkout-alt",
+      "branchKind": "alternate",
+      "terminalResult": "Order delivered to the edited address"
+    }
+  ],
+  "trigger": "The shopper selects checkout"
+}
