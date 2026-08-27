@@ -105,7 +105,14 @@ test('the full vertical: capsule -> material chain -> CellFinalAcceptance -> run
 });
 
 test('exact author/reviewer identity and revision binding (ADR-053)', async () => {
-  const { session, config } = await boot();
+  const { session, config, run } = await boot();
+  // Happy-path precondition: the vertical must have reached the terminal proof
+  // with NO honest refusal. When a load-flaked product verification makes the
+  // kernel fail-closed (settle refused -> final acceptance lawfully absent),
+  // the refusal verdict must be surfaced verbatim - never a bare array diff
+  // (observed once under full-matrix load, 2026-08-27, kit 16a849a1).
+  const blockedStep = run.steps.find((entry) => entry.result.status === 'refused' || entry.result.status === 'actor-refused' || entry.result.status === 'acceptance-refused');
+  assert.equal(run.blockedAt, undefined, `the vertical blocked at ${run.blockedAt}: ${JSON.stringify(blockedStep?.result)}`);
   // WorkIntents: the author and reviewer pins differ; the attempt pins EQUAL their intent pins.
   const intents = [...session.hydrateWorld().world.workIntents.values()];
   const authorIntent = intents.find((intent) => intent.protocolRole === 'author');

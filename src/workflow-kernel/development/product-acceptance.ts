@@ -130,22 +130,41 @@ function runNodeScript(root: string, script: string, args: readonly string[] = [
 
 /** Start the REAL server on an ephemeral port; returns the base URL + stop(). */
 async function startServer(root: string, contract: ProductAcceptanceContract): Promise<{ readonly base: string; readonly stop: () => Promise<void> }> {
-  const child = spawn(process.execPath, [join(root, contract.bootstrap.entrypoint), '0'], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
-  let port = 0;
-  for (let attempt = 0; attempt < 100 && port === 0; attempt += 1) {
-    const chunk = await new Promise<string>((resolve) => {
-      const timer = setTimeout(() => resolve(''), 100);
-      child.stdout.once('data', (data: Buffer) => { clearTimeout(timer); resolve(data.toString('utf8')); });
+  const child = spawn(process.execPath, [join(root, contract.bootstrap.entrypoint), '0'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  const WAIT_BUDGET_MS = 10_000;
+  const outcome = await new Promise<number | Error>((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (value: number | Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(new Error(`PRODUCT_LOOPBACK_FAILED: server never reported its port within ${WAIT_BUDGET_MS}ms (stderr so far: ${stderr.trim() || '(none)'})`));
+    }, WAIT_BUDGET_MS);
+    // ONE persistent stdout handler: the port line may span pipe chunks under
+    // load, so the regex scans the whole buffer (a per-chunk match could parse
+    // a truncated port number), and no once-listeners accumulate per poll.
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+      const match = /listening on (\d+)/.exec(stdout);
+      if (match !== null) finish(Number.parseInt(match[1], 10));
     });
-    const match = /listening on (\d+)/.exec(chunk);
-    if (match) port = Number.parseInt(match[1], 10);
-  }
-  if (port === 0) {
-    child.kill();
-    throw new Error('PRODUCT_LOOPBACK_FAILED: server never reported its port');
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8'); });
+    child.on('error', (error) => finish(new Error(`PRODUCT_LOOPBACK_FAILED: server spawn failed: ${String(error)}`)));
+    child.on('exit', (code) => {
+      if (!settled) finish(new Error(`PRODUCT_LOOPBACK_FAILED: server exited with code ${code ?? 'null'} before reporting its port (stderr: ${stderr.trim() || '(none)'})`));
+    });
+  });
+  if (outcome instanceof Error) {
+    throw outcome;
   }
   return {
-    base: `http://127.0.0.1:${port}`,
+    base: `http://127.0.0.1:${outcome}`,
     stop: async () => {
       child.kill();
       await new Promise((resolve) => child.once('exit', resolve));
