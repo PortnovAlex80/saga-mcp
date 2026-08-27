@@ -1,0 +1,349 @@
+{
+  "artifactId": "frf-wp01-installed-formalization-graph",
+  "schemaVersion": "frf.installed-graph-capture.v1",
+  "capturedAt": "2026-08-27T07:08:06.017Z",
+  "capturedFrom": {
+    "baseSha": "5c158608",
+    "installedArtifact": "dist/workflow-kernel/workshops/formalization/manifest.js",
+    "sourceFile": "src/workflow-kernel/workshops/formalization/manifest.ts"
+  },
+  "moduleIdentity": {
+    "moduleId": "workshop:solution-formalization",
+    "moduleVersion": "2.0.0",
+    "schemaVersion": "ek.installed-workshop-manifest.ek8-wp11f.v1",
+    "manifestDigest": "c6752ac045a5152b1eaca9508ea52338b5e3df6983b680d932bba5b6be69ba8a"
+  },
+  "graph": {
+    "entryNodeId": "define-product-intent",
+    "terminalNodeIds": [
+      "complete-formalized",
+      "complete-inconsistent",
+      "complete-failed"
+    ],
+    "counts": {
+      "nodes": 11,
+      "edges": 18,
+      "byKind": {
+        "production-cell": 6,
+        "kernel": 2,
+        "terminal": 3
+      },
+      "productionCells": 6,
+      "kernelNodes": 2,
+      "terminalNodes": 3
+    },
+    "nodes": [
+      {
+        "id": "define-product-intent",
+        "label": "Define Product Intent",
+        "kind": "production-cell",
+        "description": "Produce the brief and PRD with stable atomic intent members and required dispositions.",
+        "desk": {
+          "outputProductKind": "formalization.prd-intent.v1",
+          "checkProviderId": "formalization.prd-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "model-use-cases",
+        "label": "Model Use Cases",
+        "kind": "production-cell",
+        "description": "Produce interaction/operational scenarios with a declared actor of the closed vocabulary.",
+        "desk": {
+          "outputProductKind": "formalization.uc-scenarios.v1",
+          "checkProviderId": "formalization.uc-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "derive-system-requirements",
+        "label": "Derive System Requirements",
+        "kind": "production-cell",
+        "description": "Produce FR/NFR/RULE artifacts from exact accepted PRD and UC material.",
+        "desk": {
+          "outputProductKind": "formalization.system-requirements.v1",
+          "checkProviderId": "formalization.requirements-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "define-acceptance-contract",
+        "label": "Define Acceptance Contract",
+        "kind": "production-cell",
+        "description": "Produce acceptance criteria bound to exact FR/NFR material and UC terminal branches.",
+        "desk": {
+          "outputProductKind": "formalization.acceptance-bindings.v1",
+          "checkProviderId": "formalization.acceptance-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "reconcile-what",
+        "label": "Reconcile WHAT Contract",
+        "kind": "production-cell",
+        "description": "Validate and report the closed WHAT chain; repairs only as new immutable upstream revisions.",
+        "desk": {
+          "outputProductKind": "formalization.what-reconciliation.v1",
+          "checkProviderId": "formalization.reconciliation-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "freeze-what-baseline",
+        "label": "Freeze WHAT Baseline",
+        "kind": "kernel",
+        "description": "Freeze the content-addressed whole-WHAT baseline over the exact accepted material.",
+        "desk": {
+          "outputProductKind": "formalization.what-baseline.v1",
+          "checkProviderId": "formalization.baseline-freeze.v1",
+          "effectId": "formalization.freeze-what-baseline",
+          "operatorStaffed": true
+        }
+      },
+      {
+        "id": "define-architecture-contract",
+        "label": "Define Architecture Contract",
+        "kind": "production-cell",
+        "description": "Produce the SRS against the frozen WHAT baseline with the mandatory scenario-realization section.",
+        "desk": {
+          "outputProductKind": "formalization.srs.v1",
+          "checkProviderId": "formalization.srs-structure.v1",
+          "effectId": "formalization.accept-products",
+          "operatorStaffed": false
+        }
+      },
+      {
+        "id": "settle-formalization",
+        "label": "Settle Formalization",
+        "kind": "kernel",
+        "description": "Emit the content-addressed Solution Contract over the baseline and the accepted SRS revision.",
+        "desk": {
+          "outputProductKind": "formalization.solution-contract.v1",
+          "checkProviderId": "formalization.settlement-structure.v1",
+          "effectId": "formalization.settle-solution-contract",
+          "operatorStaffed": true
+        }
+      },
+      {
+        "id": "complete-formalized",
+        "label": "Complete: formalized",
+        "kind": "terminal",
+        "description": "A complete frozen solution contract is ready for downstream work.",
+        "emitsOutcome": "formalized"
+      },
+      {
+        "id": "complete-inconsistent",
+        "label": "Complete: inconsistent",
+        "kind": "terminal",
+        "description": "The contract graph contains unresolved contradictions or traceability gaps.",
+        "emitsOutcome": "inconsistent"
+      },
+      {
+        "id": "complete-failed",
+        "label": "Complete: failed",
+        "kind": "terminal",
+        "description": "Formalization infrastructure could not produce an authoritative result.",
+        "emitsOutcome": "failed"
+      }
+    ],
+    "edges": [
+      {
+        "from": "define-product-intent",
+        "to": "model-use-cases",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "define-product-intent",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "model-use-cases",
+        "to": "derive-system-requirements",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "model-use-cases",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "derive-system-requirements",
+        "to": "define-acceptance-contract",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "derive-system-requirements",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "define-acceptance-contract",
+        "to": "reconcile-what",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "define-acceptance-contract",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "reconcile-what",
+        "to": "freeze-what-baseline",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "reconcile-what",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "freeze-what-baseline",
+        "to": "define-architecture-contract",
+        "on": "domain.frozen"
+      },
+      {
+        "from": "freeze-what-baseline",
+        "to": "complete-inconsistent",
+        "on": "domain.drift-detected"
+      },
+      {
+        "from": "freeze-what-baseline",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "define-architecture-contract",
+        "to": "settle-formalization",
+        "on": "domain.accepted"
+      },
+      {
+        "from": "define-architecture-contract",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      },
+      {
+        "from": "settle-formalization",
+        "to": "complete-formalized",
+        "on": "domain.formalized"
+      },
+      {
+        "from": "settle-formalization",
+        "to": "complete-inconsistent",
+        "on": "domain.inconsistent"
+      },
+      {
+        "from": "settle-formalization",
+        "to": "complete-failed",
+        "on": "domain.failed"
+      }
+    ],
+    "edgeEventVocabulary": [
+      "domain.accepted",
+      "domain.failed",
+      "domain.frozen",
+      "domain.drift-detected",
+      "domain.formalized",
+      "domain.inconsistent"
+    ]
+  },
+  "installedSurfaces": {
+    "checkProviders": [
+      {
+        "providerId": "formalization.prd-structure.v1",
+        "nodeId": "define-product-intent",
+        "productKind": "formalization.prd-intent.v1",
+        "validator": "validatePrdIntent",
+        "providerDigest": "a397596f7847ec39eb96d622b25e265df452bcf2bcd09be020cabc01cf30305a"
+      },
+      {
+        "providerId": "formalization.uc-structure.v1",
+        "nodeId": "model-use-cases",
+        "productKind": "formalization.uc-scenarios.v1",
+        "validator": "validateUseCaseScenarios",
+        "providerDigest": "1cdf75e7c2383b23ad430ab8b9bdd0e4678f6fcca2d6f84fe351f1d9e6225d25"
+      },
+      {
+        "providerId": "formalization.requirements-structure.v1",
+        "nodeId": "derive-system-requirements",
+        "productKind": "formalization.system-requirements.v1",
+        "validator": "validateSystemRequirements",
+        "providerDigest": "c7455d9565cd29c4e8e390e35ea0c6293f66877c70695c73e01ac1c512dcd1fb"
+      },
+      {
+        "providerId": "formalization.acceptance-structure.v1",
+        "nodeId": "define-acceptance-contract",
+        "productKind": "formalization.acceptance-bindings.v1",
+        "validator": "validateAcceptanceContract",
+        "providerDigest": "dc3a1739ea25d0bdde5efcd4bf9c10c511a75c4db28861eb25c94081496e1a91"
+      },
+      {
+        "providerId": "formalization.reconciliation-structure.v1",
+        "nodeId": "reconcile-what",
+        "productKind": "formalization.what-reconciliation.v1",
+        "validator": "validateWhatReconciliation",
+        "providerDigest": "34105e1fb9fec13aa9ad8be1e59ba589eef10c95c052dcf01f76bcb2a540475c"
+      },
+      {
+        "providerId": "formalization.baseline-freeze.v1",
+        "nodeId": "freeze-what-baseline",
+        "productKind": "formalization.what-baseline.v1",
+        "validator": "validateWhatBaseline",
+        "providerDigest": "ce9beee850a7efc9f405158fcb36dff9095786476d605b4ffe02d6560cb6d8f0"
+      },
+      {
+        "providerId": "formalization.srs-structure.v1",
+        "nodeId": "define-architecture-contract",
+        "productKind": "formalization.srs.v1",
+        "validator": "validateSrs",
+        "providerDigest": "4465b3fd213b109bb793880eadf3e8fd12f7515957d78b98885f8211db8261c4"
+      },
+      {
+        "providerId": "formalization.settlement-structure.v1",
+        "nodeId": "settle-formalization",
+        "productKind": "formalization.solution-contract.v1",
+        "validator": "validateSolutionContract",
+        "providerDigest": "fd38a3ce7f44b85b191653678bedde608c1f0ce7c494b711c828cd4d4fb1b344"
+      }
+    ],
+    "roleBindings": [
+      {
+        "launchKind": "formalization.implementation.author",
+        "protocolRole": "author",
+        "semanticProfile": "implementer"
+      },
+      {
+        "launchKind": "formalization.implementation.reviewer",
+        "protocolRole": "reviewer",
+        "semanticProfile": "reviewer"
+      }
+    ],
+    "skills": 9,
+    "semanticSkillsByDesk": [
+      "define-product-intent",
+      "model-use-cases",
+      "derive-system-requirements",
+      "define-acceptance-contract",
+      "reconcile-what",
+      "freeze-what-baseline",
+      "define-architecture-contract",
+      "settle-formalization"
+    ],
+    "tools": 20,
+    "hooks": [
+      {
+        "hookId": "formalization-session-start-desk-context",
+        "event": "SessionStart"
+      },
+      {
+        "hookId": "formalization-post-tool-trace-reminder",
+        "event": "PostToolUse"
+      }
+    ]
+  }
+}

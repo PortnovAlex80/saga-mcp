@@ -1,0 +1,110 @@
+{
+  "reproductionId": "UC-FOREIGN",
+  "recordedAt": "2026-08-27T07:06:22.480Z",
+  "baseSha": "5c158608",
+  "subject": "src/workflow-kernel/workshops/formalization/products.ts :: validateSolutionContract (~line 767 at base)",
+  "installedArtifact": "dist/workflow-kernel/workshops/formalization/products.js",
+  "acceptedMaterial": {
+    "prdMemberIds": [
+      "intent:boundary",
+      "intent:outcome"
+    ],
+    "ucScenarioIds": [
+      "uc:login",
+      "uc:export"
+    ],
+    "requirementIds": [
+      "fr:auth",
+      "fr:export"
+    ],
+    "criterionIds": [
+      "ac:login-e2e",
+      "ac:export-e2e"
+    ],
+    "srsRealizedScenarioIds": [
+      "uc:login",
+      "uc:export"
+    ],
+    "terminalClaimIds": [
+      "terminal:product-delivered"
+    ],
+    "baselineWholeWhatDigest": "d34eaa8efad885a14c25340ce23219e184772a8de6ec3eaae599f74bd57ae92d"
+  },
+  "controlHonestChain": {
+    "scenarioBindings": [
+      "uc:login",
+      "uc:export"
+    ],
+    "validateSolutionContractResult": {
+      "ok": true
+    }
+  },
+  "attackForeignBindings": {
+    "scenarioBindings": [
+      "uc:FOREIGN-admin-shell",
+      "uc:FOREIGN-not-in-accepted-uc"
+    ],
+    "requirementBindings": [
+      "fr:FOREIGN-never-derived"
+    ],
+    "acceptanceBindings": [
+      "ac:FOREIGN-never-accepted"
+    ],
+    "scenarioRealizationBindings": [
+      "uc:FOREIGN-not-realized-anywhere"
+    ],
+    "prdIntentBindings": [
+      "intent:STOLEN-from-another-prd"
+    ],
+    "terminalClaimBindings": [
+      "terminal:FOREIGN-claim"
+    ]
+  },
+  "validateSolutionContractResult": {
+    "ok": true,
+    "artifact": {
+      "ref": "sha256:71d5e0c026341127497c1f0e5bbd1ea671dad5a9ae1d3c19ffd1e1fac20aadf9",
+      "digest": "71d5e0c026341127497c1f0e5bbd1ea671dad5a9ae1d3c19ffd1e1fac20aadf9",
+      "content": {
+        "schemaVersion": "formalization.solution-contract.v1",
+        "whatBaselineRef": "sha256:eacd26fbd89ab059697ec0da9cab039b1a5ee70a94c0a8b9504e1fe51c191552",
+        "srsRef": "sha256:795cd627ec0d2c1bd9ecddc1bc6ec4767abe6f33325002fbd64779dcfbf6c5d2",
+        "developmentHandoff": {
+          "certificateRef": "certificate:formalization:1",
+          "prdIntentBindings": [
+            "intent:STOLEN-from-another-prd"
+          ],
+          "scenarioBindings": [
+            "uc:FOREIGN-admin-shell",
+            "uc:FOREIGN-not-in-accepted-uc"
+          ],
+          "requirementBindings": [
+            "fr:FOREIGN-never-derived"
+          ],
+          "acceptanceBindings": [
+            "ac:FOREIGN-never-accepted"
+          ],
+          "scenarioRealizationBindings": [
+            "uc:FOREIGN-not-realized-anywhere"
+          ],
+          "terminalClaimBindings": [
+            "terminal:FOREIGN-claim"
+          ],
+          "integrationObligations": [
+            "obligation:FOREIGN-composition"
+          ],
+          "repositoryPolicyBindings": [
+            "policy:FOREIGN-repo"
+          ],
+          "baselineRef": "sha256:eacd26fbd89ab059697ec0da9cab039b1a5ee70a94c0a8b9504e1fe51c191552",
+          "baselineDigest": "d34eaa8efad885a14c25340ce23219e184772a8de6ec3eaae599f74bd57ae92d",
+          "srsRef": "sha256:795cd627ec0d2c1bd9ecddc1bc6ec4767abe6f33325002fbd64779dcfbf6c5d2",
+          "srsDigest": "795cd627ec0d2c1bd9ecddc1bc6ec4767abe6f33325002fbd64779dcfbf6c5d2"
+        },
+        "canonicalDigest": "4e94a27d55395cb373845ea13ff386df31afa26c1927ee2e60c9a1a9181662d6"
+      }
+    }
+  },
+  "verdictUnderTheDefect": "GREEN — the foreign handoff is ACCEPTED as an authoritative Solution Contract (the audit counterexample reproduces)",
+  "requiredFrF09Behavior": "FOREIGN_LINEAGE refusal: every handoff binding array must resolve against the exact accepted material id sets (accepted.prd.memberIds, accepted.useCases.scenarioIds, accepted.requirements.requirementIds, accepted.acceptance.criterionIds, accepted.srs.realizedScenarioIds, accepted.handoff.terminalClaimIds)."
+}
