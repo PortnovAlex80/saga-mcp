@@ -59,7 +59,7 @@ Every item verified with executable evidence at base `5c158608` on
 | FRF-WP08 | SRS scenario realization: Elite/simple-server kill demonstrations at the handoff boundary | FRF-WP03, FRF-WP06 | subagent | NOT STARTED | — | — | — |
 | FRF-WP09 | Development handoff and planning: UC-FOREIGN kill (D-1/A1), handoff consumption (D-2/A3), identity preservation (D-3/A4), AC-complete-but-scenario-incomplete rejection (D-4) | FRF-WP07, FRF-WP08 | subagent | NOT STARTED | — | — | — |
 | FRF-WP10 | Scenario, resilience, capsule, and project corpus | FRF-WP04..09 | subagent | **DONE** | merge after ae0672de | 11 scenarios; smoke 5/5 + full 11/11 + tamper 11/11 RED; 26 crash windows settle identical | tools/frf-corpus + tests/frf-corpus 30/30 | WP03 digest-hardening residual noted |
-| FRF-WP11 | Package integration, deletion, CI, docs: coordinator-owned shared paths; the deletion patch (DELETION-MANIFEST.md sections A–C); stale-note retirement (D-14) | FRF-WP04..10 | coordinator + subagent | NOT STARTED | — | — | — |
+| FRF-WP11 | Package integration, deletion, CI, and docs | FRF-WP04..10 | subagent + coordinator | **DONE — THE CUTOVER** | merge after 6c6f8c58 | matrix 1289/1289 (13 groups, 2 new); old flow deleted (86 files, -391K lines); contracts canonical in src | dispatch/manifest/guards/CI | WP12 qualifies on immutable kit |
 | FRF-WP12 | Independent qualification and closure: immutable kit, fresh DBs/repos, three consecutive real-agent projects, FORMALIZATION-SCENARIO-FIRST-FINAL-RECEIPT.md | FRF-WP11 | subagent + coordinator | NOT STARTED | — | — | — |
 
 ## Baseline status (FRF-0)
