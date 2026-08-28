@@ -1,0 +1,289 @@
+{
+  "verifyOutKind": "reviewer-refusal-verify",
+  "semanticCode": "FR-Define-Architecture-Contract-001",
+  "reviewRef": "sha256:d813908b481afeba8466fc1ad6734338b59df766da7c08ed3cb8d12f08798511",
+  "verificationRef": "sha256:63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1",
+  "traceRef": "sha256:e7965ac30699c394e66936dc3bbf3a6db28fedc7a805edd87f8e68e6d6f3d3a3",
+  "submissionRef": "sha256:600a6d4fa2cac4558a446b27194ea68cc95ecb3ea1cc6f5ff15336178596dfda",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "declaredDigestsTrusted": false,
+  "checks": [
+    {
+      "id": "V1.verificationRecord",
+      "pass": true,
+      "detail": "VV recomputes 63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1; kind/id/timestamp pin"
+    },
+    {
+      "id": "V1.reviewRecord",
+      "pass": true,
+      "detail": "FR recomputes d813908b481afeba8466fc1ad6734338b59df766da7c08ed3cb8d12f08798511; kind/id/timestamp pin"
+    },
+    {
+      "id": "V1.traceRecord",
+      "pass": true,
+      "detail": "RT recomputes e7965ac30699c394e66936dc3bbf3a6db28fedc7a805edd87f8e68e6d6f3d3a3; kind/id/timestamp pin"
+    },
+    {
+      "id": "V1.submissionRecord",
+      "pass": true,
+      "detail": "FS recomputes 600a6d4fa2cac4558a446b27194ea68cc95ecb3ea1cc6f5ff15336178596dfda; id/timestamp pin"
+    },
+    {
+      "id": "V1.digestRule",
+      "pass": true,
+      "detail": "all four records pin the frozen digest rule verbatim"
+    },
+    {
+      "id": "V1.deskRole",
+      "pass": true,
+      "detail": "all four records pin desk=define-architecture-contract role=reviewer"
+    },
+    {
+      "id": "V2.reviewBindsVerification",
+      "pass": true,
+      "detail": "FR binds VV by content address"
+    },
+    {
+      "id": "V2.traceBindsReview",
+      "pass": true,
+      "detail": "RT binds FR (subject) and VV (verification)"
+    },
+    {
+      "id": "V2.submissionBindsPackage",
+      "pass": true,
+      "detail": "FS binds FR + VV + RT"
+    },
+    {
+      "id": "V2.reviewedCandidateIsHold",
+      "pass": true,
+      "detail": "FR reviewed candidate pinned to the r5 author hold (no SRS candidate exists)"
+    },
+    {
+      "id": "V2.fsCandidateBinding",
+      "pass": true,
+      "detail": "FS reviewed candidate = hold; no effect fired; intake receipt recorded"
+    },
+    {
+      "id": "V2.evidenceWellFormed",
+      "pass": true,
+      "detail": "FS evidence list: 41 unique well-formed refs (floor 30)"
+    },
+    {
+      "id": "V2.evidenceCoversPackage",
+      "pass": true,
+      "detail": "FS evidence covers this package (VV/FR/RT), the reviewed hold and the adjudicated claim content"
+    },
+    {
+      "id": "V2.noSelfParadox",
+      "pass": true,
+      "detail": "no record contains its own content address (acyclic self-binding)"
+    },
+    {
+      "id": "V2.evidenceCoverageSum",
+      "pass": true,
+      "detail": "evidenceKindCoverage sums to the evidence count (41)"
+    },
+    {
+      "id": "V3.verdict",
+      "pass": true,
+      "detail": "verdict hold-upheld; decision refuses the frame claim and upholds the author hold"
+    },
+    {
+      "id": "V3.acceptanceCriteriaProfile",
+      "pass": true,
+      "detail": "criteria profile honest: exactly 8/9/10 unsatisfied (frame summary false; no SRS candidate; claim is a phantom, not a chain revision)"
+    },
+    {
+      "id": "V3.findingsStructure",
+      "pass": true,
+      "detail": "findings: CRIT-1..3 + MAJ-1; claim adjudication REFUSED"
+    },
+    {
+      "id": "V3.vvSummaryConsistent",
+      "pass": true,
+      "detail": "verification summaries self-consistent and green; nothing trusted by declaration"
+    },
+    {
+      "id": "V3.adjudicationContentLayer",
+      "pass": true,
+      "detail": "adjudication: unresolved phantom (0 hash-resolutions), process-impossible, wrong-referent; refused as authority"
+    },
+    {
+      "id": "V4.projectionCoverage",
+      "pass": true,
+      "detail": "RT pins the exact 8-entry task projection of THIS staffing frame"
+    },
+    {
+      "id": "V4.claimedAcceptanceCoverage",
+      "pass": true,
+      "detail": "RT pins the upstream-accepted[0] adjudication (unresolved-phantom, REFUSED)"
+    },
+    {
+      "id": "V4.workspaceSummary",
+      "pass": true,
+      "detail": "frame workspace summary recorded verbatim and adjudicated FALSE in RT + FS"
+    },
+    {
+      "id": "V4.skillPinsRecorded",
+      "pass": true,
+      "detail": "frame skill pins recorded verbatim as provenance, not ratified"
+    },
+    {
+      "id": "V4.envelopeConsistency",
+      "pass": true,
+      "detail": "FR envelope consistency: 8 resolved + 1 adjudicated"
+    },
+    {
+      "id": "V4.envelopeLawsCarried",
+      "pass": true,
+      "detail": "constraint:retention-1 + unknown:browser-matrix-1 carried, never resolved by the review"
+    },
+    {
+      "id": "V5.claimedAddressUnresolvable",
+      "pass": true,
+      "detail": "workspace-wide (2815 files): the claimed address hash-resolves to ZERO contents in all three body layers"
+    },
+    {
+      "id": "V5.noRatifyingCiters",
+      "pass": true,
+      "detail": "claimed address cited only by lawful refusing families (testbed adjudication sets; settle-formalization hold records; this emission) - 13 files; unexpected citers: 0"
+    },
+    {
+      "id": "V5.skillPinsResolveZero",
+      "pass": true,
+      "detail": "frame skill pins hash-resolve to zero contents (provenance only)"
+    },
+    {
+      "id": "V5.installedPinsDiffer",
+      "pass": true,
+      "detail": "installed manifest pins recompute and BOTH differ from the frame pins"
+    },
+    {
+      "id": "V5.governingAnchorOpen",
+      "pass": true,
+      "detail": "r2-era governing anchor still resolves to zero contents (inherited debt, not pinned by this frame)"
+    },
+    {
+      "id": "V5.importAccepted",
+      "pass": true,
+      "detail": "accepted discovery import recomputes b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    {
+      "id": "V5.capsuleRecomputes",
+      "pass": true,
+      "detail": "capsule recomputes 9/9 (8 envelope + CERT-1)"
+    },
+    {
+      "id": "V5.envelopeFromCapsule",
+      "pass": true,
+      "detail": "all 8 task-projection addresses re-derive from accepted capsule content"
+    },
+    {
+      "id": "V5.holdByteStable",
+      "pass": true,
+      "detail": "r5 author hold recomputes byte-stable (hold-no-authoring, census 0 of 6)"
+    },
+    {
+      "id": "V5.holdReceiptGreen",
+      "pass": true,
+      "detail": "r5 hold receipt recomputes green (29/29)"
+    },
+    {
+      "id": "V5.r4RoundHold",
+      "pass": true,
+      "detail": "r4-round author hold recomputes (hold-no-authoring)"
+    },
+    {
+      "id": "V5.testbedRound",
+      "pass": true,
+      "detail": "testbed round recomputes: author hold d58e6a6a (hold-no-authoring) + reviewer hold 83501c22 (hold-no-review, phantom adjudication of b7f34c48...)"
+    },
+    {
+      "id": "V5.testbedReceiptsGreen",
+      "pass": true,
+      "detail": "both testbed verifier receipts recompute VERIFIED with 0 fails"
+    },
+    {
+      "id": "V5.settleRoundRecomputes",
+      "pass": true,
+      "detail": "settle-formalization holds recompute (r6 co-tenant b40d7616 + testbed twin 8e1bcf73, both hold-no-authoring, verifiers green) - the downstream spine holds consistently"
+    },
+    {
+      "id": "V5.freezeRefusalRound",
+      "pass": true,
+      "detail": "freeze refusal round recomputes: ratification REFUSED, effect never fired"
+    },
+    {
+      "id": "V5.prohibitionUndischarged",
+      "pass": true,
+      "detail": "standing freeze hold + no-accept prohibition recompute undischarged; both gate reviewer emissions = repair"
+    },
+    {
+      "id": "V5.censusZeroOfSix",
+      "pass": true,
+      "detail": "census recomputes 0 of 6 accepted upstream desks (intent repair; UC never reviewed at its own address; requirements repair; acceptance adjudicated repair; reconcile-what repair; freeze on standing hold)"
+    },
+    {
+      "id": "V5.freezeContractUnsatisfiable",
+      "pass": true,
+      "detail": "freeze contract recomputes: acceptanceRecords minItems 5 > 0 accepted - the root blocker stands"
+    },
+    {
+      "id": "V5.deskDeclaration",
+      "pass": true,
+      "detail": "installed desk declaration re-derives from the installed manifest source"
+    },
+    {
+      "id": "V5.r1StrayDriftRecomputes",
+      "pass": true,
+      "detail": "r1 stray product drift recomputes: declared a926df6284... vs content f4846e5f...; retired, never lineage"
+    },
+    {
+      "id": "V6.traceResolution",
+      "pass": true,
+      "detail": "all 38 trace edges resolve at both ends to independently recomputed digests"
+    },
+    {
+      "id": "V6.vocabularyClosed",
+      "pass": true,
+      "detail": "closed relation vocabulary observes/verifies"
+    },
+    {
+      "id": "V6.holdCoverage",
+      "pass": true,
+      "detail": "trace holdCoverage pins the recomputed refusal state (0/6, prohibition undischarged, import-only acceptance, no product verdict)"
+    },
+    {
+      "id": "V6.noIdentityAuthored",
+      "pass": true,
+      "detail": "the review authors no scenario/surface/realization/requirement/criterion/container/baseline identities"
+    },
+    {
+      "id": "V7.deterministicSources",
+      "pass": true,
+      "detail": "no clock reads, no randomness in builder/verifier executable bodies (pinned CREATED_AT only)"
+    },
+    {
+      "id": "V7.fileFamily",
+      "pass": true,
+      "detail": "this desk's namespace carries exactly its emission family (7 required + the verify-out this script writes at V8); 6 co-tenant files belong to the settle-formalization desk namespace (shared round directory, lawful co-tenancy)"
+    },
+    {
+      "id": "V7.recordDeterminism",
+      "pass": true,
+      "detail": "all four records carry the pinned timestamp"
+    }
+  ],
+  "summary": {
+    "total": 53,
+    "pass": 53,
+    "fail": 0,
+    "allPass": true,
+    "scanFiles": 2815
+  },
+  "workspaceSummary": "workspace: workspace: 1 accepted upstream revisions travel by content address (frame line; adjudicated FALSE by FR-Define-Architecture-Contract-001: the one projected address is a phantom - zero hash-resolutions, process-impossible, wrong-referent - refused as acceptance authority; recomputed truth 0 accepted upstream revisions on this chain)",
+  "upstreamAcceptedAdjudication": "UNRESOLVED at the content layer (phantom-upstream-projection; stale shell metadata; CRIT-1 family); REFUSED as acceptance authority; NOT ratified",
+  "ratifiedWorkspaceCensus": "0 of 6 upstream desks accepted; only the discovery import chain is accepted",
+  "verdict": "hold-upheld",
+  "verifyOutDigest": "7ea21bfd92c69e515a00d6ce11986a6ba2ed5680e2ee00f88d6ec94df4819b96"
+}

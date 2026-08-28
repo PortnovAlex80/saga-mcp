@@ -1,0 +1,137 @@
+{
+  "traceRef": "sha256:2b1a039264fbdfff6b028cd9519668cba7710eb1f6630b89b2a8ed416c37ff44",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "2b1a039264fbdfff6b028cd9519668cba7710eb1f6630b89b2a8ed416c37ff44",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Reconcile-What-002",
+    "deskRef": "reconcile-what",
+    "role": "reviewer",
+    "emission": "B (corrected)",
+    "traceKind": "reviewer-verdict-trace",
+    "subjectSemanticCode": "FR-Reconcile-What-002",
+    "subjectArtifactRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+    "verdict": "repair",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces",
+      "supersedes",
+      "adjudicates",
+      "concurrs_with"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "reviews",
+        "toId": "SR-Reconcile-What-001",
+        "toRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "description": "Independent three-layer verification of the what-reconciliation artifact (verdict repair: content 53/53, status 14/14, payload 3/3)"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "reviews",
+        "toId": "FS-Reconcile-What-001",
+        "toRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+        "description": "Independent verification of the author product submission (payload defects recorded under MAJ-2: 6 malformed refs, coverage 27/28, wrong skill pins)"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "reviews",
+        "toId": "author-trace:reconcile-what",
+        "toRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+        "description": "The author trace graph resolves exactly (15/15); the defect it traces is status-layer, not structural"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "reviews",
+        "toId": "report",
+        "toRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "description": "The COMPUTED report of record re-verifies byte-equal through the REAL reconcileWhat; the mechanics are sound - the accepted-material premise is what fails (CRIT-1)"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "concurrs_with",
+        "toId": "FR-Reconcile-What-001",
+        "toRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "description": "Independent concurrence with the round of record (emission A, verdict repair, bound by CL-Reconcile-What-001) - filed under emission-b names per the collision discipline"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "adjudicates",
+        "toId": "CTN-Define-Acceptance-Contract-001",
+        "toRef": "sha256:102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e",
+        "description": "This review re-derives the upstream adjudication from primary records: the acceptance revision's verdict of record is REPAIR; the superseded accepted emission e5249d78... grounds no authority"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "supersedes",
+        "toId": "FR-Reconcile-What-B1",
+        "toRef": "sha256:e86a6e27c7a93a0ea25bde6f455dc36469f70f38333256d6a0b6f1666844a951",
+        "description": "This seat's content-only first pass (verdict accepted, now withdrawn by content address) is superseded by this corrected round: its gate premise (the superseded accepted emission) was false at the status layer"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts are deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "This independent desk audit (70 recomputations over three layers) is the audited-1 realization at the reconcile-what desk; the repair loop keeps the audit honest"
+      },
+      {
+        "fromId": "FR-Reconcile-What-002",
+        "fromRef": "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The repair verdict holds the delivered terminal to its evidence standard: freeze-what-baseline may only settle over a chain that is actually accepted (RA-1..RA-5)"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "Neither the author nor the reviewer resolves or drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "FR-Reconcile-What-002",
+          "ac:terminal-1-audited"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "FR-Reconcile-What-002",
+          "ac:outcome-1-delivered"
+        ]
+      }
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

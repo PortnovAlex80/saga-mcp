@@ -1,0 +1,221 @@
+{
+  "checks": [
+    {
+      "detail": "hold artifact recomputes 9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+      "id": "C1.holdArtifact",
+      "pass": true
+    },
+    {
+      "detail": "hold trace recomputes 17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202; binds the hold artifact",
+      "id": "C1.holdTrace",
+      "pass": true
+    },
+    {
+      "detail": "hold verify-out self-digest recomputes (622d7ba1...); receipt 33/33 pass / 0 fail",
+      "id": "C1.holdReceipt",
+      "pass": true
+    },
+    {
+      "detail": "hold decision hold-no-authoring; noProductAuthored true; pinned timestamp",
+      "id": "C1.holdDecision",
+      "pass": true
+    },
+    {
+      "detail": "accepted import artifact recomputes b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "id": "C2.import",
+      "pass": true
+    },
+    {
+      "detail": "all 9 capsule sub-artifact digests recompute (8 envelope + CERT-1)",
+      "id": "C2.capsuleSubArtifacts",
+      "pass": true
+    },
+    {
+      "detail": "CERT-1 recomputes",
+      "id": "C2.certificate",
+      "pass": true
+    },
+    {
+      "detail": "8/8 task-projection addresses recompute from accepted capsule content AND equal the hold frame projection identically",
+      "id": "C2.envelopeProjection",
+      "pass": true
+    },
+    {
+      "detail": "reconcile-what author candidate of record recomputes (artifact 6400a2dd..., submission 0f4e4faf...)",
+      "id": "C3.gateCandidate",
+      "pass": true
+    },
+    {
+      "detail": "gate reviewer round of record recomputes (FR 39a94a29 repair, VV cd7504a6, RT fe108e09, FS-002 9f2f5d07, CL 841194ce)",
+      "id": "C3.gateRound",
+      "pass": true
+    },
+    {
+      "detail": "the gate reviewer of record reviewed exactly the gate author candidate of record",
+      "id": "C3.gateBinding",
+      "pass": true
+    },
+    {
+      "detail": "the explicit no-accept prohibition recomputes from the verdict record and stands un-discharged",
+      "id": "C3.prohibition",
+      "pass": true
+    },
+    {
+      "detail": "intent a06dbc57: repair across every emission record (e49d8d11, 6c9c8324, 04632094); NOT accepted",
+      "id": "C4.intent",
+      "pass": true
+    },
+    {
+      "detail": "UC 24f0aff2: never reviewed at its own address (only UC verdict 8aeee351 pins c6120e86); hold-violating authoring; NOT accepted",
+      "id": "C4.uc",
+      "pass": true
+    },
+    {
+      "detail": "requirements 86b00569: repair + RS-001; reviewer seat held (fbc0394b, b4eaaaba); NOT accepted",
+      "id": "C4.requirements",
+      "pass": true
+    },
+    {
+      "detail": "acceptance 2b01353d: adjudicated repair CTN-001 (emission C) with the desk on record hold a53a5e08; NOT accepted",
+      "id": "C4.acceptance",
+      "pass": true
+    },
+    {
+      "detail": "reconcile-what 6400a2dd: repair verdict of record; NOT accepted",
+      "id": "C4.gateNotAccepted",
+      "pass": true
+    },
+    {
+      "detail": "census recomputed: 0 of 5 pre-freeze desks accepted (required 5 by the freeze contract)",
+      "id": "C4.census",
+      "pass": true
+    },
+    {
+      "detail": "what-baseline schema recomputes (raw ab1b7f5e...); acceptanceRecords minItems 5; 0/5 < 5 - lawful authoring remains blocked",
+      "id": "C5.schemaPin",
+      "pass": true
+    },
+    {
+      "detail": "9/9 frame projection refs pinned: 8 task-projection (byte-equal to the hold frame) + upstream-accepted[0] e210334e (the delta)",
+      "id": "E1.frameProjection",
+      "pass": true
+    },
+    {
+      "detail": "protocol bc8a4261 / semantic 2cbcf850 pins equal the standing r3 pins",
+      "id": "E2.skillPins",
+      "pass": true
+    },
+    {
+      "detail": "envelope delta isolated to exactly d1 (0->1 summary) and d2 (upstream-accepted[0]); author frame re-derived as 0-count",
+      "id": "E3.workspaceDelta",
+      "pass": true
+    },
+    {
+      "detail": "write authority verbatim: desk artifacts only; candidate-read, product-read, product-submit",
+      "id": "E4.writeAuthority",
+      "pass": true
+    },
+    {
+      "detail": "317 qualification files scanned in all digest bodies (raw bytes, LF-normalized bytes, whole-JSON canonical, .content canonical): 0 content hashes to e210334e",
+      "id": "O1.scan",
+      "pass": true
+    },
+    {
+      "detail": "no revision of freeze-what-baseline exists to accept (noProductAuthored=true recomputed); the r1 fixture baseline/settlement digests (02e5f6ec, 097154d9) are not this address",
+      "id": "O2.semanticImpossibility",
+      "pass": true
+    },
+    {
+      "detail": "the confirmation records the stale-shell adjudication (UNRESOLVABLE, not ratified, RS-001 family) while pinning the envelope line verbatim as frame provenance",
+      "id": "O3.adjudicationRecorded",
+      "pass": true
+    },
+    {
+      "detail": "confirmation self-address recomputes c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+      "id": "D1.selfAddress",
+      "pass": true
+    },
+    {
+      "detail": "trace self-address recomputes 38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+      "id": "D2.traceSelfAddress",
+      "pass": true
+    },
+    {
+      "detail": "acyclic: the trace embeds the confirmation digest; the confirmation binds the trace by file+edges only",
+      "id": "D3.acyclicBinding",
+      "pass": true
+    },
+    {
+      "detail": "trace carries exactly 26 edges, matching the confirmation pin",
+      "id": "D4.edgeCount",
+      "pass": true
+    },
+    {
+      "detail": "all 26 trace edges resolve at both ends to recomputed digests",
+      "id": "D5.traceResolution",
+      "pass": true
+    },
+    {
+      "detail": "closed relation vocabulary confirms/verifies/observes/carries_forward",
+      "id": "D6.vocabulary",
+      "pass": true
+    },
+    {
+      "detail": "trace task-projection coverage is the exact 8-entry envelope projection verified by this confirmation",
+      "id": "D7.coverageProjection",
+      "pass": true
+    },
+    {
+      "detail": "trace holdCoverage pins the recomputed gate verdict, prohibition and census",
+      "id": "D8.confirmGatePin",
+      "pass": true
+    },
+    {
+      "detail": "standing freeze-what file unchanged (self-digest recomputes from raw bytes - zero modification)",
+      "id": "A1.freeze-what-baseline-desk-upstream-hold.artifact.json",
+      "pass": true
+    },
+    {
+      "detail": "standing freeze-what file unchanged (self-digest recomputes from raw bytes - zero modification)",
+      "id": "A1.freeze-what-baseline-desk-upstream-hold-trace.json",
+      "pass": true
+    },
+    {
+      "detail": "standing freeze-what file unchanged (self-digest recomputes from raw bytes - zero modification)",
+      "id": "A1.freeze-what-baseline-desk-hold-verify-out.json",
+      "pass": true
+    },
+    {
+      "detail": "this reviewer seat mints no FS, fires no gate effect (domain.frozen forbidden by the recomputed prohibition)",
+      "id": "A2.noProductNoEffect",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "A3.freeze-what-baseline-desk-reviewer-confirmation-build.mjs",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "A3.freeze-what-baseline-desk-reviewer-confirmation-verify.mjs",
+      "pass": true
+    }
+  ],
+  "confirmationRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "declaredDigestsTrusted": false,
+  "ratifiedWorkspaceCensus": "0 of 5 pre-freeze desks accepted; only the discovery import chain is accepted",
+  "semanticCode": "RC-Freeze-What-Baseline-001",
+  "summary": {
+    "allPass": true,
+    "fail": 0,
+    "pass": 40,
+    "scanFiles": 317,
+    "total": 40
+  },
+  "traceRef": "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+  "upstreamAcceptedAdjudication": "UNRESOLVABLE (stale shell metadata; NOT ratified by this desk)",
+  "verifyOutKind": "reviewer-hold-confirmation-verify",
+  "workspaceSummary": "workspace: 1 accepted upstream revisions travel by content address",
+  "verifyOutDigest": "68320c0ea30ede871d14299f638aab9fc628e21d3420e557c01a504b7feda2e4"
+}

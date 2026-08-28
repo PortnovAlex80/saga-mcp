@@ -1,0 +1,142 @@
+{
+  "artifactRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+  "artifactKind": "formalization-review",
+  "contentDigest": "e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Define-Acceptance-Contract-001",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r3",
+    "reviewedCandidate": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "productKind": "formalization.acceptance-bindings.v1",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "gateSelfCheckVerdict": "accepted",
+      "productSeal": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    "verificationRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+    "verificationSummary": {
+      "recomputedChecks": 50,
+      "passed": 50,
+      "failed": 0,
+      "trustedByDeclaration": false
+    },
+    "envelopeConsistency": {
+      "taskProjectionContentAddresses": 9,
+      "resolved": 8,
+      "adjudicated": 1,
+      "note": "All 8 claim/constraint/unknown/terminal content addresses resolve by recomputation from the r2 import capsule material (no silent drops (WP-18), no digest drift). The single upstream-accepted ref is adjudicated UNRESOLVED-at-desk and recorded as an envelope finding (see verification envelopeAdjudication); it gates nothing in the candidate chain."
+    },
+    "workspaceLaw": "1 accepted upstream revisions travel by content address (reviewer frame: the accepted author product revision). The author submission statement of 0 is stage-relative (no prior gate existed at the author stage) and does not contradict the reviewer frame. The desk consumes its accepted upstream bundles by pinned content addresses inside content.upstream, all of which re-verify.",
+    "findings": {
+      "positiveFindings": [
+        "50/50 independent recomputations pass; every declared digest in the candidate chain (submission, product, bundle seal, member seals, statement seals, trace) is a real content address under the frozen canonical rule.",
+        "The bundle re-seals through the REAL cell validator validateAcceptanceBundle against the universe derived through the REAL acceptanceUniverseFrom protocol; the REAL gate (evaluateAcceptanceGate over the installed frf.acceptance-closure.v1 declaration) returns accepted with productRef equal to the declared product seal, and an impostor provider declaration is refused PROVIDER_NOT_DECLARED (fail-closed).",
+        "Law ac-1 exact lineage: all 5 criteria bind exact accepted FR/NFR material; RULE is not bound (ruleIds is empty and the accepted requirements bundle carries none).",
+        "Laws ac-2/ac-3 BOTH citation shapes: every scenario-facing criterion cites its UC scenario AND terminal branch, and rev-1 re-derives every citation pair from the bound requirements' own derivation lines - no substitution, no stripping.",
+        "Law ac-4: evidence kinds (test, monitoring, audit) come from the closed four-value vocabulary and every criterion declares an observable terminal result.",
+        "Law ac-5 WHAT-side fence holds: no architecture, module allocation or file decisions anywhere in the bundle (bundle-level and per-criterion scans clean).",
+        "Law ac-6 closure: every accepted FR/NFR is covered by >=1 criterion (no deferrals needed) and every required UC terminal branch is covered by an end-to-end criterion (no standalone evidence bindings needed).",
+        "Law ac-7 atomic identity: criterion ids stable and unique across the bundle.",
+        "Both terminal lifecycle claims stay owned upstream and are supported through exact chains: terminal:audited-1 <- prd:terminal-1 <- fr:terminal-1 <- ac:terminal-1-audited; terminal:delivered-1 <- prd:outcome-1 <- fr:outcome-1 <- ac:outcome-1-delivered.",
+        "constraint:retention-1 is honored: the determinism NFR binds prd:constraint-1 and the constraint directly upstream, and ac:determinism-1 + ac:outcome-1-deterministic-error enforce it at this desk; unknown:browser-matrix-1 is carried forward with owner discovery and no fabricated resolution edge; prd:scope-2 (out_of_scope) derives no criterion.",
+        "The author trace graph is exact: 16/16 relationships resolve against recomputed seals, and the coverage blocks are exact forward/reverse projections of the edge set.",
+        "Upstream re-verified before consumption: the accepted intent (a06dbc57), UC (24f0aff2) and requirements (86b00569) artifacts re-verify by content address, the revision pins re-fold exactly (prd a30229a7, uc 184981e5), and all 8 projection content addresses re-derive from the r2 import capsule material.",
+        "rev-4 adversarial probes all refuse through the REAL gate: branch-stripped and scenario-stripped mutants -> repair/MISSING_LINEAGE; unrelated-scenario substitution and foreign requirement binding -> upstream-repair/FOREIGN_LINEAGE. The candidate cannot be softened without refusal."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "upstream_projection_unresolved",
+          "note": "upstream-accepted[0] sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d resolves to no content of the on-disk candidate chain; under driver semantics the ref would be sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 (the bundle product seal). Envelope finding for the shell owner; the candidate chain itself is complete and every ref in it resolves. Recorded so downstream readers do not misread the projection as drift inside the accepted material."
+        },
+        {
+          "type": "workspace_summary_stage_relative",
+          "note": "Author submission workspaceSummary says 0 accepted upstream revisions; reviewer frame says 1 (the accepted author product). Both true at their stages; recorded so downstream readers do not misread it as drift."
+        }
+      ],
+      "criticalIssues": [],
+      "majorIssues": []
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts with SHA256 digests over canonical JSON",
+        "satisfied": true,
+        "evidence": "A1-A3: submission/product/trace digests recomputed and bound"
+      },
+      {
+        "id": 2,
+        "description": "Bundle schemaVersion formalization.acceptance-bindings.v1, sealed by the REAL validateAcceptanceBundle against the universe from the REAL acceptanceUniverseFrom protocol",
+        "satisfied": true,
+        "evidence": "C2-C4: universe derived, 5/5 criteria WP03-sealed, re-seal equals the declared product seal 14fda791"
+      },
+      {
+        "id": 3,
+        "description": "Law ac-1 exact lineage: every criterion binds exact accepted FR/NFR material; RULE is not bound",
+        "satisfied": true,
+        "evidence": "D3 + C2b: 4/4 FR/NFR inside accepted sets, ruleIds empty"
+      },
+      {
+        "id": 4,
+        "description": "Laws ac-2/ac-3 BOTH citation shapes, every citation supported by the bound requirements' own derivation",
+        "satisfied": true,
+        "evidence": "D1 (rev-1): 4/4 scenario-facing criteria re-derived; D4a/D4b probes refuse stripped mutants"
+      },
+      {
+        "id": 5,
+        "description": "Law ac-4 evidence kinds from the closed four-value vocabulary with declared observable terminal results",
+        "satisfied": true,
+        "evidence": "E3: test/monitoring/audit + terminal results on 5/5 criteria"
+      },
+      {
+        "id": 6,
+        "description": "Law ac-5 WHAT-side fence: no architecture/module/file decisions",
+        "satisfied": true,
+        "evidence": "D5: forbidden-key scan clean at bundle and criterion level"
+      },
+      {
+        "id": 7,
+        "description": "Law ac-6 closure: every accepted FR/NFR covered by >=1 criterion; every required UC terminal branch covered end to end",
+        "satisfied": true,
+        "evidence": "E1-E2: 4/4 requirements, 4/4 branches, zero deferrals and zero standalone evidence bindings needed"
+      },
+      {
+        "id": 8,
+        "description": "Law ac-7 atomic identity: criterion ids stable and unique",
+        "satisfied": true,
+        "evidence": "D5: 5 unique criterion ids"
+      },
+      {
+        "id": 9,
+        "description": "Upstream re-verified before consumption (revision pins match, accepted sets re-fold, import capsule material re-derives the projection addresses)",
+        "satisfied": true,
+        "evidence": "H1-H3: intent/uc/requirements artifacts re-verify; prd a30229a7 + uc 184981e5 re-fold; 8/8 projection addresses re-derived"
+      },
+      {
+        "id": 10,
+        "description": "constraint:retention-1 honored; unknown:browser-matrix-1 carried forward with owner and no fabricated resolution; prd:scope-2 derives no criterion",
+        "satisfied": true,
+        "evidence": "F3-F4 + E4: dispositions verified; D10 scan clean"
+      },
+      {
+        "id": 11,
+        "description": "Trace relationships all resolve; coverage blocks are exact projections; terminal claims stay owned upstream",
+        "satisfied": true,
+        "evidence": "G1-G4 + F1-F2: 16/16 edges, exact projections, support chains resolve"
+      },
+      {
+        "id": 12,
+        "description": "Desk product submitted with payload contract (effectId formalization.accept-products, terminalOutcome success)",
+        "satisfied": true,
+        "evidence": "H4-H5: 21 evidence refs resolve; kind coverage exact"
+      }
+    ],
+    "verdict": "accepted",
+    "nextStage": "reconcile-what (cross-desk accepted chain: acceptance-bindings travel by content address)"
+  }
+}

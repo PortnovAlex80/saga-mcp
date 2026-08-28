@@ -1,0 +1,301 @@
+{
+  "checks": [
+    {
+      "detail": "confirmation content digest recomputes to c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+      "id": "C1.confirmationDigest",
+      "pass": true
+    },
+    {
+      "detail": "trace content digest recomputes to fc4aae420a87ea19f6d970815824be0b2d168c8f8c05628c5d300d062777ba80",
+      "id": "C1.traceDigest",
+      "pass": true
+    },
+    {
+      "detail": "trace subject binds the confirmation ref",
+      "id": "C1.refs",
+      "pass": true
+    },
+    {
+      "detail": "the trace embeds the confirmation by content digest; the confirmation binds the trace by file + edge count (25, acyclic)",
+      "id": "C1.acyclicBinding",
+      "pass": true
+    },
+    {
+      "detail": "pinned 2026-08-28T12:00:00Z",
+      "id": "C1.pinnedTimestamp",
+      "pass": true
+    },
+    {
+      "detail": "accepted import artifact digest recomputes",
+      "id": "C2.importDigest",
+      "pass": true
+    },
+    {
+      "detail": "all 9 capsule sub-artifact digests recompute",
+      "id": "C2.capsuleSubArtifacts",
+      "pass": true
+    },
+    {
+      "detail": "envelope 8/8 recompute from accepted capsule content",
+      "id": "C2.envelopeProjection",
+      "pass": true
+    },
+    {
+      "detail": "CERT-1 recomputes",
+      "id": "C2.certificate",
+      "pass": true
+    },
+    {
+      "detail": "published envelopeRecompute block carries the exact 8/8 matches",
+      "id": "C2.envelopeRecomputeBlock",
+      "pass": true
+    },
+    {
+      "detail": "envelope pins (skills, 0-upstream workspace, empty upstream-accepted, write authority) recorded verbatim",
+      "id": "C2.envelopePins",
+      "pass": true
+    },
+    {
+      "detail": "workspace summary line carried verbatim in confirmation + trace",
+      "id": "C2.workspaceSummary",
+      "pass": true
+    },
+    {
+      "detail": "standing hold artifact digest recomputes byte-stable",
+      "id": "C3.holdArtifactDigest",
+      "pass": true
+    },
+    {
+      "detail": "standing hold trace digest recomputes byte-stable",
+      "id": "C3.holdTraceDigest",
+      "pass": true
+    },
+    {
+      "detail": "standing hold decision intact",
+      "id": "C3.holdDecision",
+      "pass": true
+    },
+    {
+      "detail": "standing hold census 0/5 intact",
+      "id": "C3.holdCensus",
+      "pass": true
+    },
+    {
+      "detail": "standing hold receipt semantics: 33/33 pass, subject binds the hold artifact/trace refs",
+      "id": "C3.holdReceiptSemantics",
+      "pass": true
+    },
+    {
+      "detail": "published package-of-record block pins exactly the recomputed standing package",
+      "id": "C3.publishedPackageBlock",
+      "pass": true
+    },
+    {
+      "detail": "this staffing envelope is byte-equal to the standing hold envelope projection + workspace summary",
+      "id": "C3.envelopeByteEquality",
+      "pass": true
+    },
+    {
+      "detail": "staffing round declared as a byte-identical re-staffing",
+      "id": "C3.staffingRound",
+      "pass": true
+    },
+    {
+      "detail": "reconcile-what author candidate of record (artifact/trace/submission) digests recompute",
+      "id": "C4.candidateDigests",
+      "pass": true
+    },
+    {
+      "detail": "reviewer round of record (review/verification/trace/submission) digests recompute",
+      "id": "C4.reviewerRound",
+      "pass": true
+    },
+    {
+      "detail": "verdict of record: repair",
+      "id": "C4.verdictRepair",
+      "pass": true
+    },
+    {
+      "detail": "reviewer of record reviewed exactly the author candidate of record",
+      "id": "C4.candidateBinding",
+      "pass": true
+    },
+    {
+      "detail": "explicit no-accept prohibition recomputed from the verdict record",
+      "id": "C4.prohibition",
+      "pass": true
+    },
+    {
+      "detail": "collision record recomputes; emission A (repair) is the round of record",
+      "id": "C4.collisionRecord",
+      "pass": true
+    },
+    {
+      "detail": "published gate block pins exactly the recomputed digests + prohibition",
+      "id": "C4.gateBlockPinned",
+      "pass": true
+    },
+    {
+      "detail": "the five pre-freeze revision addresses recompute",
+      "id": "C5.revisionAddresses",
+      "pass": true
+    },
+    {
+      "detail": "intent revision: repair across every emission record",
+      "id": "C5.intent",
+      "pass": true
+    },
+    {
+      "detail": "UC revision: the only accepted verdict pins a DIFFERENT candidate - never reviewed at its own address",
+      "id": "C5.uc",
+      "pass": true
+    },
+    {
+      "detail": "requirements revision: repair + re-staff confirmation",
+      "id": "C5.requirements",
+      "pass": true
+    },
+    {
+      "detail": "UH-Define-Acceptance-Contract-001 recomputes (desk on record hold)",
+      "id": "C5.acceptanceHold",
+      "pass": true
+    },
+    {
+      "detail": "CTN adjudication recomputes: emission C repair supersedes the accepted emission",
+      "id": "C5.acceptanceSupersession",
+      "pass": true
+    },
+    {
+      "detail": "the accepted-record scan partitions exhaustively (7 accepted verdict records = 2 at pre-freeze addresses + 5 elsewhere)",
+      "id": "C6.partition",
+      "pass": true
+    },
+    {
+      "detail": "movement scan: zero accepted records at four pre-freeze addresses; the acceptance desk carries exactly the two superseded plain-slot records",
+      "id": "C6.deskCounts",
+      "pass": true
+    },
+    {
+      "detail": "all 5 accepted records outside the five addresses pin known-benign candidates (stale shell 745cadc1 / accepted UC product c6120e86 / accepted import b10bb762)",
+      "id": "C6.benignPartition",
+      "pass": true
+    },
+    {
+      "detail": "published per-desk accepted-record blocks match the recomputed scan exactly",
+      "id": "C6.publishedDeskCounts",
+      "pass": true
+    },
+    {
+      "detail": "published accepted-elsewhere set (5) is contained in the recomputed set (5)",
+      "id": "C6.publishedElsewhere",
+      "pass": true
+    },
+    {
+      "detail": "published movement block carries no tree-size counters (counter policy recorded; receipt counters: files 268, verdict records 17)",
+      "id": "C6.monotonicCounts",
+      "pass": true
+    },
+    {
+      "detail": "published claim holds: no accepted lineage landed at any pre-freeze desk address since the hold (acceptance records superseded)",
+      "id": "C6.noNewLineage",
+      "pass": true
+    },
+    {
+      "detail": "published census: 0 of 5",
+      "id": "C6.censusBlock",
+      "pass": true
+    },
+    {
+      "detail": "what-baseline schema recomputes: acceptanceRecords minItems 5 - the direct lawful-authoring blocker",
+      "id": "C7.schemaPin",
+      "pass": true
+    },
+    {
+      "detail": "hold disposition STANDING; resume contract R1-R4 recorded unfulfilled",
+      "id": "C7.holdDisposition",
+      "pass": true
+    },
+    {
+      "detail": "no baseline section authored; product none",
+      "id": "C8.fence",
+      "pass": true
+    },
+    {
+      "detail": "all 25 trace edges resolve at both ends to recomputed digests",
+      "id": "C8.traceResolution",
+      "pass": true
+    },
+    {
+      "detail": "closed relation vocabulary observed/verifies/confirms",
+      "id": "C8.relationVocabulary",
+      "pass": true
+    },
+    {
+      "detail": "trace task-projection coverage is the exact 8-entry envelope projection",
+      "id": "C8.coverageProjection",
+      "pass": true
+    },
+    {
+      "detail": "the confirmation edge binds the standing hold artifact ref",
+      "id": "C8.confirmsEdge",
+      "pass": true
+    },
+    {
+      "detail": "emission discipline: idempotency, namespacing, write authority recorded",
+      "id": "C8.emissionDiscipline",
+      "pass": true
+    },
+    {
+      "detail": "413 files scanned: 128 content blocks hashed, 0 resolve to the anchor; 140 textual provenance mentions",
+      "id": "C9.unresolvable",
+      "pass": true
+    },
+    {
+      "detail": "published resolution-scan block: zero resolutions, no tree-size counters (receipt: 128 content blocks hashed, 140 textual mentions)",
+      "id": "C9.publishedScan",
+      "pass": true
+    },
+    {
+      "detail": "governing anchor carried as unratified envelope provenance only",
+      "id": "C9.provenanceOnly",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "C10.freeze-what-baseline-desk-restaff-build.mjs",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "C10.freeze-what-baseline-desk-restaff-verify.mjs",
+      "pass": true
+    },
+    {
+      "detail": "this emission wrote only the 6 restaff-namespaced files (no strays: [])",
+      "id": "C10.namespacing",
+      "pass": true
+    },
+    {
+      "detail": "terminal lifecycle claims remain envelope content addresses, never re-minted",
+      "id": "C10.terminalClaims",
+      "pass": true
+    }
+  ],
+  "confirmationRef": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+  "createdAt": "2026-08-28T12:00:00Z",
+  "declaredDigestsTrusted": false,
+  "semanticCode": "AS-Freeze-What-Baseline-001",
+  "summary": {
+    "allPass": true,
+    "fail": 0,
+    "governingAnchorResolutions": 0,
+    "movementScanFiles": 268,
+    "movementVerdictRecords": 17,
+    "pass": 56,
+    "total": 56
+  },
+  "traceRef": "sha256:fc4aae420a87ea19f6d970815824be0b2d168c8f8c05628c5d300d062777ba80",
+  "verifyOutKind": "author-restaff-confirmation-verify",
+  "workspaceSummary": "0 accepted upstream revisions travel by content address",
+  "verifyOutDigest": "0f72746a55b7056db859c1e5501b1f2498e181f07f7f2cd7e1b8e8f209e00cd9"
+}

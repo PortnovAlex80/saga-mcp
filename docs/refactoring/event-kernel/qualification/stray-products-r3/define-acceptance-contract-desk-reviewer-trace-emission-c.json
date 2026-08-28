@@ -1,0 +1,110 @@
+{
+  "traceRef": "sha256:9304f5f1fb799878a87843e20cf97ec1ba492af544cc035d861b438636197f15",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "9304f5f1fb799878a87843e20cf97ec1ba492af544cc035d861b438636197f15",
+  "semanticCode": "RT-Define-Acceptance-Contract-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Define-Acceptance-Contract-002",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "traceKind": "reviewer-verdict-trace",
+    "subjectSemanticCode": "FR-Define-Acceptance-Contract-002",
+    "subjectArtifactRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+    "verdict": "repair",
+    "adjudicates": "sha256:102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "reviews",
+        "toId": "SR-Define-Acceptance-Contract-001",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "description": "Adjudicating review of the acceptance-bindings artifact (verdict repair: CRIT-1, CRIT-2, MAJ-1)"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "reviews",
+        "toId": "FS-Define-Acceptance-Contract-001",
+        "toRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+        "description": "Adjudicating review of the author product submission"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "resolves",
+        "toId": "CTN-Define-Acceptance-Contract-001",
+        "toRef": "sha256:102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e",
+        "description": "Resolves the reviewer-verdict contention: emission A repair confirmed, emission B accepted superseded (evidence-backed adjudication)"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "derived_from",
+        "toId": "VV-Define-Acceptance-Contract-002",
+        "toRef": "sha256:61b9ce2e70b979f7e224bcbe17d492a3ffb85410a4b8a8ba139257cfbabd85a5",
+        "description": "The verdict rests on this emission's own verification record (checks C1-C10, nothing trusted by declaration)"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts are deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "This adjudicating desk audit is the audited-1 realization at the acceptance desk; the repair loop keeps the audit honest"
+      },
+      {
+        "fromId": "FR-Define-Acceptance-Contract-002",
+        "fromRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The repair verdict holds the delivered terminal to its evidence standard: the chain reaches reconcile-what only over genuinely accepted revisions under authority that exists"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "The review confirms the carried-forward disposition; neither the author nor the reviewer resolves or drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "FR-Define-Acceptance-Contract-002",
+          "ac:terminal-1-audited"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "FR-Define-Acceptance-Contract-002",
+          "ac:outcome-1-delivered"
+        ]
+      }
+    }
+  }
+}

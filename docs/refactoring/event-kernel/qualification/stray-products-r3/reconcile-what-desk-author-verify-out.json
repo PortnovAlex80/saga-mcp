@@ -1,0 +1,208 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; report: real acceptance.reconcileWhat over a snapshot re-derived through the real acceptanceUniverseFrom protocol; upstream: real PRD/UC/WP03 validators + REAL cell folds + real validateAcceptanceBundle re-seal",
+  "recomputed": 40,
+  "passed": 40,
+  "failed": 0,
+  "results": [
+    {
+      "id": "A1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A2.artifact.artifactRef",
+      "ok": true,
+      "detail": "recomputed sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A3.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A4.trace.traceRef",
+      "ok": true,
+      "detail": "recomputed sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A5.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+    },
+    {
+      "id": "A6.submission.submissionRef",
+      "ok": true,
+      "detail": "recomputed sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+    },
+    {
+      "id": "A7.kind.family",
+      "ok": true,
+      "detail": "productKind=formalization.what-reconciliation.v1 schemaVersion=formalization.what-reconciliation.v1"
+    },
+    {
+      "id": "A8.workspace.governing",
+      "ok": true,
+      "detail": "workspace summary + governing pin present in artifact and submission"
+    },
+    {
+      "id": "B1.prd03.prd:boundary-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B1.prd03.prd:scope-2",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B1.prd03.prd:constraint-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B1.prd03.prd:outcome-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B1.prd03.prd:terminal-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B1.prd03.prd:unknown-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B2.intentFold",
+      "ok": true,
+      "detail": "revision pin sha256:a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770"
+    },
+    {
+      "id": "B3.uc03.uc:boundary-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B3.uc03.uc:outcome-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B3.uc03.uc:terminal-1",
+      "ok": true,
+      "detail": "accepted"
+    },
+    {
+      "id": "B4.ucRevision",
+      "ok": true,
+      "detail": "revision pin sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e"
+    },
+    {
+      "id": "B5.wp03.requirementsReseal",
+      "ok": true,
+      "detail": "re-sealed sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "B6.acceptanceReseal",
+      "ok": true,
+      "detail": "re-sealed sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 vs published sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "B7.reviewerOfRecord",
+      "ok": true,
+      "detail": "verdict=accepted over the published author candidate"
+    },
+    {
+      "id": "C1.report.byteEquality",
+      "ok": true,
+      "detail": "recomputed digest sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    {
+      "id": "C2.reportDigest.internal",
+      "ok": true,
+      "detail": "recomputed sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    {
+      "id": "C3.verdict.computedLaw",
+      "ok": true,
+      "detail": "verdict=consistent findings=0"
+    },
+    {
+      "id": "C4.report.deepFrozen",
+      "ok": true,
+      "detail": "the reconciler returns a deep-frozen report (report-only law)"
+    },
+    {
+      "id": "C5.rows.installedShape",
+      "ok": true,
+      "detail": "4 rows in the installed formalization.what-reconciliation.v1 row shape"
+    },
+    {
+      "id": "C6.outOfScope.honestEmptyRow",
+      "ok": true,
+      "detail": "prd:scope-2 row: memberRef=prd:scope-2 requirements=0 criteria=0"
+    },
+    {
+      "id": "C7.reverse.wp03Seam",
+      "ok": true,
+      "detail": "5 criteria re-validated through the WP03 seam against the re-derived universe; refusals=0"
+    },
+    {
+      "id": "D1.trace.edgesResolve",
+      "ok": true,
+      "detail": "15 relationships; unresolved=0"
+    },
+    {
+      "id": "D2.trace.reportAnchor",
+      "ok": true,
+      "detail": "report coverage block is the exact projection of the report edges"
+    },
+    {
+      "id": "D3.trace.claimCoverage",
+      "ok": true,
+      "detail": "claim coverage blocks are exact projections of the formalized-as edges"
+    },
+    {
+      "id": "E1.submission.evidenceResolve",
+      "ok": true,
+      "detail": "28 required evidence refs; unresolved=0"
+    },
+    {
+      "id": "E2.constraint.honored",
+      "ok": true,
+      "detail": "constraint:retention-1 honored through ac:determinism-1, ac:outcome-1-deterministic-error"
+    },
+    {
+      "id": "E3.unknown.carriedNothingDerived",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 carried_forward, owner discovery, nothing derived in the accepted bundle"
+    },
+    {
+      "id": "E4.terminal.ownedUpstream",
+      "ok": true,
+      "detail": "terminal claims stay owned upstream; support resolves through accepted requirements and criteria"
+    },
+    {
+      "id": "E5.envelope.8of8",
+      "ok": true,
+      "detail": "8/8 task-projection content addresses re-derived (not by declaration)"
+    },
+    {
+      "id": "E6.submission.selfCheck",
+      "ok": true,
+      "detail": "12/12 self-check items satisfied"
+    },
+    {
+      "id": "F1.determinism.recompute",
+      "ok": true,
+      "detail": "repeated recomputation yields identical digests (pinned timestamps, no clock, no randomness)"
+    },
+    {
+      "id": "F2.fence.whatSide",
+      "ok": true,
+      "detail": "no architecture, module allocation or file decisions anywhere in the desk artifact (WHAT-side fence)"
+    }
+  ]
+}

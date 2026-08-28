@@ -1,0 +1,508 @@
+{
+  "traceRef": "sha256:789d1cd803eee78f035ddb4d0084c0732a581164a2b6deb1b01dbc1f24649d22",
+  "traceKind": "reviewer-refusal-trace",
+  "contentDigest": "789d1cd803eee78f035ddb4d0084c0732a581164a2b6deb1b01dbc1f24649d22",
+  "semanticCode": "RT-Settle-Formalization-001",
+  "createdAt": "2026-08-28T02:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "settle-formalization",
+    "role": "reviewer",
+    "traceKind": "reviewer-refusal-trace",
+    "subjectSemanticCode": "FR-Settle-Formalization-001",
+    "subjectArtifactRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+    "verificationRef": "sha256:6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5",
+    "relationVocabulary": [
+      "observes",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "This review's envelope projection recomputes claim:scope-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "This review's envelope projection recomputes claim:scope-2 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "This review's envelope projection recomputes claim:constraint-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "This review's envelope projection recomputes claim:outcome-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "This review's envelope projection recomputes constraint:retention-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "This review's envelope projection recomputes unknown:browser-matrix-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "This review's envelope projection recomputes terminal:audited-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "This review's envelope projection recomputes terminal:delivered-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "UH-Settle-Formalization-001",
+        "description": "The author-seat hold of record (r6) re-derives byte-stable with its 48/48 verifier green; verdict hold-upheld recorded by this review.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "RT-UH-Settle-Formalization-001",
+        "description": "The author hold trace of record recomputes.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Settle-Formalization-001@factory-testbed",
+        "description": "The testbed-round author hold #1 (8e1bcf73..., hold-no-authoring, verifier 23/23); consistent predecessor evidence.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:8e1bcf73542e217bd702e59d5879200c43c3e21e17d6b94a3f02b63b4d16d3a7"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-UH-Settle-Formalization-001@factory-testbed",
+        "description": "The testbed author hold #1 trace (f64e6346...).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:f64e6346adce7fa2b52cb1bcd43a50528d51e6c9b295d04a195d970fd700f933"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Settle-Formalization-003@factory-testbed",
+        "description": "The testbed-round author hold #2 (7ce5eb48..., envelope byte-equal to hold #1 with ZERO upstream-accepted entries; verifier 28/28) - the author frame count baseline this reviewer frame's count delta is measured against.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:7ce5eb48a8c0d4c4a8671eb330989da9fa28e1462383b076e9d194fbf8075708"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Settle-Formalization-002@factory-testbed",
+        "description": "The desk's first reviewer-stage record: hold-no-review on THIS EXACT frame; adjudicated d751f194... PHANTOM at the address's debut. Disposition carried forward unchanged.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:792b6ce07899114b47b1728cc8e0c9bd5ed867f4d4ad7024d0d83a6559c7f7f3"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-UH-Settle-Formalization-002@factory-testbed",
+        "description": "The prior reviewer record trace (cfca9e19...).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:cfca9e19b7824af07b5f5adc164a238b98d31ff056375df05ff8f420f6d870da"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "phantom:d751f194",
+        "description": "The frame upstream-accepted[0] claim: zero hash-resolutions in all three body layers; process-impossible and wrong-referent (desk-own revision); REFUSED as acceptance authority.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Define-Architecture-Contract-001",
+        "description": "The immediate upstream candidate of record: the r5 arch author hold (hold-no-authoring); NO SRS candidate exists; the domain.accepted edge into this desk has never lawfully fired.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-UH-Define-Architecture-Contract-001",
+        "description": "The r5 arch author hold trace, byte-stable.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Define-Architecture-Contract-001",
+        "description": "NEW adjudication content: the immediate upstream gate reviewer refusal of record (d813908b..., hold-upheld, verifier 53/53) - the gate is refused at reviewer stage, not merely held at author stage.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:d813908b481afeba8466fc1ad6734338b59df766da7c08ed3cb8d12f08798511"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "VV-Define-Architecture-Contract-002",
+        "description": "The arch gate reviewer verification of record (53/53).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-Define-Architecture-Contract-001",
+        "description": "The arch gate reviewer trace of record.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:e7965ac30699c394e66936dc3bbf3a6db28fedc7a805edd87f8e68e6d6f3d3a3"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FS-Define-Architecture-Contract-Reviewer-001",
+        "description": "The arch gate reviewer submission of record; effectFired=false.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:600a6d4fa2cac4558a446b27194ea68cc95ecb3ea1cc6f5ff15336178596dfda"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "import:discovery-handoff",
+        "description": "The accepted discovery import chain; still the only accepted base on this chain.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "cert:discovery-capsule",
+        "description": "The capsule certificate recomputes (CERT-1).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Freeze-What-Baseline-002",
+        "description": "The root gate refusal of record: freeze ratification REFUSED; the domain.frozen edge has never lawfully fired.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "VV-Freeze-What-Baseline-002",
+        "description": "The freeze reviewer verification of record (50/50).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-Freeze-What-Baseline-002",
+        "description": "The freeze reviewer trace of record.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FS-Freeze-What-Baseline-Reviewer-001",
+        "description": "The freeze reviewer submission of record; effectFired=false.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Freeze-What-Baseline-001",
+        "description": "The standing freeze author hold.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "AS-Freeze-What-Baseline-001",
+        "description": "The freeze author re-staff confirmation: standing hold, 0 new accepted lineage.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RC-Freeze-What-Baseline-001",
+        "description": "The freeze reviewer confirmation: hold-upheld-no-candidate-to-review.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Reconcile-What-001",
+        "description": "The gate beneath the freeze: repair verdict of record with the no-accept prohibition toward freeze-what-baseline (undischarged).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "CL-Reconcile-What-001",
+        "description": "The gate collision record: emission A is the reviewer round of record.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:define-product-intent",
+        "description": "Upstream desk 1: repair across every emission; NOT accepted.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:model-use-cases",
+        "description": "Upstream desk 2: never reviewed at its own content address; NOT accepted.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:derive-system-requirements",
+        "description": "Upstream desk 3: repair + held reviewer seat; NOT accepted.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:define-acceptance-contract",
+        "description": "Upstream desk 4: adjudicated repair; NOT accepted.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Model-Use-Cases-001",
+        "description": "The standing r2 upstream hold of the model-use-cases desk.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Define-Acceptance-Contract-001",
+        "description": "The standing r3 upstream hold of the define-acceptance-contract desk.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Define-Acceptance-Contract-002",
+        "description": "The adjudicating emission C of the acceptance desk (repair confirmed).",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:reconcile-what",
+        "description": "Upstream desk 5 (the gate): repair verdict of record; NOT accepted.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-decision",
+        "description": "THIS desk own r1 reviewer-seat stray decision, addressed at the RAW-BYTES layer (not parseable JSON); fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:ad698a85b0a76d8c7be5220c9300c2413dea6f70fd28e162b09ab68519f8e2ed"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-submission",
+        "description": "THIS desk own r1 reviewer-seat stray submission, addressed at the RAW-BYTES layer; label pseudo-addresses + phantom pins inside; fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:0b0c9d2ef98f37c065aa7379764a92625369cd15dad43ea7cbe9ca52eb52ccc6"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-trace",
+        "description": "THIS desk own r1 reviewer-seat stray trace, addressed at the RAW-BYTES layer; pins the phantom set and the drifted anchor; fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:f3cf410a36f97f0e2a0476e5baf157620dcd907408444ddd5e9745b5f9c22f51"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:phantom-candidate-set",
+        "description": "The phantom candidate set f975e878... fabricated by the r1 reviewer-seat family; unresolvable workspace-wide; recorded as provenance, never ratified.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "schema:what-baseline",
+        "description": "The freeze payload contract (raw sha256 ab1b7f5e..., acceptanceRecords minItems 5): the root lawful-authoring blocker of the upstream chain.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "framepin:protocol-skill",
+        "description": "The frame protocol-skill pin (the reviewer drift pair): unresolvable; recorded verbatim; REFUSED as authority.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "framepin:semantic-skill",
+        "description": "The frame semantic-skill pin (the reviewer drift pair): unresolvable; recorded verbatim; REFUSED as authority.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "installed:protocol-skill",
+        "description": "The installed manifest protocol skill digest (recomputed): the only lawful protocol authority; differs from the frame pin.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f"
+      },
+      {
+        "fromId": "FR-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "installed:semantic-skill",
+        "description": "The installed manifest semantic skill digest for THIS desk (recomputed): the only lawful semantic authority; differs from the frame pin.",
+        "fromRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "toRef": "sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      }
+    },
+    "claimedAcceptanceCoverage": {
+      "upstream-accepted[0]": {
+        "address": "sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95",
+        "resolution": "unresolved-phantom",
+        "hashResolvedContents": 0,
+        "adjudication": "REFUSED as acceptance authority (phantom-upstream-projection; desk-own-revision family; CRIT-1)",
+        "verifiedBy": [
+          "FR-Settle-Formalization-Reviewer-001"
+        ]
+      }
+    },
+    "holdCoverage": {
+      "verdict": "hold-upheld",
+      "solutionContractReviewed": false,
+      "productVerdictMinted": false,
+      "noProductAuthored": true,
+      "acceptedUpstreamDesks": 0,
+      "upstreamDesksRequired": 7,
+      "unacceptedLinks": [
+        "link:define-product-intent",
+        "link:model-use-cases",
+        "link:derive-system-requirements",
+        "link:define-acceptance-contract",
+        "link:reconcile-what"
+      ],
+      "upstreamGate": "define-architecture-contract on author hold (6a32f180...) with its reviewer refusal of record (d813908b...); the domain.accepted edge has never fired",
+      "freezeState": "freeze-what-baseline on standing hold; ratification refused (FR-Freeze-What-Baseline-002); the domain.frozen edge has never fired",
+      "onlyAcceptedChain": "import:discovery-handoff",
+      "gateVerdictOfRecord": "FR-Reconcile-What-001 (repair; no-accept prohibition undischarged)",
+      "prohibitionDischarged": false,
+      "projectedLadderOutcomeIfRun": "failed (MISSING_LINEAGE at R1; SETTLE_OUTCOME_OF_REASON)"
+    },
+    "branchResolutionNote": "No scenario, surface, realization-entry, requirement, criterion, container, baseline, SRS-revision or solution-contract identities are authored by this review; all observed links resolve at record/artifact granularity.",
+    "workspaceSummary": "frame claim \"workspace: 1 accepted upstream revisions travel by content address\" adjudicated FALSE; recomputed truth: 0 accepted upstream revisions travel by content address on this chain (the one projected address is a desk-own phantom, refused as acceptance authority)"
+  }
+}

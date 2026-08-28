@@ -1,0 +1,176 @@
+{
+  "artifactRef": "sha256:63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1",
+  "semanticCode": "VV-Define-Architecture-Contract-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-architecture-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Define-Architecture-Contract-002",
+    "semanticCode": "VV-Define-Architecture-Contract-002",
+    "deskRef": "define-architecture-contract",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r6",
+    "subject": "mechanical verification underlying FR-Define-Architecture-Contract-Reviewer-001 (frame authority adjudication + chain state recomputation)",
+    "trustedByDeclaration": false,
+    "checks": [
+      {
+        "id": "A1.claimedAddressUnresolvable",
+        "pass": true,
+        "detail": "sha256:b7f34c48d77b8eea22d7f0b6143960a3f9d2588b17dbba366b7d9375a1c80f41 hash-resolves to zero contents across 2801 files (raw, whole-JSON-canonical and .content-canonical layers; this round excluded)"
+      },
+      {
+        "id": "A2.noRatifyingCitations",
+        "pass": true,
+        "detail": "all 7 mention files live in lawful refusing adjudication/verification families (this desk's testbed reviewer-hold set; the settle-formalization hold records, whose verifier adjudicates the address the arch-own-revision phantom); zero ratifying citations"
+      },
+      {
+        "id": "A3.skillPinsProvenanceOnly",
+        "pass": true,
+        "detail": "protocol/semantic skill digests resolve to no content; recorded verbatim, not ratified"
+      },
+      {
+        "id": "A4.installedPinsDiffer",
+        "pass": true,
+        "detail": "installed pins recompute (sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f / sha256:131efbd99bd2d92e0ac790ab9c271218d0a72995df0053fc35cbffc4d7f176f3) and BOTH differ from the frame pins"
+      },
+      {
+        "id": "A5.governingAnchorStillUnresolvable",
+        "pass": true,
+        "detail": "r2-era governing anchor still hash-resolves to zero contents (inherited debt, not pinned by this frame)"
+      },
+      {
+        "id": "B1.envelope8of8",
+        "pass": true,
+        "detail": "all 8 task-projection addresses re-derive from the accepted capsule (9/9 with CERT-1)"
+      },
+      {
+        "id": "B2.importAccepted",
+        "pass": true,
+        "detail": "the accepted discovery import chain recomputes; still the only accepted base"
+      },
+      {
+        "id": "B3.holdByteStable",
+        "pass": true,
+        "detail": "UH-Define-Architecture-Contract-001 (r5) artifact/trace re-derive byte-stable"
+      },
+      {
+        "id": "B4.holdVerifyGreen",
+        "pass": true,
+        "detail": "r5 hold verifier still green (29/29)"
+      },
+      {
+        "id": "B5.r4RoundHoldRecomputes",
+        "pass": true,
+        "detail": "the r4-round author hold of this desk recomputes (hold-no-authoring)"
+      },
+      {
+        "id": "C1.freezeRefusalRecomputes",
+        "pass": true,
+        "detail": "FR-Freeze-What-Baseline-002 recomputes: freeze ratification REFUSED, effect never fired"
+      },
+      {
+        "id": "C2.freezeRoundRecomputes",
+        "pass": true,
+        "detail": "the freeze reviewer round + standing hold + confirmations recompute"
+      },
+      {
+        "id": "C3.prohibitionUndischarged",
+        "pass": true,
+        "detail": "no-accept prohibition recomputes; no reconcile-what reviewer verdict anywhere departs from repair"
+      },
+      {
+        "id": "C4.censusZeroOfSix",
+        "pass": true,
+        "detail": "all six upstream-desk rows recompute; census remains 0 of 6 accepted"
+      },
+      {
+        "id": "D1.parallelReviewerRecomputes",
+        "pass": true,
+        "detail": "UH-Define-Architecture-Contract-002 (the prior reviewer-stage record on THIS frame) recomputes: hold-no-review, phantom adjudication of b7f34c48..."
+      },
+      {
+        "id": "D2.parallelRoundRecomputes",
+        "pass": true,
+        "detail": "the testbed round recomputes: author hold d58e6a6a... (hold-no-authoring, the record the prior reviewer seat bound) + reviewer hold 83501c22...; both current verifier receipts recompute VERIFIED with 0 fails"
+      },
+      {
+        "id": "D3.noProductAuthoredRecomputes",
+        "pass": true,
+        "detail": "the desk of record authors no product; the prior reviewer seat minted no review and submitted no product"
+      },
+      {
+        "id": "E1.deskDeclarationRecomputes",
+        "pass": true,
+        "detail": "the installed desk declaration re-derives from the installed manifest source (formalization.srs.v1 / formalization.srs-structure.v1 / validateSrs; the domain.frozen inbound edge)"
+      },
+      {
+        "id": "E2.r1StrayDriftRecomputes",
+        "pass": true,
+        "detail": "the r1 stray product drift recomputes: declared a926df6284... vs content f4846e5f...; retired, never lineage"
+      },
+      {
+        "id": "F1.deterministicAuthoring",
+        "pass": true,
+        "detail": "pinned timestamps, no clock reads, no randomness"
+      },
+      {
+        "id": "G1.scanHonest",
+        "pass": true,
+        "detail": "2801 workspace files scanned across three body layers; the inherited anchor remains textually carried by the corpus (164 files) while resolving to nothing"
+      }
+    ],
+    "checksSummary": {
+      "total": 21,
+      "pass": 21,
+      "fail": 0
+    },
+    "resolutionScan": {
+      "filesScanned": 2801,
+      "layers": [
+        "raw bytes",
+        "whole-JSON canonical",
+        ".content canonical",
+        "hash-resolution (sha256 over canonical forms)"
+      ],
+      "excludedFromScan": [
+        ".git",
+        "node_modules",
+        "stray-products-r6 (this emission)"
+      ],
+      "claimedAcceptedAddress": {
+        "address": "sha256:b7f34c48d77b8eea22d7f0b6143960a3f9d2588b17dbba366b7d9375a1c80f41",
+        "textualMentions": 7,
+        "mentionFiles": [
+          ".factory-testbed/define-architecture-contract-reviewer-hold-build.mjs",
+          ".factory-testbed/define-architecture-contract-reviewer-hold-verify-out.json",
+          ".factory-testbed/define-architecture-contract-reviewer-hold-verify.mjs",
+          ".factory-testbed/define-architecture-contract-reviewer-hold.artifact.json",
+          ".factory-testbed/define-architecture-contract-reviewer-hold.md",
+          ".factory-testbed/settle-formalization-author-hold-verify.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold-verify.mjs"
+        ],
+        "hashResolvedContents": [],
+        "parallelScanDelta": "UH-Define-Architecture-Contract-002 scanned a staffing in which the address had ZERO prior mentions; this workspace-wide re-scan finds exactly the prior adjudication set as mentioners and still zero hash-resolutions. Disposition unchanged: refused by both reviewer records."
+      },
+      "frameSkillPins": {
+        "protocolSkill": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+        "semanticSkill": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+        "hashResolvedContents": 0,
+        "installedManifestPins": {
+          "protocolSkill": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f",
+          "semanticSkill": "sha256:131efbd99bd2d92e0ac790ab9c271218d0a72995df0053fc35cbffc4d7f176f3"
+        },
+        "disposition": "envelope provenance recorded verbatim; not ratified by this seat; the installed pins recompute and differ"
+      },
+      "governingAnchor": {
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "hashResolvedContents": 0,
+        "disposition": "inherited r2/r3 debt; NOT pinned by this round frame; still open"
+      }
+    },
+    "deterministicAuthoring": true
+  }
+}

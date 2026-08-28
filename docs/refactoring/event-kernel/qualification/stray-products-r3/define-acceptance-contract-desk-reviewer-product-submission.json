@@ -1,0 +1,72 @@
+{
+  "submissionRef": "sha256:5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0",
+  "submissionId": "FS-Define-Acceptance-Contract-002",
+  "contentDigest": "5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-acceptance-contract",
+    "deskNodeId": "define-acceptance-contract",
+    "role": "reviewer",
+    "workspaceSummary": "1 accepted upstream revisions travel by content address",
+    "verdict": "accepted",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "contentDigest": "e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466"
+    },
+    "reviewedCandidate": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "productKind": "formalization.acceptance-bindings.v1",
+      "acceptedRevisionDigest": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    "verificationRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+    "traceRef": "sha256:55e59486c19ebaefd58a90bb9111edc3b115c809c0c7861aab5d19fe09e84fd8",
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+        "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+        "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+        "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+        "sha256:55e59486c19ebaefd58a90bb9111edc3b115c809c0c7861aab5d19fe09e84fd8",
+        "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+      ],
+      "evidenceKindCoverage": {
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "author-submission": 1,
+        "product": 1,
+        "author-desk-trace": 1,
+        "reviewer-verification": 1,
+        "formalization-review": 1,
+        "reviewer-desk-trace": 1,
+        "accepted-revision": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#define-acceptance-contract:reviewer",
+      "status": "admitted_for_accept_effect",
+      "receivedFrom": "reviewer",
+      "nextStage": "kernel accept effect (formalization.accept-products), then reconcile-what desk",
+      "note": "Reviewer verdict recorded desk-level; kernel-side gate intake (formalization.accept-products effect) is executed by the driver over public commands."
+    }
+  }
+}

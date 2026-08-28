@@ -1,0 +1,123 @@
+{
+  "submissionRef": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+  "submissionId": "FS-Derive-System-Requirements-001",
+  "contentDigest": "05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "derive-system-requirements",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "derive-system-requirements",
+    "deskNodeId": "derive-system-requirements",
+    "role": "author",
+    "itemInstanceId": "formalization-item:derive-system-requirements",
+    "token": "plan:formalization#item:system-requirements",
+    "candidate": {
+      "kind": "formalization.system-requirements.v1",
+      "artifactRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+      "contentDigest": "86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    "payloadContract": {
+      "productKind": "formalization.system-requirements.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+        "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+        "sha256:f49ddc6fc7d6ca3cad0d0e27e9d9a8a158eabef55d4437e0023519fdaed08c85",
+        "sha256:9209335d51f98168a2f9574ec1181eb468a3087b34acde44f68b54010dd39047"
+      ],
+      "evidenceKindCoverage": {
+        "accepted-prd-intent-bundle": 1,
+        "accepted-uc-scenarios-bundle": 1,
+        "discovery-import-artifact": 1,
+        "discovery-handoff-capsule": 1,
+        "discovery-certificate": 1,
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "architecture-contract": 1,
+        "accepted-intent-trace": 1,
+        "accepted-intent-submission": 1,
+        "accepted-uc-trace": 1,
+        "accepted-uc-submission": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "traceRef": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#derive-system-requirements:author",
+      "status": "admitted_for_reviewer_stage",
+      "receivedFrom": "author",
+      "nextStage": "reviewer",
+      "note": "The kernel-side product submission (product_submit against the workflow kernel) is executed by the driver over public commands; this receipt records desk-level intake of the authored candidate only."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Bundle schemaVersion frf-contracts.requirements-bundle.v1 and it is SEALED by the REAL WP03 validator validateRequirementsBundle against the accepted universe derived through the REAL deriveAcceptedUniverse protocol",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "Law L1 exact lineage: every requirement binds exact accepted PRD intent members; scenario-derived FRs bind UC scenario AND terminal-branch identities; branches resolve within cited owning scenarios; the NFR binds the accepted source constraint directly",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "UC coverage law: every accepted UC scenario (uc:boundary-1, uc:outcome-1, uc:terminal-1) produces at least one observable behavior obligation",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Law L2 verification surfaces: every requirement carries at least one surface resolving inside the accepted surface set (surface:test-suite-1, surface:monitoring-1, surface:audit-1)",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "Law L3 revision pins: the bundle pins the exact accepted PRD revision and the exact accepted UC revision (recomputed by the REAL folds, never declared)",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "Fence respected: no scenarios/acceptanceCriteria/criteria/srs/scenarioRealizations/solutionContract artifact family in the candidate; closed FR/NFR/RULE vocabulary only",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "constraint:retention-1 honored (deterministic authoring, pinned timestamps, no clock/random reads; determinism NFR binds the constraint directly); unknown:browser-matrix-1 carried forward with owner discovery and no fabricated resolution edge; prd:scope-2 (out_of_scope) derives no requirement",
+        "satisfied": true
+      },
+      {
+        "id": 9,
+        "description": "Trace relationships all resolve against recomputed digests; coverage blocks are exact projections of the edge set; terminal claims stay owned upstream (prd:outcome-1, prd:terminal-1)",
+        "satisfied": true
+      },
+      {
+        "id": 10,
+        "description": "0 accepted upstream revisions travel by content address",
+        "satisfied": true
+      }
+    ],
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

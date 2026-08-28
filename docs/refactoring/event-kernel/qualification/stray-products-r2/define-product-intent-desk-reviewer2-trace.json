@@ -1,0 +1,101 @@
+{
+  "traceRef": "sha256:84324a50809fab818b9064a1d8a5bd0d6e752f8d446e05fab1c0615ac768ade4",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "84324a50809fab818b9064a1d8a5bd0d6e752f8d446e05fab1c0615ac768ade4",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Define-Product-Intent-002",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "traceKind": "reviewer-verdict-trace",
+    "subjectSemanticCode": "FR-Define-Product-Intent-002",
+    "subjectArtifactRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+    "verdict": "repair",
+    "contention": "see FR-Define-Product-Intent-002 contentionRecord - verdicts disputed, desk must not settle",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "reviews",
+        "toId": "PRD-Define-Product-Intent-001",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "description": "Independent reviewer verification (verdict repair: CRIT-1 substance, MAJ-1 governing anchor)"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "reviews",
+        "toId": "FS-Define-Product-Intent-001",
+        "toRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+        "description": "Author product submission reviewed"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "reviews",
+        "toId": "author-trace:define-product-intent",
+        "toRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+        "description": "Author trace graph verified (relationships resolve)"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "The independent audit (REAL WP03 validator + substance checks) is the audited-1 realization; the contention keeps it honest"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-002",
+        "fromRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "Delivery intent settles only under authority that exists (RA-1) and a resolving governing anchor (RA-2)"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "Neither author nor reviewer resolves or drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "FR-Define-Product-Intent-002",
+          "prd:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "FR-Define-Product-Intent-002",
+          "prd:outcome-1"
+        ]
+      }
+    }
+  }
+}

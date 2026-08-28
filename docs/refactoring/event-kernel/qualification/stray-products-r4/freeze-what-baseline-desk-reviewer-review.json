@@ -1,0 +1,203 @@
+{
+  "artifactRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+  "artifactKind": "formalization-review",
+  "contentDigest": "d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+  "semanticCode": "FR-Freeze-What-Baseline-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Freeze-What-Baseline-Reviewer-002",
+    "semanticCode": "FR-Freeze-What-Baseline-002",
+    "deskRef": "freeze-what-baseline",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r4",
+    "provenanceNote": "FR-Freeze-What-Baseline-Reviewer-001 (r1 assessment, pre-content-addressed corpus) is the review-sequence predecessor; recorded as history, not pinned.",
+    "reviewedCandidate": {
+      "artifactRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+      "traceRef": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+      "productKind": "formalization.upstream-hold.v1",
+      "declaredDecision": "hold-no-authoring",
+      "note": "the candidate of record at this desk is the r3 author-seat upstream hold; NO WHAT-baseline candidate exists at this desk (none was ever lawfully authorable on this chain)"
+    },
+    "verificationRef": "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21",
+    "verificationSummary": {
+      "recomputedChecks": 18,
+      "passed": 18,
+      "failed": 0,
+      "trustedByDeclaration": false
+    },
+    "envelopeConsistency": {
+      "taskProjectionContentAddresses": 8,
+      "resolved": 8,
+      "adjudicated": 1,
+      "note": "All 8 claim/constraint/unknown/terminal addresses match this frame exactly and re-derive from the accepted capsule. THE DELTA VS R3: this frame, for the first time, carries an upstream-accepted ref (upstream-accepted[0] sha256:e210334e...) plus the workspace summary \"1 accepted upstream revisions travel by content address\" - adjudicated below at the content layer. The frame also pins protocol-skill bc8a4261... and semantic-skill 2cbcf850..., which hash-resolve to no workspace content (recorded as provenance). This round's frame pins NO governingContractRef; the r2-era anchor a926df6284... remains unresolvable workspace-wide."
+    },
+    "workspaceLaw": "frame claim, verbatim: \"1 accepted upstream revisions travel by content address\" (upstream-accepted[0] sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de :: accepted revision of freeze-what-baseline) - adjudicated FALSE at the status layer: the address resolves to the contract-suite green fixture, not an accepted chain revision; the recomputed census is 0 of 5 accepted pre-freeze desks; the gate verdict of record is repair with the no-accept prohibition undischarged.",
+    "reviewerSequence": {
+      "first": {
+        "semanticCode": "RC-Freeze-What-Baseline-001",
+        "ref": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "kind": "reviewer-hold-confirmation (no FR/VV/FS package minted: no candidate existed to review)",
+        "disposition": "hold-upheld-no-candidate-to-review"
+      },
+      "thisRecord": "FR-Freeze-What-Baseline-Reviewer-002 is the SECOND reviewer-stage record and mints the desk's first content-addressed FR/VV/FS reviewer package. This is NOT a re-emission of identical semantics (the idempotency law is respected): the workspace-wide resolution of the frame claim - the green fixture - is NEW adjudication content that the scope-limited RC-001 scan could not see. The confirmation's disposition is carried forward unchanged; its resolution finding is superseded by content address.",
+      "authorRestaff": {
+        "semanticCode": "AS-Freeze-What-Baseline-001",
+        "ref": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+        "disposition": "hold carried, 0 new accepted lineage (workspace-wide movement scan)"
+      }
+    },
+    "claimedAcceptanceAdjudication": {
+      "frameEntry": "upstream-accepted[0] sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de :: accepted revision of freeze-what-baseline",
+      "frameWorkspaceSummary": "1 accepted upstream revisions travel by content address",
+      "resolution": "RESOLVED at the content layer: the address is the whole-JSON canonical sha256 of exactly one workspace content",
+      "resolvedContent": {
+        "path": "docs/refactoring/formalization-frf/contracts/fixtures/green/what-baseline.json",
+        "role": "green-path payload-contract fixture of frf-contracts.what-baseline.v1 (contract-suite test example)",
+        "lawfulConsumers": [
+          "tests/workflow-kernel/workshops/formalization/cells/what-freeze/support.mjs",
+          "tools/frf-corpus/lib/material.mjs",
+          "docs/refactoring/formalization-frf/contracts/run-proof.mjs"
+        ],
+        "acceptanceTriples": "5 placeholder triples (15 digests), all hash-resolving to zero workspace contents",
+        "caseIdentityRefs": "fixture placeholders (case:form-1, cert:disc-1), not chain objects"
+      },
+      "authorityAudit": {
+        "isWorkplaceProductionRevisionOfThisChain": false,
+        "reviewerStageAtThisAddress": false,
+        "citedByAnyQualificationRecord": false,
+        "textualMentionsOutsideThisRound": 5,
+        "selfReference": "the resolved content is itself a what-baseline - THIS desk's own product kind - so it cannot constitute this desk's upstream revision; the desk's upstream gate is reconcile-what"
+      },
+      "adjudication": "REFUSED as acceptance authority (fixture-misdeclared-as-accepted-revision; CRIT-1 family)",
+      "parallelReviewerRecord": {
+        "semanticCode": "RC-Freeze-What-Baseline-001",
+        "ref": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "traceRef": "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+        "disposition": "hold-upheld-no-candidate-to-review; claim adjudicated UNRESOLVABLE under a qualification-tree-scoped scan (317 files) and NOT ratified",
+        "deltaAdjudicatedByThisRecord": "the scope-limited UNRESOLVABLE finding is superseded at the content layer: a WORKSPACE-WIDE scan (raw, whole-JSON-canonical and .content-canonical bodies over every file outside this round) hash-resolves the address to exactly one content - the green fixture. The DISPOSITION is unchanged: both reviewer records refuse the claim as acceptance authority.",
+        "authorRestaffContext": "AS-Freeze-What-Baseline-001 (c2a08f04...) re-verified the standing hold workspace-wide with 0 new accepted lineage since the hold; consistent with this adjudication."
+      },
+      "historicalNote": "same frame family as r1 (upstream-accepted[0] sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35 :: accepted revision of define-product-intent, flagged unresolved by r1 RC-003); this variant is strictly weaker: r1 named a chain product (itself stale shell metadata per the AS-001 movement-scan known-benign law), this frame names a contract-suite fixture"
+    },
+    "findings": {
+      "positiveFindings": [
+        "The envelope recomputes 8/8 from the accepted capsule (9/9 including CERT-1); the discovery import chain remains the only genuinely accepted base.",
+        "The author-seat hold of record (UH-Freeze-What-Baseline-001 9f2d28b9... / trace 17c09566...) re-derives byte-stable; its 33/33 r3 verification and the 40/40 RC-001 verification both recompute green.",
+        "The claimed accepted revision was adjudicated at the CONTENT layer, not by label: the address is cited in the corpus only inside the r3 reviewer-confirmation set (which refuses it), and a workspace-wide three-body scan hash-resolves it to exactly one content.",
+        "Two independent reviewer staffings agree on the disposition: RC-Freeze-What-Baseline-001 (hold-upheld, claim not ratified) and this seat (hold-upheld, claim refused); the author re-staff AS-Freeze-What-Baseline-001 independently confirms the standing hold with 0 new accepted lineage.",
+        "The gate records recompute exactly: author candidate of record (0f4e4faf/6400a2dd/09e80046), reviewer round of record FR-Reconcile-What-001 39a94a29 (repair) with the explicit prohibition, collision record 841194ce (emission A the round of record); BOTH reconcile-what reviewer emissions (FR-...-001, FR-...-002) recompute to repair.",
+        "The census recomputes 0 of 5 per row (intent repair x3; UC never reviewed at its own address; requirements repair + held reviewer seat; acceptance adjudicated repair CTN-001; reconcile-what repair), and the freeze contract itself (schema raw ab1b7f5e..., acceptanceRecords minItems 5) recomputes as the direct lawful-authoring blocker."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "fixture_role_preserved",
+          "note": "This adjudication refuses the fixture as ACCEPTANCE AUTHORITY; it does not disparage the fixture. Its lawful role - the green-path payload-contract example of frf-contracts.what-baseline.v1 - is untouched. The misdeclaration inverted the fixture role from \"example of what a lawful freeze requires\" to \"proof that one exists\"."
+        },
+        {
+          "type": "frame_family_history",
+          "note": "same frame family as r1 (upstream-accepted[0] sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35 :: accepted revision of define-product-intent, flagged unresolved by r1 RC-003); this variant is strictly weaker: r1 named a chain product (itself stale shell metadata per the AS-001 movement-scan known-benign law), this frame names a contract-suite fixture"
+        }
+      ],
+      "criticalIssues": [
+        {
+          "id": "CRIT-1",
+          "severity": "CRITICAL",
+          "title": "Frame declares an accepted upstream revision; the address resolves to a contract-suite fixture, not a chain revision",
+          "detail": "The frame's workspace summary (\"1 accepted upstream revisions travel by content address\") and its upstream-accepted[0] entry assert accepted-chain authority. Mechanical resolution: sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de is the whole-JSON canonical sha256 of exactly one workspace content - docs/refactoring/formalization-frf/contracts/fixtures/green/what-baseline.json, the green-path test fixture of the payload contract. That fixture is not a WorkplaceProductionRevision of this chain: no submission, no desk, no reviewer stage exists for it anywhere in the corpus (its only citers are the r3 reviewer-confirmation set, which refuses it); its 5 acceptanceRecords are placeholder triples (all 15 digests hash-resolve to zero contents); its caseIdentity refs are fixture placeholders. The truthful recomputed census remains 0 of 5 accepted pre-freeze desks. RC-Freeze-What-Baseline-001 adjudicated the same claim UNRESOLVABLE under its qualification-tree-scoped scan (317 files); this seat's workspace-wide scan sharpens that finding - the address DOES resolve, to a fixture - while the disposition is unchanged. A freeze ratified over this \"upstream\" would inherit the fabricated authority permanently.",
+          "requiredAction": "Verdict: refuse the claim as acceptance authority. The freeze contract remains unsatisfiable on this chain. Lawful path unchanged: RA-1..RA-4 land genuinely accepted revisions through completed reviewer stages at their own content addresses; RA-5 re-runs reconcile-what over the NEW accepted chain; this desk re-staffs only afterwards (resume contract R1-R4 of the author hold)."
+        },
+        {
+          "id": "CRIT-2",
+          "severity": "CRITICAL",
+          "title": "Self-referential upstream: the resolved content is a what-baseline - this desk's own product kind",
+          "detail": "Even if the fixture had chain standing, a what-baseline cannot be the upstream revision OF the freeze-what-baseline desk: the desk would be consuming its own product as its acceptance. The desk's only lawful upstream gate is reconcile-what, whose verdict of record is repair. The frame's label (\"accepted revision of freeze-what-baseline\") is therefore structurally self-referential - an acceptance of this desk asserted with no reviewer stage at any content address, the exact CRIT-2 failure class this chain adjudicated at r3.",
+          "requiredAction": "The frame entry must be withdrawn by the frame issuer. This desk records the refusal and does not ratify any freeze."
+        },
+        {
+          "id": "CRIT-3",
+          "severity": "CRITICAL",
+          "title": "The explicit no-accept prohibition toward this desk stands undischarged",
+          "detail": "FR-Reconcile-What-001 (39a94a29..., emission A, round of record per CL-Reconcile-What-001 841194ce...) recomputes with \"No domain.accepted may fire from this desk toward freeze-what-baseline on this chain\"; CRIT-1 requiredAction carries \"No accept effect may fire on this chain\"; emission B (FR-Reconcile-What-002) also recomputes to repair. No re-run reconcile-what round exists anywhere in the corpus, so no verdict of record has discharged the prohibition. Per the discharge law (R2), only a future reconcile-what reviewer verdict of record on a re-run over genuinely accepted revisions can discharge it - never this desk, and never a frame assertion.",
+          "requiredAction": "The prohibition stands. This seat records verdict hold-upheld on the author hold and refuses freeze ratification."
+        }
+      ],
+      "majorIssues": [
+        {
+          "id": "MAJ-1",
+          "severity": "MAJOR",
+          "title": "Frame skill digests resolve to no workspace content; the inherited governing anchor remains unresolvable",
+          "detail": "The frame pins protocol-skill sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50 and semantic-skill sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2; both hash-resolve to zero workspace contents (they are mentioned textually 51/51 times as frame pins). Recorded as envelope provenance, not ratified. The r2-era governing anchor sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 also still resolves to zero contents - the anchor debt (r2 RA-2/RA-4, r3 MAJ-1) remains open; this round's frame pins no governingContractRef at all.",
+          "requiredAction": "The frame issuer must materialize the skill/anchor refs as real content-addressed material (or re-pin to what exists) before any future settlement may cite them."
+        }
+      ]
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true,
+        "evidence": "VV/FR/RT/FS self-address and cross-bind; single-dereference evidence list in the submission"
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed by this seat; nothing trusted by declaration",
+        "satisfied": true,
+        "evidence": "A-G check groups re-run (18/18 pass); 2756 files scanned"
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-frame task-projection content addresses resolved",
+        "satisfied": true,
+        "evidence": "B1: 8/8 exact from the accepted capsule"
+      },
+      {
+        "id": 4,
+        "description": "The frame's upstream-accepted entry adjudicated at the content layer, not by label",
+        "satisfied": true,
+        "evidence": "A1-A5: exactly one content hash-resolves (workspace-wide); fixture internals proven placeholder; the only citers are the r3 confirmation set refusing the claim"
+      },
+      {
+        "id": 5,
+        "description": "Verdict grounded in re-digested records, not round labels or prior review text",
+        "satisfied": true,
+        "evidence": "C1-C3, D1: gate round, collision record, both reconcile-what emissions, all four pre-freeze verdict records re-digested"
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored; unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true,
+        "evidence": "no disposition, binding or resolution authored by this seat; the 8 envelope claims observed as content addresses only"
+      },
+      {
+        "id": 7,
+        "description": "Reviewer artifacts deterministic: pinned timestamps, no clock reads, no randomness",
+        "satisfied": true,
+        "evidence": "pinned CREATED_AT; verifier source hygiene probes"
+      },
+      {
+        "id": 8,
+        "description": "Frame workspace summary TRUE of the chain",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: the one resolving address is a contract-suite fixture; census 0 of 5"
+      },
+      {
+        "id": 9,
+        "description": "A WHAT-baseline candidate exists at this desk to review",
+        "satisfied": false,
+        "note": "none ever lawfully authored; the candidate of record is the author-seat upstream hold, which this seat verifies and upholds"
+      },
+      {
+        "id": 10,
+        "description": "The claimed accepted revision is a chain WorkplaceProductionRevision with a completed reviewer stage",
+        "satisfied": false,
+        "note": "CRIT-2 recorded honestly: fixture, no reviewer stage, self-referential label"
+      }
+    ],
+    "verdict": "hold-upheld",
+    "decision": "REFUSE freeze ratification; adjudicate the frame upstream-accepted claim as REFUSED (fixture-misdeclared-as-accepted-revision); uphold UH-Freeze-What-Baseline-001",
+    "nextStage": "HOLD STANDS - no freeze effect may fire from this desk on this chain. Resume contract R1-R4 of the author hold unchanged: (R1) genuinely accepted revisions land for the four upstream desks through completed reviewer stages at their own content addresses, then RA-5 re-runs reconcile-what over the NEW accepted chain; (R2) the re-run reviewer verdict of record alone discharges the no-accept prohibition - never this desk, never a frame assertion; (R3) on five accepted pre-freeze desks this desk re-staffs and authors the whole-WHAT baseline strictly against the accepted triples and frf-contracts.what-baseline.v1 (acceptanceRecords minItems 5); (R4) the hold and this refusal are not carried as product lineage; the baseline cites only accepted revisions."
+  }
+}

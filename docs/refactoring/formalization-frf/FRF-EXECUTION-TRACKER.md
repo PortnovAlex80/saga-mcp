@@ -60,7 +60,7 @@ Every item verified with executable evidence at base `5c158608` on
 | FRF-WP09 | Development handoff and planning: UC-FOREIGN kill (D-1/A1), handoff consumption (D-2/A3), identity preservation (D-3/A4), AC-complete-but-scenario-incomplete rejection (D-4) | FRF-WP07, FRF-WP08 | subagent | NOT STARTED | — | — | — |
 | FRF-WP10 | Scenario, resilience, capsule, and project corpus | FRF-WP04..09 | subagent | **DONE** | merge after ae0672de | 11 scenarios; smoke 5/5 + full 11/11 + tamper 11/11 RED; 26 crash windows settle identical | tools/frf-corpus + tests/frf-corpus 30/30 | WP03 digest-hardening residual noted |
 | FRF-WP11 | Package integration, deletion, CI, and docs | FRF-WP04..10 | subagent + coordinator | **DONE — THE CUTOVER** | merge after 6c6f8c58 | matrix 1289/1289 (13 groups, 2 new); old flow deleted (86 files, -391K lines); contracts canonical in src | dispatch/manifest/guards/CI | WP12 qualifies on immutable kit |
-| FRF-WP12 | Independent qualification and closure: immutable kit, fresh DBs/repos, three consecutive real-agent projects, FORMALIZATION-SCENARIO-FIRST-FINAL-RECEIPT.md | FRF-WP11 | subagent + coordinator | NOT STARTED | — | — | — |
+| FRF-WP12 | Independent qualification and closure: immutable kit, fresh DBs/repos, three consecutive real-agent projects, FORMALIZATION-SCENARIO-FIRST-FINAL-RECEIPT.md | FRF-WP11 | subagent + coordinator | **DONE — PLAN COMPLETE** | kit e7338b29 @ 6f2255dd | R1/R2/R3 GREEN 37/37 each, 24 req each, 104/104 executor sessions glm-5.3-flash | scripted 1289+10/10+P01-20+conc; receipt written; 3 incidents fixed (0586db6e/a53c2524/6f2255dd) | residuals: WP03 digest hardening, REAL_ROUTE_PIN label, phase-ms leg-sums |
 
 ## Baseline status (FRF-0)
 

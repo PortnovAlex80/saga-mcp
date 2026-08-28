@@ -1,0 +1,295 @@
+{
+  "artifactRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+  "artifactKind": "upstream-hold",
+  "productKind": "formalization.upstream-hold.v1",
+  "contentDigest": "9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+  "semanticCode": "UH-Freeze-What-Baseline-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.upstream-hold.v1",
+    "deskRef": "freeze-what-baseline",
+    "deskNodeId": "freeze-what-baseline",
+    "role": "author",
+    "itemInstanceId": "formalization-item:freeze-what-baseline",
+    "token": "plan:formalization#item:what-baseline",
+    "holdKind": "freeze-upstream-hold",
+    "decision": "hold-no-authoring",
+    "statement": "The freeze-what-baseline desk authors NO WHAT-baseline material in this staffing. The whole-WHAT baseline is a statement ABOUT accepted material: its payload contract (frf-contracts.what-baseline.v1, schema raw sha256 ab1b7f5e...) requires acceptanceRecords with minItems 5 - exactly one accepted CandidateSet/CellFinalAcceptance/WorkplaceProductionRevision triple per accepted pre-freeze desk. On this chain the accepted pre-freeze desk count is 0 of 5, and the desk upstream gate - the reconcile-what desk - returned verdict repair: FR-Reconcile-What-001 39a94a29... (reviewer round of record, emission A per CL-Reconcile-What-001 841194ce...), with the recomputed prohibition \"No domain.accepted may fire from this desk toward freeze-what-baseline on this chain\" and the CRIT-1 warning that a freeze over unaccepted lineage would \"inherit the fabricated authority permanently\". The four consumed pre-freeze revisions are themselves NOT accepted: define-product-intent a06dbc57... repair across every emission (e49d8d11..., 6c9c8324..., 04632094...); model-use-cases 24f0aff2... never reviewed at its own content address (the only UC verdict 8aeee351... pins a different candidate c6120e86...) and authored in violation of its desk hold 6cccd162...; derive-system-requirements 86b00569... repair d31b044c... plus re-staff confirmation 1c30d28e... with the reviewer seat held (fbc0394b..., b4eaaaba...); define-acceptance-contract 2b01353d... adjudicated repair (CTN-Define-Acceptance-Contract-001: FR-Define-Acceptance-Contract-002 7e76176c... confirms emission-A repair, supersedes the accepted emission) with the desk on record hold a53a5e08.... Only the discovery import chain is genuinely accepted (import artifact b10bb762... recomputes; all 9 capsule sub-artifact digests recompute and match this desk task envelope 8/8 including CERT-1). The reconcile-what author candidate of record (FS-Reconcile-What-001 0f4e4faf..., artifact 6400a2dd..., trace 09e80046...) is NOT settled and its repair routing (RA-1..RA-5) supersedes it for this desk authoring basis. Freezing now would fabricate the five acceptanceRecords the contract demands - the exact CRIT-2 failure class (asserted reviewer authority that does not exist) the round just adjudicated; this hold records the block instead and authors no baseline sections.",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the accepted import-discovery-handoff capsule sub-artifact contents (9/9 including CERT-1) and matched exactly",
+      "envelopeRecompute": [
+        {
+          "semanticCode": "SC-1",
+          "group": "sourceClaims",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "envelopeId": "claim:scope-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-2",
+          "group": "sourceClaims",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "envelopeId": "claim:scope-2",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-3",
+          "group": "sourceClaims",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "envelopeId": "claim:constraint-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-4",
+          "group": "sourceClaims",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "envelopeId": "claim:outcome-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CON-1",
+          "group": "constraints",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "envelopeId": "constraint:retention-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "UNK-1",
+          "group": "unknowns",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "envelopeId": "unknown:browser-matrix-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-1",
+          "group": "terminalLifecycleClaims",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "envelopeId": "terminal:audited-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-2",
+          "group": "terminalLifecycleClaims",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "envelopeId": "terminal:delivered-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CERT-1",
+          "group": "certificate",
+          "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "ref": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "envelopeId": null,
+          "envelopeMatch": false
+        }
+      ]
+    },
+    "upstreamGate": {
+      "deskId": "reconcile-what",
+      "candidateOfRecord": {
+        "semanticCode": "FS-Reconcile-What-001",
+        "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+        "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+        "status": "author candidate of record of the upstream desk; verdict of record repair; NOT settled; superseded for this desk authoring basis by the RA-1..RA-5 repair routing"
+      },
+      "verdictOfRecord": {
+        "semanticCode": "FR-Reconcile-What-001",
+        "verdict": "repair",
+        "reviewRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "verificationRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+        "reviewerTraceRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+        "reviewerSubmissionRef": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce",
+        "criticalFindings": [
+          "CRIT-1 unaccepted lineage asserted accepted",
+          "CRIT-2 fabricated reviewer authority",
+          "MAJ-1 governing anchor unresolvable",
+          "MAJ-2 payload-contract regressions"
+        ]
+      },
+      "reviewerCollision": {
+        "semanticCode": "CL-Reconcile-What-001",
+        "recordRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+        "emissionAVerdict": "repair",
+        "roundOfRecord": "emission A (plain review/verification/trace/submission slots); emission B contested only the verify slots and authored no round artifacts at collision time"
+      },
+      "explicitProhibition": "No domain.accepted may fire from this desk toward freeze-what-baseline on this chain.",
+      "prohibitionSource": "recomputed from FR-Reconcile-What-001 nextStage and CRIT-1 requiredAction (\"No accept effect may fire on this chain\")"
+    },
+    "chainAcceptanceCensus": {
+      "requiredByFreezeContract": 5,
+      "acceptedPreFreezeDeskCount": 0,
+      "schemaRef": "docs/refactoring/formalization-frf/contracts/schemas/what-baseline.schema.json",
+      "schemaRawSha256": "ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09",
+      "contractLaw": "acceptanceRecords minItems 5, one record per accepted pre-freeze desk; every desk counts only through an accepted reviewer verdict at its own content address",
+      "preFreezeDesks": [
+        {
+          "deskId": "define-product-intent",
+          "revisionRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+          "verdictOfRecord": "repair (FR-Define-Product-Intent-001 e49d8d11..., emission-b 6c9c8324..., FR-Define-Acceptance-Contract-002 inherit FR-Define-Product-Intent-002 04632094...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc"
+          ]
+        },
+        {
+          "deskId": "model-use-cases",
+          "revisionRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+          "verdictOfRecord": "never reviewed at this content address; authored in violation of its own desk upstream hold (UH-Model-Use-Cases-001 6cccd162...); the only UC reviewer verdict (FR-Model-Use-Cases-001 8aeee351...) pins a different candidate (c6120e86...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+            "sha256:8aeee3511c5c31509fb956fef5c1d132544ea7d14fa83d9c76d54776eaf35bb7"
+          ]
+        },
+        {
+          "deskId": "derive-system-requirements",
+          "revisionRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+          "verdictOfRecord": "repair (FR-Derive-System-Requirements-001 d31b044c...) + re-staff confirmation (RS-...-001 1c30d28e..., confirms the verdict, not an acceptance); reviewer seat held (UH-...-001 fbc0394b..., UH-...-002 b4eaaaba...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+            "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+            "sha256:fbc0394bd8f79df2fc7e8956accd9fe25485bceab182044927de9f209f11d053",
+            "sha256:b4eaaabaa5010c6e03594943e2437b030d352ec9f3027fb275d57f351692c995"
+          ]
+        },
+        {
+          "deskId": "define-acceptance-contract",
+          "revisionRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+          "verdictOfRecord": "adjudicated repair (CTN-Define-Acceptance-Contract-001: FR-Define-Acceptance-Contract-002 7e76176c... emission C confirms emission-A repair 83e675bb..., supersedes the accepted emission); desk on record hold (UH-Define-Acceptance-Contract-001 a53a5e08...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+            "sha256:61b9ce2e70b979f7e224bcbe17d492a3ffb85410a4b8a8ba139257cfbabd85a5",
+            "sha256:bdd577ae01eccfdcf1334239271fae5478351294a4523607f832603a95ae33ac",
+            "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+          ]
+        },
+        {
+          "deskId": "reconcile-what",
+          "revisionRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+          "verdictOfRecord": "repair (FR-Reconcile-What-001 39a94a29..., reviewer round of record; CRIT-1 + CRIT-2; explicit no-accept prohibition toward freeze-what-baseline)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+            "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+            "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+          ]
+        }
+      ]
+    },
+    "unresolvableInstances": [
+      {
+        "id": "governing-contract anchor",
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "role": "protocol-skill layer governingContractRef, declared in this desk task frame and pinned by every r3 desk artifact",
+        "evidence": "no content in the workspace hashes to this address; recorded as envelope provenance, never ratified",
+        "resolved": false
+      }
+    ],
+    "noProductAuthored": true,
+    "fence": {
+      "forbiddenBaselineSections": [
+        "acceptanceRecords",
+        "caseIdentity",
+        "containers",
+        "developmentSurface",
+        "dispositions",
+        "evidenceBindings",
+        "sourceManifests",
+        "traceSet",
+        "wholeWhatDigest"
+      ],
+      "observed": "this hold is a desk artifact, not a WHAT baseline: no acceptance record, container member, source manifest, trace, disposition, evidence binding or whole-WHAT digest is authored; the 8 task-projection claims are observed as content addresses only, and unknown:browser-matrix-1 derives nothing"
+    },
+    "resumeContract": [
+      "R1: upstream repair routing RA-1..RA-4 lands genuinely accepted revisions for define-product-intent, model-use-cases, derive-system-requirements and define-acceptance-contract (each through a completed reviewer stage at its own content address); the reconciliation repair routing RA-5 then re-runs reconcile-what over the NEW accepted chain",
+      "R2: the reconcile-what reviewer stage of the re-run returns a verdict of record; on accepted, the no-accept prohibition toward freeze-what-baseline is discharged by that verdict record itself, never by this desk",
+      "R3: on five accepted pre-freeze desks, this desk is re-staffed and authors the whole-WHAT baseline strictly against the accepted CandidateSet/CellFinalAcceptance/WorkplaceProductionRevision triples and the frf-contracts.what-baseline.v1 payload contract (acceptanceRecords minItems 5)",
+      "R4: this hold is not carried as product lineage; the baseline cites only accepted revisions"
+    ],
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "governingContractNote": "declared in this desk task protocol-skill layer; recorded verbatim as envelope provenance. Unresolvable workspace-wide (see unresolvableInstances). NOT ratified by this desk; this hold does not depend on it.",
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "importArtifactDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "reviewerCandidateBindingRecomputed": true,
+      "prohibitionRecomputedFromVerdictRecord": true,
+      "schemaRawDigestRecomputed": true,
+      "unresolvableInstancesEnumerated": [
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+      ],
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

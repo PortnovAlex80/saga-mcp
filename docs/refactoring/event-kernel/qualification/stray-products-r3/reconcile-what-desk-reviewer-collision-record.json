@@ -1,0 +1,62 @@
+{
+  "recordRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+  "recordKind": "reviewer-collision-record",
+  "contentDigest": "841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "recordId": "CL-Reconcile-What-001",
+    "deskRef": "reconcile-what",
+    "role": "reviewer",
+    "recordKind": "reviewer-collision-record",
+    "candidateOfRecord": {
+      "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+      "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+      "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    "emissionA": {
+      "seat": "reviewer round of record in the plain artifact slots (authored before the collision)",
+      "verdict": "repair",
+      "roundDigests": {
+        "verificationRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+        "reviewRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "traceRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+        "submissionRef": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce"
+      },
+      "verifier": "reconcile-what-desk-reviewer-verify-emission-a.mjs",
+      "verifyOut": "reconcile-what-desk-reviewer-verify-out-emission-a.json",
+      "scope": "content layer re-verification + payload-contract audit + status-layer audit of the re-digested verdict records",
+      "findings": [
+        "CRIT-1 unaccepted lineage asserted accepted",
+        "CRIT-2 fabricated reviewer authority (superseded emission cited as gate)",
+        "MAJ-1 governing anchor unresolvable",
+        "MAJ-2 payload-contract regressions"
+      ]
+    },
+    "emissionB": {
+      "seat": "second reviewer seat (overwrote the plain reviewer-verify.mjs and reviewer-verify-out.json slots at collision time)",
+      "verifyScriptRawSha256": "12cda431a56bb6387c716abda066d9db32c289a96165c314fa97cda010778635",
+      "verifyOutRawSha256": "ed81395c0fe53b6e7d9aaeebafe28193dbd138814fd3585dba1a3b3db58ce58c",
+      "runResult": "54 checks, 54 passed, 0 failed",
+      "failedChecks": [],
+      "roundArtifacts": "none authored at collision time (content-only verifier)",
+      "statusLayerNote": "the emission's K2 framing treats the acceptance-desk FR-Define-Acceptance-Contract-001 (e5249d78, verdict accepted) as the accepted verdict record; the CTN-Define-Acceptance-Contract-001 adjudication SUPERSEDED that emission (verdict of record: repair, FR-002/emission-c). Any review built on that premise must be corrected against the adjudication. Its own failed B10.reviewerOfRecord check (the reviewer-of-record binding does not hold) independently corroborates this seat's CRIT-2."
+    },
+    "contestedFilenames": {
+      "emissionB": [
+        "reconcile-what-desk-reviewer-verify.mjs",
+        "reconcile-what-desk-reviewer-verify-out.json"
+      ],
+      "emissionA": [
+        "reconcile-what-desk-reviewer-verification.json",
+        "reconcile-what-desk-reviewer-review.json",
+        "reconcile-what-desk-reviewer-trace.json",
+        "reconcile-what-desk-reviewer-product-submission.json"
+      ]
+    },
+    "discipline": "no further writes to a contested filename by either seat; both emissions preserved by content address; the round of record in the plain slots is emission A (verdict repair); if emission B later files a review, the driver/final gate adjudicates any divergent verdict against the CTN-001 adjudication and this record",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

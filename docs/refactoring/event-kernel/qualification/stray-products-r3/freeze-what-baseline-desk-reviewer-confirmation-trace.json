@@ -1,0 +1,308 @@
+{
+  "traceRef": "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+  "traceKind": "reviewer-confirmation-trace",
+  "contentDigest": "38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "freeze-what-baseline",
+    "role": "reviewer",
+    "traceKind": "reviewer-confirmation-trace",
+    "subjectSemanticCode": "RC-Freeze-What-Baseline-001",
+    "subjectArtifactRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+    "confirmationRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+    "relationVocabulary": [
+      "confirms",
+      "verifies",
+      "observes",
+      "carries_forward"
+    ],
+    "relationships": [
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "confirms",
+        "toId": "UH-Freeze-What-Baseline-001",
+        "description": "The reviewer seat confirms the standing author hold (hold-no-authoring, 33/33 receipt) after independent recomputation of its artifact, trace, receipt and every cited record.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "The confirmation's envelope projection recomputes claim:scope-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "The confirmation's envelope projection recomputes claim:scope-2 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "The confirmation's envelope projection recomputes claim:constraint-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "The confirmation's envelope projection recomputes claim:outcome-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "The confirmation's envelope projection recomputes constraint:retention-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "The confirmation's envelope projection recomputes unknown:browser-matrix-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "The confirmation's envelope projection recomputes terminal:audited-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "The confirmation's envelope projection recomputes terminal:delivered-1 from accepted capsule content; digest matches this desk task projection and the hold frame projection identically.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "import:discovery-handoff",
+        "description": "The accepted discovery import chain is the only accepted base (content digest recomputed).",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "cert:discovery-capsule",
+        "description": "The capsule certificate recomputes (CERT-1).",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "FR-Reconcile-What-001",
+        "description": "The upstream gate verdict of record: repair (CRIT-1 + CRIT-2; MAJ-1/MAJ-2); the explicit no-accept prohibition toward this desk recomputes from its nextStage and stands un-discharged.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "VV-Reconcile-What-001",
+        "description": "The gate reviewer verification of record (84 content/status checks).",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "RT-Reconcile-What-001",
+        "description": "The gate reviewer trace of record.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "FS-Reconcile-What-002",
+        "description": "The gate reviewer product submission recording verdict repair and the RA-1..RA-5 routing.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "CL-Reconcile-What-001",
+        "description": "The gate reviewer-seat collision record: emission A (repair) is the round of record.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "FS-Reconcile-What-001",
+        "description": "The gate author candidate of record; NOT settled.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "link:define-product-intent",
+        "description": "Pre-freeze desk 1: repair across every emission (e49d8d11, 6c9c8324, 04632094), no author reissue; NOT accepted.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "link:model-use-cases",
+        "description": "Pre-freeze desk 2: never reviewed at its own content address; authored in violation of its desk upstream hold; NOT accepted.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "link:derive-system-requirements",
+        "description": "Pre-freeze desk 3: repair verdict + re-staff confirmation; reviewer seat held; NOT accepted.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "link:define-acceptance-contract",
+        "description": "Pre-freeze desk 4: adjudicated repair (CTN-001) with the desk on record hold a53a5e08; NOT accepted.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "link:reconcile-what",
+        "description": "Pre-freeze desk 5 (the upstream gate): repair verdict of record; NOT accepted.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "UH-Define-Acceptance-Contract-001",
+        "description": "The standing upstream hold of the acceptance desk.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "observes",
+        "toId": "FR-Define-Acceptance-Contract-002",
+        "description": "The adjudicating reviewer emission C of the acceptance desk: repair confirmed, the accepted emission superseded.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "carries_forward",
+        "toId": "constraint:retention-1",
+        "description": "constraint:retention-1 travels forward by content address (unchanged).",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "RC-Freeze-What-Baseline-001",
+        "relation": "carries_forward",
+        "toId": "unknown:browser-matrix-1",
+        "description": "unknown:browser-matrix-1 carried forward, never resolved; derives nothing here.",
+        "fromRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "RC-Freeze-What-Baseline-001"
+        ]
+      }
+    },
+    "holdCoverage": {
+      "confirmedHold": "UH-Freeze-What-Baseline-001",
+      "noProductAuthored": true,
+      "preFreezeDesksAccepted": 0,
+      "preFreezeDesksRequired": 5,
+      "unacceptedLinks": [
+        "link:define-product-intent",
+        "link:model-use-cases",
+        "link:derive-system-requirements",
+        "link:define-acceptance-contract",
+        "link:reconcile-what"
+      ],
+      "onlyAcceptedChain": "import:discovery-handoff",
+      "gateVerdictOfRecord": "FR-Reconcile-What-001 (repair)",
+      "explicitProhibition": "No domain.accepted may fire from this desk toward freeze-what-baseline on this chain."
+    },
+    "envelopeDeltaAdjudication": {
+      "upstreamAccepted": "sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de",
+      "resolution": "UNRESOLVABLE",
+      "ratified": false,
+      "note": "stale shell metadata (RS-Derive-System-Requirements-001 family); the trace carries no edge to it because a trace edge must resolve at both ends to recomputed digests"
+    },
+    "branchResolutionNote": "No scenario, branch, requirement, criterion, container or baseline identities are authored by this confirmation; all observed links resolve at record/artifact granularity.",
+    "workspaceSummary": "workspace: 1 accepted upstream revisions travel by content address",
+    "workspaceSummaryAdjudication": "envelope line pinned verbatim as frame provenance; adjudicated NOT ratified - the verified accepted-revision count traveling into this desk is 0"
+  }
+}

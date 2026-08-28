@@ -1,0 +1,430 @@
+{
+  "artifactRef": "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+  "artifactKind": "upstream-hold",
+  "productKind": "formalization.upstream-hold.v1",
+  "contentDigest": "6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+  "semanticCode": "UH-Define-Architecture-Contract-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "reviewedRound": "stray-products-r5",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.upstream-hold.v1",
+    "deskRef": "define-architecture-contract",
+    "deskNodeId": "define-architecture-contract",
+    "role": "author",
+    "itemInstanceId": "formalization-item:define-architecture-contract",
+    "token": "plan:formalization#item:srs-realization",
+    "holdKind": "srs-upstream-hold",
+    "decision": "hold-no-authoring",
+    "statement": "The define-architecture-contract desk authors NO SRS material in this staffing. The desk contract (installed manifest: production cell, output product kind formalization.srs.v1, check provider formalization.srs-structure.v1/validateSrs, effect formalization.accept-products) consumes the FROZEN WHAT baseline over the single inbound edge freeze-what-baseline --domain.frozen--> define-architecture-contract, and seals the architecture contract only against an ACCEPTED id-set universe: the frozen scenario id set (containers.uc.scenarioIds), the frozen evidence-binding id set, the frozen whatBaselineDigest pin AND an accepted srsRevisionDigest pin. The desk is fail-closed by its own cell law: without an accepted srsRevisionDigest pin it refuses MISSING_LINEAGE and \"will not seal against a guessed SRS revision\"; against any reference class whose accepted set was not supplied it refuses FOREIGN_LINEAGE; it never scans, guesses or reselects accepted material. On this chain NONE of that input exists: the recomputed census is 0 of 6 accepted upstream desks. (1) define-product-intent a06dbc57... - repair across every emission (e49d8d11..., 6c9c8324..., 04632094...), no author reissue. (2) model-use-cases 24f0aff2... - never reviewed at its own content address (the only UC verdict pins a different candidate c6120e86...), authored in violation of its desk hold 6cccd162.... (3) derive-system-requirements 86b00569... - repair d31b044c..., re-staff confirmation 1c30d28e..., reviewer seat held (fbc0394b..., b4eaaaba...). (4) define-acceptance-contract 2b01353d... - adjudicated repair (FR-Define-Acceptance-Contract-002 7e76176c... emission C), desk on record hold a53a5e08.... (5) reconcile-what 6400a2dd... - repair verdict of record FR-Reconcile-What-001 39a94a29... (emission A per CL-Reconcile-What-001 841194ce...) with the no-accept prohibition toward freeze-what-baseline undischarged. (6) freeze-what-baseline - NO WHAT-baseline candidate has ever existed: the author seat is on record hold UH-Freeze-What-Baseline-001 9f2d28b9... (trace 17c09566..., hold-no-authoring), re-verified standing by AS-Freeze-What-Baseline-001 c2a08f04... (0 new accepted lineage since hold), upheld by RC-Freeze-What-Baseline-001 c19344fd... (hold-upheld-no-candidate-to-review), and re-upheld by the r4 reviewer emission FR-Freeze-What-Baseline-002 d52746b6... (verify 8b041010..., trace 8bf4f283..., submission 6f5294a9...; 50/50 verifier green), which adjudicated the r4 frame's upstream-accepted entry as REFUSED (fixture-misdeclared-as-accepted-revision) and REFUSED freeze ratification. The freeze contract itself (frf-contracts.what-baseline.v1, schema raw sha256 ab1b7f5e..., acceptanceRecords minItems 5) recomputes as the direct blocker: 0 of 5 accepted pre-freeze desks. Therefore the domain.frozen edge into THIS desk has never lawfully fired, and no accepted srsRevisionDigest pin exists. Authoring an SRS now would fabricate exactly the accepted-upstream authority this series spent r2-r4 refusing - and this desk authored that failure class once already: its r1 stray product AC-Define-Architecture-Contract-001 declares self-address a926df6284... while its content recomputes to f4846e5f... (r1 CRIT-003 digest-drift family, recomputed by VV-Define-Product-Intent-001 c0215ebc...), approved only by the pre-regime r1 gate verdict bc1c5e59... which carries no content-addressed reviewer stage at the product's recomputed address. That stray product is NOT lineage: it is not resumed, not repaired in place, not re-submitted. Per the r2/r3 upstream-hold precedent (UH-Model-Use-Cases-001 6cccd162..., UH-Define-Acceptance-Contract-001 a53a5e08..., UH-Freeze-What-Baseline-001 9f2d28b9...) this desk issues a hold. Only the discovery import chain is genuinely accepted (import artifact b10bb762... recomputes; all 9 capsule sub-artifact digests recompute and match this desk task envelope 8/8 including CERT-1).",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the accepted import-discovery-handoff capsule sub-artifact contents (9/9 including CERT-1) and matched exactly",
+      "envelopeRecompute": [
+        {
+          "semanticCode": "SC-1",
+          "group": "sourceClaims",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "envelopeId": "claim:scope-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-2",
+          "group": "sourceClaims",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "envelopeId": "claim:scope-2",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-3",
+          "group": "sourceClaims",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "envelopeId": "claim:constraint-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-4",
+          "group": "sourceClaims",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "envelopeId": "claim:outcome-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CON-1",
+          "group": "constraints",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "envelopeId": "constraint:retention-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "UNK-1",
+          "group": "unknowns",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "envelopeId": "unknown:browser-matrix-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-1",
+          "group": "terminalLifecycleClaims",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "envelopeId": "terminal:audited-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-2",
+          "group": "terminalLifecycleClaims",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "envelopeId": "terminal:delivered-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CERT-1",
+          "group": "certificate",
+          "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "ref": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "envelopeId": null,
+          "envelopeMatch": false
+        }
+      ]
+    },
+    "deskContract": {
+      "deskId": "define-architecture-contract",
+      "nodeKind": "production-cell",
+      "outputProductKind": "formalization.srs.v1",
+      "checkProviderId": "formalization.srs-structure.v1",
+      "validator": "validateSrs",
+      "effectId": "formalization.accept-products",
+      "inboundEdge": {
+        "from": "freeze-what-baseline",
+        "on": "domain.frozen"
+      },
+      "outboundEdges": [
+        {
+          "to": "settle-formalization",
+          "on": "domain.accepted"
+        },
+        {
+          "to": "complete-failed",
+          "on": "domain.failed"
+        }
+      ],
+      "inputContractKinds": [
+        "frf-contracts.what-baseline.v1",
+        "formalization.srs-realization.v1"
+      ],
+      "acceptedUniverseRequired": {
+        "idSets": [
+          "frozen uc scenario ids (containers.uc.scenarioIds)",
+          "frozen evidence-binding ids (baseline evidenceBindings)"
+        ],
+        "revisionPins": [
+          "frozen whatBaselineDigest (sha256 hex)",
+          "accepted srsRevisionDigest (sha256 hex)"
+        ]
+      },
+      "failClosedLaw": "MISSING_LINEAGE without an accepted srsRevisionDigest pin (\"the desk is fail-closed and will not seal against a guessed SRS revision\"); FOREIGN_LINEAGE against any reference class whose accepted set was not supplied; the cell never scans, guesses or reselects accepted material",
+      "traceRule": "srs-derived-from-frozen-what-baseline",
+      "surfaceKinds": [
+        "composition",
+        "infrastructure"
+      ],
+      "obligationKinds": [
+        "infrastructure-obligation",
+        "integration-or-composition-obligation"
+      ],
+      "postFreezeSurfaces": [
+        "postFreeze.srs.realizationEntryIds",
+        "postFreeze.srs.revisionDigest",
+        "postFreeze.srs.surfaces"
+      ],
+      "source": "src/workflow-kernel/workshops/formalization/manifest.ts + cells/srs-realization/{desk,contract}.ts (re-verified by this build)"
+    },
+    "upstreamGate": {
+      "deskId": "freeze-what-baseline",
+      "candidateOfRecord": {
+        "semanticCode": "UH-Freeze-What-Baseline-001",
+        "artifactRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+        "traceRef": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+        "productKind": "formalization.upstream-hold.v1",
+        "declaredDecision": "hold-no-authoring",
+        "status": "the candidate of record at the upstream desk; NO WHAT-baseline candidate exists (none was ever lawfully authorable on this chain)"
+      },
+      "verdictOfRecord": {
+        "semanticCode": "FR-Freeze-What-Baseline-002",
+        "verdict": "hold-upheld",
+        "reviewRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+        "verificationRef": "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21",
+        "reviewerTraceRef": "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252",
+        "reviewerSubmissionRef": "sha256:6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac",
+        "decision": "REFUSE freeze ratification; adjudicate the r4 frame upstream-accepted claim as REFUSED (fixture-misdeclared-as-accepted-revision); uphold UH-Freeze-What-Baseline-001",
+        "verifierGreen": "50/50"
+      },
+      "confirmations": [
+        {
+          "semanticCode": "AS-Freeze-What-Baseline-001",
+          "recordRef": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+          "fact": "author re-staff confirmation: hold STANDING, 0 new accepted lineage since hold"
+        },
+        {
+          "semanticCode": "RC-Freeze-What-Baseline-001",
+          "recordRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+          "traceRef": "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+          "fact": "reviewer confirmation: hold-upheld-no-candidate-to-review; the r3 frame upstream-accepted claim not ratified"
+        }
+      ],
+      "explicitProhibition": "No WHAT-baseline exists; therefore no domain.frozen input exists for define-architecture-contract. The upstream no-accept prohibition (\"No domain.accepted may fire from this desk toward freeze-what-baseline on this chain\", recomputed from FR-Reconcile-What-001 nextStage) stands undischarged, and the freeze ratification itself is refused by FR-Freeze-What-Baseline-002.",
+      "prohibitionSource": "recomputed from FR-Reconcile-What-001 nextStage + FR-Freeze-What-Baseline-002 decision/verdict-of-record",
+      "gateEdgeBlocked": "freeze-what-baseline --domain.frozen--> define-architecture-contract has never lawfully fired on this chain"
+    },
+    "chainAcceptanceCensus": {
+      "upstreamDeskCount": 6,
+      "acceptedUpstreamDeskCount": 0,
+      "schemaRef": "docs/refactoring/formalization-frf/contracts/schemas/what-baseline.schema.json",
+      "schemaRawSha256": "ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09",
+      "contractLaw": "the freeze contract demands 5 accepted pre-freeze desks (acceptanceRecords minItems 5) before any WHAT-baseline exists; this desk consumes that baseline over the domain.frozen edge; every desk counts only through an accepted reviewer verdict at its own content address",
+      "upstreamDesks": [
+        {
+          "deskId": "define-product-intent",
+          "revisionRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+          "verdictOfRecord": "repair (FR-Define-Product-Intent-001 e49d8d11..., emission-b 6c9c8324..., FR-Define-Product-Intent-002 04632094...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc"
+          ]
+        },
+        {
+          "deskId": "model-use-cases",
+          "revisionRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+          "verdictOfRecord": "never reviewed at this content address; authored in violation of its own desk upstream hold (UH-Model-Use-Cases-001 6cccd162...); the only UC reviewer verdict (FR-Model-Use-Cases-001) pins a different candidate (c6120e86...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+            "sha256:8aeee3511c5c31509fb956fef5c1d132544ea7d14fa83d9c76d54776eaf35bb7"
+          ]
+        },
+        {
+          "deskId": "derive-system-requirements",
+          "revisionRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+          "verdictOfRecord": "repair (FR-Derive-System-Requirements-001 d31b044c...) + re-staff confirmation (RS-...-001 1c30d28e...); reviewer seat held (UH-...-001 fbc0394b..., UH-...-002 b4eaaaba...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+            "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+            "sha256:fbc0394bd8f79df2fc7e8956accd9fe25485bceab182044927de9f209f11d053",
+            "sha256:b4eaaabaa5010c6e03594943e2437b030d352ec9f3027fb275d57f351692c995"
+          ]
+        },
+        {
+          "deskId": "define-acceptance-contract",
+          "revisionRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+          "verdictOfRecord": "adjudicated repair (FR-Define-Acceptance-Contract-002 7e76176c... emission C confirms emission-A repair, supersedes the accepted emission); desk on record hold (UH-Define-Acceptance-Contract-001 a53a5e08...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+            "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+          ]
+        },
+        {
+          "deskId": "reconcile-what",
+          "revisionRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+          "verdictOfRecord": "repair (FR-Reconcile-What-001 39a94a29..., reviewer round of record per CL-Reconcile-What-001 841194ce...; explicit no-accept prohibition toward freeze-what-baseline)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+            "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+          ]
+        },
+        {
+          "deskId": "freeze-what-baseline",
+          "revisionRef": null,
+          "verdictOfRecord": "no candidate ever authored; author hold UH-Freeze-What-Baseline-001 9f2d28b9... STANDING (re-verified by AS-...-001 c2a08f04...), upheld by RC-...-001 c19344fd... and re-upheld by FR-Freeze-What-Baseline-002 d52746b6... (freeze ratification REFUSED; r4 frame upstream-accepted claim REFUSED)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+            "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+            "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+            "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+            "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+          ]
+        }
+      ]
+    },
+    "strayProductHistory": {
+      "r1StrayProduct": {
+        "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-desk-architecture-contract.artifact.json",
+        "semanticCode": "AC-Define-Architecture-Contract-001",
+        "declaredContentDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "recomputedContentDigest": "sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af",
+        "drift": "DECLARED != RECOMPUTED (r1 CRIT-003 digest-drift family; recomputed by VV-Define-Product-Intent-001 c0215ebc...)",
+        "r1GateVerdict": {
+          "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-review-verdict.json",
+          "verdict": "approved",
+          "wholeFileCanonDigest": "sha256:bc1c5e59f1555eee27d7bf62e82f0578208af749f025621f6e0d102128a94252",
+          "standing": "pre-regime history: predates the r2-r4 adjudication regime, carries no content-addressed reviewer stage at the recomputed product address; NOT acceptance of record"
+        },
+        "disposition": "NOT lineage: not accepted, not resumed, not repaired in place, not re-submitted; any future SRS of this desk is a NEW sealed revision"
+      },
+      "r1DeskTrace": {
+        "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-trace.json",
+        "fact": "the r1 desk trace declares the same drifted address (traceDigest a926df6284...)"
+      },
+      "lesson": "this desk knows the stray-product failure class from its own record; the hold is the corrected behavior"
+    },
+    "frameAdjudication": {
+      "workspaceSummary": {
+        "claim": "0 accepted upstream revisions travel by content address",
+        "adjudication": "TRUE of the chain: recomputed census 0 of 6 accepted upstream desks; the only accepted base is the discovery import chain"
+      },
+      "protocolSkillPin": {
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "layer": "protocol-skill",
+        "resolution": "unresolvable: zero hash-resolutions workspace-wide (verifier re-scans; r4 reviewer scan concurs)",
+        "extraIdentity": "identifies this desk's own r1 stray product by DECLARATION (drifted self-address); recomputed stray address sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af",
+        "installedManifestPin": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f",
+        "adjudication": "REFUSED as authority - unresolvable at the content layer, self-referential to this desk's stray product, and not the installed protocol skill; recorded verbatim as envelope provenance"
+      },
+      "semanticSkillPin": {
+        "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "layer": "semantic-skill",
+        "resolution": "unresolvable: zero hash-resolutions workspace-wide; the SAME r3-era frame semantic pin (reconcile-what SEMANTIC_SKILL; r1 formalization section pins)",
+        "installedManifestPin": "sha256:131efbd99bd2d92e0ac790ab9c271218d0a72995df0053fc35cbffc4d7f176f3",
+        "adjudication": "REFUSED as authority - unresolvable and not the installed semantic skill; recorded verbatim as envelope provenance"
+      },
+      "frameFamilyHistory": "the r2/r3 frames carried a926df6284... as the protocol-skill governingContractRef; the r4 frame dropped it (recording the debt as inherited); THIS frame carries it again as the protocol-skill layer digest - the anchor debt returns, now additionally identified as this desk's own drifted stray-product address. The installed manifest pins (recomputed) remain the only lawful skill authority, and this hold depends on neither frame pin."
+    },
+    "unresolvableInstances": [
+      {
+        "id": "protocol-skill pin",
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "role": "protocol-skill layer digest of this desk task frame; the SAME inherited r2/r3-era anchor carried by every r2/r3 desk frame as governingContractRef, dropped by the r4 frame, and returned by this frame",
+        "extraIdentity": "also the DECLARED (drifted) self-address of this desk's own r1 stray product docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-desk-architecture-contract.artifact.json (recomputed content address sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af, r1 CRIT-003 digest-drift family)",
+        "evidence": "no content in the workspace hashes to this address (raw bytes, whole-JSON canonical, or .content canonical); recorded as envelope provenance, never ratified",
+        "resolved": false
+      },
+      {
+        "id": "semantic-skill pin",
+        "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "role": "semantic-skill layer digest of this desk task frame; the SAME r3-era frame semantic pin carried by the r3 desk frames (e.g. reconcile-what SEMANTIC_SKILL) and the r1 formalization section pins",
+        "evidence": "no content in the workspace hashes to this address; not the installed manifest semantic digest (recomputed 131efbd9...); recorded as envelope provenance, never ratified",
+        "resolved": false
+      }
+    ],
+    "noProductAuthored": true,
+    "fence": {
+      "forbiddenProductSections": [
+        "schemaVersion: formalization.architecture-contract.v1",
+        "lineage (traceRule/baselineRef/srsRevisionDigest)",
+        "realization.realizationEntries (realizationEntryId, scenarioRef, entrypointSurfaceRef, participatingSurfaceRefs, runtimeEdges, externalInterfaces, implementationSurfaceRefs, compositionOwnerSurfaceRef, terminalResult, evidenceBinding)",
+        "realization.surfaces (surfaceId, surfaceKind composition|infrastructure, realizedScenarioRefs)",
+        "developmentObligations (integrationOrComposition, infrastructure)",
+        "postFreeze.srs.* (realizationEntryIds, surfaces, revisionDigest)",
+        "canonicalDigest"
+      ],
+      "observed": "this hold is a desk artifact, not an SRS product: no realization entry, surface, runtime edge, obligation binding, post-freeze resolution surface or canonical SRS digest is authored; the 8 task-projection claims are observed as content addresses only, and unknown:browser-matrix-1 derives nothing"
+    },
+    "acceptanceLaws": [
+      {
+        "id": 1,
+        "description": "constraint:retention-1 honored - no disposition, binding or retention decision authored by this seat",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "unknown:browser-matrix-1 carried forward, never resolved by this hold",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "terminal:audited-1 and terminal:delivered-1 observed as content addresses only; no terminal lifecycle effect authored",
+        "satisfied": true
+      }
+    ],
+    "resumeContract": [
+      "R1: the freeze desk resume contract R1-R4 (UH-Freeze-What-Baseline-001, upheld by FR-Freeze-What-Baseline-002) completes FIRST: genuinely accepted revisions land for define-product-intent, model-use-cases, derive-system-requirements and define-acceptance-contract through completed reviewer stages at their own content addresses; RA-5 re-runs reconcile-what over the NEW accepted chain; the re-run reviewer verdict alone discharges the no-accept prohibition; the freeze ratifies on five accepted pre-freeze desks (acceptanceRecords minItems 5)",
+      "R2: domain.frozen fires only from the ratified freeze; this desk is re-staffed with an envelope whose upstream material carries the REAL frozen WHAT-baseline revision (frf-contracts.what-baseline.v1 at its own content address) - never a fixture, never a stray product, never a frame assertion",
+      "R3: this desk then authors the architecture contract strictly per the desk contract: parse the SRS realization draft (closed vocabulary) -> validate against the accepted id-set universe (frozen scenario ids, frozen evidence-binding ids, whatBaselineDigest + accepted srsRevisionDigest pins) -> seal with recomputed canonical digests; every surface cited with the scenarios it realizes; MISSING_LINEAGE and FOREIGN_LINEAGE remain typed refusals, never silently repaired",
+      "R4: this hold is not carried as product lineage; the future architecture contract cites only the accepted baseline pin, the accepted SRS revision pin and accepted material",
+      "R5: the r1 stray product AC-Define-Architecture-Contract-001 stays retired: not resumed, not repaired in place, not re-submitted; its drifted declared address (a926df6284...) is never used as a lineage ref"
+    ],
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "importArtifactDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "r4ReviewerRoundRecomputed": true,
+      "r1StrayDriftRecomputed": true,
+      "installedSkillDigestsRecomputed": true,
+      "schemaRawDigestRecomputed": true,
+      "unresolvableInstancesEnumerated": [
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd"
+      ],
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

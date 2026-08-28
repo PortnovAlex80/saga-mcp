@@ -1,0 +1,172 @@
+{
+  "artifactRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+  "artifactKind": "upstream-hold",
+  "contentDigest": "6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+  "semanticCode": "UH-Model-Use-Cases-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "model-use-cases",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "model-use-cases",
+    "deskNodeId": "model-use-cases",
+    "role": "author",
+    "itemInstanceId": "formalization-item:model-use-cases",
+    "token": "plan:formalization#item:use-cases",
+    "holdKind": "uc-upstream-hold",
+    "decision": "hold-no-authoring",
+    "statement": "The model-use-cases desk authors NO scenario material in round r2: the upstream define-product-intent desk product is review-contended (two contradictory verdicts travel by content address; driver/human adjudication required before settle), this desk task envelope carries 0 accepted upstream revisions, and the UC cell gate refuses UPSTREAM_NOT_SUPPLIED - the desk models scenarios against the EXACT accepted PRD intent members only and never guesses the accepted universe. Authoring scenarios from the unsettled candidate would fabricate cross-desk lineage (the stray-product class this round exists to catch).",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk (r2) declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "typedBasis": {
+      "gateRefusal": "UPSTREAM_NOT_SUPPLIED",
+      "gateRefusalDetail": "no accepted define-product-intent set was supplied; the UC desk models scenarios against the EXACT accepted PRD intent members only (fail-closed; the gate never guesses the accepted universe)",
+      "gateSource": "src/workflow-kernel/workshops/formalization/cells/use-cases/gate.ts (evaluateUcGate step 3)",
+      "gateDemonstration": "mechanically reproduced against the installed kernel build (dist) by model-use-cases-desk-author-verify.mjs (check E2)",
+      "upstreamSettleState": "contention-open",
+      "upstreamSettleAuthority": "FR-Define-Product-Intent-002 (sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc): \"Until adjudicated, the define-product-intent desk product MUST NOT settle.\"",
+      "d5Wait": {
+        "kind": "TypedWait:human-input",
+        "wakeCommands": [
+          "workplace.resolveHumanResponse"
+        ]
+      },
+      "obligations": [
+        "obligation:requeueAfterHumanResolution (this desk; resumes after upstream adjudication and a domain.accepted accepted intent set)",
+        "obligation:routeUpstreamRepair (define-product-intent desk; FR-002 RA-1..RA-5 after driver/human adjudication)"
+      ]
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the r2 import-discovery-handoff capsule sub-artifact contents and matched exactly; the capsule certificate (CERT-1) recomputes too (9/9)"
+    },
+    "upstreamObservations": {
+      "candidateOfRecord": {
+        "submissionId": "FS-Define-Product-Intent-001",
+        "semanticCode": "PRD-Define-Product-Intent-001",
+        "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "traceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+        "submissionRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+        "status": "admitted for review; review contested; NOT settled"
+      },
+      "reviewContention": {
+        "state": "open; driver/human adjudication required before settle",
+        "verdictsByContentAddress": [
+          {
+            "reviewId": "FR-Define-Product-Intent-001",
+            "file": "define-product-intent-desk-reviewer-review.json",
+            "verdict": "repair",
+            "contentDigest": "e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "ref": "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "note": "current canonical file; collision records CR-Define-Product-Intent-001..003 document double emissions in this namespace"
+          },
+          {
+            "reviewId": "FR-Define-Product-Intent-001",
+            "file": "define-product-intent-desk-reviewer-review-emission-b.json",
+            "verdict": "repair",
+            "contentDigest": "6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "ref": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "note": "second emission of the same semantic code; travels by its own content address"
+          },
+          {
+            "reviewId": "FR-Define-Product-Intent-002",
+            "file": "define-product-intent-desk-reviewer2-review.json",
+            "verdict": "repair",
+            "contentDigest": "0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+            "ref": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+            "note": "dissent re-issue; records the contending accepted instance and the escalation"
+          }
+        ],
+        "contendingAcceptedInstance": {
+          "address": "sha256:bff4aca147aaee18c7224b6b05d4d533190bd42ee15e967b321dffbe24990f08",
+          "verdict": "accepted",
+          "recordedIn": "FR-Define-Product-Intent-002 contentionRecord (concurrent writer, 01:07)",
+          "resolvable": false,
+          "evidence": "0 of the 141 JSON files under docs/refactoring/event-kernel/qualification hash to this address; it travels only as quoted metadata inside review records"
+        },
+        "disputedPoints": [
+          "DIS-1 (CRIT-1): prd:scope-2 out_of_scope cites a Discovery decision that does not exist in the accepted capsule (fabricated disposition authority; BLOCKING per FR-002)",
+          "DIS-2 (MAJ-1): governingContractRef sha256:a926df62... unresolvable workspace-wide (r1 digest-drift family); BLOCKING per FR-002, classified non-blocking by the contending FR-001"
+        ]
+      },
+      "consequence": "no domain.accepted edge has fired for define-product-intent; the successor desk (model-use-cases) is not lawfully staffed to produce a product, and scenario drafts seeded from the unsettled candidate would ratify exactly the defects under adjudication"
+    },
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "governingContractNote": "declared in this desk task protocol-skill layer; recorded verbatim as envelope provenance. Both r2 reviews independently find it unresolvable (r1 renderings recompute to b880d0b7/f4846e5f/d041cb56/87aeab3f/0f06d0bc). NOT ratified by this desk; this hold does not depend on it.",
+    "noProductAuthored": true,
+    "fence": {
+      "forbiddenBundleKeys": [
+        "acceptance",
+        "acceptanceCriteria",
+        "frRefs",
+        "nfrRefs",
+        "requirementRefs",
+        "requirements",
+        "ruleRefs"
+      ],
+      "observed": "this hold is a desk artifact, not a UC bundle: no scenarios, acceptance, FR/NFR/RULE or AC content is authored"
+    },
+    "resumeContract": [
+      "R1: driver/human adjudicates the define-product-intent contention by content address (accepted bff4aca1... vs repair 0463209.../e49d8d11.../6c9c8324...)",
+      "R2: on domain.accepted the accepted intent set (AcceptedIntentSet fold) travels by content address into this desk task envelope (upstream revision count > 0)",
+      "R3: on resume, scenario drafts seed per scenario_required member of the EXACT accepted set (gate law); this hold is not carried as product lineage",
+      "R4: if adjudication orders upstream repair, this desk re-runs only after the repaired revision is accepted"
+    ],
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "envelopeProjectionDigestsRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "upstreamRecordDigestsRecomputed": true,
+      "gateRefusalReproducedOnInstalledKernel": true,
+      "contendingAcceptedInstanceResolvable": false,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

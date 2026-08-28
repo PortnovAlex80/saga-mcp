@@ -1,0 +1,61 @@
+{
+  "recordRef": "sha256:b54c5ba7a8f0f6996595db4a2fca6ae419781f3c167666f1f7a25af55e116a08",
+  "recordKind": "collision-record",
+  "contentDigest": "b54c5ba7a8f0f6996595db4a2fca6ae419781f3c167666f1f7a25af55e116a08",
+  "semanticCode": "CR-Define-Product-Intent-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "recordId": "CR-Define-Product-Intent-001",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "round": "stray-products-r2",
+    "event": "double emission of the define-product-intent reviewer review (semantic code FR-Define-Product-Intent-001) by two concurrent writers into the same canonical filenames",
+    "emissionA": {
+      "by": "concurrent reviewer writer (first emission)",
+      "originalAddresses": {
+        "verification": "sha256:f7d1e5ad4cbfaeb50e5b63b00ff436825c4f097d812dd827ba7953795dcbcccc",
+        "review": "sha256:b9710b1cd44dcab32f0077c059785097f7f6930b94341c4e21b47b2022b07765"
+      },
+      "originalAttestedBy": "preserved evidence-generator header (define-product-intent-desk-reviewer-verify.mjs, ex -fr001 copy); the originals were overwritten in the canonical filenames before capture",
+      "canonicalRegeneratedAddresses": {
+        "verification": "sha256:cd627b68c328853efb5926ff78a9e5e1461a93d257fb1ba88df35c5fb0df8587",
+        "review": "sha256:f746ad93121598f88913cb71e162fcb836038f74300ad6d58e8602e4386712cc",
+        "trace": "sha256:44eb359aef48ded9b68de32c5907aac43469eb3eb9f2f310fdeab5534c67ceda",
+        "submission": "sha256:8e36184780689b345a193fcb07fbb4f028cc9224f8466c6dee1e134a38c3ab59"
+      },
+      "submissionId": "FS-Define-Product-Intent-003",
+      "verdict": "repair",
+      "regenerationDrift": "deterministic rebuild from the preserved builder + a fresh evidence run; digests differ from the originals ONLY in embedded scan-detail strings (the workspace scan now covers 190 files vs 176 at the original run, because the scan honestly reflects the collision aftermath). Verdict, findings, structure identical.",
+      "status": "CANONICAL - verdict of record"
+    },
+    "emissionB": {
+      "by": "second reviewer writer (this record author)",
+      "addresses": {
+        "verification": "sha256:6dc354848383fa7e8eb33f137b16df0a9955e8846e335ef6e1c4de2d38c35317",
+        "review": "sha256:77e9a93116848c48c2ab19bf56160bb7b3ce3aeedeef72b40d3b37e8d46c62fd",
+        "trace": "sha256:2bff9245659238787d20b611f549a41db5e05dec64dd992049d5fb3f3cb3b2ec",
+        "submission": "sha256:8881558b4e5653cad80a5af1941cf62e2fc8546e46e93147d5ae72f308663475"
+      },
+      "submissionId": "FS-Define-Product-Intent-002",
+      "submissionIdCollision": "the id was already consumed by the superseded 00:48 author revision (sha256:580d66818347c173bb76d9c5dd7f4cd02c10c4004d4b06d7f690329451034c3b) before emission-B chose it - two distinct content addresses shared one submission id",
+      "verdict": "accepted",
+      "verdictPreservedFiles": [
+        "define-product-intent-desk-reviewer-verification-emission-b.json",
+        "define-product-intent-desk-reviewer-review-emission-b.json",
+        "define-product-intent-desk-reviewer-trace-emission-b.json",
+        "define-product-intent-desk-reviewer-product-submission-emission-b.json",
+        "define-product-intent-desk-reviewer-submission-summary-emission-b.md",
+        "define-product-intent-desk-reviewer-verify-emission-b.mjs (89-check evidence generator)"
+      ],
+      "status": "SUPERSEDED - preserved as superseded evidence"
+    },
+    "reconciliation": {
+      "outcome": "emission-A (repair) is the verdict of record; emission-B (accepted) is superseded",
+      "reason": "emission-B missed CRIT-1: it verified digest integrity and the formal gate laws but did not adjudicate the semantic honesty of prd:scope-2 against the capsule content. Independently re-verified by the emission-B author before superseding: SC-2 (sha256:cb291aa7...) is a bare claim statement; CERT-1 (sha256:03972527...) is a subject-level go; NO Discovery exclusion decision exists for prd:scope-2 to cite. CRIT-1 stands; MAJ-1 confirmed independently (six r1 claimant files declare sha256:a926df62... and all six recompute to different digests). The accepted verdict of emission-B is WRONG; repair is correct.",
+      "processFinding": "the desk review seat is single: concurrent reviewer emissions into one canonical filename set is the same in-place-overwrite defect class the round already recorded (ADV-4). This record exists so both emissions and the supersession travel by content address."
+    }
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "submissionRef": "sha256:6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac",
+  "submissionId": "FS-Freeze-What-Baseline-Reviewer-001",
+  "contentDigest": "6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "freeze-what-baseline",
+    "deskNodeId": "freeze-what-baseline",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r4",
+    "workspaceSummary": "frame claim \"1 accepted upstream revisions travel by content address\" adjudicated FALSE; recomputed truth: 0 accepted upstream revisions travel by content address on this chain (the one resolving address is a contract-suite fixture, refused as acceptance authority)",
+    "verdict": "hold-upheld",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+      "contentDigest": "d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+    },
+    "reviewedCandidate": {
+      "artifactRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+      "traceRef": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+      "productKind": "formalization.upstream-hold.v1",
+      "declaredDecision": "hold-no-authoring"
+    },
+    "verificationRef": "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21",
+    "traceRef": "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252",
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.freeze-what-baseline",
+      "effectFired": false,
+      "requiredEvidenceRefs": [
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+        "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+        "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+        "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+        "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "sha256:702fc96755b828eb427a2287ea661d1f685336c2646d08a7328030ab6923e1ba",
+        "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+        "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+        "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce",
+        "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+        "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "sha256:ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09",
+        "sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de",
+        "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d",
+        "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+        "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+        "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252",
+        "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21"
+      ],
+      "evidenceKindCoverage": {
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "accepted-import": 1,
+        "discovery-certificate": 1,
+        "upstream-hold": 2,
+        "upstream-hold-trace": 1,
+        "gate-author-product": 1,
+        "gate-author-trace": 1,
+        "gate-author-submission": 1,
+        "gate-formalization-review": 1,
+        "gate-formalization-review-emission-b": 1,
+        "gate-reviewer-verification": 1,
+        "gate-reviewer-trace": 1,
+        "gate-reviewer-submission": 1,
+        "gate-reviewer-collision-record": 1,
+        "consumed-revision-under-repair": 3,
+        "consumed-revision-unaccepted": 1,
+        "confirmed-repair-review": 1,
+        "payload-contract-schema": 1,
+        "adjudicated-claim-content": 1,
+        "reviewer-confirmation": 1,
+        "reviewer-confirmation-trace": 1,
+        "author-restaff-confirmation": 1,
+        "formalization-review-of-record": 1,
+        "reviewer-refusal-trace-of-record": 1,
+        "reviewer-verification": 1
+      },
+      "terminalOutcome": "hold-ratified-freeze-refused"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#freeze-what-baseline:reviewer",
+      "status": "review_complete_verdict_recorded",
+      "receivedFrom": "reviewer",
+      "nextStage": "hold-upheld: no freeze effect on this chain; the frame upstream-accepted[0] claim is refused (fixture-misdeclared-as-accepted-revision); resume contract R1-R4 unchanged and the RA-5 re-run reviewer verdict of record alone can discharge the no-accept prohibition",
+      "note": "The r3 author hold re-verifies byte-stable; the recomputed census is 0 of 5 and the freeze contract remains unsatisfiable. Kernel-side routing is executed by the driver over public commands."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed by this seat; nothing trusted by declaration",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-frame task-projection content addresses resolved",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "The frame's upstream-accepted entry adjudicated at the content layer, not by label",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Verdict grounded in re-digested records, not round labels or prior review text",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored; unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "Reviewer artifacts deterministic: pinned timestamps, no clock reads, no randomness",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Frame workspace summary TRUE of the chain",
+        "satisfied": false
+      },
+      {
+        "id": 9,
+        "description": "A WHAT-baseline candidate exists at this desk to review",
+        "satisfied": false
+      },
+      {
+        "id": 10,
+        "description": "The claimed accepted revision is a chain WorkplaceProductionRevision with a completed reviewer stage",
+        "satisfied": false
+      }
+    ]
+  }
+}

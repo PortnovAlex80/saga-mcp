@@ -1,0 +1,316 @@
+{
+  "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+  "traceKind": "acceptance-bindings-trace",
+  "contentDigest": "2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-acceptance-contract",
+    "role": "author",
+    "traceKind": "acceptance-bindings-trace",
+    "subjectSemanticCode": "SR-Define-Acceptance-Contract-001",
+    "subjectArtifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+    "relationVocabulary": [
+      "cites",
+      "covers",
+      "supports",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "ac:boundary-1",
+        "relation": "verifies",
+        "toId": "fr:boundary-1",
+        "description": "The boundary criterion verifies the boundary FR end to end through the accepted test surface.",
+        "fromRef": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+        "toRef": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529"
+      },
+      {
+        "fromId": "ac:boundary-1",
+        "relation": "covers",
+        "toId": "branch:boundary-1-main",
+        "description": "The boundary criterion covers the main terminal result of uc:boundary-1 (cr-05).",
+        "fromRef": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+        "toRef": "sha256:defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d"
+      },
+      {
+        "fromId": "ac:boundary-1",
+        "relation": "cites",
+        "toId": "stmt:boundary-1-response",
+        "description": "The boundary criterion cites its accepted verifiable statement.",
+        "fromRef": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+        "toRef": "sha256:cf08f2c25718bc211cda0f2f2a88df7ac9e9f17bdd3cf9ca1e56609e96827551"
+      },
+      {
+        "fromId": "ac:outcome-1-delivered",
+        "relation": "verifies",
+        "toId": "fr:outcome-1",
+        "description": "The delivered-outcome criterion verifies the delivery FR main branch end to end.",
+        "fromRef": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "toRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+      },
+      {
+        "fromId": "ac:outcome-1-delivered",
+        "relation": "covers",
+        "toId": "branch:outcome-1-main",
+        "description": "The delivered-outcome criterion covers the main terminal result of uc:outcome-1 (cr-05).",
+        "fromRef": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "toRef": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d"
+      },
+      {
+        "fromId": "ac:outcome-1-delivered",
+        "relation": "cites",
+        "toId": "stmt:outcome-1-delivered",
+        "description": "The delivered-outcome criterion cites its accepted verifiable statement.",
+        "fromRef": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "toRef": "sha256:80ad5f1b7f53e83abf22986245f5949ab741e22d936ccb04ad43f4e71e176ed8"
+      },
+      {
+        "fromId": "ac:outcome-1-delivered",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "description": "The delivered-outcome criterion realizes the delivered terminal lifecycle claim through fr:outcome-1.",
+        "fromRef": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "ac:outcome-1-deterministic-error",
+        "relation": "verifies",
+        "toId": "fr:outcome-1",
+        "description": "The deterministic-error criterion verifies the delivery FR error branch end to end.",
+        "fromRef": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+        "toRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+      },
+      {
+        "fromId": "ac:outcome-1-deterministic-error",
+        "relation": "covers",
+        "toId": "branch:outcome-1-deterministic-error",
+        "description": "The deterministic-error criterion covers the deterministic error terminal result of uc:outcome-1 (cr-05).",
+        "fromRef": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+        "toRef": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d"
+      },
+      {
+        "fromId": "ac:outcome-1-deterministic-error",
+        "relation": "cites",
+        "toId": "stmt:outcome-1-deterministic-error",
+        "description": "The deterministic-error criterion cites its accepted verifiable statement.",
+        "fromRef": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+        "toRef": "sha256:235e8b0977e02a9814c577fb9c368b9769413973406dbb9ebb81b6886b831a2e"
+      },
+      {
+        "fromId": "ac:terminal-1-audited",
+        "relation": "verifies",
+        "toId": "fr:terminal-1",
+        "description": "The audited-terminal criterion verifies the terminal FR end to end through the accepted audit surface.",
+        "fromRef": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "toRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17"
+      },
+      {
+        "fromId": "ac:terminal-1-audited",
+        "relation": "covers",
+        "toId": "branch:terminal-1-main",
+        "description": "The audited-terminal criterion covers the main terminal result of uc:terminal-1 (cr-05).",
+        "fromRef": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "toRef": "sha256:e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543"
+      },
+      {
+        "fromId": "ac:terminal-1-audited",
+        "relation": "cites",
+        "toId": "stmt:terminal-1-audited",
+        "description": "The audited-terminal criterion cites its accepted verifiable statement.",
+        "fromRef": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "toRef": "sha256:c6445947933167383fce779cbba81f5822bcf56f24d6ad018d79f769591d3aea"
+      },
+      {
+        "fromId": "ac:terminal-1-audited",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "description": "The audited-terminal criterion realizes the audited terminal lifecycle claim through fr:terminal-1.",
+        "fromRef": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "ac:determinism-1",
+        "relation": "verifies",
+        "toId": "nfr:determinism-1",
+        "description": "The determinism criterion verifies the cross-cutting determinism NFR; the NFR is not scenario-derived, so the criterion carries no UC citation.",
+        "fromRef": "sha256:4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034",
+        "toRef": "sha256:6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee"
+      },
+      {
+        "fromId": "ac:determinism-1",
+        "relation": "cites",
+        "toId": "stmt:determinism-1",
+        "description": "The determinism criterion cites its accepted verifiable statement.",
+        "fromRef": "sha256:4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034",
+        "toRef": "sha256:3ca4a3f2301e10226e11e0c8635498aa4f71d4907ed332461480e6fd468a1fbe"
+      }
+    ],
+    "criterionCoverage": {
+      "ac:boundary-1": {
+        "digest": "d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+        "verifies": [
+          "fr:boundary-1"
+        ],
+        "covers": [
+          "branch:boundary-1-main"
+        ],
+        "cites": [
+          "stmt:boundary-1-response"
+        ],
+        "supports": []
+      },
+      "ac:outcome-1-delivered": {
+        "digest": "abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "verifies": [
+          "fr:outcome-1"
+        ],
+        "covers": [
+          "branch:outcome-1-main"
+        ],
+        "cites": [
+          "stmt:outcome-1-delivered"
+        ],
+        "supports": [
+          "terminal:delivered-1"
+        ]
+      },
+      "ac:outcome-1-deterministic-error": {
+        "digest": "0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+        "verifies": [
+          "fr:outcome-1"
+        ],
+        "covers": [
+          "branch:outcome-1-deterministic-error"
+        ],
+        "cites": [
+          "stmt:outcome-1-deterministic-error"
+        ],
+        "supports": []
+      },
+      "ac:terminal-1-audited": {
+        "digest": "fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "verifies": [
+          "fr:terminal-1"
+        ],
+        "covers": [
+          "branch:terminal-1-main"
+        ],
+        "cites": [
+          "stmt:terminal-1-audited"
+        ],
+        "supports": [
+          "terminal:audited-1"
+        ]
+      },
+      "ac:determinism-1": {
+        "digest": "4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034",
+        "verifies": [
+          "nfr:determinism-1"
+        ],
+        "covers": [],
+        "cites": [
+          "stmt:determinism-1"
+        ],
+        "supports": []
+      }
+    },
+    "requirementCoverage": {
+      "fr:boundary-1": {
+        "digest": "8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+        "verifiedBy": [
+          "ac:boundary-1"
+        ]
+      },
+      "fr:outcome-1": {
+        "digest": "8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "verifiedBy": [
+          "ac:outcome-1-delivered",
+          "ac:outcome-1-deterministic-error"
+        ]
+      },
+      "fr:terminal-1": {
+        "digest": "75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "verifiedBy": [
+          "ac:terminal-1-audited"
+        ]
+      },
+      "nfr:determinism-1": {
+        "digest": "6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+        "verifiedBy": [
+          "ac:determinism-1"
+        ]
+      }
+    },
+    "branchCoverage": {
+      "branch:boundary-1-main": {
+        "owningScenario": "uc:boundary-1",
+        "digest": "defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+        "coveredBy": [
+          "ac:boundary-1"
+        ]
+      },
+      "branch:outcome-1-main": {
+        "owningScenario": "uc:outcome-1",
+        "digest": "ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "coveredBy": [
+          "ac:outcome-1-delivered"
+        ]
+      },
+      "branch:outcome-1-deterministic-error": {
+        "owningScenario": "uc:outcome-1",
+        "digest": "ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "coveredBy": [
+          "ac:outcome-1-deterministic-error"
+        ]
+      },
+      "branch:terminal-1-main": {
+        "owningScenario": "uc:terminal-1",
+        "digest": "e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+        "coveredBy": [
+          "ac:terminal-1-audited"
+        ]
+      }
+    },
+    "branchResolutionNote": "A terminal-branch identity travels inside its owning frozen scenario member; a branch ref resolves to the scenario member seal digest (branch ids carry no separate content address).",
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "ac:terminal-1-audited"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "ac:outcome-1-delivered"
+        ]
+      }
+    },
+    "constraintCoverage": {
+      "constraintId": "constraint:retention-1",
+      "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "disposition": "honored",
+      "enforcedBy": [
+        "ac:determinism-1",
+        "ac:outcome-1-deterministic-error"
+      ],
+      "constrainedCriteria": [
+        "ac:boundary-1",
+        "ac:outcome-1-delivered",
+        "ac:outcome-1-deterministic-error",
+        "ac:terminal-1-audited"
+      ]
+    },
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: the unknown travels with the capsule; no criterion, evidence kind, verifiable statement or observable terminal result is derived from it."
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

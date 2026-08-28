@@ -1,0 +1,149 @@
+{
+  "artifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+  "artifactKind": "discovery-import",
+  "productKind": "formalization.discovery-import.v1",
+  "contentDigest": "b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+  "semanticCode": "DI-Import-Discovery-Handoff-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "import-discovery-handoff",
+    "role": "author",
+    "itemInstanceId": "formalization-item:import-discovery-handoff",
+    "token": "plan:discovery-handoff#item:import",
+    "productKind": "formalization.discovery-import.v1",
+    "effectId": "formalization.accept-products",
+    "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+    "protocolVersionCheck": "CURRENT",
+    "capsule": {
+      "capsuleRef": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "capsuleDigest": "f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e"
+    },
+    "lineage": {
+      "lineageId": "lineage:message-service-2026-08",
+      "parentLifecycleRef": "sha256:0794e660975e42cc2ff850b9e9a3ccbde49fccad93149a4958e76d2be8fc2dde"
+    },
+    "parentState": {
+      "status": "discovery-terminal",
+      "terminalProofRef": "sha256:4a919f529fa661d2bbd39688c1996eaabaa309d521fae6ae28a648bd54c007fd"
+    },
+    "verifiedSubArtifacts": {
+      "certificate": {
+        "semanticCode": "CERT-1",
+        "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "content": {
+          "kind": "discovery-certificate",
+          "decision": "go",
+          "subject": "message service"
+        }
+      },
+      "sourceClaims": [
+        {
+          "semanticCode": "SC-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "content": {
+            "claimId": "claim:scope-1",
+            "statement": "Accepted discovery source claim 1 of the message service subject."
+          }
+        },
+        {
+          "semanticCode": "SC-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "content": {
+            "claimId": "claim:scope-2",
+            "statement": "Accepted discovery source claim 2 of the message service subject."
+          }
+        },
+        {
+          "semanticCode": "SC-3",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "content": {
+            "claimId": "claim:constraint-1",
+            "statement": "Accepted discovery source claim 3 of the message service subject."
+          }
+        },
+        {
+          "semanticCode": "SC-4",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "content": {
+            "claimId": "claim:outcome-1",
+            "statement": "Accepted discovery source claim 4 of the message service subject."
+          }
+        }
+      ],
+      "constraints": [
+        {
+          "semanticCode": "CON-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "content": {
+            "constraintId": "constraint:retention-1",
+            "statement": "Deterministic responses only; no nondeterministic content."
+          }
+        }
+      ],
+      "unknowns": [
+        {
+          "semanticCode": "UNK-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "content": {
+            "unknownId": "unknown:browser-matrix-1",
+            "question": "Browser support matrix unknown (owner: discovery).",
+            "owner": "discovery"
+          }
+        }
+      ],
+      "terminalLifecycleClaims": [
+        {
+          "semanticCode": "TC-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "content": {
+            "claimId": "terminal:audited-1",
+            "claim": "Terminal lifecycle claim 1: the subject is triaged go with recorded strengths."
+          }
+        },
+        {
+          "semanticCode": "TC-2",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "content": {
+            "claimId": "terminal:delivered-1",
+            "claim": "Terminal lifecycle claim 2: the subject is triaged go with recorded strengths."
+          }
+        }
+      ]
+    },
+    "packageBytesDigest": "8c9ab70944cf2ff76912a1a31f500219221713e0970dfd0dd548e3db4df27c93",
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "subArtifactDigestsRecomputedOverCanonicalContent": true,
+      "capsuleSelfAddressVerifies": true,
+      "packageBytesPresentAndDigestVerified": true,
+      "lineageBindingMatched": true,
+      "parentStateIsDiscoveryTerminal": true,
+      "activeAttemptsInTargetWorld": 0,
+      "acceptedUpstreamRevisionsTravelingByContentAddress": 0,
+      "staleProtocolRefusals": 0
+    },
+    "constraintDispositions": [
+      {
+        "constraintId": "constraint:retention-1",
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "disposition": "honored",
+        "note": "All authored desk content is deterministic: pinned timestamp, no clock reads, no randomness; digests recomputed over canonical JSON only."
+      }
+    ],
+    "unknownDispositions": [
+      {
+        "unknownId": "unknown:browser-matrix-1",
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "disposition": "carried_forward",
+        "owner": "discovery",
+        "note": "Discovery-domain unknown; imported verbatim with the capsule, not resolved at this desk."
+      }
+    ],
+    "importStatement": "The accepted Discovery handoff capsule is verified (protocol, self-address, every sub-artifact digest recomputed, lineage binding, discovery-terminal parent state, fresh run world) and imported as the shell stage material authority of the formalization run.",
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

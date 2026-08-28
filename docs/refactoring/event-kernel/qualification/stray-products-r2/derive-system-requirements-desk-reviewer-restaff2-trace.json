@@ -1,0 +1,67 @@
+{
+  "traceRef": "sha256:7b6d96c5a16c7a611956e2ec78a5da36914664aab4186f2246548eb481fd177e",
+  "contentDigest": "7b6d96c5a16c7a611956e2ec78a5da36914664aab4186f2246548eb481fd177e",
+  "createdAt": "2026-08-27T23:46:17Z",
+  "deskRef": "derive-system-requirements",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Derive-System-Requirements-002",
+    "traceKind": "desk-trace",
+    "deskRef": "derive-system-requirements",
+    "role": "reviewer",
+    "restaffRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+    "confirmedReviewRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+    "reviewedSubjectRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+    "edges": [
+      {
+        "relationType": "confirms",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "description": "re-staffed reviewer (#2) confirms FR-Derive-System-Requirements-001 (verdict repair) after 28/28 independent recomputations and a REAL kernel re-run (K1-K8); the verdict rationale (CRIT-1, CRIT-2, MAJ-1) re-derives at this staffing (M4-M6, N1)"
+      },
+      {
+        "relationType": "confirms",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:f7e0e85c6992402209563516bd1b9de73a56bf1eaacf7a392dc910f65b17f9d0",
+        "description": "re-staffed reviewer (#2) confirms FS-Derive-System-Requirements-002 as the ONLY desk product submission of record (formalization.review-complete.v1, verdict repair); no second FS minted (C2)"
+      },
+      {
+        "relationType": "confirms",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:d81d23475ca309756165e65a109b7df94786636cfe794661ce7eea5b1f1a4f5b",
+        "description": "re-staffed reviewer (#2) confirms the standing verification record VV-Derive-System-Requirements-001; its envelopePins are the identity anchor for H1-H4"
+      },
+      {
+        "relationType": "confirms",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba",
+        "description": "re-staffed reviewer (#2) confirms the standing reviewer trace RT-Derive-System-Requirements-001 (6 edges, self-address recomputes, R3)"
+      },
+      {
+        "relationType": "derived_from",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "description": "reviewed subject re-verified byte-exact: the author trio recomputes to the exact addresses the standing staffing reviewed; WP03 seal sha256:60083eb4… stable (C1, K4)"
+      },
+      {
+        "relationType": "observes",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+        "description": "the author submission FS-Derive-System-Requirements-001 stands as the only author emission; verdict repair returned, RA-1 (hold or reissue against accepted revisions) still open (R8, M7)"
+      },
+      {
+        "relationType": "carries_forward",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "constraint:retention-1 travels forward by content address (unchanged)"
+      },
+      {
+        "relationType": "carries_forward",
+        "fromRef": "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "description": "D10: unknown:browser-matrix-1 carried forward, never resolved (unchanged)"
+      }
+    ]
+  }
+}

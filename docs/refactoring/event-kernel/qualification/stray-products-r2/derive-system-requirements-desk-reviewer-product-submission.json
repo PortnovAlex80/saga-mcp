@@ -1,0 +1,146 @@
+{
+  "submissionRef": "sha256:f7e0e85c6992402209563516bd1b9de73a56bf1eaacf7a392dc910f65b17f9d0",
+  "submissionId": "FS-Derive-System-Requirements-002",
+  "contentDigest": "f7e0e85c6992402209563516bd1b9de73a56bf1eaacf7a392dc910f65b17f9d0",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "derive-system-requirements",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "derive-system-requirements",
+    "deskNodeId": "derive-system-requirements",
+    "role": "reviewer",
+    "itemInstanceId": "formalization-item:derive-system-requirements",
+    "token": "plan:formalization#item:system-requirements",
+    "verdict": "repair",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+      "contentDigest": "d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0"
+    },
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+        "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+        "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+        "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "sha256:6d0dc6a2c3671d24513e3c7269d0f5a8cf9e45a926051b1c2053e8d490575bd5",
+        "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "sha256:e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba",
+        "sha256:d81d23475ca309756165e65a109b7df94786636cfe794661ce7eea5b1f1a4f5b"
+      ],
+      "evidenceKindCoverage": {
+        "discovery-handoff-capsule": 1,
+        "discovery-certificate": 1,
+        "discovery-import-artifact": 1,
+        "accepted-import-review": 1,
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "architecture-contract": 1,
+        "system-requirements-artifact": 1,
+        "system-requirements-trace": 1,
+        "system-requirements-submission": 1,
+        "intent-candidate-artifact": 1,
+        "uc-candidate-artifact": 1,
+        "intent-review-repair": 3,
+        "collision-record": 1,
+        "upstream-hold-artifact": 1,
+        "formalization-review": 1,
+        "reviewer-verdict-trace": 1,
+        "reviewer-verification": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "reviewRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+    "traceRef": "sha256:e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba",
+    "verificationRef": "sha256:d81d23475ca309756165e65a109b7df94786636cfe794661ce7eea5b1f1a4f5b",
+    "reviewedCandidateRefs": {
+      "submissionRef": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+      "artifactRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+      "authorTraceRef": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#derive-system-requirements:reviewer",
+      "status": "review_complete_verdict_recorded",
+      "receivedFrom": "reviewer",
+      "nextStage": "final-gate",
+      "note": "Verdict repair returned to the derive-system-requirements author desk (CRIT-1 fabricated upstream acceptance status; CRIT-2 inherited prd:scope-2 exclusion; MAJ-1 unresolvable governing-contract anchor). Upstream repair routed: RA-2 to define-product-intent (under driver/human adjudication), RA-3 to model-use-cases. The final gate consumes the reviewer verdict per the driver contract."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed: 80 checks, nothing trusted by declaration, REAL kernel WP03 validator + cell folds + gate executed",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-envelope task-projection content addresses resolved; workspace projection 65fe9a22… adjudicated UNRESOLVABLE (author 0 upheld)",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "Verdict recorded with findings, evidence, and required actions (CRIT-1, CRIT-2, MAJ-1, ADV-1..5; RA-1..RA-5)",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Reviewer artifacts deterministic: pinned timestamp, no clock reads, no randomness",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored across author and reviewer artifacts",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Candidate acceptance-status claims verified against the round's review records",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: the \"accepted\" claims are false (intent verdict repair, contention-open; UC never reviewed); verdict repair rather than blind acceptance of the pins' byte-exactness"
+      },
+      {
+        "id": 9,
+        "description": "Governing contract evidence ref verified before inheritance",
+        "satisfied": false,
+        "note": "MAJ-1 recorded honestly: the anchor fails independent recomputation workspace-wide (213-file scan)"
+      },
+      {
+        "id": 10,
+        "description": "Reviewer artifacts stay inside desk-artifact write authority (candidate-read, product-read, product-submit)",
+        "satisfied": true
+      }
+    ],
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

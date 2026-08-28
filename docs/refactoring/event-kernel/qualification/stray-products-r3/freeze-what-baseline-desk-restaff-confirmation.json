@@ -1,0 +1,271 @@
+{
+  "confirmationRef": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+  "artifactKind": "author-restaff-confirmation",
+  "contentDigest": "c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+  "semanticCode": "AS-Freeze-What-Baseline-001",
+  "createdAt": "2026-08-28T12:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.author-restaff-confirmation.v1",
+    "deskRef": "freeze-what-baseline",
+    "deskNodeId": "freeze-what-baseline",
+    "role": "author",
+    "itemInstanceId": "formalization-item:freeze-what-baseline",
+    "token": "plan:formalization#item:what-baseline",
+    "confirmationId": "AS-Freeze-What-Baseline-001",
+    "staffingRound": "stray-products-r3 author staffing #3 (re-staffing with a byte-identical desk task envelope; the standing upstream hold UH-Freeze-What-Baseline-001 is re-verified, not re-emitted)",
+    "confirmedPackageOfRecord": {
+      "holdArtifact": {
+        "id": "UH-Freeze-What-Baseline-001",
+        "file": "freeze-what-baseline-desk-upstream-hold.artifact.json",
+        "ref": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+        "kind": "formalization.upstream-hold.v1",
+        "decision": "hold-no-authoring"
+      },
+      "holdTrace": {
+        "file": "freeze-what-baseline-desk-upstream-hold-trace.json",
+        "ref": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+        "edges": 23
+      },
+      "holdVerifier": {
+        "file": "freeze-what-baseline-desk-hold-verify.mjs",
+        "receipt": "freeze-what-baseline-desk-hold-verify-out.json",
+        "receiptSemantics": "33/33 checks pass (allPass true); receipt subject binds the hold artifact/trace refs; the receipt whole-file digest is intentionally NOT pinned - it is regenerable and its scanFiles field tracks qualification-tree growth",
+        "checksPassed": 33
+      }
+    },
+    "envelopeIdentity": {
+      "envelopeEqual": "A1-A4: 8/8 task-projection ids+digests byte-equal the standing hold ENVELOPE and its verifiedSubArtifacts projection; 8/8 digests independently recomputed from the accepted r2 capsule (9/9 with CERT-1 03972527); workspace summary \"0 accepted upstream revisions travel by content address\" and write authority \"artifact-create,trace-add,fs:read,fs:write\" equal the standing staffing; skill pins a926df62/95fafc84 recorded verbatim as declared envelope provenance (the governing anchor stays unresolvable workspace-wide, NOT ratified)",
+      "projectionAdjudication": "the 8 task-projection claims remain content addresses of the accepted capsule claims; none carries a new accepted verdict since UH-Freeze-What-Baseline-001 (movement scan recomputed workspace-wide); unknown:browser-matrix-1 derives nothing (carried never resolved, D10)",
+      "contentDelta": "none (C1): the standing hold package recomputes byte-stable at its own content addresses (9f2d28b9/17c09566); no upstream desk reissued; the reconcile-what reviewer round of record is unchanged",
+      "envelopeRecompute": [
+        {
+          "semanticCode": "SC-1",
+          "group": "sourceClaims",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "envelopeId": "claim:scope-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-2",
+          "group": "sourceClaims",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "envelopeId": "claim:scope-2",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-3",
+          "group": "sourceClaims",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "envelopeId": "claim:constraint-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-4",
+          "group": "sourceClaims",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "envelopeId": "claim:outcome-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CON-1",
+          "group": "constraints",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "envelopeId": "constraint:retention-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "UNK-1",
+          "group": "unknowns",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "envelopeId": "unknown:browser-matrix-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-1",
+          "group": "terminalLifecycleClaims",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "envelopeId": "terminal:audited-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-2",
+          "group": "terminalLifecycleClaims",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "envelopeId": "terminal:delivered-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CERT-1",
+          "group": "certificate",
+          "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "ref": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "envelopeId": null,
+          "envelopeMatch": false
+        }
+      ]
+    },
+    "upstreamStateRecheck": {
+      "gate": {
+        "deskId": "reconcile-what",
+        "verdictOfRecord": {
+          "semanticCode": "FR-Reconcile-What-001",
+          "verdict": "repair",
+          "reviewRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+          "verificationRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+          "reviewerTraceRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+          "reviewerSubmissionRef": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce"
+        },
+        "candidateOfRecord": {
+          "semanticCode": "FS-Reconcile-What-001",
+          "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+          "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+          "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+        },
+        "reviewerCollision": {
+          "semanticCode": "CL-Reconcile-What-001",
+          "recordRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+          "emissionAVerdict": "repair",
+          "roundOfRecord": "emission A (plain review/verification/trace/submission slots); emission B contested only the verify slots"
+        },
+        "explicitProhibition": "No domain.accepted may fire from this desk toward freeze-what-baseline on this chain.",
+        "prohibitionRecomputed": true
+      },
+      "census": {
+        "requiredByFreezeContract": 5,
+        "acceptedPreFreezeDeskCount": 0
+      },
+      "movementScan": {
+        "law": "every desk counts only through an accepted reviewer verdict at its own content address",
+        "counterPolicy": "tree-size counters (filesScanned/verdictRecords) are intentionally NOT published in this content-addressed record - they grow with the qualification tree and would break byte-stable re-derivation; they live in the regenerable desk receipt only. The published blocks below are content-derived and byte-stable.",
+        "acceptedAtOwnAddress": {
+          "define-product-intent": {
+            "count": 0,
+            "disposition": "none"
+          },
+          "model-use-cases": {
+            "count": 0,
+            "disposition": "none"
+          },
+          "derive-system-requirements": {
+            "count": 0,
+            "disposition": "none"
+          },
+          "define-acceptance-contract": {
+            "count": 2,
+            "disposition": "exactly the two superseded plain-slot round records (FR-Define-Acceptance-Contract-001 review + its reviewer product submission) - SUPERSEDED by the CTN-Define-Acceptance-Contract-001 adjudication; the round of record is emission C repair (FR-Define-Acceptance-Contract-002 7e76176c..., recomputed) and the desk stands on record hold a53a5e08 - still NOT accepted",
+            "records": [
+              {
+                "file": "docs/refactoring/event-kernel/qualification/stray-products-r3/define-acceptance-contract-desk-reviewer-product-submission.json",
+                "reviewId": null,
+                "candidateRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+              },
+              {
+                "file": "docs/refactoring/event-kernel/qualification/stray-products-r3/define-acceptance-contract-desk-reviewer-review.json",
+                "reviewId": "FR-Define-Acceptance-Contract-001",
+                "candidateRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+              }
+            ]
+          },
+          "reconcile-what": {
+            "count": 0,
+            "disposition": "none"
+          }
+        },
+        "acceptedElsewhereCount": 5,
+        "acceptedElsewhere": [
+          {
+            "file": "docs/refactoring/event-kernel/qualification/stray-products-r2/import-discovery-handoff-desk-reviewer-review.json",
+            "reviewId": "FR-Import-Discovery-Handoff-002",
+            "candidateRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+          },
+          {
+            "file": ".factory-testbed/define-product-intent-reviewer-product-submission.json",
+            "reviewId": null,
+            "candidateRef": "sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35"
+          },
+          {
+            "file": ".factory-testbed/define-product-intent-reviewer-review.json",
+            "reviewId": "FR-Define-Product-Intent-001",
+            "candidateRef": "sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35"
+          },
+          {
+            "file": ".factory-testbed/model-use-cases-reviewer-product-submission.json",
+            "reviewId": null,
+            "candidateRef": "sha256:c6120e86dfbba73fba5153fbb64a6a5d528d489df6411b29e0a928c97bc264c8"
+          },
+          {
+            "file": ".factory-testbed/model-use-cases-reviewer-review.json",
+            "reviewId": "FR-Model-Use-Cases-001",
+            "candidateRef": "sha256:c6120e86dfbba73fba5153fbb64a6a5d528d489df6411b29e0a928c97bc264c8"
+          }
+        ],
+        "knownBenignLaw": "every accepted verdict outside the five pre-freeze addresses pins one of exactly three known candidates: the stale shell metadata family 745cadc1 (define-product-intent, .factory-testbed), the genuinely accepted UC product c6120e86 (a DIFFERENT candidate than the corpus bundle 24f0aff2), and the genuinely accepted import artifact b10bb762 (the only accepted chain)",
+        "newAcceptedLineageSinceHold": 0
+      }
+    },
+    "holdDisposition": {
+      "state": "STANDING (not discharged; not re-emitted)",
+      "basis": "the freeze product contract (frf-contracts.what-baseline.v1, schema raw sha256 ab1b7f5e...) still demands acceptanceRecords minItems 5; the recomputed census is 0 of 5 accepted pre-freeze desks; the gate verdict of record FR-Reconcile-What-001 (repair) still carries the explicit prohibition \"No domain.accepted may fire from this desk toward freeze-what-baseline on this chain\" with the CRIT-1 permanence warning; a freeze over unaccepted lineage would still inherit the fabricated authority permanently",
+      "resumeContract": "R1-R4 of UH-Freeze-What-Baseline-001 unfulfilled: no accepted pre-freeze revision landed (R1), no accepted reconcile-what re-run verdict discharged the prohibition (R2), so this desk authors nothing (R3) and carries no hold bytes as product lineage (R4)"
+    },
+    "emissionDiscipline": {
+      "noSecondHoldEmission": "C2: the author outcome is idempotent by content address - one standing hold (9f2d28b9), one hold trace (17c09566), one hold receipt; this staffing mints NO second hold, NO product, NO baseline material (the CR anti-pattern family)",
+      "adv5": "this emission writes ONLY restaff-namespaced files; zero existing files modified or deleted (the standing package recomputes in place; the hold receipt regenerates byte-stable under its deterministic verifier)",
+      "writeAuthorityExercised": "only the frame-allowed operations: artifact-create + trace-add + fs:read/fs:write inside the desk namespace; no product_submit"
+    },
+    "deskOutcome": {
+      "decision": "hold-no-authoring (carried)",
+      "product": "none",
+      "productKind": null,
+      "terminalClaims": "terminal:audited-1 and terminal:delivered-1 remain envelope content addresses only - witnessed by no desk product on this chain, never re-minted",
+      "carriedForward": [
+        "constraint:retention-1 sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "unknown:browser-matrix-1 sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf (carried never resolved, D10)",
+        "claim:scope-2 sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da (upstream-contested carried boundary material; reconcile-what RA routing)"
+      ]
+    },
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "governingContractNote": "declared in this desk task protocol-skill layer; recorded verbatim as envelope provenance. Resolution scan recomputed this staffing: 0 content blocks hash to the anchor workspace-wide; textual mentions are provenance only. NOT ratified by this desk; this confirmation does not depend on it.",
+    "envelopePins": {
+      "protocolSkillRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "semanticSkillRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+      "workspaceSummary": "0 accepted upstream revisions travel by content address",
+      "upstreamAccepted": [],
+      "writeAuthority": "write authority: desk artifacts only; allowed=artifact-create,trace-add,fs:read,fs:write"
+    },
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "importArtifactDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "standingPackageRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "gateProhibitionRecomputedFromVerdictRecord": true,
+      "movementScanRecomputedWorkspaceWide": true,
+      "schemaRawDigestRecomputed": true,
+      "governingAnchorResolutionScan": {
+        "resolutions": 0
+      },
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "deterministicAuthoring": true
+    },
+    "trace": {
+      "file": "freeze-what-baseline-desk-restaff-trace.json",
+      "edgeCount": 25
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

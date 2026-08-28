@@ -1,0 +1,142 @@
+{
+  "traceRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+  "traceKind": "desk-trace",
+  "contentDigest": "fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "reconcile-what",
+    "role": "reviewer",
+    "traceKind": "desk-trace",
+    "subjectSemanticCode": "FR-Reconcile-What-001",
+    "subjectArtifactRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+    "relationVocabulary": [
+      "adjudicates",
+      "bound_to",
+      "carries_forward",
+      "derived_from",
+      "routes_repair",
+      "verified_by",
+      "verifies"
+    ],
+    "edges": [
+      {
+        "relationType": "derived_from",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "description": "reviewer verdict over the reissued what-reconciliation report (candidate of record 6400a2dd; superseded emission c22d4787 recorded)"
+      },
+      {
+        "relationType": "derived_from",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+        "description": "reviewer verdict over the author desk submission FS-Reconcile-What-001 (reissue)"
+      },
+      {
+        "relationType": "derived_from",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+        "description": "reviewer re-verification of the author trace graph (15/15 relationships resolve against independently recomputed seals)"
+      },
+      {
+        "relationType": "verified_by",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+        "description": "independent recomputation record backing the verdict (81/84 content checks pass; REAL cell surface + REAL folds + own status audit)"
+      },
+      {
+        "relationType": "verifies",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "description": "claim:scope-1 row re-derived: prd:boundary-1 -> fr:boundary-1 -> ac:boundary-1"
+      },
+      {
+        "relationType": "verifies",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "description": "claim:scope-2 (out_of_scope) reported with empty downstream coverage; no fabricated coverage"
+      },
+      {
+        "relationType": "verifies",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "description": "claim:constraint-1 reported through prd:constraint-1 -> nfr:determinism-1 -> ac:determinism-1"
+      },
+      {
+        "relationType": "verifies",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "description": "claim:outcome-1 row re-derived: fr:outcome-1 -> [ac:outcome-1-delivered, ac:outcome-1-deterministic-error]"
+      },
+      {
+        "relationType": "carries_forward",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "constraint:retention-1 preserved: honored-by chain re-verified (ac:determinism-1 + ac:outcome-1-deterministic-error)"
+      },
+      {
+        "relationType": "carries_forward",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "description": "unknown:browser-matrix-1 preserved: carried forward, owner discovery, zero resolution edges"
+      },
+      {
+        "relationType": "bound_to",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "terminal:audited-1 bound via prd:terminal-1 and fr:terminal-1 to ac:terminal-1-audited (ownership stays upstream)"
+      },
+      {
+        "relationType": "bound_to",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "terminal:delivered-1 bound via prd:outcome-1 and fr:outcome-1 to ac:outcome-1-delivered (ownership stays upstream)"
+      },
+      {
+        "relationType": "adjudicates",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "description": "governing contract anchor adjudicated UNRESOLVABLE at this desk (own scan over the qualification tree; MAJ-1 re-derived, still open)"
+      },
+      {
+        "relationType": "adjudicates",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "description": "the consumed acceptance revision 2b01353d re-adjudicated: its verdict of record is REPAIR (CTN-Define-Acceptance-Contract-001); the desk hold a53a5e08 stands"
+      },
+      {
+        "relationType": "adjudicates",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+        "description": "the candidate's cited reviewer gate e5249d78 adjudicated SUPERSEDED (CTN-001: confirmed repair 83e675bb, superseded accepted e5249d78) - CRIT-2 evidence"
+      },
+      {
+        "relationType": "routes_repair",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "description": "RA-1: intent revision a06dbc57 must be reissued by its owning desk (FR-001/-002 CRIT-1) and pass a reviewer stage"
+      },
+      {
+        "relationType": "routes_repair",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "description": "RA-2: UC revision 24f0aff2 has never passed a reviewer stage; the UC desk hold 6cccd162 must be resolved first"
+      },
+      {
+        "relationType": "routes_repair",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "description": "RA-3: requirements revision 86b00569 must be reissued (FR-001 CRIT-1/CRIT-2) and pass a reviewer stage"
+      },
+      {
+        "relationType": "routes_repair",
+        "fromRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "description": "RA-4: acceptance desk reissues over genuinely accepted upstream and completes its reviewer stage; hold a53a5e08 stands until then"
+      }
+    ],
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

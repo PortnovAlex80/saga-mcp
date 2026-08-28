@@ -1,0 +1,115 @@
+{
+  "traceRef": "sha256:a2cba0ffed35694b82a8f2c45e042df2360726c3910d41d5f7533f894c61d8ad",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "a2cba0ffed35694b82a8f2c45e042df2360726c3910d41d5f7533f894c61d8ad",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Import-Discovery-Handoff-002",
+    "deskRef": "import-discovery-handoff",
+    "role": "reviewer",
+    "traceKind": "reviewer-verdict-trace",
+    "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "reviews",
+        "toId": "DI-Import-Discovery-Handoff-001",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "description": "Independent reviewer verification of the imported capsule artifact"
+      },
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "reviews",
+        "toId": "FS-Import-Discovery-Handoff-002",
+        "toRef": "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+        "description": "Independent reviewer verification of the author product submission"
+      },
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "reviews",
+        "toId": "author-trace:import-discovery-handoff",
+        "toRef": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+        "description": "Reviewer verification of the author trace graph"
+      },
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts are deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "This independent desk audit is the audited-1 realization at the import desk"
+      },
+      {
+        "fromId": "FR-Import-Discovery-Handoff-002",
+        "fromRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The accepted verdict lets the verified capsule settle as the shell-stage material authority"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "The review confirms the carried-forward disposition; the desk neither resolves nor drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "derivedFrom": [
+          "claim:scope-1",
+          "claim:scope-2",
+          "claim:constraint-1",
+          "claim:outcome-1"
+        ],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ],
+        "supportedBy": [
+          "FR-Import-Discovery-Handoff-002"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "derivedFrom": [
+          "claim:scope-1",
+          "claim:scope-2",
+          "claim:constraint-1",
+          "claim:outcome-1"
+        ],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ],
+        "supportedBy": [
+          "DI-Import-Discovery-Handoff-001",
+          "FR-Import-Discovery-Handoff-002"
+        ]
+      }
+    }
+  }
+}

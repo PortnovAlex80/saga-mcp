@@ -1,0 +1,62 @@
+{
+  "recordRef": "sha256:6d0dc6a2c3671d24513e3c7269d0f5a8cf9e45a926051b1c2053e8d490575bd5",
+  "recordKind": "collision-record-superseding",
+  "contentDigest": "6d0dc6a2c3671d24513e3c7269d0f5a8cf9e45a926051b1c2053e8d490575bd5",
+  "semanticCode": "CR-Define-Product-Intent-003",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "recordId": "CR-Define-Product-Intent-003",
+    "supersedes": "sha256:68a6ca48d0c4ae2bcaf4f6206f9d41cc54dc9720edbc8dd2adf8bf9005bf21f9",
+    "supersessionReason": "CR-002 (CR-Define-Product-Intent-002) embedded a mistyped canonical review digest in its census (transcription defect, caught by self-audit before any consumer cited it); withdrawn by its author within the same session. This record carries the corrected, file-read-back census.",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "round": "stray-products-r2",
+    "verdictOfRecord": "repair",
+    "convergence": "Every live reviewer emission carries verdict repair with the same findings (CRIT-1 fabricated disposition authority on prd:scope-2; MAJ-1 unresolvable governing-contract anchor sha256:a926df62...). The verdict of record is repair under either review identity (FR-001 canonical or FR-002 collision-free reissue).",
+    "census": {
+      "note": "all digests below were read back from the files on disk at record time",
+      "canonicalFR001": {
+        "review": "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+        "verification": "sha256:c0215ebcbf494c3d4c71c7e8f342cfa91eb9dddcf6f50f78f5d20f4b0be7579a",
+        "trace": "sha256:1bf917cf4c125a2d8bbf7af90869bcc6e2612495334f0f33a5f6733fc93fcb5d",
+        "submission": "sha256:3473cdb7ef7d594db5ddaaa35bb9654b6ba4d19ea0c3bdbf98cb0accaf4afb0e",
+        "verdict": "repair",
+        "checks": "64 / 63 passed"
+      },
+      "collisionFreeFR002": {
+        "review": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+        "verification": "sha256:e1390d6e539d4ab2721c6a6f4f54c2bf7ea2557bfca047760c2cabb6af043eec",
+        "trace": "sha256:84324a50809fab818b9064a1d8a5bd0d6e752f8d446e05fab1c0615ac768ade4",
+        "submission": "sha256:a0bc5e4d50ac176fcc8c0f0697b626e2c4f8a07cdd0c81721ca1cef43827c63d",
+        "verdict": "repair"
+      },
+      "withdrawnAcceptedEmission": {
+        "review": "sha256:77e9a93116848c48c2ab19bf56160bb7b3ce3aeedeef72b40d3b37e8d46c62fd",
+        "verification": "sha256:6dc354848383fa7e8eb33f137b16df0a9955e8846e335ef6e1c4de2d38c35317",
+        "trace": "sha256:2bff9245659238787d20b611f549a41db5e05dec64dd992049d5fb3f3cb3b2ec",
+        "submission": "sha256:8881558b4e5653cad80a5af1941cf62e2fc8546e46e93147d5ae72f308663475",
+        "verdict": "accepted",
+        "status": "WITHDRAWN by its author (CRIT-1 verified against the capsule); no longer on disk - attested by the superseded records"
+      },
+      "rewrittenPreservationNamespace": {
+        "review": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "verification": "sha256:dc422dcfa4eaf963c5016f8973b3bf13a422a12747bfdba5eb84eec0a3ece1fe",
+        "note": "files this writer created as -emission-b preservation of its own emission were overwritten by a concurrent writer with repair-verdict FR-001 content (ADV-4 defect class)"
+      }
+    },
+    "withdrawal": {
+      "verdict": "accepted",
+      "by": "this writer (the withdrawn accepted emission was authored in this session)",
+      "reason": "CRIT-1 verified independently: prd:scope-2 disposition reason cites a Discovery exclusion decision that does not exist in the accepted capsule (SC-2 sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da is a bare claim statement; CERT-1 sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21 is a subject-level go). MAJ-1 independently confirmed: six r1 claimant files declare sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 and all six recompute to different digests (f4846e5f..., b880d0b7..., d041cb56..., 87aeab3f... x2, 0f06d0bc...)."
+    },
+    "findings": {
+      "CRIT1": "CONFIRMED - repair action RA-1 applies",
+      "MAJ1": "CONFIRMED - repair action RA-2 applies",
+      "processFinding": "the desk review seat admitted at least three concurrent emissions into one namespace, with in-place overwrites hitting both canonical filenames and a preservation namespace; driver-side single-seat claim enforcement for reviewer desks is required before the round can settle cleanly"
+    },
+    "stopNotice": "this writer emits no further desk artifacts after this record"
+  }
+}

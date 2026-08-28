@@ -1,0 +1,314 @@
+{
+  "artifactRef": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+  "artifactKind": "formalization-review",
+  "contentDigest": "83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+  "semanticCode": "FR-Define-Acceptance-Contract-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Define-Acceptance-Contract-001",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r3",
+    "reviewedCandidate": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "submissionId": "FS-Define-Acceptance-Contract-001",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "artifactSemanticCode": "SR-Define-Acceptance-Contract-001",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "productKind": "formalization.acceptance-bindings.v1"
+    },
+    "verificationRef": "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb",
+    "verificationSummary": {
+      "recomputedChecks": 99,
+      "passed": 92,
+      "failed": 7,
+      "trustedByDeclaration": false,
+      "failedCheckIds": [
+        "I4.governingContract.resolves",
+        "L2.verificationFlags",
+        "M2.intentRevision.accepted",
+        "M3.ucReviewerStage.exists",
+        "M4.requirementsRevision.accepted",
+        "M5.candidate.acceptedStatusClaims",
+        "N1.scope2.notRatified"
+      ]
+    },
+    "providerRecheck": {
+      "route": "same-provider-recheck (ACCEPTANCE_REVIEWER_ROUTE; gates.ts law: one declared provider per desk; a reviewer can never soften a check)",
+      "providerId": "frf.acceptance-closure.v1",
+      "resealedToDeclaredSeal": true,
+      "declaredSeal": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51",
+      "adversarialChecklist": "rev-1 citation pairs re-derived (H9); rev-2 zero deferrals verified lawful under full end-to-end coverage (J4); rev-3 FOREIGN_LINEAGE escalation honored - this review routes the unaccepted-lineage and contract-anchor defects to their owning desks without widening any scope; rev-4 scenario-strip probe re-run and killed (G1)"
+    },
+    "envelopeConsistency": {
+      "taskProjectionContentAddresses": 8,
+      "resolved": 8,
+      "note": "All 8 reviewer-envelope task-projection content addresses travel inside artifact.upstream.verifiedSubArtifacts and match exactly (no silent drops, no digest drift). The envelope upstream-accepted projection is adjudicated under workspaceAdjudication."
+    },
+    "workspaceLaw": "0 accepted upstream revisions travel by content address",
+    "workspaceAdjudication": {
+      "envelopeProjection": "1 accepted upstream revisions travel by content address (upstream-accepted[0] sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d :: accepted revision of define-acceptance-contract)",
+      "authorPosition": "0 accepted upstream revisions travel by content address (artifact, submission, trace consistent; verification.acceptedUpstreamRevisionsTravelingByContentAddress = 0)",
+      "scanEvidence": "K2: 254 workspace files under qualification/ scanned - raw-bytes hits 0, canonical-JSON hits 0, .content canonical hits 0, textual mentions 1 (this reviewer's own verify script)",
+      "closure": "AUTHOR POSITION UPHELD. No accepted define-acceptance-contract revision exists anywhere: the r1 acceptance records are pseudo-addressed (not content addresses, and that material predates the content-addressed regime with digest drift later established for the r1 contract layer), r2 never ran this desk, and the only r3 revision is the candidate under review. The projected address resolves to no content. The envelope count is stale shell metadata, recorded for the shell owner (r2 RA-5 still open)."
+    },
+    "findings": {
+      "positiveFindings": [
+        "92/99 independent recomputations pass; the candidate of record is content-integrity-clean at the digest layer: submission, artifact and trace self-addresses recompute; the bundle re-seals through the REAL acceptance cell (acceptanceUniverseFrom -> validateAcceptanceBundle) to the exact declared product seal; all 5 criterion seams seal via the REAL WP03 validateAcBinding; all 5 verifiable-statement seals recompute.",
+        "Upstream continuity at the byte layer: the consumed intent/UC/requirements revisions recompute through the REAL PRD/UC validators and REAL folds; the requirements bundle re-seals against its recomputed WP03 universe before consumption; every accepted-* ref binds the recomputed digest (no fabricated addresses anywhere in the candidate).",
+        "All 8 reviewer-envelope content addresses travel inside the artifact and match exactly; the trace graph resolves end to end (16 relationships; criterion/requirement/branch/terminal/constraint/unknown coverage blocks are exact projections of the edge sets; branch refs resolve to their owning frozen scenario member seals).",
+        "rev-1 duty discharged: every scenario-facing criterion citation pair re-derives from the bound requirement's own derivation; the NFR-only criterion lawfully carries no UC citation; zero deferrals and zero standalone evidence bindings are lawful because all 4 required branches are covered end to end (cr-05).",
+        "Negative probes all killed by the same declared provider (no softening): stripped branch citation, foreign scenario substitution, foreign requirement, uncovered requirement, WHAT-side key injection.",
+        "Determinism honored: pinned timestamp 2026-08-28T00:00:00Z across submission/artifact/trace; the reviewer round is deterministic by construction (this review included).",
+        "Workspace law: author 0-count upheld against the envelope projection by a workspace-wide resolvability scan - the honest adjudication recorded in workspaceAdjudication."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "stale_envelope_projection",
+          "note": "ADV-1. The reviewer frame projects \"1 accepted upstream revision of define-acceptance-contract\" (sha256:32892970...) which resolves to no content workspace-wide; the only historical accept for this desk is the r1 pseudo-addressed record. Stale shell metadata; r2 RA-5 (refresh envelope projections) remains open. Recorded in workspaceAdjudication."
+        },
+        {
+          "type": "byte_identical_relabeling_round",
+          "note": "ADV-2. The r3 round re-emitted the r2 repair-verdict intent/requirements revisions byte-identically and relabeled the chain \"accepted\" without any state change, remediation record, or adjudication. The r2 UC desk's upstream hold (sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7) was silently overridden the same way. Desk process hygiene: a round boundary is not an acceptance event; verdict records travel by content address and bind until remediated or adjudicated."
+        },
+        {
+          "type": "pseudo_addressed_legacy_accept",
+          "note": "ADV-3. The r1 reviewer decision records (\"sha256:define-acceptance-contract-formalization-2026-08-27\") use non-digest pseudo-addresses; they cannot serve as content-addressed acceptance evidence and are the likely origin of the envelope's phantom accepted-revision projection. Archived as legacy-regime records, not as a traveling accepted revision."
+        }
+      ],
+      "criticalIssues": [
+        {
+          "issueId": "CRIT-1",
+          "severity": "CRITICAL",
+          "category": "unaccepted_lineage_asserted_accepted",
+          "title": "The candidate builds its acceptance surface over revisions that are NOT accepted while asserting they are",
+          "description": "The candidate's material authority (\"the accepted define-product-intent bundle, the accepted model-use-cases scenario bundle and the accepted derive-system-requirements bundle, traveling by content address\"), its accepted* upstream field family and its six accepted-* evidence kinds assert accepted upstream revisions. The status audit (M-group) proves otherwise for three of the four consumed links: (a) the intent revision a06dbc57... carries verdict repair across every reviewer emission (FR-Define-Product-Intent-001 e49d8d11..., FR-Define-Product-Intent-002 04632094...; both CRIT-1: prd:scope-2 fabricated disposition authority; both MAJ-1: governing anchor) with no author reissue anywhere in r1/r2/r3; (b) the UC scenarios bundle 24f0aff2... has NEVER passed a reviewer stage - no reviewer artifact exists in the corpus - and was authored in violation of its own desk's upstream hold; (c) the requirements revision 86b00569... carries verdict repair (FR-Derive-System-Requirements-001 d31b044c...: CRIT-1 unaccepted lineage asserted accepted, CRIT-2 scope-2 ratification) plus a re-staffing confirmation (RS-Derive-System-Requirements-001 1c30d28e...) that confirms the verdict, not an acceptance. Only the discovery import chain is genuinely accepted. The candidate's verification flags assert the same false state (revisionPinsMatchAcceptedRevisions=true - the pins are byte-exact to UNACCEPTED revisions). The WP03/closure surface cannot see workflow status - precisely the desk-review authority. This is the r2 derive-desk CRIT-1 defect family propagated one desk downstream: acceptance-contract is the desk whose whole product IS the statement \"these exact criteria close the accepted material\", so building it over unaccepted lineage launders the entire unaccepted chain one step from reconcile-what.",
+          "evidence": [
+            "Check M2: intent verdicts repair x2 (recomputed from the verdict records' own content digests); no intent author reissue exists (all intent artifact files in the corpus digest to the same repair-verdict revision).",
+            "Check M3: zero model-use-cases reviewer artifacts in r1/r2/r3; UC hold artifact sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7 recomputes (holdKind=uc-upstream-hold).",
+            "Check M4: requirements verdict repair + restaff confirmation RS-Derive-System-Requirements-001 recomputes; the r3 requirements copy is byte-identical to the repair-verdict revision.",
+            "Check M5 + L2: materialAuthority/accepted* fields/accepted-* evidence kinds/self-check 9 assert accepted-states; revisionPinsMatchAcceptedRevisions=true is false at the status layer.",
+            "Check M1: the import chain (artifact b10bb762..., accepted review cfc7b35a...) is the only genuinely accepted link."
+          ],
+          "violatedPrinciples": [
+            "CON-1 material authority travels by content AND by verdict records",
+            "D10 never silently resolve or drop accepted material - its converse: never relabel unaccepted material as accepted",
+            "gates.ts law: acceptance states change only through verdict records, not round boundaries",
+            "r2 FR-Derive-System-Requirements-001 CRIT-1/RA-1 remediation debt"
+          ],
+          "impact": "Acceptance would ratify an acceptance contract whose entire binding surface (fr:*, nfr:*, uc:*, branch:*, stmt:*) hangs off unaccepted revisions, letting the unaccepted chain reach reconcile-what as if settled, and ratifying the intent contention (CRIT-2 of both intent reviews) as a side effect."
+        },
+        {
+          "issueId": "CRIT-2",
+          "severity": "CRITICAL",
+          "category": "fabricated_disposition_authority_ratified",
+          "title": "The candidate restates the prd:scope-2 out_of_scope exclusion as settled fact in the acceptance surface",
+          "description": "The candidate brief states \"The out-of-scope intent member prd:scope-2 and the discovery-owned unknown:browser-matrix-1 derive no criterion\" and acceptance self-check 10 asserts \"prd:scope-2 (out_of_scope) derives no criterion\" - converting the contested exclusion into the acceptance contract's own premise. The recomputed capsule material for claim:scope-2 (SC-2, digest cb291aa7...) is a bare claim statement - no decision; the certificate (CERT-1, 03972527...) is a subject-level go; the exclusion's cited authority (\"the Discovery decision recorded in the capsule\") was established as nonexistent by FR-Define-Product-Intent-001 CRIT-1, FR-Define-Product-Intent-002 CRIT-1 and FR-Derive-System-Requirements-001 CRIT-2. Keeping zero derivation edges from prd:scope-2 is defensible while the disposition is contested; restating the exclusion as fact inside the acceptance contract converts this desk into the third link that launders the fabrication. Net effect: accepted Discovery scope material would end the round with no acceptance surface at all, under an exclusion nobody can produce authority for.",
+          "evidence": [
+            "Check N1: brief + self-check 10 restatements found verbatim in the candidate content.",
+            "Capsule SC-2 content recomputed (digest cb291aa7...): bare claim statement, no decision; CERT-1: subject-level go.",
+            "The consumed intent member prd:scope-2 still cites \"the Discovery decision recorded in the capsule\" (reason field, recomputed)."
+          ],
+          "violatedPrinciples": [
+            "CON-1 content-address provenance honesty",
+            "TC-2 accepted material carries accepted content until a real disposition authority exists",
+            "conveyor rule: material authority travels by content, never by invented narrative"
+          ],
+          "impact": "The acceptance contract would memorialize a fabricated disposition as an accepted premise; every downstream reader inherits the exclusion as settled without any authority existing."
+        }
+      ],
+      "majorIssues": [
+        {
+          "issueId": "MAJ-1",
+          "severity": "MAJOR",
+          "category": "unresolvable_governing_contract_anchor",
+          "title": "governingContractRef sha256:a926df62... resolves to no content anywhere in the round workspace",
+          "description": "The candidate binds governingContractRef sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 and lists it in requiredEvidenceRefs (architecture-contract kind), as every r3 desk does. Workspace-wide recomputation finds no content - raw bytes, whole-JSON canonical, or .content canonical - hashing to that address across 92 mentioning files under qualification/. The r1 contract-layer claimants still declare the address and all recompute to different digests. This is the r2 MAJ-1 family (FR-Define-Product-Intent-001 MAJ-1, FR-Derive-System-Requirements-001 MAJ-1; r2 RA-2/RA-4) still unremediated, now inherited by a fourth desk.",
+          "evidence": [
+            "Check I4: UNRESOLVED - 92 files mention the address; zero content hits; r1 claimants recompute otherwise.",
+            "r2 RA-2 (intent review) and RA-4 (derive review) demanded the contract layer be re-sealed; no re-seal exists in r3."
+          ],
+          "violatedPrinciples": [
+            "CON-1 content-address transport",
+            "TC-1 acceptance criterion: evidence refs must resolve to recomputable content",
+            "r2 RA-2/RA-4 remediation debt"
+          ],
+          "impact": "The round governing-contract continuity anchor remains decorative: acceptance would ratify an evidence ref that fails at the first independent recomputation."
+        }
+      ]
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts with SHA256 digests over canonical JSON",
+        "satisfied": true,
+        "evidence": "A1-C3: submission/artifact/trace self-addresses recomputed and bound"
+      },
+      {
+        "id": 2,
+        "description": "Same-provider recheck through the REAL acceptance cell (no softening) with adversarial probes killed",
+        "satisfied": true,
+        "evidence": "E1-E5 re-seal to the declared seal; G1-G5 all refused with the expected typed reasons"
+      },
+      {
+        "id": 3,
+        "description": "Law ac-1: every criterion binds exact ACCEPTED FR/NFR material",
+        "satisfied": false,
+        "evidence": "M2-M5: nothing consumed is accepted (intent repair x2, UC never reviewed, requirements repair); the criteria bind honest digests of unaccepted revisions (CRIT-1)"
+      },
+      {
+        "id": 4,
+        "description": "Laws ac-2/ac-3: both citation shapes, re-derived from the bound requirements' derivations (rev-1)",
+        "satisfied": true,
+        "evidence": "H9: all scenario-facing citation pairs re-derive; NFR-only criterion lawfully uncited"
+      },
+      {
+        "id": 5,
+        "description": "Law ac-4: closed four-value evidence vocabulary with declared observable terminal results",
+        "satisfied": true,
+        "evidence": "E5: test/monitoring/audit only; every criterion declares an observable terminal result"
+      },
+      {
+        "id": 6,
+        "description": "Law ac-5 WHAT-side fence: no architecture/module/file decisions anywhere in the bundle",
+        "satisfied": true,
+        "evidence": "L1 scan + G5 SCOPE_VIOLATION probe"
+      },
+      {
+        "id": 7,
+        "description": "Law ac-6/ac-7 closure: every FR/NFR covered; every required branch covered end to end; unique criterion ids; zero deferrals needed",
+        "satisfied": true,
+        "evidence": "H2-H4 + J3/J4: 4/4 requirements, 4/4 branches, 5 unique criteria, zero deferrals/standalone bindings"
+      },
+      {
+        "id": 8,
+        "description": "Trace relationships resolve against recomputed digests; coverages equal the edge sets; terminals/constraint/unknown covered exactly",
+        "satisfied": true,
+        "evidence": "H1-H8: 16/16 relationships, all coverage blocks exact projections"
+      },
+      {
+        "id": 9,
+        "description": "Upstream consumed by the candidate is GENUINELY ACCEPTED (verdict records, not round labels)",
+        "satisfied": false,
+        "evidence": "M1-M4: only the import chain is accepted; intent/UC/requirements are repair-verdict or never-reviewed (CRIT-1)"
+      },
+      {
+        "id": 10,
+        "description": "No fabricated disposition ratified into the acceptance surface",
+        "satisfied": false,
+        "evidence": "N1: brief + self-check 10 restate the prd:scope-2 exclusion as fact (CRIT-2)"
+      },
+      {
+        "id": 11,
+        "description": "Governing contract evidence ref resolves to recomputable content",
+        "satisfied": false,
+        "evidence": "I4 FAILED: a926df62... unresolvable across 91 mentioning files (MAJ-1)"
+      },
+      {
+        "id": 12,
+        "description": "Workspace law adjudicated honestly: author 0-count upheld; envelope projection resolved or adjudicated UNRESOLVABLE",
+        "satisfied": true,
+        "evidence": "K1/K2 + workspaceAdjudication: 246-file scan, zero content hits, stale shell metadata recorded"
+      },
+      {
+        "id": 13,
+        "description": "Deterministic authoring: pinned timestamps, no clock reads, no randomness (constraint:retention-1)",
+        "satisfied": true,
+        "evidence": "J5 pinned 2026-08-28T00:00:00Z; reviewer round deterministic by construction"
+      }
+    ],
+    "verdict": "repair",
+    "verdictVocabulary": [
+      "accepted",
+      "repair",
+      "upstream-repair",
+      "human-wait",
+      "terminal-reject"
+    ],
+    "finalGate": {
+      "gateVerdict": "repair",
+      "providerId": "reviewer-verdict",
+      "issues": [
+        "CRIT-1",
+        "CRIT-2",
+        "MAJ-1"
+      ]
+    },
+    "requiredActions": [
+      {
+        "actionId": "RA-1",
+        "priority": "CRITICAL",
+        "owner": "define-acceptance-contract desk (author)",
+        "description": "HOLD the desk until genuinely accepted upstream revisions exist; then reissue against them only",
+        "details": "An acceptance contract is a statement ABOUT accepted material; over unaccepted lineage it has no referent. Issue a hold record (the r2 UC upstream-hold precedent, by content address) naming the three unaccepted links, and strip every accepted-status assertion (materialAuthority wording, accepted* field names, accepted-* evidence kinds, self-check 9) from any interim material. Reissue only when the consumed revisions carry accepted verdict records."
+      },
+      {
+        "actionId": "RA-2",
+        "priority": "CRITICAL",
+        "owner": "define-product-intent desk (author) + driver/human adjudication",
+        "description": "Settle the intent contention, then restore claim:scope-2 (r2 RA-2 chain, unpaid)",
+        "details": "Remediate FR-Define-Product-Intent-001/002 CRIT-1: reissue prd:scope-2 as carried system-boundary material (scenario_required) or cite a genuinely recorded Discovery decision address. Until then the exclusion has no authority and no desk may restate it as fact (this review's CRIT-2)."
+      },
+      {
+        "actionId": "RA-3",
+        "priority": "MAJOR",
+        "owner": "model-use-cases desk + driver",
+        "description": "Give the UC bundle its never-run reviewer stage; reconcile the hold violation (r2 derive RA-3, unpaid)",
+        "details": "The model-use-cases bundle is the only desk product in the corpus that has never passed a reviewer stage, and it was authored in violation of its own desk's upstream hold. Execute the reviewer stage and record how the hold was resolved."
+      },
+      {
+        "actionId": "RA-4",
+        "priority": "MAJOR",
+        "owner": "architecture-contract desk + all desks binding the anchor",
+        "description": "Re-seal the contract layer so the governing address resolves (r2 RA-2/RA-4, unpaid)",
+        "details": "Re-seal the architecture-contract artifacts so their contentDigest equals sha256(canonical(content)); then update governingContractRef (a926df62...) across the r3 desks and resubmit evidence sets. Until then every binding is an evidence ref that fails independent recomputation."
+      },
+      {
+        "actionId": "RA-5",
+        "priority": "PROCESS",
+        "owner": "driver / shell",
+        "description": "Refresh envelope projections (r2 RA-5, unpaid)",
+        "details": "This frame projects \"1 accepted upstream revision of define-acceptance-contract\" (sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d) which resolves to no content; the likely source is the r1 pseudo-addressed acceptance record. Envelope projections must be derived from verdict-record state, not round memory."
+      },
+      {
+        "actionId": "RA-6",
+        "priority": "MINOR",
+        "owner": "define-acceptance-contract desk (author)",
+        "description": "Status-layer honesty for verification flags",
+        "details": "Verification flags must not assert accepted-states (revisionPinsMatchAcceptedRevisions) that only verdict records can establish. Restate digest-layer facts as digest-layer facts, and gate status-layer claims on a verdict-record audit."
+      }
+    ],
+    "evidenceReferences": [
+      "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+      "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+      "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+      "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+      "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+      "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+      "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+      "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+      "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+      "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+      "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+      "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+      "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+      "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+      "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+      "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+      "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb"
+    ],
+    "conclusion": "The candidate of record (SR-Define-Acceptance-Contract-001, sha256:2b01353d...) is content-integrity-clean at the digest layer - 92/99 recomputations pass, the bundle re-seals through the REAL acceptance cell to the declared seal, all five criterion seams seal, the trace resolves exactly, the envelope transports intact, and the workspace-law adjudication upholds the author where the envelope could not. It is nonetheless returned as repair on grounds the kernel surface cannot see: (CRIT-1) the entire acceptance surface binds revisions that are NOT accepted - intent repair x2 rounds with no reissue, UC never reviewed and hold-violating, requirements repair + re-staffed - while the candidate asserts them accepted, one desk before reconcile-what; (CRIT-2) the candidate restates the prd:scope-2 exclusion as settled fact although its authority was established as nonexistent by three upstream verdict records; (MAJ-1) the governing-contract anchor still resolves to no content, the unremediated r2 debt. Repair per RA-1..RA-6: the desk holds until genuinely accepted revisions exist, then reissues against them. The acceptance desk may not settle - and the chain may not reach reconcile-what - on relabeled lineage."
+  }
+}

@@ -1,0 +1,267 @@
+{
+  "artifactRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+  "artifactKind": "upstream-hold",
+  "productKind": "formalization.upstream-hold.v1",
+  "contentDigest": "a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+  "semanticCode": "UH-Define-Acceptance-Contract-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.upstream-hold.v1",
+    "deskRef": "define-acceptance-contract",
+    "deskNodeId": "define-acceptance-contract",
+    "role": "author",
+    "itemInstanceId": "formalization-item:define-acceptance-contract",
+    "token": "plan:formalization#item:acceptance-contract",
+    "holdKind": "acceptance-upstream-hold",
+    "decision": "hold-no-authoring",
+    "statement": "The define-acceptance-contract desk authors NO acceptance-contract material in this staffing. An acceptance contract is a statement ABOUT accepted material; the three upstream revisions the desk candidate of record consumed while declaring them accepted are NOT accepted: (a) the define-product-intent revision a06dbc57... carries verdict repair across every reviewer emission (FR-Define-Product-Intent-001 e49d8d11..., its emission-b 6c9c8324..., FR-Define-Product-Intent-002 04632094...) with no author reissue anywhere in r1/r2/r3 and the intent contention still open; (b) the model-use-cases revision 24f0aff2... has never passed a reviewer stage at its own content address - the only UC reviewer verdict in the workspace (FR-Model-Use-Cases-001 8aeee351..., factory-testbed namespace) pins a different candidate (c6120e86...) - and the bundle was authored in violation of its own desk upstream hold (UH-Model-Use-Cases-001 6cccd162...); (c) the derive-system-requirements revision 86b00569... carries verdict repair (FR-Derive-System-Requirements-001 d31b044c...) plus a re-staffing confirmation (RS-Derive-System-Requirements-001 1c30d28e...) that confirms the verdict, not an acceptance, and the requirements reviewer seat is itself held (UH-Derive-System-Requirements-001 fbc0394b..., UH-Derive-System-Requirements-002 b4eaaaba...). Only the discovery import chain is genuinely accepted (import artifact b10bb762... recomputes; all 9 capsule sub-artifact digests recompute and match this desk task envelope 8/8). The desk candidate of record (SR-Define-Acceptance-Contract-001 2b01353d...) is under an unresolved reviewer verdict contention (CL-Define-Acceptance-Contract-001: emission A repair 83e675bb... grounded in 99 recomputations vs emission B accepted with no status-layer audit) routed to driver/human adjudication. Authoring a replacement contract now would re-ratify the same fabricated lineage; the desk waits for genuinely accepted upstream revisions.",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the accepted import-discovery-handoff capsule sub-artifact contents (9/9 including CERT-1) and matched exactly",
+      "envelopeRecompute": [
+        {
+          "semanticCode": "SC-1",
+          "group": "sourceClaims",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "envelopeId": "claim:scope-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-2",
+          "group": "sourceClaims",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "envelopeId": "claim:scope-2",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-3",
+          "group": "sourceClaims",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "envelopeId": "claim:constraint-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-4",
+          "group": "sourceClaims",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "envelopeId": "claim:outcome-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CON-1",
+          "group": "constraints",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "envelopeId": "constraint:retention-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "UNK-1",
+          "group": "unknowns",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "envelopeId": "unknown:browser-matrix-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-1",
+          "group": "terminalLifecycleClaims",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "envelopeId": "terminal:audited-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-2",
+          "group": "terminalLifecycleClaims",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "envelopeId": "terminal:delivered-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CERT-1",
+          "group": "certificate",
+          "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "ref": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "envelopeId": null,
+          "envelopeMatch": false
+        }
+      ]
+    },
+    "candidateOfRecord": {
+      "semanticCode": "SR-Define-Acceptance-Contract-001",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "status": "authored 2026-08-28T00:00:00Z pin, byte-unchanged since; reviewer verdict contention open; NOT settled; superseded for authoring basis by this hold",
+      "defectSummary": "CRIT-1 unaccepted lineage asserted accepted (this hold, links 1-3); CRIT-2 prd:scope-2 fabricated exclusion restated as fact; MAJ-1 governing anchor unresolvable workspace-wide"
+    },
+    "verdictContention": {
+      "contentionId": "CL-Define-Acceptance-Contract-001",
+      "state": "open; driver/human adjudication required before settle",
+      "emissionA": {
+        "verdict": "repair",
+        "reviewRef": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+        "verificationRef": "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb",
+        "note": "grounded in 99 recomputations incl. the M/N ACCEPTANCE-STATE audit; re-issued collision-free under -emission-a filenames"
+      },
+      "emissionB": {
+        "verdict": "accepted",
+        "note": "written to canonical filenames by a concurrent writer; no status-layer audit counterpart; addresses recorded in CL-Define-Acceptance-Contract-001"
+      },
+      "resolutionDemand": "the final gate must not consume an accepted reviewer verdict that contradicts recomputable evidence still on disk; both emissions travel by content address and neither may be erased by filename ownership"
+    },
+    "upstreamObservations": {
+      "onlyAcceptedChain": {
+        "importArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "certificateRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "note": "the accepted discovery handoff capsule import is the only genuinely accepted upstream material; this hold is grounded in it"
+      },
+      "unacceptedLinks": [
+        {
+          "link": "define-product-intent",
+          "consumedAs": "acceptedIntentArtifactRef",
+          "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+          "status": "repair-verdict; contention open; NOT accepted",
+          "evidenceRefs": [
+            "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc"
+          ],
+          "evidenceNote": "FR-Define-Product-Intent-001 (canonical, repair), FR-Define-Product-Intent-001 emission-b (repair), FR-Define-Product-Intent-002 (repair, records the contention and escalation); no author reissue exists in r1/r2/r3"
+        },
+        {
+          "link": "model-use-cases",
+          "consumedAs": "acceptedUcArtifactRef",
+          "artifactRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+          "status": "never reviewed at this content address; authored in violation of its own desk upstream hold; NOT accepted",
+          "evidenceRefs": [
+            "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+            "sha256:8aeee3511c5c31509fb956fef5c1d132544ea7d14fa83d9c76d54776eaf35bb7"
+          ],
+          "evidenceNote": "UH-Model-Use-Cases-001 (r2 upstream hold); FR-Model-Use-Cases-001 is an accepted verdict but pins a different candidate (c6120e86..., factory-testbed namespace) and therefore gives this revision no reviewer stage"
+        },
+        {
+          "link": "derive-system-requirements",
+          "consumedAs": "acceptedRequirementsArtifactRef",
+          "artifactRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+          "status": "repair-verdict + restaff confirmation; reviewer seat held; NOT accepted",
+          "evidenceRefs": [
+            "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+            "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+            "sha256:fbc0394bd8f79df2fc7e8956accd9fe25485bceab182044927de9f209f11d053",
+            "sha256:b4eaaabaa5010c6e03594943e2437b030d352ec9f3027fb275d57f351692c995"
+          ],
+          "evidenceNote": "FR-Derive-System-Requirements-001 (repair); RS-Derive-System-Requirements-001 (re-staffing confirmation, not an acceptance); UH-Derive-System-Requirements-001/002 (current reviewer seat hold-no-review)"
+        }
+      ],
+      "unresolvableInstances": [
+        {
+          "id": "governing-contract anchor",
+          "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+          "role": "protocol-skill layer governingContractRef, declared in every r3 desk frame and pinned by the candidate of record",
+          "evidence": "no content in the workspace hashes to this address; recorded as envelope provenance, never ratified",
+          "resolved": false
+        },
+        {
+          "id": "contending accepted intent instance",
+          "address": "sha256:bff4aca147aaee18c7224b6b05d4d533190bd42ee15e967b321dffbe24990f08",
+          "role": "the \"accepted\" define-product-intent instance quoted inside FR-Define-Product-Intent-002 contentionRecord",
+          "evidence": "no content in the workspace hashes to this address; it travels only as quoted metadata inside review records",
+          "resolved": false
+        }
+      ]
+    },
+    "noProductAuthored": true,
+    "fence": {
+      "forbiddenBundleKeys": [
+        "criteria",
+        "deferrals",
+        "standaloneEvidenceBindings",
+        "verifiableStatements"
+      ],
+      "observed": "this hold is a desk artifact, not an acceptance bundle: no criterion, evidence kind, verifiable statement or observable terminal result is authored; prd:scope-2 is not restated as fact and unknown:browser-matrix-1 derives nothing"
+    },
+    "resumeContract": [
+      "R1: driver/human adjudicates CL-Define-Acceptance-Contract-001 (emission A repair 83e675bb... vs emission B accepted) and the define-product-intent contention by content address (repair e49d8d11.../6c9c8324.../04632094... vs unresolvable \"accepted\" bff4aca1...)",
+      "R2: the define-product-intent desk reissues against the adjudicated basis; FR-Define-Product-Intent-001/002 CRIT-1 (prd:scope-2 disposition authority) must be remediated in that reissue",
+      "R3: the model-use-cases revision 24f0aff2... receives its reviewer stage at its own content address, or is reissued and then reviewed; the r2 upstream-hold violation is recorded as resolved or repaired",
+      "R4: the derive-system-requirements revision 86b00569... is repaired and re-reviewed (or its hold chain resolves) so a verdict record exists for the revision this desk would consume",
+      "R5: on genuinely accepted revisions of all three links, this desk is re-staffed and reissues the acceptance contract against those content addresses only; this hold is not carried as product lineage"
+    ],
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "governingContractNote": "declared in this desk task protocol-skill layer; recorded verbatim as envelope provenance. Unresolvable workspace-wide (see unresolvableInstances). NOT ratified by this desk; this hold does not depend on it.",
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "importArtifactDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "unresolvableInstancesEnumerated": [
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:bff4aca147aaee18c7224b6b05d4d533190bd42ee15e967b321dffbe24990f08"
+      ],
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

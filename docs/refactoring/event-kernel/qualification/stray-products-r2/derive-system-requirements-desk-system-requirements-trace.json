@@ -1,0 +1,252 @@
+{
+  "traceRef": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+  "traceKind": "system-requirements-trace",
+  "contentDigest": "fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "derive-system-requirements",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "derive-system-requirements",
+    "role": "author",
+    "traceKind": "system-requirements-trace",
+    "subjectSemanticCode": "SR-Derive-System-Requirements-001",
+    "subjectArtifactRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+    "relationVocabulary": [
+      "constrained_by",
+      "derived_from",
+      "enforces",
+      "supports"
+    ],
+    "relationships": [
+      {
+        "fromId": "fr:boundary-1",
+        "relation": "derived_from",
+        "toId": "prd:boundary-1",
+        "description": "The boundary FR derives from the system-boundary intent member (exact accepted PRD lineage).",
+        "fromRef": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+        "toRef": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+      },
+      {
+        "fromId": "fr:outcome-1",
+        "relation": "derived_from",
+        "toId": "prd:outcome-1",
+        "description": "The delivery FR derives from the outcome intent member owned by terminal claim terminal:delivered-1.",
+        "fromRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "toRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+      },
+      {
+        "fromId": "fr:terminal-1",
+        "relation": "derived_from",
+        "toId": "prd:terminal-1",
+        "description": "The terminal FR derives from the terminal-claim intent member owned by terminal claim terminal:audited-1.",
+        "fromRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "toRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+      },
+      {
+        "fromId": "nfr:determinism-1",
+        "relation": "derived_from",
+        "toId": "prd:constraint-1",
+        "description": "The determinism NFR derives from the direct_requirement intent member carrying the accepted constraint.",
+        "fromRef": "sha256:6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+        "toRef": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+      },
+      {
+        "fromId": "fr:boundary-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The boundary FR obligates deterministic responses only inside the accepted boundary.",
+        "fromRef": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:outcome-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The delivery FR obligates the deterministic error branch: no nondeterministic content is invented.",
+        "fromRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:terminal-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The terminal FR obligates a deterministic audit record (go triage with recorded strengths).",
+        "fromRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "nfr:determinism-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The determinism NFR binds the accepted source constraint directly (cross-cutting lineage).",
+        "fromRef": "sha256:6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:boundary-1",
+        "relation": "constrained_by",
+        "toId": "constraint:retention-1",
+        "description": "The boundary FR is constrained by the accepted determinism constraint: deterministic responses only.",
+        "fromRef": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:outcome-1",
+        "relation": "constrained_by",
+        "toId": "constraint:retention-1",
+        "description": "The delivery FR is constrained by the accepted determinism constraint: the error branch invents no nondeterministic content.",
+        "fromRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:terminal-1",
+        "relation": "constrained_by",
+        "toId": "constraint:retention-1",
+        "description": "The terminal FR is constrained by the accepted determinism constraint: the audit record is deterministic.",
+        "fromRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "fr:outcome-1",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "description": "The delivery FR main branch realizes the delivered terminal lifecycle claim.",
+        "fromRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "fr:terminal-1",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "description": "The terminal FR realizes the audited terminal lifecycle claim.",
+        "fromRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      }
+    ],
+    "requirementCoverage": {
+      "fr:boundary-1": {
+        "digest": "8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+        "derivedFrom": [
+          "prd:boundary-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": []
+      },
+      "fr:outcome-1": {
+        "digest": "8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+        "derivedFrom": [
+          "prd:outcome-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:delivered-1"
+        ]
+      },
+      "fr:terminal-1": {
+        "digest": "75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+        "derivedFrom": [
+          "prd:terminal-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:audited-1"
+        ]
+      },
+      "nfr:determinism-1": {
+        "digest": "6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+        "derivedFrom": [
+          "prd:constraint-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": []
+      }
+    },
+    "prdMemberCoverage": {
+      "prd:boundary-1": {
+        "digest": "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "fr:boundary-1"
+        ]
+      },
+      "prd:scope-2": {
+        "digest": "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+        "disposition": "out_of_scope",
+        "coveredBy": []
+      },
+      "prd:constraint-1": {
+        "digest": "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "disposition": "direct_requirement",
+        "coveredBy": [
+          "nfr:determinism-1"
+        ]
+      },
+      "prd:outcome-1": {
+        "digest": "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "fr:outcome-1"
+        ]
+      },
+      "prd:terminal-1": {
+        "digest": "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "fr:terminal-1"
+        ]
+      },
+      "prd:unknown-1": {
+        "digest": "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+        "disposition": "deferred",
+        "coveredBy": []
+      }
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "fr:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "fr:outcome-1"
+        ]
+      }
+    },
+    "constraintCoverage": {
+      "constraintId": "constraint:retention-1",
+      "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "disposition": "honored",
+      "enforcedBy": [
+        "fr:boundary-1",
+        "fr:outcome-1",
+        "fr:terminal-1",
+        "nfr:determinism-1"
+      ],
+      "constrainedMembers": [
+        "fr:boundary-1",
+        "fr:outcome-1",
+        "fr:terminal-1"
+      ]
+    },
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: the unknown travels with the capsule; no requirement, derivation ref or verification surface is derived from it."
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

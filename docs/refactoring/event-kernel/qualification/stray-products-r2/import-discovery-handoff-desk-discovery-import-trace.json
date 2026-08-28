@@ -1,0 +1,149 @@
+{
+  "traceRef": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+  "traceKind": "discovery-import-trace",
+  "contentDigest": "2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "import-discovery-handoff",
+    "role": "author",
+    "traceKind": "discovery-import-trace",
+    "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+    "relationVocabulary": [
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "claim:scope-1",
+        "fromRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "relation": "derived_from",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "Auditability of the imported scope claim"
+      },
+      {
+        "fromId": "claim:scope-2",
+        "fromRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "relation": "derived_from",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "Auditability of the imported scope claim"
+      },
+      {
+        "fromId": "claim:constraint-1",
+        "fromRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "relation": "derived_from",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "Auditability of the imported constraint claim"
+      },
+      {
+        "fromId": "claim:outcome-1",
+        "fromRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "relation": "derived_from",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "Auditability of the imported outcome claim"
+      },
+      {
+        "fromId": "constraint:retention-1",
+        "fromRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "relation": "constrained_by",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "Audit record retention is constrained to deterministic content"
+      },
+      {
+        "fromId": "claim:scope-1",
+        "fromRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "relation": "derived_from",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "Delivered material carries the scope claim"
+      },
+      {
+        "fromId": "claim:scope-2",
+        "fromRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "relation": "derived_from",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "Delivered material carries the scope claim"
+      },
+      {
+        "fromId": "claim:constraint-1",
+        "fromRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "relation": "derived_from",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "Delivered material carries the constraint claim"
+      },
+      {
+        "fromId": "claim:outcome-1",
+        "fromRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "relation": "derived_from",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The accepted outcome is delivered into formalization"
+      },
+      {
+        "fromId": "constraint:retention-1",
+        "fromRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "relation": "constrained_by",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "Delivered material honors deterministic-content retention"
+      },
+      {
+        "fromId": "DI-Import-Discovery-Handoff-001",
+        "fromRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The imported capsule is the delivered material authority of the shell stage"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: this desk does not resolve the unknown; it travels with the capsule to the formalization stage."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "derivedFrom": [
+          "claim:scope-1",
+          "claim:scope-2",
+          "claim:constraint-1",
+          "claim:outcome-1"
+        ],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "derivedFrom": [
+          "claim:scope-1",
+          "claim:scope-2",
+          "claim:constraint-1",
+          "claim:outcome-1"
+        ],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ],
+        "supportedBy": [
+          "DI-Import-Discovery-Handoff-001"
+        ]
+      }
+    }
+  }
+}

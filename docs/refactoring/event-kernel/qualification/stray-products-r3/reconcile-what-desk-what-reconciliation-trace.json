@@ -1,0 +1,265 @@
+{
+  "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+  "traceKind": "what-reconciliation-trace",
+  "contentDigest": "09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "reconcile-what",
+    "role": "author",
+    "traceKind": "what-reconciliation-trace",
+    "subjectSemanticCode": "SR-Reconcile-What-001",
+    "subjectArtifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+    "relationVocabulary": [
+      "formalized-as",
+      "reconciles"
+    ],
+    "relationships": [
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "ac:boundary-1",
+        "description": "The computed reconciliation report closes the reverse direction through criterion ac:boundary-1 (WP03 seam per criterion; refusals would be named findings).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "ac:outcome-1-delivered",
+        "description": "The computed reconciliation report closes the reverse direction through criterion ac:outcome-1-delivered (WP03 seam per criterion; refusals would be named findings).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "ac:outcome-1-deterministic-error",
+        "description": "The computed reconciliation report closes the reverse direction through criterion ac:outcome-1-deterministic-error (WP03 seam per criterion; refusals would be named findings).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "ac:terminal-1-audited",
+        "description": "The computed reconciliation report closes the reverse direction through criterion ac:terminal-1-audited (WP03 seam per criterion; refusals would be named findings).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "ac:determinism-1",
+        "description": "The computed reconciliation report closes the reverse direction through criterion ac:determinism-1 (WP03 seam per criterion; refusals would be named findings).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "fr:boundary-1",
+        "description": "The computed reconciliation report closes the chain layer of fr:boundary-1 (requirement coverage and terminal-result coverage).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "fr:outcome-1",
+        "description": "The computed reconciliation report closes the chain layer of fr:outcome-1 (requirement coverage and terminal-result coverage).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "fr:terminal-1",
+        "description": "The computed reconciliation report closes the chain layer of fr:terminal-1 (requirement coverage and terminal-result coverage).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17"
+      },
+      {
+        "fromId": "report",
+        "relation": "reconciles",
+        "toId": "nfr:determinism-1",
+        "description": "The computed reconciliation report closes the chain layer of nfr:determinism-1 (requirement coverage and terminal-result coverage).",
+        "fromRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "toRef": "sha256:6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee"
+      },
+      {
+        "fromId": "claim:constraint-1",
+        "relation": "formalized-as",
+        "toId": "prd:constraint-1",
+        "description": "Discovery claim claim:constraint-1 formalizes into accepted intent member prd:constraint-1 (the member's own claim citation; this citation is the row mapping).",
+        "fromRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "toRef": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+      },
+      {
+        "fromId": "claim:constraint-1",
+        "relation": "formalized-as",
+        "toId": "prd:unknown-1",
+        "description": "Discovery claim claim:constraint-1 formalizes into accepted intent member prd:unknown-1 (the member's own claim citation; additional citation beyond the row mapping).",
+        "fromRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "toRef": "sha256:ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b"
+      },
+      {
+        "fromId": "claim:outcome-1",
+        "relation": "formalized-as",
+        "toId": "prd:outcome-1",
+        "description": "Discovery claim claim:outcome-1 formalizes into accepted intent member prd:outcome-1 (the member's own claim citation; this citation is the row mapping).",
+        "fromRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "toRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+      },
+      {
+        "fromId": "claim:outcome-1",
+        "relation": "formalized-as",
+        "toId": "prd:terminal-1",
+        "description": "Discovery claim claim:outcome-1 formalizes into accepted intent member prd:terminal-1 (the member's own claim citation; additional citation beyond the row mapping).",
+        "fromRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "toRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+      },
+      {
+        "fromId": "claim:scope-1",
+        "relation": "formalized-as",
+        "toId": "prd:boundary-1",
+        "description": "Discovery claim claim:scope-1 formalizes into accepted intent member prd:boundary-1 (the member's own claim citation; this citation is the row mapping).",
+        "fromRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "toRef": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+      },
+      {
+        "fromId": "claim:scope-2",
+        "relation": "formalized-as",
+        "toId": "prd:scope-2",
+        "description": "Discovery claim claim:scope-2 formalizes into accepted intent member prd:scope-2 (the member's own claim citation; this citation is the row mapping).",
+        "fromRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "toRef": "sha256:f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141"
+      }
+    ],
+    "reportCoverage": {
+      "digest": "3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+      "reconciles": [
+        "ac:boundary-1",
+        "ac:determinism-1",
+        "ac:outcome-1-delivered",
+        "ac:outcome-1-deterministic-error",
+        "ac:terminal-1-audited",
+        "fr:boundary-1",
+        "fr:outcome-1",
+        "fr:terminal-1",
+        "nfr:determinism-1"
+      ]
+    },
+    "claimCoverage": {
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "formalizedAs": [
+          "prd:constraint-1",
+          "prd:unknown-1"
+        ],
+        "rowMemberRef": "prd:constraint-1",
+        "requirementRefs": [
+          "nfr:determinism-1"
+        ],
+        "criterionRefs": [
+          "ac:determinism-1"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "formalizedAs": [
+          "prd:outcome-1",
+          "prd:terminal-1"
+        ],
+        "rowMemberRef": "prd:outcome-1",
+        "requirementRefs": [
+          "fr:outcome-1",
+          "fr:terminal-1"
+        ],
+        "criterionRefs": [
+          "ac:outcome-1-delivered",
+          "ac:outcome-1-deterministic-error",
+          "ac:terminal-1-audited"
+        ]
+      },
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "formalizedAs": [
+          "prd:boundary-1"
+        ],
+        "rowMemberRef": "prd:boundary-1",
+        "requirementRefs": [
+          "fr:boundary-1"
+        ],
+        "criterionRefs": [
+          "ac:boundary-1"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "formalizedAs": [
+          "prd:scope-2"
+        ],
+        "rowMemberRef": "prd:scope-2",
+        "requirementRefs": [],
+        "criterionRefs": []
+      }
+    },
+    "layerAnchors": {
+      "prdRevision": {
+        "digest": "a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770",
+        "ref": "sha256:a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770"
+      },
+      "ucRevision": {
+        "digest": "184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e",
+        "ref": "sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e"
+      },
+      "acceptanceSeal": {
+        "digest": "14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51",
+        "ref": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+      },
+      "requirementsReseal": {
+        "ref": "sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+      }
+    },
+    "verdictProvenance": {
+      "verdict": "consistent",
+      "findingsCount": 0,
+      "computedBy": "frf-cells.acceptance.reconciliation.v1 (report-only; computed verdict)",
+      "computedVerdictLaw": "verdict === 'gaps' iff findings.length > 0; 'consistent' iff findings.length === 0 (the F-2 fix; the reconciler takes no verdict input)"
+    },
+    "constraintCoverage": {
+      "constraintId": "constraint:retention-1",
+      "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "disposition": "honored",
+      "enforcedBy": [
+        "ac:determinism-1",
+        "ac:outcome-1-deterministic-error"
+      ]
+    },
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: the unknown travels with the capsule; nothing is derived from it."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "ac:terminal-1-audited"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "ac:outcome-1-delivered"
+        ]
+      }
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

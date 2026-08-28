@@ -1,0 +1,343 @@
+{
+  "artifactRef": "sha256:e1390d6e539d4ab2721c6a6f4f54c2bf7ea2557bfca047760c2cabb6af043eec",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "e1390d6e539d4ab2721c6a6f4f54c2bf7ea2557bfca047760c2cabb6af043eec",
+  "semanticCode": "VV-Define-Product-Intent-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Define-Product-Intent-002",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "reissueOf": "VV-Define-Product-Intent-001 (sha256:f7d1e5ad4cbfaeb50e5b63b00ff436825c4f097d812dd827ba7953795dcbcccc, displaced from the desk namespace by the concurrent writer at 2026-08-28 01:07)",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; WP03 validator = REAL kernel code; S-group = disposition-substance checks",
+    "subject": {
+      "submissionRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+      "submissionId": "FS-Define-Product-Intent-001",
+      "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "artifactSemanticCode": "PRD-Define-Product-Intent-001",
+      "traceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9"
+    },
+    "recomputedChecks": 58,
+    "passed": 56,
+    "failed": 2,
+    "failedCheckIds": [
+      "S1.scope2.authorityExists",
+      "I4.governingContract.resolves"
+    ],
+    "substanceChecks": "S1/S2: the disposition-substance layer the contending FR-001 skipped - S1 FAILS: capsule SC-2 carries NO Discovery exclusion decision (cited authority nonexistent); S2 confirms the certificate is subject-level go only",
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "taskProjectionContentAddresses": {
+        "claim:scope-1": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "claim:scope-2": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "claim:constraint-1": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "claim:outcome-1": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "constraint:retention-1": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "unknown:browser-matrix-1": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "terminal:audited-1": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "terminal:delivered-1": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      "upstreamAcceptedProjection": {
+        "address": "sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35",
+        "envelopeClaim": "1 accepted upstream revisions travel by content address",
+        "adjudication": "UNRESOLVABLE - author 0 upheld (workspace-wide scan, zero content hits; r1 verdict was REJECTED so no accepted define-product-intent revision can exist)"
+      }
+    },
+    "results": [
+      {
+        "id": "A1.submission.contentDigest",
+        "ok": true,
+        "detail": "recomputed 91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0 vs declared 91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0"
+      },
+      {
+        "id": "A2.submission.submissionRef",
+        "ok": true,
+        "detail": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0"
+      },
+      {
+        "id": "B1.artifact.contentDigest",
+        "ok": true,
+        "detail": "recomputed a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055 vs declared a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "id": "B2.artifact.artifactRef",
+        "ok": true,
+        "detail": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "id": "B3.submission.candidate.binding",
+        "ok": true,
+        "detail": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "id": "C1.trace.contentDigest",
+        "ok": true,
+        "detail": "recomputed 6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9 vs declared 6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9"
+      },
+      {
+        "id": "C2.trace.traceRef",
+        "ok": true,
+        "detail": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9"
+      },
+      {
+        "id": "C3.submission.traceRef.binding",
+        "ok": true,
+        "detail": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9 subject=sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "id": "D.prd:boundary-1",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed 605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954 vs declared 605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+      },
+      {
+        "id": "D.prd:scope-2",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141 vs declared f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141"
+      },
+      {
+        "id": "D.prd:constraint-1",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a vs declared f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+      },
+      {
+        "id": "D.prd:outcome-1",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed 0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16 vs declared 0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+      },
+      {
+        "id": "D.prd:terminal-1",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed 694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc vs declared 694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+      },
+      {
+        "id": "D.prd:unknown-1",
+        "ok": true,
+        "detail": "wp03=sealed, recomputed ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b vs declared ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b"
+      },
+      {
+        "id": "D1.sealUniverse",
+        "ok": true,
+        "detail": "6 seals for 6 members, unique"
+      },
+      {
+        "id": "E.claim:scope-1",
+        "ok": true,
+        "detail": "artifact-transported digest b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909 vs envelope b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "id": "E.claim:scope-2",
+        "ok": true,
+        "detail": "artifact-transported digest cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da vs envelope cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "id": "E.claim:constraint-1",
+        "ok": true,
+        "detail": "artifact-transported digest 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b vs envelope 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "id": "E.claim:outcome-1",
+        "ok": true,
+        "detail": "artifact-transported digest 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0 vs envelope 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "id": "E.constraint:retention-1",
+        "ok": true,
+        "detail": "artifact-transported digest 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be vs envelope 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "id": "E.unknown:browser-matrix-1",
+        "ok": true,
+        "detail": "artifact-transported digest 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf vs envelope 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "id": "E.terminal:audited-1",
+        "ok": true,
+        "detail": "artifact-transported digest 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f vs envelope 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "id": "E.terminal:delivered-1",
+        "ok": true,
+        "detail": "artifact-transported digest 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988 vs envelope 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "id": "E1.envelopeCoverage",
+        "ok": true,
+        "detail": "8/8 envelope addresses transported and flagged verified"
+      },
+      {
+        "id": "S1.scope2.authorityExists",
+        "ok": false,
+        "detail": "cited authority \"the Discovery decision recorded in the capsule\" EXISTS in capsule SC-2 (cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da)? recomputed statement = \"Accepted discovery source claim 2 of the message service subject.\" -> NO decision/exclusion/release language anywhere in the accepted material; member prd:scope-2's out_of_scope rests on a nonexistent decision"
+      },
+      {
+        "id": "S2.certificate.subjectLevelOnly",
+        "ok": true,
+        "detail": "certificate = {\"kind\":\"discovery-certificate\",\"decision\":\"go\",\"subject\":\"message service\"} - subject-level go only, not a scope-2 exclusion"
+      },
+      {
+        "id": "F.certificate",
+        "ok": true,
+        "detail": "recomputed 03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21 vs declared 03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "id": "F.sourceClaim:SC-1",
+        "ok": true,
+        "detail": "recomputed b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909 vs declared b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "id": "F.sourceClaim:SC-2",
+        "ok": true,
+        "detail": "recomputed cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da vs declared cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "id": "F.sourceClaim:SC-3",
+        "ok": true,
+        "detail": "recomputed 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b vs declared 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "id": "F.sourceClaim:SC-4",
+        "ok": true,
+        "detail": "recomputed 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0 vs declared 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "id": "F.constraint:CON-1",
+        "ok": true,
+        "detail": "recomputed 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be vs declared 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "id": "F.unknown:UNK-1",
+        "ok": true,
+        "detail": "recomputed 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf vs declared 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "id": "F.terminalClaim:TC-1",
+        "ok": true,
+        "detail": "recomputed 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f vs declared 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "id": "F.terminalClaim:TC-2",
+        "ok": true,
+        "detail": "recomputed 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988 vs declared 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "id": "F1.capsule.selfAddress",
+        "ok": true,
+        "detail": "recomputed f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e vs declared f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e"
+      },
+      {
+        "id": "F2.capsule.refForm",
+        "ok": true,
+        "detail": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e"
+      },
+      {
+        "id": "G.protocolVersion.importChain",
+        "ok": true,
+        "detail": "ek.discovery-handoff-capsule.ek8-wp11f.v1"
+      },
+      {
+        "id": "G2.product.protocolPin.absent",
+        "ok": true,
+        "detail": "no protocolVersion pin on product artifact/trace (advisory ADV-2)"
+      },
+      {
+        "id": "H1.relationships.resolve",
+        "ok": true,
+        "detail": "12 relationships resolved against recomputed digests"
+      },
+      {
+        "id": "H2.coverage.prd:boundary-1",
+        "ok": true,
+        "detail": "derived=claim:scope-1 enforces= constrainedBy= supports="
+      },
+      {
+        "id": "H2.coverage.prd:scope-2",
+        "ok": true,
+        "detail": "derived=claim:scope-2 enforces= constrainedBy= supports="
+      },
+      {
+        "id": "H2.coverage.prd:constraint-1",
+        "ok": true,
+        "detail": "derived=claim:constraint-1 enforces=constraint:retention-1 constrainedBy= supports="
+      },
+      {
+        "id": "H2.coverage.prd:outcome-1",
+        "ok": true,
+        "detail": "derived=claim:outcome-1,claim:scope-1 enforces= constrainedBy=constraint:retention-1 supports=terminal:delivered-1"
+      },
+      {
+        "id": "H2.coverage.prd:terminal-1",
+        "ok": true,
+        "detail": "derived=claim:outcome-1 enforces= constrainedBy=constraint:retention-1 supports=terminal:audited-1"
+      },
+      {
+        "id": "H2.coverage.prd:unknown-1",
+        "ok": true,
+        "detail": "derived=claim:constraint-1 enforces= constrainedBy= supports="
+      },
+      {
+        "id": "H3.terminal.terminal:audited-1",
+        "ok": true,
+        "detail": "supportedBy=prd:terminal-1 ownedBy=prd:terminal-1"
+      },
+      {
+        "id": "H3.terminal.terminal:delivered-1",
+        "ok": true,
+        "detail": "supportedBy=prd:outcome-1 ownedBy=prd:outcome-1"
+      },
+      {
+        "id": "H4.unknown.carriedNotResolved",
+        "ok": true,
+        "detail": "carried_forward owner=discovery, resolution edges=false"
+      },
+      {
+        "id": "H5.constraint.coverage",
+        "ok": true,
+        "detail": "enforcedBy=prd:constraint-1 constrainedMembers=prd:outcome-1,prd:terminal-1"
+      },
+      {
+        "id": "I1.evidenceRefs.exact",
+        "ok": true,
+        "detail": "11 refs exact"
+      },
+      {
+        "id": "I3.upstreamAuthority.binding",
+        "ok": true,
+        "detail": "import chain bound and recomputed"
+      },
+      {
+        "id": "I4.governingContract.resolves",
+        "ok": false,
+        "detail": "UNRESOLVED: claimants [] declare a926df62... but recompute otherwise (r1 CRIT-003 digest-drift family; the contending FR-001 classifies this non-blocking, this review blocks on it - see contention)"
+      },
+      {
+        "id": "J1.deskPins",
+        "ok": true,
+        "detail": "pins"
+      },
+      {
+        "id": "J5.coverageLaw.sourceClaims",
+        "ok": true,
+        "detail": "all 4 claims mechanically realized or dispositioned (FORM only; substance = S1)"
+      },
+      {
+        "id": "K1.workspace.zeroUpstream.consistent",
+        "ok": true,
+        "detail": "0 accepted upstream revisions travel by content address"
+      },
+      {
+        "id": "K2.upstreamProjection.unresolvable",
+        "ok": true,
+        "detail": "scanned 189 files: raw hits=0, canonical hits=0 - envelope projection 745cadc1... UNRESOLVABLE, author 0 upheld"
+      },
+      {
+        "id": "L2.fence.scan",
+        "ok": true,
+        "detail": "fence clean"
+      }
+    ]
+  }
+}

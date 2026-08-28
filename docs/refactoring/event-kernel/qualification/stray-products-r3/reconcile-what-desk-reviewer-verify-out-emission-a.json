@@ -1,0 +1,494 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; content layer: real cell surface + real validators + real folds (independent snapshot re-derivation); status layer: verdict records re-digested then read directly; reviewer round verified byte-faithful against the plain slots (collision discipline); collision record authored",
+  "recomputed": 95,
+  "passed": 91,
+  "failed": 4,
+  "candidateChecks": 84,
+  "candidateFailed": 3,
+  "candidateFailedIds": [
+    "H2.submission.wellFormed",
+    "H3.submission.coverageSum",
+    "H7.submission.frameSkillRefs"
+  ],
+  "reviewerRoundChecks": 9,
+  "reviewerRoundFailed": 4,
+  "collisionRecordRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+  "verdict": "CONTENT DEFECTS RECORDED (3); STATUS VERDICT: repair (CRIT-1, CRIT-2)",
+  "results": [
+    {
+      "id": "A1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 0f4e4fafac2e9f5e vs declared 0f4e4fafac2e9f5e"
+    },
+    {
+      "id": "A2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+    },
+    {
+      "id": "A3.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6400a2dd78e9c3e7 vs declared 6400a2dd78e9c3e7"
+    },
+    {
+      "id": "A4.artifact.artifactRef",
+      "ok": true,
+      "detail": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A5.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 09e800469f38c2d9 vs declared 09e800469f38c2d9"
+    },
+    {
+      "id": "A6.trace.traceRef",
+      "ok": true,
+      "detail": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A7.submission.candidateBinding",
+      "ok": true,
+      "detail": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A8.submission.traceBinding",
+      "ok": true,
+      "detail": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A9.trace.subjectBinding",
+      "ok": true,
+      "detail": "SR-Reconcile-What-001 / sha256:6400a2dd78e9c"
+    },
+    {
+      "id": "A10.semanticPins",
+      "ok": true,
+      "detail": "SR-Reconcile-What-001 / FS-Reconcile-What-001 (submissionId reused from the superseded emission c22d4787 - recorded)"
+    },
+    {
+      "id": "B1.upstreamArtifactDigests",
+      "ok": true,
+      "detail": "intent/uc/requirements/acceptance artifact contents re-digest"
+    },
+    {
+      "id": "B2.upstreamTraceDigests",
+      "ok": true,
+      "detail": "uc/requirements/acceptance trace contents re-digest"
+    },
+    {
+      "id": "B3.upstreamSubmissionDigests",
+      "ok": true,
+      "detail": "uc/requirements/acceptance submission contents re-digest"
+    },
+    {
+      "id": "B4.upstreamRefsPinned",
+      "ok": true,
+      "detail": "artifact.upstream pins equal the on-disk upstream chain"
+    },
+    {
+      "id": "B5.prdMemberSeals",
+      "ok": true,
+      "detail": "6/6 PRD seals recomputed over canonical members via REAL validatePrdIntentMember"
+    },
+    {
+      "id": "B6.intentFold",
+      "ok": true,
+      "detail": "revision a30229a75bed4c5d re-folds through acceptedIntentSetOf"
+    },
+    {
+      "id": "B7.ucMemberSeals",
+      "ok": true,
+      "detail": "3/3 UC seals recomputed over canonical members via REAL validateUcScenarioMember"
+    },
+    {
+      "id": "B8.ucRevisionFold",
+      "ok": true,
+      "detail": "revision 184981e5724c286d re-folds"
+    },
+    {
+      "id": "B9.requirementSeals",
+      "ok": true,
+      "detail": "4/4 requirement seals recomputed"
+    },
+    {
+      "id": "B10.requirementsReseal",
+      "ok": true,
+      "detail": "WP03 re-seal ok; bundle sha 60083eb4... recomputes"
+    },
+    {
+      "id": "B11.criterionSeals",
+      "ok": true,
+      "detail": "5/5 criterion seals recomputed"
+    },
+    {
+      "id": "B12.acceptanceReseal",
+      "ok": true,
+      "detail": "re-seal equals the declared product seal 14fda7910eedff5a"
+    },
+    {
+      "id": "B13.acceptanceSealPin",
+      "ok": true,
+      "detail": "acceptedAcceptanceSeal pin 14fda7910eedff5a"
+    },
+    {
+      "id": "C1.reportOnly.snapshotUntouched",
+      "ok": true,
+      "detail": "snapshot byte-identical after reconcileWhat"
+    },
+    {
+      "id": "C2.report.deepEqualDeclared",
+      "ok": true,
+      "detail": "recomputed report equals the declared product (verdict=consistent, findings=0, rows=4)"
+    },
+    {
+      "id": "C3.reportDigest",
+      "ok": true,
+      "detail": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    {
+      "id": "C4.verdictLaw",
+      "ok": true,
+      "detail": "verdict consistent iff zero findings (computed, never hardcoded)"
+    },
+    {
+      "id": "C5.reportKind",
+      "ok": true,
+      "detail": "formalization.what-reconciliation.v1"
+    },
+    {
+      "id": "C6.deterministicRerun",
+      "ok": true,
+      "detail": "fresh reconcileWhat over the same snapshot yields the identical report digest"
+    },
+    {
+      "id": "D1.f2kill.gappedYieldsGaps",
+      "ok": true,
+      "detail": "gapped snapshot -> gaps (1 finding(s), named nfr:determinism-1)"
+    },
+    {
+      "id": "D2.f2kill.sameFunctionConsistent",
+      "ok": true,
+      "detail": "the SAME function on the intact snapshot returns consistent on every call - a hardcoded verdict cannot produce both"
+    },
+    {
+      "id": "D3.probe.foreignRequirement",
+      "ok": true,
+      "detail": "foreign binding -> gaps, named in findings"
+    },
+    {
+      "id": "D4.probe.missingPrdLayer",
+      "ok": true,
+      "detail": "missing chain layer is a named gap, never a silent skip"
+    },
+    {
+      "id": "D5.report.frozen",
+      "ok": true,
+      "detail": "the recomputed report is deep-frozen: nothing can be patched in place"
+    },
+    {
+      "id": "E1.rows.shape",
+      "ok": true,
+      "detail": "4 rows keep the installed what-reconciliation row shape"
+    },
+    {
+      "id": "E2.row.scope1",
+      "ok": true,
+      "detail": "claim:scope-1 -> prd:boundary-1 -> fr:boundary-1 -> ac:boundary-1"
+    },
+    {
+      "id": "E3.row.scope2Empty",
+      "ok": true,
+      "detail": "prd:scope-2 (out_of_scope) reports empty downstream coverage"
+    },
+    {
+      "id": "E4.row.constraint",
+      "ok": true,
+      "detail": "claim:constraint-1 -> prd:constraint-1 -> nfr:determinism-1 -> ac:determinism-1"
+    },
+    {
+      "id": "E5.row.outcome",
+      "ok": true,
+      "detail": "claim:outcome-1 -> prd:outcome-1 -> fr:outcome-1 -> [delivered, deterministic-error]"
+    },
+    {
+      "id": "E6.claimCoverage.fullMapping",
+      "ok": true,
+      "detail": "4/4 artifact claimCoverage entries recomputed from the accepted members' derivations: envelope digest, row mapping (first member in sorted order), FULL requirement/criterion closure, row refs a subset"
+    },
+    {
+      "id": "F1.envelope.exact",
+      "ok": true,
+      "detail": "8/8 task-projection content addresses match THIS reviewer frame exactly"
+    },
+    {
+      "id": "F2.governing.pin",
+      "ok": true,
+      "detail": "governing pinned sha256:a926df6284a1afb5e"
+    },
+    {
+      "id": "F3.workspaceSummary.verbatim",
+      "ok": true,
+      "detail": "0 accepted upstream revisions travel by content address"
+    },
+    {
+      "id": "F4.pinnedTimestamps",
+      "ok": true,
+      "detail": "all three artifacts pinned at 2026-08-28T00:00:00Z"
+    },
+    {
+      "id": "F5.manifestPins",
+      "ok": true,
+      "detail": "provider/productKind/effect pinned per the installed manifest"
+    },
+    {
+      "id": "G1.trace.vocabularyClosed",
+      "ok": true,
+      "detail": "closed vocabulary: formalized-as, reconciles (restructured from the superseded emission's closes/covers/derives/supports/verifies - recorded as advisory)"
+    },
+    {
+      "id": "G2.trace.edges.resolve",
+      "ok": true,
+      "detail": "15/15 relationships resolve at both ends to independently recomputed digests"
+    },
+    {
+      "id": "G3.trace.reportCoverage",
+      "ok": true,
+      "detail": "reportCoverage pins the computed report digest and reconciles exactly the 9 chain ids (5 criteria + 4 requirements)"
+    },
+    {
+      "id": "G4.trace.formalizedAs.supported",
+      "ok": true,
+      "detail": "every formalized-as edge is backed by the accepted member mapping"
+    },
+    {
+      "id": "G5.trace.verdictProvenance",
+      "ok": true,
+      "detail": "verdict provenance pins the computed verdict/findings (consistent/0)"
+    },
+    {
+      "id": "G6.trace.layerAnchors",
+      "ok": true,
+      "detail": "all four layer anchors recompute (prd fold, uc fold, acceptance seal, WP03 requirements re-seal)"
+    },
+    {
+      "id": "G7.trace.terminalCoverage",
+      "ok": true,
+      "detail": "terminalCoverage is an exact projection of terminalSupport + envelope digests"
+    },
+    {
+      "id": "G8.trace.unknown.noEdges",
+      "ok": true,
+      "detail": "the envelope unknown has zero resolution edges and appears in no report material (the formalized-as edge to the ACCEPTED member prd:unknown-1 is chain material, not an unknown resolution)"
+    },
+    {
+      "id": "G9.trace.constraintCoverage",
+      "ok": true,
+      "detail": "constraint:retention-1 coverage matches the artifact disposition"
+    },
+    {
+      "id": "G10.terminalSupport.upstreamCopy",
+      "ok": true,
+      "detail": "terminalSupport is a faithful copy of the accepted acceptance bundle's terminal support"
+    },
+    {
+      "id": "H1.submission.refsUnique",
+      "ok": true,
+      "detail": "28 unique refs over 28 declared"
+    },
+    {
+      "id": "H2.submission.wellFormed",
+      "ok": false,
+      "detail": "6 MALFORMED refs (double sha256: prefix) - MAJ-2"
+    },
+    {
+      "id": "H3.submission.coverageSum",
+      "ok": false,
+      "detail": "coverage sums to 27 over 28 refs"
+    },
+    {
+      "id": "H4.submission.intakeReceipt",
+      "ok": true,
+      "detail": "evidence:DeskIntakeReceipt#reconcile-what:author"
+    },
+    {
+      "id": "H5.submission.selfCheck.declared",
+      "ok": true,
+      "detail": "12 self-check rows all declared satisfied (rows 2/7/8 re-adjudicated by this review at the content and status layers)"
+    },
+    {
+      "id": "H6.submission.terminalOutcome",
+      "ok": true,
+      "detail": "terminalOutcome success"
+    },
+    {
+      "id": "H7.submission.frameSkillRefs",
+      "ok": false,
+      "detail": "THIS frame's protocol/semantic skill digests present in the evidence set (found instead: stale r1 protocol-skill 95fafc847b24ebf5; semantic-skill ABSENT)"
+    },
+    {
+      "id": "S1.intent.verdicts",
+      "ok": true,
+      "detail": "the consumed intent revision a06dbc57 carries verdict repair across THREE reviewer emissions (FR-001, FR-001 emission-b, FR-002)"
+    },
+    {
+      "id": "S2.intent.noReissue",
+      "ok": true,
+      "detail": "r2 and r3 intent artifacts are the SAME revision - no author reissue exists"
+    },
+    {
+      "id": "S3.uc.neverReviewed",
+      "ok": true,
+      "detail": "no reviewer artifact for model-use-cases exists anywhere in r2 or r3 - the UC bundle never passed a reviewer stage"
+    },
+    {
+      "id": "S4.uc.upstreamHold",
+      "ok": true,
+      "detail": "the UC desk's own upstream hold stands (6cccd16245eafd18) - the bundle was authored in violation of it"
+    },
+    {
+      "id": "S5.uc.noReissue",
+      "ok": true,
+      "detail": "r2 and r3 UC artifacts are the SAME revision (24f0aff2)"
+    },
+    {
+      "id": "S6.requirements.verdict",
+      "ok": true,
+      "detail": "the consumed requirements revision 86b00569 carries verdict repair (FR-001)"
+    },
+    {
+      "id": "S7.requirements.restaff",
+      "ok": true,
+      "detail": "the re-staffing confirmation CONFIRMS THE REPAIR VERDICT - it is not an acceptance"
+    },
+    {
+      "id": "S8.requirements.noReissue",
+      "ok": true,
+      "detail": "r2 and r3 requirements artifacts are the SAME revision - no author reissue exists"
+    },
+    {
+      "id": "S9.acceptance.verdictOfRecord",
+      "ok": true,
+      "detail": "the acceptance-desk verdict of record is REPAIR (FR-002 + CTN-001 adjudication: emission A repair 83e675bb confirmed, accepted emission e5249d78 SUPERSEDED)"
+    },
+    {
+      "id": "S10.acceptance.hold",
+      "ok": true,
+      "detail": "the acceptance desk is on record hold (a53a5e08a9c7f0f6): no acceptance-contract material authored while upstream is unaccepted"
+    },
+    {
+      "id": "S11.acceptance.noReissue",
+      "ok": true,
+      "detail": "the acceptance author submission 6e19d3cb is unchanged - no reissue after the adjudication"
+    },
+    {
+      "id": "S12.onlyImportAccepted",
+      "ok": true,
+      "detail": "per the r2 records re-digested above, the ONLY genuinely accepted chain is the discovery import (b10bb762); all four consumed revisions are repair-verdict or never-reviewed"
+    },
+    {
+      "id": "S13.candidate.assertsAccepted",
+      "ok": true,
+      "detail": "the candidate ASSERTS accepted/reviewer-accepted states for the consumed revisions (materialAuthority wording, accepted* fields, 12 accepted-* evidence kinds, reviewerAcceptedCandidateOfRecord=true, revisionPinsMatchAcceptedRevisions=true)"
+    },
+    {
+      "id": "S13b.candidate.citesSupersededReview",
+      "ok": true,
+      "detail": "the candidate's \"reviewer gate\" is the acceptance-desk emission e5249d786aa3318a - the EXACT emission the CTN-001 adjudication SUPERSEDED (the confirmed repair emission 83e675bb is not cited)"
+    },
+    {
+      "id": "S13c.candidate.fabricatedReviewerAcceptance",
+      "ok": true,
+      "detail": "reviewerAcceptedCandidateOfRecord=true asserts a THIS-desk reviewer acceptance; no reviewer artifact existed at this desk when the candidate was authored, and the reviewer round of record (this seat, plain slots) returns REPAIR - the asserted reviewer state does not exist and never existed for either author emission"
+    },
+    {
+      "id": "S14.candidate.silentOnContention",
+      "ok": true,
+      "detail": "the candidate never mentions the open verdict contention, the holds, or any repair verdict - the accepted-state assertion is unacknowledged, not adjudicated"
+    },
+    {
+      "id": "S15.governing.unresolvable",
+      "ok": true,
+      "detail": "governing anchor a926df6284a1afb5 resolves to NO content of 292 scanned qualification files (own scan; MAJ-1 of the upstream adjudication re-derived, still open)"
+    },
+    {
+      "id": "I1.fence.whatSideOnly",
+      "ok": true,
+      "detail": "the report contains no architecture/module/file decisions (WHAT-side fence)"
+    },
+    {
+      "id": "I2.reportOnly.flagsDeclared",
+      "ok": true,
+      "detail": "the artifact declares the report-only/computed-verdict laws; the MECHANICAL proof is this seat's C1/C5/D1-D5, which pass"
+    },
+    {
+      "id": "I3.unknown.derivesNothing",
+      "ok": true,
+      "detail": "the unknown is cited in no report material"
+    },
+    {
+      "id": "I4.determinism.build",
+      "ok": true,
+      "detail": "reconcile-what-desk-build.mjs: no clock reads, no randomness, pinned timestamp"
+    },
+    {
+      "id": "I4.determinism.authorVerify",
+      "ok": true,
+      "detail": "reconcile-what-desk-author-verify.mjs: no clock reads, no randomness (verifier reads authored artifacts for its timestamps)"
+    },
+    {
+      "id": "R1.verification.selfAddress",
+      "ok": true,
+      "detail": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac"
+    },
+    {
+      "id": "R2.review.selfAddress",
+      "ok": true,
+      "detail": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6"
+    },
+    {
+      "id": "R3.trace.selfAddress",
+      "ok": true,
+      "detail": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373"
+    },
+    {
+      "id": "R4.submission.selfAddress",
+      "ok": true,
+      "detail": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce"
+    },
+    {
+      "id": "R5.crossBindings",
+      "ok": true,
+      "detail": "review -> verification; trace -> review; submission -> review/verification/trace"
+    },
+    {
+      "id": "R6.reviewEvidence.resolve",
+      "ok": false,
+      "detail": "reviewer evidence refs unique content addresses"
+    },
+    {
+      "id": "R7.reviewEvidence.coverage",
+      "ok": true,
+      "detail": "coverage sums to 24 over 24 refs"
+    },
+    {
+      "id": "R8.verdictConsistency",
+      "ok": true,
+      "detail": "review verdict, submission verdict and terminal outcome agree"
+    },
+    {
+      "id": "R9.determinism.self",
+      "ok": true,
+      "detail": "this script: no clock reads, no randomness, pinned timestamp"
+    },
+    {
+      "id": "R10.collisionRecord.selfAddress",
+      "ok": true,
+      "detail": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+    },
+    {
+      "id": "R11.diskRoundtrip",
+      "ok": true,
+      "detail": "all four round-of-record artifacts re-digest from disk to their declared content digests"
+    }
+  ]
+}

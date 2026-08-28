@@ -1,0 +1,185 @@
+{
+  "submissionRef": "sha256:ceb9f8a0d9403a42ae5fe723536659f9e698b4085b57acf14fa5e2485293001c",
+  "submissionId": "FS-Settle-Formalization-Reviewer-001",
+  "contentDigest": "ceb9f8a0d9403a42ae5fe723536659f9e698b4085b57acf14fa5e2485293001c",
+  "createdAt": "2026-08-28T02:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "settle-formalization",
+    "deskNodeId": "settle-formalization",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r7",
+    "workspaceSummary": "frame claim \"workspace: 1 accepted upstream revisions travel by content address\" adjudicated FALSE; recomputed truth: 0 accepted upstream revisions travel by content address on this chain (the one projected address is a desk-own phantom, refused as acceptance authority)",
+    "verdict": "hold-upheld",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+      "contentDigest": "82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941"
+    },
+    "reviewedCandidate": {
+      "artifactRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+      "traceRef": "sha256:f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae",
+      "productKind": "formalization.upstream-hold.v1",
+      "declaredDecision": "hold-no-authoring"
+    },
+    "verificationRef": "sha256:6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5",
+    "traceRef": "sha256:789d1cd803eee78f035ddb4d0084c0732a581164a2b6deb1b01dbc1f24649d22",
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.accept-products",
+      "effectFired": false,
+      "requiredEvidenceRefs": [
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "sha256:f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae",
+        "sha256:8e1bcf73542e217bd702e59d5879200c43c3e21e17d6b94a3f02b63b4d16d3a7",
+        "sha256:f64e6346adce7fa2b52cb1bcd43a50528d51e6c9b295d04a195d970fd700f933",
+        "sha256:7ce5eb48a8c0d4c4a8671eb330989da9fa28e1462383b076e9d194fbf8075708",
+        "sha256:792b6ce07899114b47b1728cc8e0c9bd5ed867f4d4ad7024d0d83a6559c7f7f3",
+        "sha256:cfca9e19b7824af07b5f5adc164a238b98d31ff056375df05ff8f420f6d870da",
+        "sha256:ad698a85b0a76d8c7be5220c9300c2413dea6f70fd28e162b09ab68519f8e2ed",
+        "sha256:0b0c9d2ef98f37c065aa7379764a92625369cd15dad43ea7cbe9ca52eb52ccc6",
+        "sha256:f3cf410a36f97f0e2a0476e5baf157620dcd907408444ddd5e9745b5f9c22f51",
+        "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6",
+        "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+        "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3",
+        "sha256:d813908b481afeba8466fc1ad6734338b59df766da7c08ed3cb8d12f08798511",
+        "sha256:63c0ff37ac8eca0c15e747e625fd0ceb77d6e03e602a1b64e67d138b36e086a1",
+        "sha256:e7965ac30699c394e66936dc3bbf3a6db28fedc7a805edd87f8e68e6d6f3d3a3",
+        "sha256:600a6d4fa2cac4558a446b27194ea68cc95ecb3ea1cc6f5ff15336178596dfda",
+        "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190",
+        "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21",
+        "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252",
+        "sha256:6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac",
+        "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+        "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+        "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+        "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d",
+        "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+        "sha256:ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09",
+        "sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95",
+        "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+        "sha256:789d1cd803eee78f035ddb4d0084c0732a581164a2b6deb1b01dbc1f24649d22",
+        "sha256:6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5"
+      ],
+      "evidenceKindCoverage": {
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "accepted-import": 1,
+        "discovery-certificate": 1,
+        "upstream-hold": 3,
+        "upstream-hold-trace": 1,
+        "upstream-hold-predecessor": 2,
+        "upstream-hold-predecessor-trace": 1,
+        "reviewer-hold-predecessor": 1,
+        "reviewer-hold-predecessor-trace": 1,
+        "retired-stray-family-raw-bytes": 3,
+        "retired-stray-phantom-address": 1,
+        "upstream-gate-hold": 1,
+        "upstream-gate-hold-trace": 1,
+        "gate-formalization-review": 2,
+        "gate-reviewer-verification": 1,
+        "gate-reviewer-trace": 1,
+        "gate-reviewer-submission": 1,
+        "root-gate-formalization-review": 1,
+        "root-gate-reviewer-verification": 1,
+        "root-gate-reviewer-trace": 1,
+        "root-gate-reviewer-submission": 1,
+        "root-gate-hold": 1,
+        "author-restaff-confirmation": 1,
+        "reviewer-confirmation": 1,
+        "gate-author-product": 1,
+        "gate-collision-record": 1,
+        "consumed-revision-under-repair": 3,
+        "consumed-revision-unaccepted": 1,
+        "confirmed-repair-review": 1,
+        "payload-contract-schema": 1,
+        "adjudicated-claim-content": 1,
+        "formalization-review-of-record": 1,
+        "reviewer-refusal-trace-of-record": 1,
+        "reviewer-verification": 1
+      },
+      "terminalOutcome": "hold-upheld-claim-refused-phantom-upstream"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#settle-formalization:reviewer",
+      "status": "review_complete_verdict_recorded",
+      "receivedFrom": "reviewer",
+      "nextStage": "hold-upheld: no settlement authoring or review on this chain state; the frame upstream-accepted[0] claim is refused (phantom-upstream-projection, desk-own-revision family); resume contract R1-R5 unchanged - the freeze desk R1-R4 completes first, the arch desk re-staffs against the REAL frozen baseline and passes a completed reviewer stage, this desk re-staffs only with ALL FIVE settlement input classes, and only then does this reviewer seat review over an admitted sealed candidate",
+      "note": "The r6 author hold re-verifies byte-stable with its 48/48 verifier green; the recomputed census is 0 of 7; the freeze refusal stands (effect never fired) and the arch gate is now refused at reviewer stage (d813908b...). No product verdict is minted over the absent candidate; kernel-side routing is executed by the driver over public commands."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed by this seat; nothing trusted by declaration",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-frame task-projection content addresses resolved",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "The frame's upstream-accepted entry adjudicated at the content layer, not by label",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Verdict grounded in re-digested records, not round labels or prior review text",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored; unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "Reviewer artifacts deterministic: pinned timestamps, no clock reads, no randomness",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Frame workspace summary TRUE of the chain",
+        "satisfied": false
+      },
+      {
+        "id": 9,
+        "description": "A sealed solution-contract candidate exists at this desk to review",
+        "satisfied": false
+      },
+      {
+        "id": 10,
+        "description": "The claimed accepted revision is a chain WorkplaceProductionRevision with a completed reviewer stage",
+        "satisfied": false
+      }
+    ]
+  }
+}

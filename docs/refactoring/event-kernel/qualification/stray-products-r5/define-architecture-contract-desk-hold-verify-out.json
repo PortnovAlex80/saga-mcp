@@ -1,0 +1,199 @@
+{
+  "verified": "UH-Define-Architecture-Contract-001",
+  "round": "stray-products-r5",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "checks": [
+    {
+      "id": "S1.artifactDigestRecomputes",
+      "pass": true,
+      "detail": "contentDigest 6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023 recomputes over canonical JSON of content"
+    },
+    {
+      "id": "S2.traceDigestRecomputes",
+      "pass": true,
+      "detail": "contentDigest 1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3 recomputes"
+    },
+    {
+      "id": "S3.refsCrossBind",
+      "pass": true,
+      "detail": "artifact/trace refs cross-bind"
+    },
+    {
+      "id": "S4.identity",
+      "pass": true,
+      "detail": "identity: author-seat SRS upstream hold, no product authored"
+    },
+    {
+      "id": "S5.noProductMaterial",
+      "pass": true,
+      "detail": "the hold authors no SRS product material (fence: closed content-key set + forbidden-sections register)"
+    },
+    {
+      "id": "S6.acceptanceLaws",
+      "pass": true,
+      "detail": "constraint honored, unknown carried, terminal claims observed only"
+    },
+    {
+      "id": "S7.summaryCitesEmission",
+      "pass": true,
+      "detail": "the submission summary cites the emission of record"
+    },
+    {
+      "id": "E1.capsuleRecomputes",
+      "pass": true,
+      "detail": "the accepted import chain recomputes; every capsule sub-artifact digest recomputes"
+    },
+    {
+      "id": "E2.envelope8of8",
+      "pass": true,
+      "detail": "all 8 task-projection addresses recompute from the capsule and are carried by the hold (9/9 with CERT-1)"
+    },
+    {
+      "id": "E3.traceCoverage",
+      "pass": true,
+      "detail": "the trace carries the full task-projection coverage"
+    },
+    {
+      "id": "E4.certificate",
+      "pass": true,
+      "detail": "CERT-1 recomputes"
+    },
+    {
+      "id": "U1.censusZeroOfSix",
+      "pass": true,
+      "detail": "recomputed census: 0 of 6 accepted upstream desks (five pre-freeze + freeze), each row NOT accepted with evidence refs"
+    },
+    {
+      "id": "U2.evidenceDigestsRecompute",
+      "pass": true,
+      "detail": "every census evidence ref recomputes from the corpus (independent pass; 18 refs)"
+    },
+    {
+      "id": "F1.holdByteStable",
+      "pass": true,
+      "detail": "UH-Freeze-What-Baseline-001 recomputes byte-stable (hold-no-authoring)"
+    },
+    {
+      "id": "F2.r4Verdict",
+      "pass": true,
+      "detail": "FR-Freeze-What-Baseline-002 recomputes: hold-upheld over the author hold"
+    },
+    {
+      "id": "F3.r4Round",
+      "pass": true,
+      "detail": "the r4 verification/trace/submission records recompute"
+    },
+    {
+      "id": "F4.r4RefusalText",
+      "pass": true,
+      "detail": "the freeze refusal + frame-claim refusal recomputes from the verdict/submission records themselves"
+    },
+    {
+      "id": "F5.r4VerifierGreen",
+      "pass": true,
+      "detail": "the r4 reviewer verifier is green (50/50)"
+    },
+    {
+      "id": "F6.prohibitionUndischarged",
+      "pass": true,
+      "detail": "the upstream no-accept prohibition recomputes; the domain.frozen edge into this desk never lawfully fired"
+    },
+    {
+      "id": "F7.freezeContractLaw",
+      "pass": true,
+      "detail": "the freeze payload contract recomputes (acceptanceRecords minItems 5): the root lawful-authoring blocker"
+    },
+    {
+      "id": "P1.protocolPinUnresolvable",
+      "pass": true,
+      "detail": "a926df6284... hash-resolves to zero contents across 2776 scanned files (raw/whole-canon/.content-canon layers)"
+    },
+    {
+      "id": "P2.semanticPinUnresolvable",
+      "pass": true,
+      "detail": "95fafc847b... hash-resolves to zero contents"
+    },
+    {
+      "id": "P3.selfDeclaredClaimantsAreR1StrayFamily",
+      "pass": true,
+      "detail": "the only files declaring a926df6284... as their own address are r1 stray-family files (7)"
+    },
+    {
+      "id": "P4.strayDriftRecomputes",
+      "pass": true,
+      "detail": "the r1 stray product of THIS desk: declared a926df62... vs recomputed f4846e5f... (drift of record)"
+    },
+    {
+      "id": "P5.strayNotLineage",
+      "pass": true,
+      "detail": "the r1 stray product is recorded as retired history; its pre-regime approved verdict recomputes and carries no standing"
+    },
+    {
+      "id": "P6.installedPinsDiffer",
+      "pass": true,
+      "detail": "the installed manifest skill digests recompute and BOTH differ from the frame pins (frame authority refused)"
+    },
+    {
+      "id": "P7.frameSummaryTrue",
+      "pass": true,
+      "detail": "the frame workspace summary is adjudicated TRUE of the chain (census 0 of 6)"
+    },
+    {
+      "id": "D1.scanHonest",
+      "pass": true,
+      "detail": "2776 workspace files scanned; the inherited anchor is textually carried by the corpus (150 files) while resolving to nothing"
+    },
+    {
+      "id": "D2.deterministicAuthoring",
+      "pass": true,
+      "detail": "pinned timestamps, no clock reads, no randomness"
+    }
+  ],
+  "summary": {
+    "total": 29,
+    "pass": 29,
+    "fail": 0,
+    "allPass": true
+  },
+  "scan": {
+    "filesScanned": 2776,
+    "layers": [
+      "raw bytes",
+      "whole-JSON canonical",
+      ".content canonical"
+    ],
+    "excludedFromScan": [
+      ".git",
+      "node_modules",
+      "stray-products-r5 (this emission)"
+    ],
+    "framePins": {
+      "protocolSkill": {
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "hashResolvedContents": 0,
+        "textualMentionFiles": 150,
+        "selfDeclaredClaimants": [
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-desk-architecture-contract.artifact.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-trace.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/define-product-intent-desk-architecture-contract.artifact.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/freeze-what-baseline-architecture-contract.artifact.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/import-discovery-handoff-desk-architecture-contract.artifact.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/import-discovery-handoff-desk-formalization-architecture-contract.artifact.json",
+          "docs/refactoring/event-kernel/qualification/stray-products-r1/import-discovery-handoff-desk-formalization-trace.json"
+        ]
+      },
+      "semanticSkill": {
+        "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "hashResolvedContents": 0,
+        "textualMentionFiles": 47
+      }
+    }
+  },
+  "emission": {
+    "artifactRef": "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+    "traceRef": "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3",
+    "decision": "hold-no-authoring",
+    "noProductAuthored": true
+  }
+}

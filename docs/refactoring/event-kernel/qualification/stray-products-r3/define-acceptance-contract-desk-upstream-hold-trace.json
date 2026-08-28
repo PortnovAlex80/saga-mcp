@@ -1,0 +1,204 @@
+{
+  "traceRef": "sha256:b5e7969fe2d4b6b2391716e0cfe167d7dc5501e79fa2a7a452a3ad87e4d5053f",
+  "traceKind": "upstream-hold-trace",
+  "contentDigest": "b5e7969fe2d4b6b2391716e0cfe167d7dc5501e79fa2a7a452a3ad87e4d5053f",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-acceptance-contract",
+    "role": "author",
+    "traceKind": "upstream-hold-trace",
+    "subjectSemanticCode": "UH-Define-Acceptance-Contract-001",
+    "subjectArtifactRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+    "relationVocabulary": [
+      "observes",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "The hold's envelope projection recomputes claim:scope-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "The hold's envelope projection recomputes claim:scope-2 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "The hold's envelope projection recomputes claim:constraint-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "The hold's envelope projection recomputes claim:outcome-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "The hold's envelope projection recomputes constraint:retention-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "The hold's envelope projection recomputes unknown:browser-matrix-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "The hold's envelope projection recomputes terminal:audited-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "The hold's envelope projection recomputes terminal:delivered-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "import:discovery-handoff",
+        "description": "The accepted discovery import chain is the only accepted base this hold is grounded in (content digest recomputed).",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "cert:discovery-capsule",
+        "description": "The capsule certificate recomputes (CERT-1).",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "SR-Define-Acceptance-Contract-001",
+        "description": "The desk candidate of record is byte-unchanged and under an unresolved reviewer verdict contention; NOT settled.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "FS-Define-Acceptance-Contract-001",
+        "description": "The author submission of record; superseded for authoring basis by this hold.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "link:define-product-intent",
+        "description": "Link 1: repair verdicts across every emission (e49d8d11, 6c9c8324, 04632094), no author reissue, contention open.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "link:model-use-cases",
+        "description": "Link 2: never reviewed at its own content address; authored in violation of the r2 upstream hold.",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b"
+      },
+      {
+        "fromId": "UH-Define-Acceptance-Contract-001",
+        "relation": "observes",
+        "toId": "link:derive-system-requirements",
+        "description": "Link 3: repair verdict + restaff confirmation; reviewer seat held (UH-...-001/002).",
+        "fromRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "UH-Define-Acceptance-Contract-001"
+        ]
+      }
+    },
+    "holdCoverage": {
+      "noProductAuthored": true,
+      "unacceptedLinks": [
+        "link:define-product-intent",
+        "link:model-use-cases",
+        "link:derive-system-requirements"
+      ],
+      "onlyAcceptedChain": "import:discovery-handoff",
+      "contentionOfRecord": "CL-Define-Acceptance-Contract-001"
+    },
+    "branchResolutionNote": "No scenario, branch, requirement or criterion identities are authored by this hold; all observed links resolve at artifact granularity.",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

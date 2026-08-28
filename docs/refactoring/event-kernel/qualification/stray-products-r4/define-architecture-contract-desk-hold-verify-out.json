@@ -1,0 +1,240 @@
+{
+  "artifactRef": "sha256:67a42de4dc800d68a9bbf8e5c9596bd4a4ea96040482e758ed2322ee49b44eed",
+  "artifactKind": "verifier-output",
+  "semanticCode": "VV-Define-Architecture-Contract-001",
+  "contentDigest": "67a42de4dc800d68a9bbf8e5c9596bd4a4ea96040482e758ed2322ee49b44eed",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Define-Architecture-Contract-001",
+    "deskRef": "define-architecture-contract",
+    "role": "author",
+    "reviewedRound": "stray-products-r4",
+    "subject": "mechanical verification underlying UH-Define-Architecture-Contract-001 (36/36 recomputations pass)",
+    "trustedByDeclaration": false,
+    "checks": [
+      {
+        "id": "V1.artifactDigest",
+        "pass": true,
+        "detail": "artifact content digest recomputes to b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b"
+      },
+      {
+        "id": "V1.traceDigest",
+        "pass": true,
+        "detail": "trace content digest recomputes to e5a4749ec21bfaff7042c421fa832e64820ce5ef61f271ecf2801afe343656f9"
+      },
+      {
+        "id": "V1.subjectBinding",
+        "pass": true,
+        "detail": "trace subject binds the hold artifact ref"
+      },
+      {
+        "id": "V1.pinnedTimestamp",
+        "pass": true,
+        "detail": "pinned 2026-08-28T00:00:00Z"
+      },
+      {
+        "id": "V1.traceAcyclic",
+        "pass": true,
+        "detail": "every trace edge originates at the hold subject (acyclic by construction)"
+      },
+      {
+        "id": "V1.relationVocabulary",
+        "pass": true,
+        "detail": "relation vocabulary closed over {observes, verifies}"
+      },
+      {
+        "id": "V2.decision",
+        "pass": true,
+        "detail": "decision hold-no-authoring; holdKind srs-upstream-hold; noProductAuthored true"
+      },
+      {
+        "id": "V2.fence",
+        "pass": true,
+        "detail": "no forbidden product key materialized in the hold artifact (checked 13 keys over the content minus the fence declaration)"
+      },
+      {
+        "id": "V2.envelopePinned",
+        "pass": true,
+        "detail": "all 8 task-projection content addresses pinned in the hold"
+      },
+      {
+        "id": "V2.terminalClaimsNotAsserted",
+        "pass": true,
+        "detail": "terminal:audited-1 / terminal:delivered-1 explicitly NOT asserted satisfied"
+      },
+      {
+        "id": "V3.importDigest",
+        "pass": true,
+        "detail": "accepted import artifact digest recomputes"
+      },
+      {
+        "id": "V3.capsuleSubArtifacts",
+        "pass": true,
+        "detail": "all 9 capsule sub-artifact digests recompute"
+      },
+      {
+        "id": "V3.envelopeProjection",
+        "pass": true,
+        "detail": "envelope 8/8 recompute from accepted capsule content (8/8)"
+      },
+      {
+        "id": "V3.certificate",
+        "pass": true,
+        "detail": "CERT-1 recomputes"
+      },
+      {
+        "id": "V3.publishedRecomputeBlock",
+        "pass": true,
+        "detail": "published envelopeRecompute block carries 8/8 matches (8/8)"
+      },
+      {
+        "id": "V4.link1Intent",
+        "pass": true,
+        "detail": "link 1 define-product-intent: repair across every emission recomputes"
+      },
+      {
+        "id": "V4.link2Uc",
+        "pass": true,
+        "detail": "link 2 model-use-cases: never reviewed at its own address; the accepted verdict pins a different candidate"
+      },
+      {
+        "id": "V4.link3Requirements",
+        "pass": true,
+        "detail": "link 3 derive-system-requirements: repair + restaff confirmation + held reviewer seat recompute"
+      },
+      {
+        "id": "V4.link4Acceptance",
+        "pass": true,
+        "detail": "link 4 define-acceptance-contract: contention CL-Define-Acceptance-Contract-001 recomputes (2 repair emissions with verifications vs canonical accepted without one)"
+      },
+      {
+        "id": "V4.link5Reconcile",
+        "pass": true,
+        "detail": "link 5 reconcile-what: repair verdicts of record + collision record + prohibition recompute"
+      },
+      {
+        "id": "V4.census",
+        "pass": true,
+        "detail": "census of record: 0 of 5 pre-freeze desks accepted (links 1-5 above)"
+      },
+      {
+        "id": "V5.freezeRefusalChain",
+        "pass": true,
+        "detail": "freeze refusal chain recomputes: r3 hold + RC-001 hold-upheld + AS-001 standing hold + r4 FR-Reviewer-002 hold-upheld"
+      },
+      {
+        "id": "V5.impostorFixture",
+        "pass": true,
+        "detail": "the r4 impostor address e210334e recomputes to the green fixture whole-JSON canonical (refused as acceptance authority)"
+      },
+      {
+        "id": "V5.baselineAbsence",
+        "pass": true,
+        "detail": "the hold records baseline absence explicitly"
+      },
+      {
+        "id": "V6.gateLaw",
+        "pass": true,
+        "detail": "the fail-closed gate law recomputes from source: chain.baseline required, MISSING_LINEAGE, formalization.srs.v1, srs-structure.v1/validateSrs, domain.frozen transition"
+      },
+      {
+        "id": "V7.deskSemanticDigest",
+        "pass": true,
+        "detail": "desk-declared semantic-skill digest recomputes (131efbd9...) and honestly differs from the frame semantic pin"
+      },
+      {
+        "id": "V8.r1DigestDrift",
+        "pass": true,
+        "detail": "r1 stray authoring recomputes to different digests than the claimed a926df62 / 8b2ec93c (digest-drift family alive)"
+      },
+      {
+        "id": "V8.r1ApprovalWithoutLineage",
+        "pass": true,
+        "detail": "r1 verdicts approved with zero findings and no verification, passing \"0 accepted upstream revisions\" as a PASS criterion"
+      },
+      {
+        "id": "V8.r1ProjectionDisjoint",
+        "pass": true,
+        "detail": "the r1 projection is disjoint from the accepted capsule (0/7 overlap with the 8 envelope addresses)"
+      },
+      {
+        "id": "V8.r1DeclaresFramePins",
+        "pass": true,
+        "detail": "the r1 formalization declares BOTH frame pins (a926df62 as its Content Digest, 95fafc84 as its modules digest)"
+      },
+      {
+        "id": "V9.scan.protocolSkill",
+        "pass": true,
+        "detail": "protocolSkill a926df62...: 0 hash-resolved contents over 2770 files (3 layers, this emission excluded); textual mentions: 147"
+      },
+      {
+        "id": "V9.scan.semanticSkill",
+        "pass": true,
+        "detail": "semanticSkill 95fafc84...: 0 hash-resolved contents over 2770 files (3 layers, this emission excluded); textual mentions: 48"
+      },
+      {
+        "id": "V9.scan.r1UpdatedClaim",
+        "pass": true,
+        "detail": "r1UpdatedClaim 8b2ec93c...: 0 hash-resolved contents over 2770 files (3 layers, this emission excluded); textual mentions: 6"
+      },
+      {
+        "id": "V10.fileFamily",
+        "pass": true,
+        "detail": "this seat's family carries no unexpected file (6 present of the 6-file hold family; verify-out + summary complete after this run); no SRS/architecture-contract product exists in this emission"
+      },
+      {
+        "id": "V10.determinism",
+        "pass": true,
+        "detail": "canonical serialization is idempotent; artifact digest stable across probes"
+      },
+      {
+        "id": "V10.verificationBlock",
+        "pass": true,
+        "detail": "the published verification block is honest (nothing trusted, nothing authored)"
+      }
+    ],
+    "checksSummary": {
+      "total": 36,
+      "pass": 36,
+      "fail": 0
+    },
+    "framePinScan": {
+      "filesScanned": 2770,
+      "layers": [
+        "raw bytes",
+        "whole-JSON canonical",
+        ".content canonical"
+      ],
+      "excludedFromScan": [
+        ".git",
+        "node_modules",
+        "stray-products-r4 (this emission)"
+      ],
+      "targets": {
+        "protocolSkill": {
+          "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+          "hashResolvedContents": [],
+          "textualMentions": 147
+        },
+        "semanticSkill": {
+          "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+          "hashResolvedContents": [],
+          "textualMentions": 48
+        },
+        "r1UpdatedClaim": {
+          "address": "sha256:8b2ec93c63b7b2de04fffb6deb1c8d700129f956b682c8f960ab3f4576a1d3c2",
+          "hashResolvedContents": [],
+          "textualMentions": 6
+        }
+      }
+    },
+    "emissionRefs": {
+      "artifactRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+      "traceRef": "sha256:e5a4749ec21bfaff7042c421fa832e64820ce5ef61f271ecf2801afe343656f9"
+    },
+    "deterministicAuthoring": true
+  }
+}

@@ -1,0 +1,281 @@
+{
+  "artifactRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+  "artifactKind": "formalization-review",
+  "contentDigest": "0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+  "semanticCode": "FR-Define-Product-Intent-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Define-Product-Intent-002",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r2",
+    "supersedes": "FR-Define-Product-Intent-001 authored by THIS reviewer (sha256:b9710b1cd44dcab32f0077c059785097f7f6930b94341c4e21b47b2022b07765, displaced 01:07); NOT the contending record below",
+    "contentionRecord": {
+      "contendingArtifact": {
+        "file": "define-product-intent-desk-reviewer-review.json",
+        "semanticCode": "FR-Define-Product-Intent-001",
+        "contentDigest": "sha256:bff4aca147aaee18c7224b6b05d4d533190bd42ee15e967b321dffbe24990f08",
+        "verdict": "accepted",
+        "author": "concurrent writer, 2026-08-28 01:07"
+      },
+      "thisVerdict": "repair",
+      "pointOfAgreement": "Both reviews independently find governingContractRef sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 unresolvable (r1 rendering recomputes to b880d0b7...).",
+      "disagreement1": {
+        "id": "DIS-1",
+        "subject": "CRIT-1 (scope-2 disposition substance) - the contending review never examined it",
+        "contendingEvidence": "FR-001 acceptance criterion: \"scope-2 out_of_scope (owner product-owner + reason)\" - checks the FORM of the disposition (closed vocabulary, owner+reason present), not its SUBSTANCE.",
+        "thisEvidence": "S1/S2 checks: capsule SC-2 (cb291aa7..., recomputed) is exactly {claimId, statement: \"Accepted discovery source claim 2 of the message service subject.\"} - no decision, no exclusion, no release boundary; certificate CERT-1 is a subject-level go. Member prd:scope-2 asserts exclusion \"by the Discovery decision recorded in the capsule\" - a decision that provably does not exist in the accepted material.",
+        "position": "BLOCKING. A sealed artifact whose rationale cites nonexistent upstream authority ratifies fabrication at the semantic layer - the r1 disease survived digest cleanup. Form-valid dispositions with invented authority are exactly what desk review exists to catch (the kernel validator cannot see them)."
+      },
+      "disagreement2": {
+        "id": "DIS-2",
+        "subject": "MAJ-1 (governing anchor) - both find it; the contending review classifies it non-blocking",
+        "contendingClassification": "\"cross-round provenance residue; substance authentic; re-seal owed by the protocol owner\"",
+        "thisPosition": "BLOCKING for acceptance of THIS candidate: the ref is listed in the candidate payloadContract.requiredEvidenceRefs (architecture-contract kind) and is the round continuity anchor. An evidence ref that fails its first independent recomputation cannot be accepted \"with residue\" - fail-closed transport law (CON-1) is the round core property, not cosmetics."
+      },
+      "escalation": "Two contradictory verdicts now travel by content address for the same candidate. Per fail-closed doctrine this record does NOT overwrite the contending one. DRIVER/HUMAN must adjudicate: accepted (bff4aca1...) vs repair (this record). Until adjudicated, the define-product-intent desk product MUST NOT settle."
+    },
+    "reviewedCandidate": {
+      "submissionRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+      "submissionId": "FS-Define-Product-Intent-001",
+      "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "artifactSemanticCode": "PRD-Define-Product-Intent-001",
+      "traceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+      "productKind": "frf-cell.product-intent.v1"
+    },
+    "verificationRef": "sha256:e1390d6e539d4ab2721c6a6f4f54c2bf7ea2557bfca047760c2cabb6af043eec",
+    "verificationSummary": {
+      "recomputedChecks": 58,
+      "passed": 56,
+      "failed": 2,
+      "failedCheckIds": [
+        "S1.scope2.authorityExists",
+        "I4.governingContract.resolves"
+      ],
+      "trustedByDeclaration": false
+    },
+    "workspaceLaw": "0 accepted upstream revisions travel by content address",
+    "workspaceAdjudication": {
+      "envelopeProjection": "1 accepted upstream revisions travel by content address (sha256:745cadc1131468039f167043c000fc0af170ed98764f545f22d867be36da1c35)",
+      "authorPosition": "0 accepted upstream revisions travel by content address (consistent across artifact/submission/trace)",
+      "scanEvidence": "K2: 189 workspace files scanned - raw hits 0, canonical hits 0; address occurs only as quoted metadata inside review documents",
+      "closure": "AUTHOR POSITION UPHELD; closes r1 CRIT-001/ACTION-001. The r1 verdict was REJECTED, so no accepted revision of define-product-intent can exist."
+    },
+    "findings": {
+      "positiveFindings": [
+        "Candidate content integrity is clean: submission/artifact/trace self-addresses recompute; all 6 member seals recompute AND are sealed by the REAL kernel WP03 validator; the trace graph resolves; both terminals owned exactly once; the unknown is carried, never resolved; the capsule chain re-verifies from the accepted import artifact.",
+        "All 8 reviewer-envelope content addresses travel inside the artifact and match exactly - the r1 digest-disease is gone from the candidate.",
+        "Workspace-law adjudication upholds the author against the stale envelope projection.",
+        "The contending FR-001 independently corroborates the governing-contract defect (DIS-2) - the factual layer is not in dispute, only the blocking classification."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "fail_closed_anchoring_undocumented",
+          "note": "ADV-1: unknown/constraint members cite accepted source claims as fail-closed resolution devices (legitimate; true digests travel via coverage blocks) but this revision dropped the explanatory notes and the trace phrases an anchor as derivation. Restore notes."
+        },
+        {
+          "type": "protocol_pin_absent",
+          "note": "ADV-2: no protocolVersion pin on the product artifact/trace; transitive via upstream.importArtifactRef only. Restore."
+        },
+        {
+          "type": "import_authority_chain_partial",
+          "note": "ADV-3: the accepted import review (cfc7b35a...) and import trace (2e5bb8ce...) are absent from the candidate authority record; record all three refs."
+        },
+        {
+          "type": "mid_review_candidate_replacement",
+          "note": "ADV-4: admitted candidate overwritten in place 00:48 -> 00:50 (FS-002 -> FS-001, backwards). Record superseded addresses (submission 580d6681..., artifact cd687fde..., trace d5002cb6...) and reissue monotonically."
+        },
+        {
+          "type": "review_namespace_collision",
+          "note": "ADV-5: two reviewer instances contended one filename namespace (verify tooling displaced 01:04; review artifacts displaced 01:07). This re-issue uses collision-free identity; desk tooling must anchor filenames to review semantic codes."
+        }
+      ],
+      "criticalIssues": [
+        {
+          "issueId": "CRIT-1",
+          "severity": "CRITICAL",
+          "category": "fabricated_disposition_authority",
+          "title": "prd:scope-2 out_of_scope cites a Discovery decision that does not exist in the accepted capsule",
+          "description": "Member prd:scope-2 (scope-exclusion, out_of_scope, owner product-owner) states exclusion \"by the Discovery decision recorded in the capsule\". The capsule SC-2 (cb291aa7..., recomputed this run) is a bare claim statement; CERT-1 is a subject-level go. No exclusion decision exists anywhere in the accepted material. The WP03 validator passes the member (refs resolve; closed vocabulary) - the substance check S1/S2 is reviewer-layer and it fails. Effect: accepted Discovery scope material silently removed from the intent surface under invented authority.",
+          "evidence": [
+            "S1: SC-2 statement carries no decision/exclusion/release language (recomputed digest match).",
+            "S2: certificate content = {kind, decision: \"go\", subject: \"message service\"} - subject-level.",
+            "Contending FR-001 coverage evidence checks form only (owner+reason present), never authority existence."
+          ],
+          "violatedPrinciples": [
+            "CON-1 provenance honesty",
+            "D10 never silently drop accepted material",
+            "TC-2 intent carries accepted content until a real disposition authority exists"
+          ],
+          "impact": "Downstream desks inherit an intent surface missing accepted scope material plus a provenance lie about who decided it; no scenario will ever exercise claim:scope-2."
+        }
+      ],
+      "majorIssues": [
+        {
+          "issueId": "MAJ-1",
+          "severity": "MAJOR",
+          "category": "unresolvable_governing_contract_anchor",
+          "title": "governingContractRef sha256:a926df62... resolves to no content workspace-wide",
+          "description": "Six r1 claimant files declare the address and all recompute to different digests (b880d0b7..., f4846e5f..., d041cb56..., 87aeab3f... x2, 0f06d0bc...) - the r1 CRIT-003 digest-drift family in the contract layer, propagated into every r2 evidence set including the accepted import review and this candidate. Both reviews find it; they disagree on blocking classification (DIS-2). This review blocks: a requiredEvidenceRef must resolve at acceptance time.",
+          "evidence": [
+            "I4 in VV-Define-Product-Intent-002; corroborated by contending FR-001 governingContractResolution block."
+          ],
+          "violatedPrinciples": [
+            "CON-1 content-address transport",
+            "TC-1 criterion 1",
+            "r1 ACTION-003 remediation debt"
+          ],
+          "impact": "The round continuity anchor fails independent recomputation; acceptance would ratify it."
+        }
+      ]
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts with SHA256 over canonical JSON",
+        "satisfied": true,
+        "evidence": "A1-C3"
+      },
+      {
+        "id": 2,
+        "description": "All members validate against frf-contracts.prd-intent-member.v1 (REAL kernel validator)",
+        "satisfied": true,
+        "evidence": "D.*: 6/6 sealed"
+      },
+      {
+        "id": 3,
+        "description": "All four accepted source claims realized or explicitly dispositioned BY AUTHORITY THAT EXISTS",
+        "satisfied": false,
+        "evidence": "S1/S2 FAIL: prd:scope-2 out_of_scope cites a nonexistent Discovery decision (CRIT-1)"
+      },
+      {
+        "id": 4,
+        "description": "Exactly one closed-vocabulary disposition per member; owner+reason where required",
+        "satisfied": true,
+        "evidence": "J4-form"
+      },
+      {
+        "id": 5,
+        "description": "Desk fence: no final acceptance/acceptanceCriteria/fr/nfr/requirements/rule/scenarios/srs/useCases content",
+        "satisfied": true,
+        "evidence": "L2"
+      },
+      {
+        "id": 6,
+        "description": "Both terminal lifecycle claims owned by PRD intent members",
+        "satisfied": true,
+        "evidence": "H3"
+      },
+      {
+        "id": 7,
+        "description": "constraint:retention-1 honored: deterministic authoring",
+        "satisfied": true,
+        "evidence": "H5 + pinned timestamps"
+      },
+      {
+        "id": 8,
+        "description": "unknown:browser-matrix-1 carried forward, never resolved",
+        "satisfied": true,
+        "evidence": "H4"
+      },
+      {
+        "id": 9,
+        "description": "Trace resolves against recomputed digests; coverages equal the edge sets",
+        "satisfied": true,
+        "evidence": "H1-H5"
+      },
+      {
+        "id": 10,
+        "description": "0 accepted upstream revisions travel by content address",
+        "satisfied": true,
+        "evidence": "K1/K2 adjudication"
+      },
+      {
+        "id": 11,
+        "description": "Governing contract evidence ref resolves to recomputable content",
+        "satisfied": false,
+        "evidence": "I4 FAIL (MAJ-1/DIS-2)"
+      }
+    ],
+    "verdict": "repair",
+    "verdictVocabulary": [
+      "accepted",
+      "repair",
+      "upstream-repair",
+      "human-wait",
+      "terminal-reject"
+    ],
+    "finalGate": {
+      "gateVerdict": "repair",
+      "providerId": "reviewer-verdict",
+      "issues": [
+        "CRIT-1",
+        "MAJ-1",
+        "CONTENTION-DIS-1",
+        "CONTENTION-DIS-2"
+      ]
+    },
+    "requiredActions": [
+      {
+        "actionId": "RA-1",
+        "priority": "CRITICAL",
+        "owner": "define-product-intent desk (author)",
+        "description": "Restore claim:scope-2 as carried accepted boundary material (system-boundary, scenario_required) or cite a genuinely recorded Discovery decision content address (none exists today)",
+        "details": "The superseded 00:48 revision already carried scope-2 correctly."
+      },
+      {
+        "actionId": "RA-2",
+        "priority": "MAJOR",
+        "owner": "architecture-contract desk + r2 desks",
+        "description": "Re-seal the contract layer so the governing address resolves; update governingContractRef across r2 evidence sets",
+        "details": "Until then the anchor fails every independent recomputation."
+      },
+      {
+        "actionId": "RA-3",
+        "priority": "MINOR",
+        "owner": "define-product-intent desk (author)",
+        "description": "Restore fail-closed anchoring notes; stop phrasing anchors as derivation",
+        "details": "ADV-1."
+      },
+      {
+        "actionId": "RA-4",
+        "priority": "MINOR",
+        "owner": "define-product-intent desk (author)",
+        "description": "Pin protocolVersion; record full import authority chain (importTraceRef + reviewRef + verdict)",
+        "details": "ADV-2/ADV-3."
+      },
+      {
+        "actionId": "RA-5",
+        "priority": "PROCESS",
+        "owner": "driver / desk tooling",
+        "description": "Immutable admitted candidates; monotonic reissue; no shared reviewer filename namespace",
+        "details": "ADV-4/ADV-5; see contentionRecord.escalation."
+      }
+    ],
+    "evidenceReferences": [
+      "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+      "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+      "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+      "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+      "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+      "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+      "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+      "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+      "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+      "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+      "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+      "sha256:e1390d6e539d4ab2721c6a6f4f54c2bf7ea2557bfca047760c2cabb6af043eec",
+      "sha256:bff4aca147aaee18c7224b6b05d4d533190bd42ee15e967b321dffbe24990f08"
+    ],
+    "conclusion": "Re-issued under collision-free identity after the desk namespace was contended (01:07). The candidate of record (PRD-Define-Product-Intent-001, sha256:a06dbc57...) is digest-clean but returned as repair: (CRIT-1) its out_of_scope disposition of accepted scope material claim:scope-2 cites a Discovery decision that provably does not exist in the accepted capsule - a substance failure the contending accepted-verdict review never examined; (MAJ-1) the governing-contract anchor fails independent recomputation workspace-wide, which both reviews found but classified differently. Two contradictory verdicts now travel by content address; per fail-closed doctrine neither has been overwritten and the desk product must not settle until the driver/human adjudicates the contention."
+  }
+}

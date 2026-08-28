@@ -1,0 +1,353 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; WP03 validator: real requirements-bundle.mjs through the REAL seam binder; gate: real gateSystemRequirementsCandidate (dist system-requirements cell); universe: real deriveAcceptedUniverse desk protocol",
+  "recomputed": 69,
+  "passed": 69,
+  "failed": 0,
+  "results": [
+    {
+      "id": "A1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df vs declared 86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "A2.artifact.artifactRef",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "A3.artifact.kindPins",
+      "ok": true,
+      "detail": "desk product kind + WP03 contract + provider pins"
+    },
+    {
+      "id": "B1.upstreamMember.prd:boundary-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 605b59c45d1099f7…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:scope-2",
+      "ok": true,
+      "detail": "PRD seal recomputed f3faf6889cd4adbd…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:constraint-1",
+      "ok": true,
+      "detail": "PRD seal recomputed f89c984a37f5b751…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:outcome-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 0f089cfa6a151e1c…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:terminal-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 694e26f7e7ded74f…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:unknown-1",
+      "ok": true,
+      "detail": "PRD seal recomputed ca9b003c86110918…"
+    },
+    {
+      "id": "B2.upstreamFold.ok",
+      "ok": true,
+      "detail": "revisionDigest a30229a75bed4c5d…"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:boundary-1",
+      "ok": true,
+      "detail": "UC seal recomputed defe9b1f817b1e97…"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:outcome-1",
+      "ok": true,
+      "detail": "UC seal recomputed ceb0fa710e0388db…"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:terminal-1",
+      "ok": true,
+      "detail": "UC seal recomputed e711405c4b8a2074…"
+    },
+    {
+      "id": "B4.upstreamIntentBinding.exact",
+      "ok": true,
+      "detail": "prd revision a30229a75bed4c5d… re-folded, not declared"
+    },
+    {
+      "id": "B5.upstreamUcBinding.exact",
+      "ok": true,
+      "detail": "uc revision 184981e5724c286d… re-folded, not declared"
+    },
+    {
+      "id": "B6.upstream.refs",
+      "ok": true,
+      "detail": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+    },
+    {
+      "id": "B7.upstream.taskProjection",
+      "ok": true,
+      "detail": "8 sub-artifact content addresses match the task-projection envelope"
+    },
+    {
+      "id": "B8.upstream.seals",
+      "ok": true,
+      "detail": "upstream seals carried by content address"
+    },
+    {
+      "id": "C1.product.fence",
+      "ok": true,
+      "detail": "no forbidden artifact family in the product"
+    },
+    {
+      "id": "C2.product.kindVocabulary",
+      "ok": true,
+      "detail": "fr:boundary-1:FR, fr:outcome-1:FR, fr:terminal-1:FR, nfr:determinism-1:NFR"
+    },
+    {
+      "id": "C3.memberSeals.recomputed",
+      "ok": true,
+      "detail": "4 member seals recomputed over canonical members"
+    },
+    {
+      "id": "C4.product.bundlePins",
+      "ok": true,
+      "detail": "prd=sha256:a30229a75bed4c5… uc=sha256:184981e5724c286…"
+    },
+    {
+      "id": "C5.deskProtocol.universe",
+      "ok": true,
+      "detail": "accepted universe derived by the REAL deriveAcceptedUniverse"
+    },
+    {
+      "id": "C6.wp03.sealed",
+      "ok": true,
+      "detail": "WP03 sealed the bundle as sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "C7.wp03.sealMatchesSelfAddress",
+      "ok": true,
+      "detail": "sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "D1.ucCoverage.closed",
+      "ok": true,
+      "detail": "all 3 accepted scenarios produce obligations"
+    },
+    {
+      "id": "D2.branchLineage.resolves",
+      "ok": true,
+      "detail": "every cited terminal branch resolves within a cited owning scenario"
+    },
+    {
+      "id": "D3.noForeignIntent",
+      "ok": true,
+      "detail": "every prdIntentRef inside the exact accepted set"
+    },
+    {
+      "id": "D4.outOfScope.derivesNothing",
+      "ok": true,
+      "detail": "prd:scope-2 (out_of_scope at intent freeze) derives no requirement"
+    },
+    {
+      "id": "D5.unknown.derivesNothing",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 is cited in no requirement material"
+    },
+    {
+      "id": "D6.scenarioRequiredCovered",
+      "ok": true,
+      "detail": "every accepted scenario (boundary, outcome, terminal) carries an FR"
+    },
+    {
+      "id": "E1.constraintHonored",
+      "ok": true,
+      "detail": "honored"
+    },
+    {
+      "id": "E2.unknownCarried",
+      "ok": true,
+      "detail": "carried_forward, owner=discovery"
+    },
+    {
+      "id": "E3.determinism.pinnedTimestamps",
+      "ok": true,
+      "detail": "pinned timestamps on all three artifacts"
+    },
+    {
+      "id": "F1.terminal.terminal:audited-1",
+      "ok": true,
+      "detail": "owned upstream by prd:terminal-1, supported by fr:terminal-1"
+    },
+    {
+      "id": "F1.terminal.terminal:delivered-1",
+      "ok": true,
+      "detail": "owned upstream by prd:outcome-1, supported by fr:outcome-1"
+    },
+    {
+      "id": "G1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26 vs declared fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G2.trace.traceRef",
+      "ok": true,
+      "detail": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G3.submission.traceRef.binding",
+      "ok": true,
+      "detail": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G4.trace.subjectBinding",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "G5.relationships.resolve",
+      "ok": true,
+      "detail": "13 relationships checked against recomputed digests"
+    },
+    {
+      "id": "G6.unknown.noResolutionEdges",
+      "ok": true,
+      "detail": "0 edges touch the unknown"
+    },
+    {
+      "id": "H1.requirementCoverage.projection",
+      "ok": true,
+      "detail": "4 requirement coverage blocks recomputed from the edge set"
+    },
+    {
+      "id": "H2.prdMemberCoverage.projection",
+      "ok": true,
+      "detail": "6 PRD member coverage blocks recomputed from the edge set"
+    },
+    {
+      "id": "H3.terminalCoverage.terminal:audited-1",
+      "ok": true,
+      "detail": "supportedBy=fr:terminal-1"
+    },
+    {
+      "id": "H3.terminalCoverage.terminal:delivered-1",
+      "ok": true,
+      "detail": "supportedBy=fr:outcome-1"
+    },
+    {
+      "id": "H4.constraintCoverage.projection",
+      "ok": true,
+      "detail": "enforcedBy=fr:boundary-1,fr:outcome-1,fr:terminal-1,nfr:determinism-1"
+    },
+    {
+      "id": "I1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa vs declared 05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa"
+    },
+    {
+      "id": "I2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa"
+    },
+    {
+      "id": "I3.submission.candidate.binding",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "I4.evidenceRefs.exact",
+      "ok": true,
+      "detail": "18 refs, exact set match"
+    },
+    {
+      "id": "I5.evidenceKindCoverage",
+      "ok": true,
+      "detail": "{\"accepted-prd-intent-bundle\":1,\"accepted-uc-scenarios-bundle\":1,\"discovery-import-artifact\":1,\"discovery-handoff-capsule\":1,\"discovery-certificate\":1,\"source-claim\":4,\"constraint\":1,\"unknown\":1,\"terminal-claim\":2,\"architecture-contract\":1,\"accepted-intent-trace\":1,\"accepted-intent-submission\":1,\"accepted-uc-trace\":1,\"accepted-uc-submission\":1}"
+    },
+    {
+      "id": "I6.selfCheck.allSatisfied",
+      "ok": true,
+      "detail": "10 criteria"
+    },
+    {
+      "id": "I7.governingContract",
+      "ok": true,
+      "detail": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+    },
+    {
+      "id": "J1.workspace.zeroUpstream",
+      "ok": true,
+      "detail": "0 accepted upstream revisions travel by content address"
+    },
+    {
+      "id": "J2.verificationFlags",
+      "ok": true,
+      "detail": "{\"acceptedUpstreamRevisionsTravelingByContentAddress\":0,\"claimDigestsMatchedTaskProjection\":true,\"coverageLawSatisfied\":true,\"declaredDigestsTrusted\":false,\"deterministicAuthoring\":true,\"fenceRespectedNoForbiddenArtifactFamily\":true,\"foreignLineageCitations\":0,\"memberSealsRecomputedOverCanonicalMembers\":true,\"revisionPinsMatchAcceptedRevisions\":true,\"staleProtocolRefusals\":0,\"terminalClaimsSupportedByRequirements\":true,\"verificationSurfacesResolvable\":true,\"wp03ValidationSealed\":true}"
+    },
+    {
+      "id": "K1.provider.declared",
+      "ok": true,
+      "detail": "formalization.requirements-structure.v1 digest 86b0732bad64e893…"
+    },
+    {
+      "id": "K2.seam.boundFailClosed",
+      "ok": true,
+      "detail": "the REAL WP03 validator passed the binder self-test"
+    },
+    {
+      "id": "K3.gateVerdict.accepted",
+      "ok": true,
+      "detail": "rule system-requirements.check.wp03-validation:pass"
+    },
+    {
+      "id": "K4.gateResults.allPass",
+      "ok": true,
+      "detail": "system-requirements.check.product-kind:pass, system-requirements.check.requirement-kind-vocabulary:pass, system-requirements.check.derivation-lineage:pass, system-requirements.check.verification-surface-coverage:pass, system-requirements.check.revision-pins:pass, system-requirements.check.wp03-validation:pass"
+    },
+    {
+      "id": "K5.cellProtocol",
+      "ok": true,
+      "detail": "desk protocol + skill declaration pins"
+    },
+    {
+      "id": "L1.probe.foreignLineage",
+      "ok": true,
+      "detail": "upstream-repair: FOREIGN_LINEAGE,FOREIGN_LINEAGE"
+    },
+    {
+      "id": "L2.probe.stalePin",
+      "ok": true,
+      "detail": "repair: STALE_LINEAGE,STALE_LINEAGE"
+    },
+    {
+      "id": "L3.probe.coverageGap",
+      "ok": true,
+      "detail": "repair: COVERAGE_GAP"
+    },
+    {
+      "id": "L4.probe.missingBranchLineage",
+      "ok": true,
+      "detail": "repair: MISSING_LINEAGE,MISSING_LINEAGE"
+    },
+    {
+      "id": "L5.probe.noUniverse",
+      "ok": true,
+      "detail": "repair (fail-closed, never accepted)"
+    },
+    {
+      "id": "L5.probe.noUniverse.neverAccepted",
+      "ok": true,
+      "detail": "a gate without an accepted universe never accepts"
+    },
+    {
+      "id": "L6.probe.validatorBypass",
+      "ok": true,
+      "detail": "GATE_CHECK_MISSING: the wp03-validation row can never be omitted"
+    },
+    {
+      "id": "L7.probe.scopeViolation",
+      "ok": true,
+      "detail": "terminal-reject: another desk's artifact family never repairs"
+    }
+  ]
+}

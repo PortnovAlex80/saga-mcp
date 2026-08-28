@@ -1,0 +1,190 @@
+{
+  "artifactRef": "sha256:6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5",
+  "semanticCode": "VV-Settle-Formalization-001",
+  "createdAt": "2026-08-28T02:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Settle-Formalization-001",
+    "semanticCode": "VV-Settle-Formalization-001",
+    "deskRef": "settle-formalization",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r7",
+    "subject": "mechanical verification underlying FR-Settle-Formalization-Reviewer-001 (frame authority adjudication + chain state recomputation)",
+    "trustedByDeclaration": false,
+    "checks": [
+      {
+        "id": "A1.claimedAddressUnresolvable",
+        "pass": true,
+        "detail": "sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95 hash-resolves to zero contents across 2829 files (raw, whole-JSON-canonical and .content-canonical layers; this round excluded)"
+      },
+      {
+        "id": "A2.noRatifyingCitations",
+        "pass": true,
+        "detail": "all 6 mention files live in lawful refusing adjudication families of this desk (the prior reviewer-stage set UH-Settle-Formalization-002; the testbed second author hold's verifier, whose F1 check adjudicates the address the settle-own-revision phantom resolving to NO content); zero ratifying citations"
+      },
+      {
+        "id": "A3.skillPinsProvenanceOnly",
+        "pass": true,
+        "detail": "protocol/semantic skill digests resolve to no content; recorded verbatim, not ratified"
+      },
+      {
+        "id": "A4.installedPinsDiffer",
+        "pass": true,
+        "detail": "installed pins recompute (sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f / sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85) and BOTH differ from the frame drift pair"
+      },
+      {
+        "id": "A5.governingAnchorStillUnresolvable",
+        "pass": true,
+        "detail": "r2-era governing anchor still hash-resolves to zero contents (inherited debt; NOT pinned by this frame - it is the AUTHOR-frame pin carried by prior records as unratified provenance)"
+      },
+      {
+        "id": "B1.envelope8of8",
+        "pass": true,
+        "detail": "all 8 task-projection addresses re-derive from the accepted capsule (9/9 with CERT-1)"
+      },
+      {
+        "id": "B2.importAccepted",
+        "pass": true,
+        "detail": "the accepted discovery import chain recomputes; still the only accepted base"
+      },
+      {
+        "id": "B3.authorHoldByteStable",
+        "pass": true,
+        "detail": "UH-Settle-Formalization-001 (r6) artifact/trace re-derive byte-stable; census 0 of 7; frame adjudication of the author frame recomputed TRUE"
+      },
+      {
+        "id": "B4.authorHoldVerifyGreen",
+        "pass": true,
+        "detail": "r6 hold verifier still green (48/48)"
+      },
+      {
+        "id": "B5.candidateOfRecordIdentity",
+        "pass": true,
+        "detail": "the candidate of record is the r6 author-seat hold (hold-no-authoring, noProductAuthored, desk contract re-pinned)"
+      },
+      {
+        "id": "C1.testbedAuthorTwins",
+        "pass": true,
+        "detail": "the testbed author holds recompute (hold #1 8e1bcf73... with trace f64e6346...; hold #2 UH-Settle-Formalization-003 7ce5eb48..., envelope byte-equal to hold #1 with ZERO upstream-accepted entries); both verifier receipts VERIFIED with 0 fails"
+      },
+      {
+        "id": "C2.priorReviewerRecordRecomputes",
+        "pass": true,
+        "detail": "UH-Settle-Formalization-002 (the prior reviewer-stage record on THIS EXACT frame) recomputes: hold-no-review, phantom adjudication of d751f194..., verifier 34/34"
+      },
+      {
+        "id": "C3.r1SelfStrayFamilyRecomputes",
+        "pass": true,
+        "detail": "the r1 reviewer-seat stray family recomputes at the raw-bytes layer (decision unparseable; label pseudo-addresses; phantom candidate set f975e878...); retired, never lineage"
+      },
+      {
+        "id": "D1.gateReviewerRefusalNowExists",
+        "pass": true,
+        "detail": "NEW adjudication content: FR-Define-Architecture-Contract-001 (the immediate upstream gate reviewer refusal of record, verifier 53/53) recomputes - the gate is refused at reviewer stage, not merely held at author stage"
+      },
+      {
+        "id": "D2.archHoldByteStable",
+        "pass": true,
+        "detail": "the r5 arch author hold recomputes byte-stable (verifier 29/29); the arch reviewer package binds it as its reviewed candidate"
+      },
+      {
+        "id": "D3.freezeRefusalRecomputes",
+        "pass": true,
+        "detail": "FR-Freeze-What-Baseline-002 recomputes: freeze ratification REFUSED, effect never fired"
+      },
+      {
+        "id": "D4.freezeRoundRecomputes",
+        "pass": true,
+        "detail": "the freeze reviewer round + standing hold + confirmations recompute"
+      },
+      {
+        "id": "D5.prohibitionUndischarged",
+        "pass": true,
+        "detail": "no-accept prohibition recomputes and stands undischarged (FR-Reconcile-What-001, repair)"
+      },
+      {
+        "id": "D6.censusZeroOfSeven",
+        "pass": true,
+        "detail": "all seven upstream-desk rows recompute; census remains 0 of 7 accepted"
+      },
+      {
+        "id": "E1.deskDeclarationRecomputes",
+        "pass": true,
+        "detail": "the installed desk declaration re-derives from the installed manifest source (kernel node, frf-contracts.solution-contract.v1, formalization.settlement-structure.v1/settleSolutionContract, the domain.accepted inbound edge, the three outbound edges)"
+      },
+      {
+        "id": "E2.ladderLawRecomputes",
+        "pass": true,
+        "detail": "the settlement ladder law recomputes from source (R1 pins - never discovers authorities; R2 twelve-kind binding resolution; R3 self-seal; MISSING_LINEAGE -> failed routing)"
+      },
+      {
+        "id": "E3.reviewerRouteLawRecomputes",
+        "pass": true,
+        "detail": "the reviewer route law recomputes from source: the verdict is the reviewer's only product, bound to the exact sealed artifact + canonical digest - over an absent candidate the verdict vocabulary stays uncomputed"
+      },
+      {
+        "id": "F1.deterministicAuthoring",
+        "pass": true,
+        "detail": "pinned timestamps, no clock reads, no randomness"
+      },
+      {
+        "id": "G1.scanHonest",
+        "pass": true,
+        "detail": "2829 workspace files scanned across three body layers; the claimed address now HAS textual mentions (6 files, all in its own prior adjudication set) while resolving to nothing; the inherited anchor remains textually carried by the corpus (179 files)"
+      }
+    ],
+    "checksSummary": {
+      "total": 24,
+      "pass": 24,
+      "fail": 0
+    },
+    "resolutionScan": {
+      "filesScanned": 2829,
+      "layers": [
+        "raw bytes",
+        "whole-JSON canonical",
+        ".content canonical",
+        "hash-resolution (sha256 over canonical forms)"
+      ],
+      "excludedFromScan": [
+        ".git",
+        "node_modules",
+        "stray-products-r7 (this emission)"
+      ],
+      "claimedAcceptedAddress": {
+        "address": "sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95",
+        "textualMentions": 6,
+        "mentionFiles": [
+          ".factory-testbed/settle-formalization-author-hold2-verify.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold-build.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold-verify-out.json",
+          ".factory-testbed/settle-formalization-reviewer-hold-verify.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold.artifact.json",
+          ".factory-testbed/settle-formalization-reviewer-hold.md"
+        ],
+        "hashResolvedContents": [],
+        "parallelScanDelta": "UH-Settle-Formalization-002 scanned the address's DEBUT staffing (zero prior mentions); this workspace-wide re-scan finds exactly the prior adjudication set as mentioners and still zero hash-resolutions. Disposition unchanged: refused by both reviewer records."
+      },
+      "frameSkillPins": {
+        "protocolSkill": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+        "semanticSkill": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+        "hashResolvedContents": 0,
+        "installedManifestPins": {
+          "protocolSkill": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f",
+          "semanticSkill": "sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85"
+        },
+        "disposition": "the reviewer-frame drift pair (byte-equal to the pair the testbed reviewer staffing recorded); envelope provenance recorded verbatim; not ratified by this seat; the installed pins recompute and differ"
+      },
+      "governingAnchor": {
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "hashResolvedContents": 0,
+        "disposition": "inherited r2/r3 debt; the AUTHOR-frame pin carried by prior records as unratified provenance; NOT pinned by this round frame; still open"
+      }
+    },
+    "deterministicAuthoring": true
+  }
+}

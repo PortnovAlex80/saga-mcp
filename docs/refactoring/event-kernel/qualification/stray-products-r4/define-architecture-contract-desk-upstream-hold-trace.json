@@ -1,0 +1,231 @@
+{
+  "traceRef": "sha256:e5a4749ec21bfaff7042c421fa832e64820ce5ef61f271ecf2801afe343656f9",
+  "traceKind": "upstream-hold-trace",
+  "contentDigest": "e5a4749ec21bfaff7042c421fa832e64820ce5ef61f271ecf2801afe343656f9",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-architecture-contract",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-architecture-contract",
+    "role": "author",
+    "traceKind": "upstream-hold-trace",
+    "subjectSemanticCode": "UH-Define-Architecture-Contract-001",
+    "subjectArtifactRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+    "relationVocabulary": [
+      "observes",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "The hold's envelope projection recomputes claim:scope-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "The hold's envelope projection recomputes claim:scope-2 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "The hold's envelope projection recomputes claim:constraint-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "The hold's envelope projection recomputes claim:outcome-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "The hold's envelope projection recomputes constraint:retention-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "The hold's envelope projection recomputes unknown:browser-matrix-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "The hold's envelope projection recomputes terminal:audited-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "The hold's envelope projection recomputes terminal:delivered-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "import:discovery-handoff",
+        "description": "The accepted discovery import chain is the only accepted base this hold is grounded in (content digest recomputed).",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "cert:discovery-capsule",
+        "description": "The capsule certificate recomputes (CERT-1).",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:define-product-intent",
+        "description": "Census link 1: repair verdicts across every emission (e49d8d11, 6c9c8324, 04632094); no author reissue; NOT accepted.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:model-use-cases",
+        "description": "Census link 2: never reviewed at its own content address; authored in violation of its own desk upstream hold (6cccd162); NOT accepted.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:derive-system-requirements",
+        "description": "Census link 3: repair verdict d31b044c + restaff confirmation; reviewer seat held (fbc0394b, b4eaaaba); NOT accepted.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:define-acceptance-contract",
+        "description": "Census link 4: candidate 2b01353d under the open verdict contention CL-Define-Acceptance-Contract-001 (repair 83e675bb + 7e76176c vs canonical accepted e5249d78 with no verification counterpart); NOT counted accepted.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:reconcile-what",
+        "description": "Census link 5: reviewer verdict of record repair 39a94a29 with the explicit no-accept prohibition; emission-b re-check repair 702fc967; prohibition undischarged; NOT accepted.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "link:freeze-what-baseline",
+        "description": "The desk's lawful upstream input was REFUSED: UH-Freeze-What-Baseline-001 9f2d28b9 hold-no-authoring; no whole-WHAT baseline exists; domain.frozen never fired; chain.baseline absent.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "FR-Freeze-What-Baseline-Reviewer-002",
+        "description": "The r4 freeze adjudication (d52746b6, hold-upheld) hash-resolved the impostor e210334e to the green fixture and refused it as acceptance authority; census 0/5 and the prohibition recompute.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+      },
+      {
+        "fromId": "UH-Define-Architecture-Contract-001",
+        "relation": "observes",
+        "toId": "AC-Define-Architecture-Contract-001-r1",
+        "description": "This desk's own r1 stray authoring recomputes to e2ae5d31 (whole-JSON canonical) at its declared address a926df62 which resolves to zero contents; approved with zero findings against zero accepted upstream revisions; superseded, NOT product lineage.",
+        "fromRef": "sha256:b831c67ed75bfc56024ddd78407a8ef8fdec593e6998963d86905b30c4bfb33b",
+        "toRef": "sha256:e2ae5d31da26a34230a7bc5e8cd6ed70b373f07a7b92e994083aff7956cc9330"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "UH-Define-Architecture-Contract-001"
+        ]
+      }
+    },
+    "holdCoverage": {
+      "noProductAuthored": true,
+      "unacceptedLinks": [
+        "link:define-product-intent",
+        "link:model-use-cases",
+        "link:derive-system-requirements",
+        "link:define-acceptance-contract",
+        "link:reconcile-what"
+      ],
+      "freezeState": "link:freeze-what-baseline REFUSED; chain.baseline absent; MISSING_LINEAGE gate law fail-closed",
+      "onlyAcceptedChain": "import:discovery-handoff",
+      "strayAuthoringHistory": "AC-Define-Architecture-Contract-001-r1 superseded; not product lineage"
+    },
+    "branchResolutionNote": "No scenario, surface, realization-entry, obligation or evidence-binding identities are authored by this hold; all observed links resolve at artifact granularity.",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

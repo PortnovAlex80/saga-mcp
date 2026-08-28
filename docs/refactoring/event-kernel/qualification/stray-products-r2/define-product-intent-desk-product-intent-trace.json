@@ -1,0 +1,235 @@
+{
+  "traceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+  "traceKind": "product-intent-trace",
+  "contentDigest": "6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-product-intent",
+    "role": "author",
+    "traceKind": "product-intent-trace",
+    "subjectSemanticCode": "PRD-Define-Product-Intent-001",
+    "subjectArtifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+    "relationVocabulary": [
+      "constrained_by",
+      "derived_from",
+      "enforces",
+      "produces",
+      "resolves",
+      "supports"
+    ],
+    "relationships": [
+      {
+        "fromId": "prd:boundary-1",
+        "relation": "derived_from",
+        "toId": "claim:scope-1",
+        "description": "The system-boundary member realizes accepted Discovery source claim 1.",
+        "fromRef": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "prd:scope-2",
+        "relation": "derived_from",
+        "toId": "claim:scope-2",
+        "description": "The scope-exclusion member realizes accepted Discovery source claim 2.",
+        "fromRef": "sha256:f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "prd:constraint-1",
+        "relation": "derived_from",
+        "toId": "claim:constraint-1",
+        "description": "The constraint member derives from accepted Discovery source claim 3.",
+        "fromRef": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "prd:constraint-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The determinism constraint member enforces the source constraint verbatim.",
+        "fromRef": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "prd:outcome-1",
+        "relation": "derived_from",
+        "toId": "claim:outcome-1",
+        "description": "The outcome member derives from accepted Discovery source claim 4.",
+        "fromRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "prd:outcome-1",
+        "relation": "derived_from",
+        "toId": "claim:scope-1",
+        "description": "The outcome stays inside the accepted scope boundary.",
+        "fromRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "prd:terminal-1",
+        "relation": "derived_from",
+        "toId": "claim:outcome-1",
+        "description": "The audited terminal-claim member derives from the accepted outcome claim.",
+        "fromRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "prd:unknown-1",
+        "relation": "derived_from",
+        "toId": "claim:constraint-1",
+        "description": "The carried unknown is anchored to accepted Discovery source claim 3.",
+        "fromRef": "sha256:ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "prd:outcome-1",
+        "relation": "constrained_by",
+        "toId": "constraint:retention-1",
+        "description": "Delivered outcome material is deterministic content only.",
+        "fromRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "prd:terminal-1",
+        "relation": "constrained_by",
+        "toId": "constraint:retention-1",
+        "description": "The audit terminal record is deterministic content only.",
+        "fromRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "prd:outcome-1",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "description": "The outcome member owns terminal lifecycle claim terminal:delivered-1.",
+        "fromRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "prd:terminal-1",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "description": "The terminal member owns terminal lifecycle claim terminal:audited-1.",
+        "fromRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      }
+    ],
+    "memberCoverage": {
+      "prd:boundary-1": {
+        "digest": "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+        "memberKind": "system-boundary",
+        "disposition": "scenario_required",
+        "derivedFrom": [
+          "claim:scope-1"
+        ],
+        "enforces": [],
+        "constrainedBy": [],
+        "supports": []
+      },
+      "prd:scope-2": {
+        "digest": "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+        "memberKind": "scope-exclusion",
+        "disposition": "out_of_scope",
+        "derivedFrom": [
+          "claim:scope-2"
+        ],
+        "enforces": [],
+        "constrainedBy": [],
+        "supports": []
+      },
+      "prd:constraint-1": {
+        "digest": "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "memberKind": "constraint",
+        "disposition": "direct_requirement",
+        "derivedFrom": [
+          "claim:constraint-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "constrainedBy": [],
+        "supports": []
+      },
+      "prd:outcome-1": {
+        "digest": "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "memberKind": "outcome",
+        "disposition": "scenario_required",
+        "derivedFrom": [
+          "claim:outcome-1",
+          "claim:scope-1"
+        ],
+        "enforces": [],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:delivered-1"
+        ]
+      },
+      "prd:terminal-1": {
+        "digest": "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "memberKind": "terminal-claim",
+        "disposition": "scenario_required",
+        "derivedFrom": [
+          "claim:outcome-1"
+        ],
+        "enforces": [],
+        "constrainedBy": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:audited-1"
+        ]
+      },
+      "prd:unknown-1": {
+        "digest": "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+        "memberKind": "assumption-unknown",
+        "disposition": "deferred",
+        "derivedFrom": [
+          "claim:constraint-1"
+        ],
+        "enforces": [],
+        "constrainedBy": [],
+        "supports": []
+      }
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "prd:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "prd:outcome-1"
+        ]
+      }
+    },
+    "constraintCoverage": {
+      "constraintId": "constraint:retention-1",
+      "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "disposition": "honored",
+      "enforcedBy": [
+        "prd:constraint-1"
+      ],
+      "constrainedMembers": [
+        "prd:outcome-1",
+        "prd:terminal-1"
+      ]
+    },
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: the intent desk does not resolve the unknown; it travels with the capsule into the downstream desks."
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

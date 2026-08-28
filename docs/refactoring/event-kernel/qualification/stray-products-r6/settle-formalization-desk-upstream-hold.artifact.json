@@ -1,0 +1,572 @@
+{
+  "artifactRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+  "artifactKind": "upstream-hold",
+  "productKind": "formalization.upstream-hold.v1",
+  "contentDigest": "b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+  "semanticCode": "UH-Settle-Formalization-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "author",
+  "reviewedRound": "stray-products-r6",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.upstream-hold.v1",
+    "deskRef": "settle-formalization",
+    "deskNodeId": "settle-formalization",
+    "role": "author",
+    "itemInstanceId": "formalization-item:settle-formalization",
+    "token": "plan:formalization#item:solution-contract",
+    "holdKind": "settlement-upstream-hold",
+    "decision": "hold-no-authoring",
+    "statement": "The settle-formalization desk authors NO solution-contract material in this staffing. The desk contract (installed manifest: kernel node, output product kind frf-contracts.solution-contract.v1, check provider formalization.settlement-structure.v1/settleSolutionContract, effect formalization.settle-solution-contract, operator staffed) consumes the FROZEN baseline artifact (exact) + the accepted SRS revision + the typed Development handoff values over the single inbound edge define-architecture-contract --domain.accepted--> settle-formalization, and settles only through the three-rung ladder: R1 authority-pins (all five input classes present: frozenBaseline, baselineArtifact, srs, repositoryPolicyRefs, handoff - settlement never discovers authorities), R2 binding-resolution (the twelve handoff kinds typed, required, NON-EMPTY, each resolved against the frozen baseline developmentSurface declaration; any binding outside the frozen surface is a typed FOREIGN_LINEAGE refusal - the UC-FOREIGN kill at the contract level), R3 sealed-contract (canonical digest over the sealed body + the self-seal surface postFreeze.settlement.solutionContractDigest; the A2 settler fence: the ladder validates its own output before emitting). On this chain NONE of the five input classes exists: the recomputed census is 0 of 7 accepted upstream desks - no WHAT-baseline has ever existed (freeze author hold UH-Freeze-What-Baseline-001 9f2d28b9..., upheld by FR-Freeze-What-Baseline-002 d52746b6... with freeze ratification REFUSED), the domain.frozen edge has never lawfully fired, and the immediate upstream desk (define-architecture-contract) is itself on record hold (UH-Define-Architecture-Contract-001 6a32f180..., r5 verifier 29/29) with NO SRS candidate ever authored - so no accepted SRS revision, no frozen baseline artifact and no lawful handoff values exist, and the inbound domain.accepted edge into this desk has never lawfully fired. Any lawful run of the ladder on this staffing refuses at R1 with MISSING_LINEAGE (settlement was given no frozenBaseline input - fail-closed; settlement never discovers authorities) and the desk frozen routing table routes MISSING_LINEAGE to the outcome failed (domain.failed -> complete-failed). This author seat fires no domain edge; the hold is the emission of record. Every fabrication path is typed-refused: a forged baseline pin dies at R1 DRIFT_DETECTED (sha256OfCanonical(frozenBaseline) must equal the pinned artifact digest), any invented handoff value dies at R2 FOREIGN_LINEAGE (the frozen resolution universe is absent; the twelve kinds must be non-empty AND resolve), and a self-seal without a real contract body is MALFORMED_PRODUCT - no honest frf-contracts.solution-contract.v1 can exist here; the hold is the only honest emission. This desk also knows its own stray-product record: the r1 reviewer-seat family (settle-formalization-reviewer-{decision,product-submission,trace}.json) fabricated an entire claim universe (7 invented artifact refs + a phantom candidate set f975e878...), declared acceptedUpstreamRevisions=1 against this frame 0, declared the unknown resolved against the D10 carry law, pinned its trace identity to the drifted anchor a926df6284..., accepted a product kind (formalization.solution-contract.v1) that is not even the installed product kind (frf-contracts.solution-contract.v1), and its decision file is not parseable JSON at all - none of it is lineage; retired.",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the accepted import-discovery-handoff capsule sub-artifact contents (9/9 including CERT-1) and matched exactly",
+      "envelopeRecompute": [
+        {
+          "semanticCode": "SC-1",
+          "group": "sourceClaims",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "envelopeId": "claim:scope-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-2",
+          "group": "sourceClaims",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "envelopeId": "claim:scope-2",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-3",
+          "group": "sourceClaims",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "envelopeId": "claim:constraint-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "SC-4",
+          "group": "sourceClaims",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "envelopeId": "claim:outcome-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CON-1",
+          "group": "constraints",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "envelopeId": "constraint:retention-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "UNK-1",
+          "group": "unknowns",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "envelopeId": "unknown:browser-matrix-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-1",
+          "group": "terminalLifecycleClaims",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "envelopeId": "terminal:audited-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "TC-2",
+          "group": "terminalLifecycleClaims",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "envelopeId": "terminal:delivered-1",
+          "envelopeMatch": true
+        },
+        {
+          "semanticCode": "CERT-1",
+          "group": "certificate",
+          "digest": "03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "ref": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+          "envelopeId": null,
+          "envelopeMatch": false
+        }
+      ]
+    },
+    "deskContract": {
+      "deskId": "settle-formalization",
+      "nodeKind": "kernel",
+      "outputProductKind": "frf-contracts.solution-contract.v1",
+      "checkProviderId": "formalization.settlement-structure.v1",
+      "validator": "settleSolutionContract",
+      "effectId": "formalization.settle-solution-contract",
+      "operatorStaffed": true,
+      "repairTargetRole": "author",
+      "inboundEdge": {
+        "from": "define-architecture-contract",
+        "on": "domain.accepted"
+      },
+      "outboundEdges": [
+        {
+          "to": "complete-formalized",
+          "on": "domain.formalized"
+        },
+        {
+          "to": "complete-inconsistent",
+          "on": "domain.inconsistent"
+        },
+        {
+          "to": "complete-failed",
+          "on": "domain.failed"
+        }
+      ],
+      "inputClasses": [
+        "frozenBaseline",
+        "baselineArtifact",
+        "srs",
+        "repositoryPolicyRefs",
+        "handoff"
+      ],
+      "settlementLadder": [
+        {
+          "rung": "R1",
+          "name": "authority-pins",
+          "law": "both authorities sealed and exact; all five input classes present; the baseline recomputes against its pinned artifact digest (DRIFT_DETECTED otherwise); settlement never discovers authorities"
+        },
+        {
+          "rung": "R2",
+          "name": "binding-resolution",
+          "law": "the twelve handoff kinds typed, required, NON-EMPTY, each resolved against the frozen developmentSurface.handoffBindingKinds[kind].resolvesAgainst declaration; foreign bindings are FOREIGN_LINEAGE (the UC-FOREIGN kill); at most one kind may resolve against the self-seal surface"
+        },
+        {
+          "rung": "R3",
+          "name": "sealed-contract",
+          "law": "one canonical digest over the sealed body + the self-seal surface postFreeze.settlement.solutionContractDigest; the A2 settler fence: the ladder validates its own output before emitting"
+        }
+      ],
+      "handoffBindingKinds": [
+        "acceptance-bindings",
+        "formalization-certificate",
+        "integration-and-construction-obligations",
+        "prd-intent-bindings",
+        "repository-and-policy-bindings",
+        "requirement-bindings",
+        "scenario-bindings",
+        "scenario-realization-bindings",
+        "solution-contract",
+        "srs-reference-and-hash",
+        "terminal-claim-bindings",
+        "what-baseline-reference-and-hash"
+      ],
+      "selfSealSurface": "postFreeze.settlement.solutionContractDigest",
+      "outcomeRouting": {
+        "FOREIGN_LINEAGE": "inconsistent",
+        "STALE_LINEAGE": "inconsistent",
+        "DRIFT_DETECTED": "inconsistent",
+        "COVERAGE_GAP": "inconsistent",
+        "MALFORMED_PRODUCT": "failed",
+        "MISSING_LINEAGE": "failed",
+        "SCOPE_VIOLATION": "failed"
+      },
+      "failClosedLaw": "MISSING_LINEAGE when any input class is absent (settlement was given no <inputClass> input - fail-closed; settlement never discovers authorities); FOREIGN_LINEAGE for bindings outside the frozen surfaces; DRIFT_DETECTED for pin/digest mismatch; the settler never scans, guesses or reselects accepted material",
+      "source": "src/workflow-kernel/workshops/formalization/manifest.ts + cells/what-freeze/{settlement,protocol,shared}.mjs (re-verified by this build)"
+    },
+    "upstreamGate": {
+      "deskId": "define-architecture-contract",
+      "candidateOfRecord": {
+        "semanticCode": "UH-Define-Architecture-Contract-001",
+        "artifactRef": "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+        "traceRef": "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3",
+        "productKind": "formalization.upstream-hold.v1",
+        "declaredDecision": "hold-no-authoring",
+        "status": "the candidate of record at the immediate upstream desk; NO SRS candidate exists (none was ever lawfully authorable on this chain); r5 verifier 29/29 green"
+      },
+      "reviewerRound": "none exists at the hold content address (the r5 staffing ended at the author hold); recorded honestly - the absence of a reviewer verdict is itself part of the blocked chain",
+      "explicitProhibition": "No accepted SRS revision exists; therefore no domain.accepted input exists for settle-formalization. The chain is blocked at its root: the freeze never ratified (FR-Freeze-What-Baseline-002 REFUSED; the no-accept prohibition of FR-Reconcile-What-001 stands undischarged), so no WHAT-baseline exists, so the SRS desk could hold, and what it never authored cannot have been accepted.",
+      "prohibitionSource": "recomputed from FR-Freeze-What-Baseline-002 decision + FR-Reconcile-What-001 nextStage + UH-Define-Architecture-Contract-001 (noProductAuthored)",
+      "gateEdgeBlocked": "define-architecture-contract --domain.accepted--> settle-formalization has never lawfully fired on this chain"
+    },
+    "chainAcceptanceCensus": {
+      "upstreamDeskCount": 7,
+      "acceptedUpstreamDeskCount": 0,
+      "schemaRef": "docs/refactoring/formalization-frf/contracts/schemas/what-baseline.schema.json",
+      "schemaRawSha256": "ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09",
+      "contractLaw": "the settle desk consumes the frozen baseline artifact + the accepted SRS revision + the typed handoff over the domain.accepted edge; every desk counts only through an accepted reviewer verdict at its own content address",
+      "upstreamDesks": [
+        {
+          "deskId": "define-product-intent",
+          "revisionRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+          "verdictOfRecord": "repair (FR-Define-Product-Intent-001 e49d8d11..., emission-b 6c9c8324..., FR-Define-Product-Intent-002 04632094...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+            "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+            "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc"
+          ]
+        },
+        {
+          "deskId": "model-use-cases",
+          "revisionRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+          "verdictOfRecord": "never reviewed at this content address; authored in violation of its own desk upstream hold (UH-Model-Use-Cases-001 6cccd162...); the only UC reviewer verdict (FR-Model-Use-Cases-001) pins a different candidate (c6120e86...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+            "sha256:8aeee3511c5c31509fb956fef5c1d132544ea7d14fa83d9c76d54776eaf35bb7"
+          ]
+        },
+        {
+          "deskId": "derive-system-requirements",
+          "revisionRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+          "verdictOfRecord": "repair (FR-Derive-System-Requirements-001 d31b044c...) + re-staff confirmation (RS-...-001 1c30d28e...); reviewer seat held (UH-...-001 fbc0394b..., UH-...-002 b4eaaaba...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+            "sha256:1c30d28e8222eaa225195bf33d87f378054b98a01bdf50710fd4900f5339a0a6",
+            "sha256:fbc0394bd8f79df2fc7e8956accd9fe25485bceab182044927de9f209f11d053",
+            "sha256:b4eaaabaa5010c6e03594943e2437b030d352ec9f3027fb275d57f351692c995"
+          ]
+        },
+        {
+          "deskId": "define-acceptance-contract",
+          "revisionRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+          "verdictOfRecord": "adjudicated repair (FR-Define-Acceptance-Contract-002 7e76176c... emission C confirms emission-A repair, supersedes the accepted emission); desk on record hold (UH-Define-Acceptance-Contract-001 a53a5e08...)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e",
+            "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+          ]
+        },
+        {
+          "deskId": "reconcile-what",
+          "revisionRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+          "verdictOfRecord": "repair (FR-Reconcile-What-001 39a94a29..., reviewer round of record per CL-Reconcile-What-001 841194ce...; explicit no-accept prohibition toward freeze-what-baseline)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+            "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+          ]
+        },
+        {
+          "deskId": "freeze-what-baseline",
+          "revisionRef": null,
+          "verdictOfRecord": "no candidate ever authored; author hold UH-Freeze-What-Baseline-001 9f2d28b9... STANDING (re-verified by AS-...-001 c2a08f04...), upheld by RC-...-001 c19344fd... and re-upheld by FR-Freeze-What-Baseline-002 d52746b6... (freeze ratification REFUSED; r4 frame upstream-accepted claim REFUSED)",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+            "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+            "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06",
+            "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+            "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+          ]
+        },
+        {
+          "deskId": "define-architecture-contract",
+          "revisionRef": null,
+          "verdictOfRecord": "no SRS candidate ever authored; author hold UH-Define-Architecture-Contract-001 6a32f180... STANDING with verifier 29/29 (r5); no reviewer round at the hold content address; the r1 stray product of this desk (AC-Define-Architecture-Contract-001) is retired digest-drift history",
+          "accepted": false,
+          "evidenceRefs": [
+            "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023",
+            "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3",
+            "sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af"
+          ]
+        }
+      ]
+    },
+    "ladderProjection": {
+      "inputClassPresence": [
+        {
+          "inputClass": "frozenBaseline",
+          "presence": "absent",
+          "reason": "no WHAT-baseline candidate has ever existed; the freeze never ratified (FR-Freeze-What-Baseline-002 REFUSE; the domain.frozen edge never lawfully fired)"
+        },
+        {
+          "inputClass": "baselineArtifact",
+          "presence": "absent",
+          "reason": "no content-addressed kernel-evidence artifact of any frozen baseline exists (nothing to pin; R1 demands ref === sha256:<digest> with the digest recomputed over the baseline)"
+        },
+        {
+          "inputClass": "srs",
+          "presence": "absent",
+          "reason": "no accepted SRS revision exists; the define-architecture-contract desk is itself on record hold (UH-Define-Architecture-Contract-001) with NO SRS candidate ever authored"
+        },
+        {
+          "inputClass": "repositoryPolicyRefs",
+          "presence": "absent",
+          "reason": "no post-freeze repository/policy authority refs were supplied by any accepted upstream revision"
+        },
+        {
+          "inputClass": "handoff",
+          "presence": "absent",
+          "reason": "no typed Development handoff values exist; the twelve kinds must be non-empty AND resolve against the frozen developmentSurface declaration, which does not exist"
+        }
+      ],
+      "projectedFirstRefusal": {
+        "rung": "R1 authority-pins",
+        "reason": "MISSING_LINEAGE",
+        "detail": "settlement was given no frozenBaseline input (fail-closed; settlement never discovers authorities)",
+        "source": "settlementAuthorityPins (cells/what-freeze/settlement.mjs), first absent class in declared order"
+      },
+      "routedOutcome": "failed",
+      "routingSource": "SETTLE_OUTCOME_OF_REASON.MISSING_LINEAGE (cells/what-freeze/protocol.mjs frozen table)",
+      "domainProjection": "domain.failed -> complete-failed (kernel-owned; NOT fired by this author seat)",
+      "fabricationFence": "every fabrication path is typed-refused: a forged baseline pin dies at R1 DRIFT_DETECTED (sha256OfCanonical(frozenBaseline) must equal the pinned artifact digest); any invented handoff value dies at R2 FOREIGN_LINEAGE (the frozen resolution universe is absent; the twelve kinds must be non-empty AND resolve); a self-seal without a real contract body is MALFORMED_PRODUCT; no honest frf-contracts.solution-contract.v1 can exist on this staffing"
+    },
+    "selfStrayProductHistory": {
+      "scope": "the r1 reviewer-seat stray family of THIS desk (settle-formalization); the author seat has no r1 product of its own",
+      "decision": {
+        "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/settle-formalization-reviewer-decision.json",
+        "rawBytesSha256": "sha256:ad698a85b0a76d8c7be5220c9300c2413dea6f70fd28e162b09ab68519f8e2ed",
+        "parseable": false,
+        "parseError": "Expected ',' or '}' after property value in JSON at position 5987 (line 144 column 33)",
+        "facts": "not parseable JSON at all (a raw JS expression sits where a value belongs at line 144); it carries no lawful content address in the corpus digest rule; it fabricates a 3+1+1+2 claim universe whose seven artifact refs appear nowhere in this envelope; it declares acceptedUpstreamRevisions=1 against this frame 0; it declares the unknown (UNK-1) resolved via terminal_claim_derivation against the D10 carry law"
+      },
+      "submission": {
+        "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/settle-formalization-reviewer-product-submission.json",
+        "rawBytesSha256": "sha256:0b0c9d2ef98f37c065aa7379764a92625369cd15dad43ea7cbe9ca52eb52ccc6",
+        "parseable": true,
+        "facts": "productRef sha256:settle-formalization-reviewer-product-2026-08-27 is a LABEL, not a content address (not sha256 hex); reviewDigest is likewise a label; subjectCandidateSetRef/candidate.upstreamAcceptedRevision pin the phantom set f975e878...; cites the 7 invented refs; verdict ACCEPTED over productKind factory.review-verdict.v1.1 with solutionContractValidation.schemaVersion formalization.solution-contract.v1 - not the installed product kind frf-contracts.solution-contract.v1"
+      },
+      "trace": {
+        "file": "docs/refactoring/event-kernel/qualification/stray-products-r1/settle-formalization-reviewer-trace.json",
+        "rawBytesSha256": "sha256:f3cf410a36f97f0e2a0476e5baf157620dcd907408444ddd5e9745b5f9c22f51",
+        "parseable": true,
+        "facts": "participants pin the phantom set (material-authority) and the drifted anchor a926df6284... (relationship-structure); derivationChain is the invented 3/1+1/2 claim universe; workspaceContext.acceptedUpstreamRevisions=1"
+      },
+      "phantomAddressCensus": {
+        "phantomCandidateSet": "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6",
+        "inventedArtifactRefs": [
+          "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+          "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+          "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+          "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+          "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+          "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+          "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b"
+        ],
+        "resolution": "all 8 addresses are unresolvable workspace-wide (raw bytes, whole-JSON canonical, .content canonical; this round excluded) - fabricated, never ratified"
+      },
+      "disposition": "NOT lineage: no reviewer candidate exists at any content address for this desk; the verdict of record at settle-formalization is \"no product exists to review\"; this author staffing inherits nothing from the r1 reviewer-seat family"
+    },
+    "frameAdjudication": {
+      "workspaceSummary": {
+        "claim": "0 accepted upstream revisions travel by content address",
+        "adjudication": "TRUE of the chain: recomputed census 0 of 7 accepted upstream desks; the only accepted base is the discovery import chain"
+      },
+      "protocolSkillPin": {
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "layer": "protocol-skill",
+        "resolution": "unresolvable: zero hash-resolutions workspace-wide (verifier re-scans; r4/r5 reviewer scans concur)",
+        "extraIdentity": "the drifted declared self-address of the define-architecture-contract desk r1 stray product (recomputed f4846e5f...) AND the relationship-structure/trace pin inside THIS desk own r1 reviewer-seat stray trace",
+        "installedManifestPin": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f",
+        "adjudication": "REFUSED as authority - unresolvable at the content layer and not the installed protocol skill; recorded verbatim as envelope provenance"
+      },
+      "semanticSkillPin": {
+        "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "layer": "semantic-skill",
+        "resolution": "unresolvable: zero hash-resolutions workspace-wide; the SAME r3-era frame semantic pin (reconcile-what SEMANTIC_SKILL; r1 formalization section pins)",
+        "installedManifestPin": "sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85",
+        "adjudication": "REFUSED as authority - unresolvable and not the installed semantic skill for this desk; recorded verbatim as envelope provenance"
+      },
+      "frameFamilyHistory": "the r2/r3 frames carried a926df6284... as the protocol-skill governingContractRef; the r4 frame dropped it; the r5 and r6 frames carry it again - the anchor debt stands, now doubly identified (the upstream desk r1 stray drifted address + the trace pin inside this desk own r1 reviewer stray). The installed manifest pins (recomputed) remain the only lawful skill authority, and this hold depends on neither frame pin."
+    },
+    "unresolvableInstances": [
+      {
+        "id": "protocol-skill pin",
+        "address": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "role": "protocol-skill layer digest of this desk task frame; the SAME inherited r2/r3-era anchor carried by every r2/r3/r5 desk frame as governingContractRef and dropped by the r4 frame",
+        "extraIdentity": "the DECLARED (drifted) self-address of the define-architecture-contract desk r1 stray product docs/refactoring/event-kernel/qualification/stray-products-r1/define-architecture-contract-desk-architecture-contract.artifact.json (recomputed content address sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af, r1 CRIT-003 digest-drift family) and the relationship-structure pin of THIS desk own r1 reviewer stray trace",
+        "evidence": "no content in the workspace hashes to this address (raw bytes, whole-JSON canonical, or .content canonical); recorded as envelope provenance, never ratified",
+        "resolved": false
+      },
+      {
+        "id": "semantic-skill pin",
+        "address": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "role": "semantic-skill layer digest of this desk task frame; the SAME r3-era frame semantic pin carried by the r3 desk frames (e.g. reconcile-what SEMANTIC_SKILL) and the r1 formalization section pins",
+        "evidence": "no content in the workspace hashes to this address; not the installed manifest semantic digest for this desk (recomputed at build time); recorded as envelope provenance, never ratified",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom fbe292e8...",
+        "address": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom c9bfe922...",
+        "address": "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom 423be112...",
+        "address": "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom d7ce453b...",
+        "address": "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom f7acf9d1...",
+        "address": "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom c292f694...",
+        "address": "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom f3d0a6a4...",
+        "address": "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      },
+      {
+        "id": "r1 self-stray phantom f975e878...",
+        "address": "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6",
+        "role": "an invented address of THIS desk r1 reviewer-seat stray family (fabricated claim universe / phantom candidate set)",
+        "evidence": "no content in the workspace hashes to this address; fabrication provenance of the r1 family, never ratified, never lineage",
+        "resolved": false
+      }
+    ],
+    "noProductAuthored": true,
+    "fence": {
+      "forbiddenProductSections": [
+        "schemaVersion: frf-contracts.solution-contract.v1",
+        "authority pins (baselineRef, baselineWholeWhatDigest, srsRevisionDigest)",
+        "developmentHandoff (the twelve handoff binding kinds; values + resolvedAgainst)",
+        "binding-resolution record",
+        "self-seal (sealBase / postFreeze.settlement.solutionContractDigest value)",
+        "canonicalDigest"
+      ],
+      "observed": "this hold is a desk artifact, not a solution contract: no authority pin, handoff binding, resolution record, self-seal value or canonical digest is authored; the 8 task-projection claims are observed as content addresses only, and unknown:browser-matrix-1 derives nothing"
+    },
+    "acceptanceLaws": [
+      {
+        "id": 1,
+        "description": "constraint:retention-1 honored - deterministic authoring (pinned timestamps, no clock/random reads); no retention disposition authored by this seat",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "unknown:browser-matrix-1 carried forward, never resolved by this hold (owner discovery; D10)",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "terminal:audited-1 and terminal:delivered-1 observed as content addresses only; no terminal lifecycle effect authored (this seat fires no domain edge)",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "noProductAuthored - no frf-contracts.solution-contract.v1 material exists in this emission",
+        "satisfied": true
+      }
+    ],
+    "resumeContract": [
+      "R1: the freeze desk resume contract R1-R4 (UH-Freeze-What-Baseline-001, upheld by FR-Freeze-What-Baseline-002) completes FIRST: genuinely accepted revisions land for define-product-intent, model-use-cases, derive-system-requirements and define-acceptance-contract through completed reviewer stages at their own content addresses; RA-5 re-runs reconcile-what over the NEW accepted chain; the re-run reviewer verdict alone discharges the no-accept prohibition; the freeze ratifies on five accepted pre-freeze desks (acceptanceRecords minItems 5)",
+      "R2: domain.frozen fires only from the ratified freeze; the define-architecture-contract desk is re-staffed with the REAL frozen WHAT-baseline revision, authors a genuine sealed SRS (formalization.srs.v1) and passes a completed reviewer stage at its own content address; domain.accepted fires only from that accepted revision (this discharges UH-Define-Architecture-Contract-001, not this desk)",
+      "R3: this desk is re-staffed only with ALL FIVE settlement input classes: the frozen baseline artifact (ref sha256:<digest> with the digest recomputed over the baseline), the accepted SRS revision (revisionDigest + realizationEntryIds + surfaces), the post-freeze repository/policy refs and the typed Development handoff values - never a fixture, never a stray product, never a frame assertion",
+      "R4: settlement then runs the ladder exactly: R1 pins -> R2 binding resolution against the frozen resolution surfaces (the twelve kinds, non-empty, resolved; FOREIGN_LINEAGE otherwise) -> R3 sealed contract; the settler validates its own output (A2 fence) before emitting domain.formalized",
+      "R5: this hold is not carried as product lineage; the future solution contract cites only the two authority pins and the frozen id sets; the r1 reviewer-seat stray family of this desk stays retired (its phantom addresses and invented claim universe are never used as lineage refs)"
+    ],
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "importArtifactDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "r3FreezeRoundRecomputed": true,
+      "r4ReviewerRoundRecomputed": true,
+      "r5UpstreamHoldRecomputed": true,
+      "r1SelfStrayFamilyRecomputed": true,
+      "phantomAddressFabricationRecorded": true,
+      "ladderProjectionRecomputed": true,
+      "settleDeskContractRecomputed": true,
+      "installedSkillDigestsRecomputed": true,
+      "schemaRawDigestRecomputed": true,
+      "unresolvableInstancesEnumerated": [
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd",
+        "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180",
+        "sha256:c9bfe922c5891e8bfeaaf07864a75d3beaa5239dd455d6bb889f1eef4b3dd0fc",
+        "sha256:423be112883976126a9b2718226aa68628fbe5d60253e0c0c849d66925062035",
+        "sha256:d7ce453b9dbb1aa1cecda1d591779b92dc347220c9f4f19c6db86629f5a18c2b",
+        "sha256:f7acf9d19953686e3042a10755a867a8f80a7fdb3963bd8e78e725962c792276",
+        "sha256:c292f69407b0d7752008069ac095dc556522ed5df9f386b9e2ec5bf31909e8f0",
+        "sha256:f3d0a6a4aea6909d35d8e5368425b21b38799b7f44444d926176083b532c011b",
+        "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6"
+      ],
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

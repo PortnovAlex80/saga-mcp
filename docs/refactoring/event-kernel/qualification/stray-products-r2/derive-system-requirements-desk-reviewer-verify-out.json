@@ -1,0 +1,413 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; WP03 validator: real requirements-bundle.mjs through the REAL seam binder; gate: real gateSystemRequirementsCandidate (dist system-requirements cell); universe: real deriveAcceptedUniverse desk protocol; acceptance-status audit: desk-review authority (layer M)",
+  "recomputed": 80,
+  "passed": 77,
+  "failed": 3,
+  "failedCheckIds": [
+    "M4.candidate.acceptanceClaimsTrue",
+    "M5.candidate.scope2ExclusionAuthorityExists",
+    "M6.candidate.workspaceSelfConsistent"
+  ],
+  "results": [
+    {
+      "id": "A1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df vs declared 86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "A2.artifact.artifactRef",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "A3.artifact.kindPins",
+      "ok": true,
+      "detail": "desk product kind + WP03 contract + provider pins"
+    },
+    {
+      "id": "B1.upstreamMember.prd:boundary-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 605b59c45d1099f7…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:scope-2",
+      "ok": true,
+      "detail": "PRD seal recomputed f3faf6889cd4adbd…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:constraint-1",
+      "ok": true,
+      "detail": "PRD seal recomputed f89c984a37f5b751…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:outcome-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 0f089cfa6a151e1c…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:terminal-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 694e26f7e7ded74f…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:unknown-1",
+      "ok": true,
+      "detail": "PRD seal recomputed ca9b003c86110918…"
+    },
+    {
+      "id": "B2.upstreamFold.ok",
+      "ok": true,
+      "detail": "revisionDigest a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:boundary-1",
+      "ok": true,
+      "detail": "UC seal recomputed defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:outcome-1",
+      "ok": true,
+      "detail": "UC seal recomputed ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:terminal-1",
+      "ok": true,
+      "detail": "UC seal recomputed e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543"
+    },
+    {
+      "id": "B4.ucRevisionRefold.exact",
+      "ok": true,
+      "detail": "uc revision re-folded 184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e"
+    },
+    {
+      "id": "B5.upstream.refs",
+      "ok": true,
+      "detail": "upstream authority refs bind the real r2 artifacts"
+    },
+    {
+      "id": "B6.upstream.taskProjection",
+      "ok": true,
+      "detail": "8/8 task-projection content addresses match the envelope"
+    },
+    {
+      "id": "C1.product.fence",
+      "ok": true,
+      "detail": "no forbidden artifact family in the product"
+    },
+    {
+      "id": "C2.product.kindVocabulary",
+      "ok": true,
+      "detail": "fr:boundary-1:FR, fr:outcome-1:FR, fr:terminal-1:FR, nfr:determinism-1:NFR"
+    },
+    {
+      "id": "C3.memberSeals.recomputed",
+      "ok": true,
+      "detail": "4 requirement seals recomputed over canonical members"
+    },
+    {
+      "id": "C4.product.bundlePins",
+      "ok": true,
+      "detail": "prd=sha256:a30229a75bed4c5… uc=sha256:184981e5724c286…"
+    },
+    {
+      "id": "C5.deskProtocol.universe",
+      "ok": true,
+      "detail": "accepted universe derived by the REAL deriveAcceptedUniverse"
+    },
+    {
+      "id": "C6.wp03.sealed",
+      "ok": true,
+      "detail": "WP03 sealed the bundle as sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "C7.wp03.sealMatchesSelfAddress",
+      "ok": true,
+      "detail": "sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "D1.ucCoverage.closed",
+      "ok": true,
+      "detail": "all 3 scenarios produce obligations"
+    },
+    {
+      "id": "D2.branchLineage.resolves",
+      "ok": true,
+      "detail": "every cited terminal branch resolves within a cited owning scenario"
+    },
+    {
+      "id": "D3.noForeignIntent",
+      "ok": true,
+      "detail": "every prdIntentRef inside the exact upstream fold set"
+    },
+    {
+      "id": "D4.scope2.derivesNothing",
+      "ok": true,
+      "detail": "prd:scope-2 derives no requirement (mechanical layer only - see M5 for the authority audit)"
+    },
+    {
+      "id": "D5.unknown.derivesNothing",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 is cited in no requirement material"
+    },
+    {
+      "id": "E1.constraintHonored",
+      "ok": true,
+      "detail": "honored"
+    },
+    {
+      "id": "E2.unknownCarried",
+      "ok": true,
+      "detail": "carried_forward, owner=discovery"
+    },
+    {
+      "id": "E3.determinism.pinnedTimestamps",
+      "ok": true,
+      "detail": "pinned timestamps on all three author artifacts"
+    },
+    {
+      "id": "F1.terminal.terminal:audited-1",
+      "ok": true,
+      "detail": "owned upstream by prd:terminal-1, supported by fr:terminal-1"
+    },
+    {
+      "id": "F1.terminal.terminal:delivered-1",
+      "ok": true,
+      "detail": "owned upstream by prd:outcome-1, supported by fr:outcome-1"
+    },
+    {
+      "id": "G1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26 vs declared fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G2.trace.traceRef",
+      "ok": true,
+      "detail": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G3.submission.traceRef.binding",
+      "ok": true,
+      "detail": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26"
+    },
+    {
+      "id": "G4.trace.subjectBinding",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "G5.relationships.resolve",
+      "ok": true,
+      "detail": "13 relationships resolve against recomputed digests"
+    },
+    {
+      "id": "G6.unknown.noResolutionEdges",
+      "ok": true,
+      "detail": "0 edges touch the unknown"
+    },
+    {
+      "id": "H1.requirementCoverage.projection",
+      "ok": true,
+      "detail": "4 requirement coverage blocks recomputed from the edge set"
+    },
+    {
+      "id": "H2.prdMemberCoverage.projection",
+      "ok": true,
+      "detail": "6 PRD member coverage blocks recomputed from the edge set"
+    },
+    {
+      "id": "H3.terminalCoverage.terminal:audited-1",
+      "ok": true,
+      "detail": "supportedBy=fr:terminal-1"
+    },
+    {
+      "id": "H3.terminalCoverage.terminal:delivered-1",
+      "ok": true,
+      "detail": "supportedBy=fr:outcome-1"
+    },
+    {
+      "id": "H4.constraintCoverage.projection",
+      "ok": true,
+      "detail": "enforcedBy=fr:boundary-1,fr:outcome-1,fr:terminal-1,nfr:determinism-1"
+    },
+    {
+      "id": "I1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa vs declared 05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa"
+    },
+    {
+      "id": "I2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa"
+    },
+    {
+      "id": "I3.submission.candidate.binding",
+      "ok": true,
+      "detail": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+    },
+    {
+      "id": "I4.evidenceRefs.exact",
+      "ok": true,
+      "detail": "18 refs, exact set match"
+    },
+    {
+      "id": "I5.evidenceKindCoverage",
+      "ok": true,
+      "detail": "{\"accepted-prd-intent-bundle\":1,\"accepted-uc-scenarios-bundle\":1,\"discovery-import-artifact\":1,\"discovery-handoff-capsule\":1,\"discovery-certificate\":1,\"source-claim\":4,\"constraint\":1,\"unknown\":1,\"terminal-claim\":2,\"architecture-contract\":1,\"accepted-intent-trace\":1,\"accepted-intent-submission\":1,\"accepted-uc-trace\":1,\"accepted-uc-submission\":1}"
+    },
+    {
+      "id": "I6.intakeReceipt.attestation",
+      "ok": true,
+      "detail": "kernel-side product submission is driver-executed over public commands (attestation, not desk-level re-verification)"
+    },
+    {
+      "id": "J1.workspace.zeroUpstream.consistent",
+      "ok": true,
+      "detail": "0 accepted upstream revisions travel by content address"
+    },
+    {
+      "id": "K1.provider.declared",
+      "ok": true,
+      "detail": "formalization.requirements-structure.v1"
+    },
+    {
+      "id": "K2.seam.boundFailClosed",
+      "ok": true,
+      "detail": "the REAL WP03 validator passed the binder self-test"
+    },
+    {
+      "id": "K3.authorGate.accepted",
+      "ok": true,
+      "detail": "author-stage cell gate: system-requirements.check.product-kind:pass, system-requirements.check.requirement-kind-vocabulary:pass, system-requirements.check.derivation-lineage:pass, system-requirements.check.verification-surface-coverage:pass, system-requirements.check.revision-pins:pass, system-requirements.check.wp03-validation:pass"
+    },
+    {
+      "id": "K4.probe.foreignLineage",
+      "ok": true,
+      "detail": "upstream-repair"
+    },
+    {
+      "id": "K5.probe.stalePin",
+      "ok": true,
+      "detail": "repair"
+    },
+    {
+      "id": "K6.probe.scopeViolation",
+      "ok": true,
+      "detail": "terminal-reject: another desk's artifact family never repairs"
+    },
+    {
+      "id": "M1.intentReview.reviewer (canonical, FR-Define-Product-Intent-001)",
+      "ok": true,
+      "detail": "verdict=repair, digest=e49d8d11aadae74a…"
+    },
+    {
+      "id": "M1.intentReview.reviewer emission-b (FR-Define-Product-Intent-001)",
+      "ok": true,
+      "detail": "verdict=repair, digest=6c9c8324d2cb32ac…"
+    },
+    {
+      "id": "M1.intentReview.reviewer2 (FR-Define-Product-Intent-002)",
+      "ok": true,
+      "detail": "verdict=repair, digest=0463209429b6cf9b…"
+    },
+    {
+      "id": "M1.collisionRecord.CR-001",
+      "ok": true,
+      "detail": "emissionA verdict=repair (CANONICAL - verdict of record); the deviating emissionB \"accepted\" was withdrawn by its own author"
+    },
+    {
+      "id": "M1.collisionRecord.CR-002",
+      "ok": true,
+      "detail": "verdictOfRecord=repair"
+    },
+    {
+      "id": "M1.collisionRecord.CR-003",
+      "ok": true,
+      "detail": "verdictOfRecord=repair"
+    },
+    {
+      "id": "M2.noAdjudicationRecord",
+      "ok": true,
+      "detail": "no driver/human adjudication or settlement record exists in stray-products-r2; the intent contention recorded by UH-Model-Use-Cases-001 is still open"
+    },
+    {
+      "id": "M3.ucHold.contentionOpen",
+      "ok": true,
+      "detail": "UH-Model-Use-Cases-001: hold-no-authoring while the intent product is review-contended"
+    },
+    {
+      "id": "M3.ucNeverReviewed",
+      "ok": true,
+      "detail": "no model-use-cases reviewer artifacts exist: the UC scenarios bundle (sha256:24f0aff2…) never passed a reviewer stage"
+    },
+    {
+      "id": "M4.candidate.acceptanceClaimsTrue",
+      "ok": false,
+      "detail": "FALSE: upstream.materialAuthority asserts \"the accepted define-product-intent bundle and the accepted model-use-cases scenario bundle\"; verification.revisionPinsMatchAcceptedRevisions=true; evidence kinds accepted-*. All intent reviewer emissions carry verdict REPAIR (contention-open, UH-Model-Use-Cases-001); the UC bundle has no reviewer stage at all. No accepted revision of either desk exists in r2."
+    },
+    {
+      "id": "M5.candidate.scope2ExclusionAuthorityExists",
+      "ok": false,
+      "detail": "FALSE: SC-2 (recomputed cb291aa71e7be582…) is exactly {claimId,statement} - a bare claim, no decision; CERT-1 is a subject-level go. The candidate brief restates \"out-of-scope intent member prd:scope-2\" and self-check 8 marks the exclusion satisfied - ratifying the exclusion authority both intent reviews (CRIT-1) established as nonexistent. Accepted scope material stays silently removed from the requirements surface."
+    },
+    {
+      "id": "M6.candidate.workspaceSelfConsistent",
+      "ok": false,
+      "detail": "contradiction: workspaceSummary \"0 accepted upstream revisions travel by content address\" while upstream.materialAuthority claims \"the accepted … bundle … traveling by content address\" - both cannot be true"
+    },
+    {
+      "id": "M7.evidenceRecomputes.import review (accepted)",
+      "ok": true,
+      "detail": "recomputed cfc7b35a5d0b7158…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.intent review canonical",
+      "ok": true,
+      "detail": "recomputed e49d8d11aadae74a…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.intent review emission-b",
+      "ok": true,
+      "detail": "recomputed 6c9c8324d2cb32ac…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.intent review reviewer2",
+      "ok": true,
+      "detail": "recomputed 0463209429b6cf9b…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.collision CR-001",
+      "ok": true,
+      "detail": "recomputed b54c5ba7a8f0f699…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.collision CR-003",
+      "ok": true,
+      "detail": "recomputed 6d0dc6a2c3671d24…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.UC hold artifact",
+      "ok": true,
+      "detail": "recomputed 6cccd16245eafd18…"
+    },
+    {
+      "id": "M7.evidenceRecomputes.import artifact",
+      "ok": true,
+      "detail": "recomputed b10bb762b652fe89…"
+    },
+    {
+      "id": "N1.governingContract.unresolvable",
+      "ok": true,
+      "detail": "UNRESOLVABLE workspace-wide: scanned 213 files under qualification/ - raw-bytes hits 0, canonical-JSON hits 0, .content hits 0; 71 stray-products files declare the address textually and recompute otherwise (r1 CRIT-003 digest-drift family, carried through FR-Define-Product-Intent-001/002 MAJ-1 RA-2)"
+    },
+    {
+      "id": "O1.envelopeAcceptedProjection.unresolvable",
+      "ok": true,
+      "detail": "upstream-accepted[0] sha256:65fe9a225a4425880513ae5321cce4d9b75c44e88fb3054f5e7f997b6956ee66 :: \"accepted revision of derive-system-requirements\": scanned 213 files - raw hits 0, canonical hits 0, .content hits 0, textual mentions 1. No accepted revision of derive-system-requirements can exist: this is the desk's FIRST reviewer stage (no prior reviewer verdict, final gate never ran); the intake receipt itself says admitted_for_reviewer_stage, not accepted."
+    },
+    {
+      "id": "O2.envelopeProjection.adjudicated",
+      "ok": true,
+      "detail": "ADJUDICATION: UNRESOLVABLE - stale shell metadata (same family as the define-product-intent projection sha256:745cadc1…); recorded for the shell owner. The reviewer-side accepted-revision count is 0."
+    }
+  ]
+}

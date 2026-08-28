@@ -1,0 +1,256 @@
+{
+  "verificationRef": "sha256:b8a00be93d977bf94c93c68cd712b05696b0f472e1db1e91612fece401bc8d70",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "b8a00be93d977bf94c93c68cd712b05696b0f472e1db1e91612fece401bc8d70",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Import-Discovery-Handoff-002",
+    "deskRef": "import-discovery-handoff",
+    "role": "reviewer",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts",
+    "subject": {
+      "submissionRef": "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+      "artifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "traceRef": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274"
+    },
+    "recomputedChecks": 41,
+    "passed": 41,
+    "failed": 0,
+    "groups": {
+      "selfAddress": "A1-A3: submission/artifact/trace content digests + refs recomputed and bound",
+      "subArtifacts": "D.*: 9/9 sub-artifact digests recomputed over canonical content",
+      "envelopeCrossCheck": "E.*: 8/8 reviewer task-projection content addresses resolve (id + digest)",
+      "capsuleSelfAddress": "F1-F2: capsule digest recomputed from recorded facts per ingress.ts factBody",
+      "protocolVersion": "G: ek.discovery-handoff-capsule.ek8-wp11f.v1 (HANDOFF_PROTOCOL_VERSION)",
+      "traceGraph": "H1-H4: 11 relationships resolve against recomputed digests; coverage exact and complete; unknown carried forward, not resolved",
+      "payloadContract": "I1-I2: 11 required evidence refs exact; kind coverage exact",
+      "parentStateAndPins": "J1-J3: discovery-terminal parent, content-addressed proof ref, desk/node/item/token/kind/effect pins",
+      "workspaceLaw": "K: 0 accepted upstream revisions, consistent across envelope, artifact, submission",
+      "authorFlagsHonesty": "L: author verification flags agree with independent recomputation"
+    },
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "taskProjectionContentAddresses": {
+        "claim:scope-1": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "claim:scope-2": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "claim:constraint-1": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "claim:outcome-1": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "constraint:retention-1": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "unknown:browser-matrix-1": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "terminal:audited-1": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "terminal:delivered-1": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      }
+    },
+    "results": [
+      {
+        "id": "A1.submission.contentDigest",
+        "ok": true,
+        "detail": "recomputed 2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e vs declared 2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e"
+      },
+      {
+        "id": "A2.submission.submissionRef",
+        "ok": true,
+        "detail": "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e"
+      },
+      {
+        "id": "B1.artifact.contentDigest",
+        "ok": true,
+        "detail": "recomputed b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5 vs declared b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "id": "B2.artifact.artifactRef",
+        "ok": true,
+        "detail": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "id": "B3.submission.candidate.binding",
+        "ok": true,
+        "detail": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "id": "C1.trace.contentDigest",
+        "ok": true,
+        "detail": "recomputed 2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274 vs declared 2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274"
+      },
+      {
+        "id": "C2.trace.traceRef",
+        "ok": true,
+        "detail": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274"
+      },
+      {
+        "id": "C3.submission.traceRef.binding",
+        "ok": true,
+        "detail": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274"
+      },
+      {
+        "id": "D.certificate",
+        "ok": true,
+        "detail": "recomputed 03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21 vs declared 03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "id": "D.sourceClaim:SC-1",
+        "ok": true,
+        "detail": "recomputed b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909 vs declared b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "id": "D.sourceClaim:SC-2",
+        "ok": true,
+        "detail": "recomputed cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da vs declared cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "id": "D.sourceClaim:SC-3",
+        "ok": true,
+        "detail": "recomputed 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b vs declared 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "id": "D.sourceClaim:SC-4",
+        "ok": true,
+        "detail": "recomputed 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0 vs declared 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "id": "D.constraint:CON-1",
+        "ok": true,
+        "detail": "recomputed 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be vs declared 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "id": "D.unknown:UNK-1",
+        "ok": true,
+        "detail": "recomputed 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf vs declared 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "id": "D.terminalClaim:TC-1",
+        "ok": true,
+        "detail": "recomputed 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f vs declared 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "id": "D.terminalClaim:TC-2",
+        "ok": true,
+        "detail": "recomputed 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988 vs declared 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "id": "E.claim:scope-1",
+        "ok": true,
+        "detail": "content id claim:scope-1, digest match=true"
+      },
+      {
+        "id": "E.claim:scope-2",
+        "ok": true,
+        "detail": "content id claim:scope-2, digest match=true"
+      },
+      {
+        "id": "E.claim:constraint-1",
+        "ok": true,
+        "detail": "content id claim:constraint-1, digest match=true"
+      },
+      {
+        "id": "E.claim:outcome-1",
+        "ok": true,
+        "detail": "content id claim:outcome-1, digest match=true"
+      },
+      {
+        "id": "E.constraint:retention-1",
+        "ok": true,
+        "detail": "content id constraint:retention-1, digest match=true"
+      },
+      {
+        "id": "E.unknown:browser-matrix-1",
+        "ok": true,
+        "detail": "content id unknown:browser-matrix-1, digest match=true"
+      },
+      {
+        "id": "E.terminal:audited-1",
+        "ok": true,
+        "detail": "content id terminal:audited-1, digest match=true"
+      },
+      {
+        "id": "E.terminal:delivered-1",
+        "ok": true,
+        "detail": "content id terminal:delivered-1, digest match=true"
+      },
+      {
+        "id": "F1.capsule.selfAddress",
+        "ok": true,
+        "detail": "recomputed f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e vs declared f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e"
+      },
+      {
+        "id": "F2.capsule.refForm",
+        "ok": true,
+        "detail": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e"
+      },
+      {
+        "id": "G.protocolVersion",
+        "ok": true,
+        "detail": "ek.discovery-handoff-capsule.ek8-wp11f.v1"
+      },
+      {
+        "id": "H1.relationships.resolve",
+        "ok": true,
+        "detail": "11 relationships checked against recomputed digests"
+      },
+      {
+        "id": "H2.coverage.terminal:audited-1",
+        "ok": true,
+        "detail": "derived=claim:constraint-1,claim:outcome-1,claim:scope-1,claim:scope-2 constrained=constraint:retention-1 supported="
+      },
+      {
+        "id": "H2.coverage.terminal:delivered-1",
+        "ok": true,
+        "detail": "derived=claim:constraint-1,claim:outcome-1,claim:scope-1,claim:scope-2 constrained=constraint:retention-1 supported=DI-Import-Discovery-Handoff-001"
+      },
+      {
+        "id": "H3.complete.terminal:audited-1",
+        "ok": true,
+        "detail": "terminal reached by all 4 source claims + constraint"
+      },
+      {
+        "id": "H3.complete.terminal:delivered-1",
+        "ok": true,
+        "detail": "terminal reached by all 4 source claims + constraint"
+      },
+      {
+        "id": "H4.unknown.carriedNotResolved",
+        "ok": true,
+        "detail": "disposition=carried_forward, owner=discovery, resolution edges=false"
+      },
+      {
+        "id": "I1.evidenceRefs.exact",
+        "ok": true,
+        "detail": "11 refs, exact set match=true"
+      },
+      {
+        "id": "I2.evidenceKindCoverage",
+        "ok": true,
+        "detail": "{\"discovery-handoff-capsule\":1,\"discovery-certificate\":1,\"source-claim\":4,\"constraint\":1,\"unknown\":1,\"terminal-claim\":2,\"architecture-contract\":1}"
+      },
+      {
+        "id": "J1.parentState.legal",
+        "ok": true,
+        "detail": "discovery-terminal"
+      },
+      {
+        "id": "J2.parentState.proofRef",
+        "ok": true,
+        "detail": "sha256:4a919f529fa661d2bbd39688c1996eaabaa309d521fae6ae28a648bd54c007fd"
+      },
+      {
+        "id": "J3.deskPins",
+        "ok": true,
+        "detail": "desk/node/item/token/kind/effect"
+      },
+      {
+        "id": "K.workspace.zeroUpstream",
+        "ok": true,
+        "detail": "0 accepted upstream revisions travel by content address"
+      },
+      {
+        "id": "L.verificationFlags",
+        "ok": true,
+        "detail": "{\"declaredDigestsTrusted\":false,\"subArtifactDigestsRecomputedOverCanonicalContent\":true,\"capsuleSelfAddressVerifies\":true,\"packageBytesPresentAndDigestVerified\":true,\"lineageBindingMatched\":true,\"parentStateIsDiscoveryTerminal\":true,\"activeAttemptsInTargetWorld\":0,\"acceptedUpstreamRevisionsTravelingByContentAddress\":0,\"staleProtocolRefusals\":0}"
+      }
+    ]
+  }
+}

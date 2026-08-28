@@ -1,0 +1,149 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; re-staffing #2 of the derive-system-requirements reviewer seat (byte-equivalent envelope): verify-and-confirm, no second submission; WP03 validator: real requirements-bundle.mjs through the REAL seam binder; gate + reviewer route: real dist system-requirements cell; universe: real deriveAcceptedUniverse desk protocol",
+  "recomputed": 28,
+  "passed": 28,
+  "failed": 0,
+  "failedCheckIds": [],
+  "results": [
+    {
+      "id": "H1.projectionRefs.equal",
+      "ok": true,
+      "detail": "8/8 task-projection content addresses of this frame equal the standing staffing pins (VV envelopePins)"
+    },
+    {
+      "id": "H2.skillPins.equal",
+      "ok": true,
+      "detail": "protocol bc8a4261 / semantic 2cbcf850 pins equal"
+    },
+    {
+      "id": "H3.upstreamProjection.equal",
+      "ok": true,
+      "detail": "upstream-accepted[0] sha256:65fe9a225… equal (with the standing UNRESOLVABLE adjudication)"
+    },
+    {
+      "id": "H4.workspaceAndAuthority.equal",
+      "ok": true,
+      "detail": "workspace summary line and write authority equal the standing staffing (FR workspaceAdjudication; FS self-check 10)"
+    },
+    {
+      "id": "R1.vv.selfAddress",
+      "ok": true,
+      "detail": "recomputed d81d23475ca309756165e65a109b7df94786636cfe794661ce7eea5b1f1a4f5b"
+    },
+    {
+      "id": "R2.fr.selfAddress",
+      "ok": true,
+      "detail": "recomputed d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0, verdict=repair"
+    },
+    {
+      "id": "R3.rt.selfAddress",
+      "ok": true,
+      "detail": "recomputed e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba, 6 edges"
+    },
+    {
+      "id": "R4.fs.selfAddress",
+      "ok": true,
+      "detail": "recomputed f7e0e85c6992402209563516bd1b9de73a56bf1eaacf7a392dc910f65b17f9d0; FS binds FR+VV+RT; verdict=repair"
+    },
+    {
+      "id": "R5.subject.trio",
+      "ok": true,
+      "detail": "author trio recomputes: SR 86b00569cf719318… / trace fd0b0b1f7470cd78… / FS-001 05e713efdd1847bf…"
+    },
+    {
+      "id": "R6.noContentDelta",
+      "ok": true,
+      "detail": "C1: the reviewed subject recomputes to the exact address the standing staffing reviewed (author trio unchanged)"
+    },
+    {
+      "id": "R7.fr.verdictStructure",
+      "ok": true,
+      "detail": "FR structure of record: verdict repair, unsatisfied criteria exactly [6,10,11,12], CRIT-1/CRIT-2 + MAJ-1, RA-1..RA-5"
+    },
+    {
+      "id": "R8.census.noNewMaterial",
+      "ok": true,
+      "detail": "single author submission of record (FS-...-001); 0 adjudication/settlement records; 0 model-use-cases reviewer artifacts; 0 predecessor re-staff emissions for this seat (this is staffing #2); restaff2 files at verify time: 5"
+    },
+    {
+      "id": "K8.folds.rederive",
+      "ok": true,
+      "detail": "both upstream folds re-derive through the REAL validators + cell folds: prd a30229a75bed4c5d…, uc 184981e5724c286d…; bundle pins byte-exact"
+    },
+    {
+      "id": "K3.universe.derived",
+      "ok": true,
+      "detail": "REAL deriveAcceptedUniverse derives the accepted universe (desk protocol, fail-closed)"
+    },
+    {
+      "id": "K4.wp03.sealStable",
+      "ok": true,
+      "detail": "WP03 seal recomputes to the standing address sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "K1.provider.seam",
+      "ok": true,
+      "detail": "provider formalization.requirements-structure.v1; seam binder fail-closed self-test passes"
+    },
+    {
+      "id": "K5.gate.accepted",
+      "ok": true,
+      "detail": "author-stage cell gate re-runs to accepted (6 checks)"
+    },
+    {
+      "id": "K6.kernelRoute.accept",
+      "ok": true,
+      "detail": "kernel reviewer route (mechanical surface only) -> accept; the DESK verdict of record stays repair by the M-layer authority (acceptance-status audit) - consistent with the standing 77/80 whose only failures are M4/M5/M6"
+    },
+    {
+      "id": "K7.probe.foreignLineage",
+      "ok": true,
+      "detail": "negative probe: foreign lineage -> upstream-repair (the gate is real, not rubber-stamped)"
+    },
+    {
+      "id": "M4.acceptanceClaims.stillFalse",
+      "ok": true,
+      "detail": "CRIT-1 stands: the candidate still asserts accepted material authority; all intent emissions still carry verdict repair; the UC bundle still has no reviewer stage - no accepted upstream revision exists in r2"
+    },
+    {
+      "id": "M5.scope2Authority.stillAbsent",
+      "ok": true,
+      "detail": "CRIT-2 stands: SC-2 recomputes to a bare {claimId,statement} claim; CERT-1 is a subject-level go; no exclusion decision exists; the candidate brief still restates the exclusion"
+    },
+    {
+      "id": "M6.selfContradiction.stillPresent",
+      "ok": true,
+      "detail": "MAJ of record stands: workspaceSummary 0-count vs materialAuthority \"accepted\" - the author-trio contradiction persists"
+    },
+    {
+      "id": "M7.ra.stillOpen",
+      "ok": true,
+      "detail": "RA-1..RA-5 remain open: no adjudication, no reissued candidate, no re-sealed governing contract since the standing staffing"
+    },
+    {
+      "id": "N1.governingContract.stillUnresolvable",
+      "ok": true,
+      "detail": "MAJ-1 stands: sha256:a926df6284a1afb5… scanned 235 files under qualification/ - raw 0, canonical 0, .content 0 hits (0 expected; RA-4 still open)"
+    },
+    {
+      "id": "O1.envelopeProjection.stillUnresolvable",
+      "ok": true,
+      "detail": "upstream-accepted[0] sha256:65fe9a225a442588… :: \"accepted revision of derive-system-requirements\": raw 0, canonical 0, .content 0 hits across 235 files; textual mentions 9 (informational - quotes in review documents, the 745cadc1… precedent). Adjudication of record stands: UNRESOLVABLE - no accepted revision of derive-system-requirements exists (verdict of record repair; the author desk has not reissued; the final gate never ran)."
+    },
+    {
+      "id": "O2.authorPositionZero.upheld",
+      "ok": true,
+      "detail": "author 0 upheld at the desk layer; this staffing's reviewer-side accepted-revision count is likewise 0"
+    },
+    {
+      "id": "A1.standingFiles.intact",
+      "ok": true,
+      "detail": "all 14 standing desk files present and every self-address recomputed above (R1-R5) - zero standing bytes modified by this staffing"
+    },
+    {
+      "id": "A2.singleSeat.restaff2Namespace",
+      "ok": true,
+      "detail": "this emission writes ONLY restaff2-namespaced files (ADV-5); at verify time: 5 file(s)"
+    }
+  ]
+}

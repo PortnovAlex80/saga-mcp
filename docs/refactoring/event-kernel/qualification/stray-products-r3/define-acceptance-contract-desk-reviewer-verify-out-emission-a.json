@@ -1,0 +1,512 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; validators/folds = REAL kernel cell surfaces (same-provider-recheck, zero softening)",
+  "recomputed": 99,
+  "passed": 92,
+  "failed": 7,
+  "failedCheckIds": [
+    "I4.governingContract.resolves",
+    "L2.verificationFlags",
+    "M2.intentRevision.accepted",
+    "M3.ucReviewerStage.exists",
+    "M4.requirementsRevision.accepted",
+    "M5.candidate.acceptedStatusClaims",
+    "N1.scope2.notRatified"
+  ],
+  "results": [
+    {
+      "id": "A1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe vs declared 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "A2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "A3.submission.pins",
+      "ok": true,
+      "detail": "define-acceptance-contract/formalization-item:define-acceptance-contract/plan:formalization#item:acceptance-contract"
+    },
+    {
+      "id": "B1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0 vs declared 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "B2.artifact.artifactRef",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "B3.submission.candidate.binding",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "C1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1 vs declared 2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "C2.trace.traceRef",
+      "ok": true,
+      "detail": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "C3.trace.subjectBinding",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0 / SR-Define-Acceptance-Contract-001"
+    },
+    {
+      "id": "D.prdMember.prd:boundary-1",
+      "ok": true,
+      "detail": "wp03=sealed recomputed 605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954 vs declared 605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+    },
+    {
+      "id": "D.prdMember.prd:scope-2",
+      "ok": true,
+      "detail": "wp03=sealed recomputed f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141 vs declared f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141"
+    },
+    {
+      "id": "D.prdMember.prd:constraint-1",
+      "ok": true,
+      "detail": "wp03=sealed recomputed f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a vs declared f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+    },
+    {
+      "id": "D.prdMember.prd:outcome-1",
+      "ok": true,
+      "detail": "wp03=sealed recomputed 0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16 vs declared 0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+    },
+    {
+      "id": "D.prdMember.prd:terminal-1",
+      "ok": true,
+      "detail": "wp03=sealed recomputed 694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc vs declared 694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+    },
+    {
+      "id": "D.prdMember.prd:unknown-1",
+      "ok": true,
+      "detail": "wp03=sealed recomputed ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b vs declared ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b"
+    },
+    {
+      "id": "D.intentFold",
+      "ok": true,
+      "detail": "revisionDigest a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770 pins the requirements bundle's prdRevisionRef"
+    },
+    {
+      "id": "D.intentSet.transport",
+      "ok": true,
+      "detail": "artifact.upstream.acceptedIntentSet equals the recomputed fold set"
+    },
+    {
+      "id": "D.ucScenario.uc:boundary-1",
+      "ok": true,
+      "detail": "uc03=sealed recomputed defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d vs declared defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d"
+    },
+    {
+      "id": "D.ucScenario.uc:outcome-1",
+      "ok": true,
+      "detail": "uc03=sealed recomputed ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d vs declared ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d"
+    },
+    {
+      "id": "D.ucScenario.uc:terminal-1",
+      "ok": true,
+      "detail": "uc03=sealed recomputed e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543 vs declared e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543"
+    },
+    {
+      "id": "D.ucRevision.pin",
+      "ok": true,
+      "detail": "recomputed 184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e vs pinned sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e"
+    },
+    {
+      "id": "D.ucSet.transport",
+      "ok": true,
+      "detail": "artifact.upstream.acceptedUcSet equals the recomputed set"
+    },
+    {
+      "id": "D.requirement.fr:boundary-1",
+      "ok": true,
+      "detail": "recomputed 8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529 vs declared 8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529"
+    },
+    {
+      "id": "D.requirement.fr:outcome-1",
+      "ok": true,
+      "detail": "recomputed 8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521 vs declared 8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+    },
+    {
+      "id": "D.requirement.fr:terminal-1",
+      "ok": true,
+      "detail": "recomputed 75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17 vs declared 75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17"
+    },
+    {
+      "id": "D.requirement.nfr:determinism-1",
+      "ok": true,
+      "detail": "recomputed 6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee vs declared 6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee"
+    },
+    {
+      "id": "D.requirementsRevalidated",
+      "ok": true,
+      "detail": "requirements bundle re-sealed against its recomputed WP03 universe: sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "D.upstreamRefs",
+      "ok": true,
+      "detail": "all accepted-* artifact/trace/submission refs bind the recomputed upstream digests"
+    },
+    {
+      "id": "E1.universe.protocol",
+      "ok": true,
+      "detail": "id sets: fr=3 nfr=1 rule=0 scenarios=3 branches=4 stmts=5 evidenceBindings=0"
+    },
+    {
+      "id": "E2.product.seal",
+      "ok": true,
+      "detail": "REAL validateAcceptanceBundle re-seal sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 vs declared sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "E3.criterion.ac:boundary-1",
+      "ok": true,
+      "detail": "wp03 seam=sealed recomputed d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2 vs declared d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2"
+    },
+    {
+      "id": "E3.criterion.ac:outcome-1-delivered",
+      "ok": true,
+      "detail": "wp03 seam=sealed recomputed abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e vs declared abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e"
+    },
+    {
+      "id": "E3.criterion.ac:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "wp03 seam=sealed recomputed 0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b vs declared 0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b"
+    },
+    {
+      "id": "E3.criterion.ac:terminal-1-audited",
+      "ok": true,
+      "detail": "wp03 seam=sealed recomputed fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d vs declared fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d"
+    },
+    {
+      "id": "E3.criterion.ac:determinism-1",
+      "ok": true,
+      "detail": "wp03 seam=sealed recomputed 4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034 vs declared 4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034"
+    },
+    {
+      "id": "E4.statement.stmt:boundary-1-response",
+      "ok": true,
+      "detail": "recomputed cf08f2c25718bc211cda0f2f2a88df7ac9e9f17bdd3cf9ca1e56609e96827551 vs declared cf08f2c25718bc211cda0f2f2a88df7ac9e9f17bdd3cf9ca1e56609e96827551; in desk input=true; cited by 1 criterion/criteria"
+    },
+    {
+      "id": "E4.statement.stmt:outcome-1-delivered",
+      "ok": true,
+      "detail": "recomputed 80ad5f1b7f53e83abf22986245f5949ab741e22d936ccb04ad43f4e71e176ed8 vs declared 80ad5f1b7f53e83abf22986245f5949ab741e22d936ccb04ad43f4e71e176ed8; in desk input=true; cited by 1 criterion/criteria"
+    },
+    {
+      "id": "E4.statement.stmt:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "recomputed 235e8b0977e02a9814c577fb9c368b9769413973406dbb9ebb81b6886b831a2e vs declared 235e8b0977e02a9814c577fb9c368b9769413973406dbb9ebb81b6886b831a2e; in desk input=true; cited by 1 criterion/criteria"
+    },
+    {
+      "id": "E4.statement.stmt:terminal-1-audited",
+      "ok": true,
+      "detail": "recomputed c6445947933167383fce779cbba81f5822bcf56f24d6ad018d79f769591d3aea vs declared c6445947933167383fce779cbba81f5822bcf56f24d6ad018d79f769591d3aea; in desk input=true; cited by 1 criterion/criteria"
+    },
+    {
+      "id": "E4.statement.stmt:determinism-1",
+      "ok": true,
+      "detail": "recomputed 3ca4a3f2301e10226e11e0c8635498aa4f71d4907ed332461480e6fd468a1fbe vs declared 3ca4a3f2301e10226e11e0c8635498aa4f71d4907ed332461480e6fd468a1fbe; in desk input=true; cited by 1 criterion/criteria"
+    },
+    {
+      "id": "E5.evidenceKind.vocabulary",
+      "ok": true,
+      "detail": "used [test, monitoring, audit] of closed [audit, independent-agent-review, monitoring, test]"
+    },
+    {
+      "id": "F.claim:scope-1",
+      "ok": true,
+      "detail": "artifact-transported digest b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909 vs envelope b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+    },
+    {
+      "id": "F.claim:scope-2",
+      "ok": true,
+      "detail": "artifact-transported digest cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da vs envelope cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+    },
+    {
+      "id": "F.claim:constraint-1",
+      "ok": true,
+      "detail": "artifact-transported digest 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b vs envelope 6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+    },
+    {
+      "id": "F.claim:outcome-1",
+      "ok": true,
+      "detail": "artifact-transported digest 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0 vs envelope 3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+    },
+    {
+      "id": "F.constraint:retention-1",
+      "ok": true,
+      "detail": "artifact-transported digest 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be vs envelope 807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+    },
+    {
+      "id": "F.unknown:browser-matrix-1",
+      "ok": true,
+      "detail": "artifact-transported digest 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf vs envelope 38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+    },
+    {
+      "id": "F.terminal:audited-1",
+      "ok": true,
+      "detail": "artifact-transported digest 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f vs envelope 4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+    },
+    {
+      "id": "F.terminal:delivered-1",
+      "ok": true,
+      "detail": "artifact-transported digest 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988 vs envelope 8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+    },
+    {
+      "id": "F1.envelopeCoverage",
+      "ok": true,
+      "detail": "8/8 reviewer-frame content addresses transported in artifact.upstream"
+    },
+    {
+      "id": "G1.probe.strippedBranchCitation",
+      "ok": true,
+      "detail": "MISSING_LINEAGE: AC ac:boundary-1 retains its UC scenario binding but strips the terminal scenario branch binding (a scenario-facing AC must retain BOTH citation shapes)"
+    },
+    {
+      "id": "G2.probe.foreignScenarioSubstitution",
+      "ok": true,
+      "detail": "FOREIGN_LINEAGE: criterion ac:boundary-1 cites UC scenario(s) uc:terminal-1 that no bound requirement derives from (a well-formed but semantically unsupported substitution)"
+    },
+    {
+      "id": "G3.probe.foreignRequirement",
+      "ok": true,
+      "detail": "FOREIGN_LINEAGE: AC ac:boundary-1 binds requirement(s) fr:foreign-1 outside the exact accepted FR/NFR id sets"
+    },
+    {
+      "id": "G4.probe.uncoveredRequirement",
+      "ok": true,
+      "detail": "COVERAGE_GAP: requirement nfr:determinism-1 is covered by no AC criterion and carries no explicit deferred disposition (requirements coverage closure)"
+    },
+    {
+      "id": "G5.probe.whatSideKey",
+      "ok": true,
+      "detail": "SCOPE_VIOLATION: criterion ac:boundary-1: AC remains WHAT-side verification and must not contain architecture or participatingModules allocation decisions"
+    },
+    {
+      "id": "H1.relationships.resolve",
+      "ok": true,
+      "detail": "16 relationships checked against recomputed digests"
+    },
+    {
+      "id": "H2.criterionCoverage.ac:boundary-1",
+      "ok": true,
+      "detail": "verifies=fr:boundary-1 covers=branch:boundary-1-main cites=stmt:boundary-1-response supports="
+    },
+    {
+      "id": "H2.criterionCoverage.ac:outcome-1-delivered",
+      "ok": true,
+      "detail": "verifies=fr:outcome-1 covers=branch:outcome-1-main cites=stmt:outcome-1-delivered supports=terminal:delivered-1"
+    },
+    {
+      "id": "H2.criterionCoverage.ac:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "verifies=fr:outcome-1 covers=branch:outcome-1-deterministic-error cites=stmt:outcome-1-deterministic-error supports="
+    },
+    {
+      "id": "H2.criterionCoverage.ac:terminal-1-audited",
+      "ok": true,
+      "detail": "verifies=fr:terminal-1 covers=branch:terminal-1-main cites=stmt:terminal-1-audited supports=terminal:audited-1"
+    },
+    {
+      "id": "H2.criterionCoverage.ac:determinism-1",
+      "ok": true,
+      "detail": "verifies=nfr:determinism-1 covers= cites=stmt:determinism-1 supports="
+    },
+    {
+      "id": "H3.requirementCoverage.fr:boundary-1",
+      "ok": true,
+      "detail": "verifiedBy=ac:boundary-1"
+    },
+    {
+      "id": "H3.requirementCoverage.fr:outcome-1",
+      "ok": true,
+      "detail": "verifiedBy=ac:outcome-1-delivered,ac:outcome-1-deterministic-error"
+    },
+    {
+      "id": "H3.requirementCoverage.fr:terminal-1",
+      "ok": true,
+      "detail": "verifiedBy=ac:terminal-1-audited"
+    },
+    {
+      "id": "H3.requirementCoverage.nfr:determinism-1",
+      "ok": true,
+      "detail": "verifiedBy=ac:determinism-1"
+    },
+    {
+      "id": "H4.branchCoverage.branch:boundary-1-main",
+      "ok": true,
+      "detail": "owningScenario=uc:boundary-1 coveredBy=ac:boundary-1"
+    },
+    {
+      "id": "H4.branchCoverage.branch:outcome-1-main",
+      "ok": true,
+      "detail": "owningScenario=uc:outcome-1 coveredBy=ac:outcome-1-delivered"
+    },
+    {
+      "id": "H4.branchCoverage.branch:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "owningScenario=uc:outcome-1 coveredBy=ac:outcome-1-deterministic-error"
+    },
+    {
+      "id": "H4.branchCoverage.branch:terminal-1-main",
+      "ok": true,
+      "detail": "owningScenario=uc:terminal-1 coveredBy=ac:terminal-1-audited"
+    },
+    {
+      "id": "H5.terminal.terminal:audited-1",
+      "ok": true,
+      "detail": "supportedBy=ac:terminal-1-audited terminalSupport digest bound=true"
+    },
+    {
+      "id": "H5.terminal.terminal:delivered-1",
+      "ok": true,
+      "detail": "supportedBy=ac:outcome-1-delivered terminalSupport digest bound=true"
+    },
+    {
+      "id": "H6.constraint.coverage",
+      "ok": true,
+      "detail": "enforcedBy=ac:determinism-1,ac:outcome-1-deterministic-error constrainedCriteria=4"
+    },
+    {
+      "id": "H7.unknown.carriedNotDerived",
+      "ok": true,
+      "detail": "disposition=carried_forward owner=discovery derivation edges=false"
+    },
+    {
+      "id": "H8.relationVocabulary",
+      "ok": true,
+      "detail": "cites,covers,supports,verifies"
+    },
+    {
+      "id": "H9.citationPair.ac:boundary-1.fr:boundary-1",
+      "ok": true,
+      "detail": "cited (uc:boundary-1 x branch:boundary-1-main) vs requirement derivation (branch:boundary-1-main)"
+    },
+    {
+      "id": "H9.citationPair.ac:outcome-1-delivered.fr:outcome-1",
+      "ok": true,
+      "detail": "cited (uc:outcome-1 x branch:outcome-1-main) vs requirement derivation (branch:outcome-1-main,branch:outcome-1-deterministic-error)"
+    },
+    {
+      "id": "H9.citationPair.ac:outcome-1-deterministic-error.fr:outcome-1",
+      "ok": true,
+      "detail": "cited (uc:outcome-1 x branch:outcome-1-deterministic-error) vs requirement derivation (branch:outcome-1-main,branch:outcome-1-deterministic-error)"
+    },
+    {
+      "id": "H9.citationPair.ac:terminal-1-audited.fr:terminal-1",
+      "ok": true,
+      "detail": "cited (uc:terminal-1 x branch:terminal-1-main) vs requirement derivation (branch:terminal-1-main)"
+    },
+    {
+      "id": "H9.citationPair.ac:determinism-1",
+      "ok": true,
+      "detail": "non-scenario-derived NFR: no UC citation (lawful single shape)"
+    },
+    {
+      "id": "I1.evidenceRefs.exact",
+      "ok": true,
+      "detail": "21 refs, exact set match=true"
+    },
+    {
+      "id": "I2.evidenceKindCoverage",
+      "ok": true,
+      "detail": "sum=21 vs refs=21; kinds=17"
+    },
+    {
+      "id": "I3.upstreamAuthority.binding",
+      "ok": true,
+      "detail": "import artifact sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5 recomputes; accepted import review cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b recomputes (verdict accepted)"
+    },
+    {
+      "id": "I4.governingContract.resolves",
+      "ok": false,
+      "detail": "UNRESOLVED across 92 mentioning files under qualification/: no content (raw bytes, whole-JSON canonical, or .content canonical) hashes to sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837; claimants declaring it as their own address all recompute otherwise: [{\"file\":\"-r1\\\\define-architecture-contract-desk-architecture-contract.artifact.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af\"},{\"file\":\"-r1\\\\define-product-intent-desk-architecture-contract.artifact.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"b880d0b7fdcc4b1ebadb32664eca8466d3faf480e98b43c38fb3ecf5acd1aff6\"},{\"file\":\"-r1\\\\freeze-what-baseline-architecture-contract.artifact.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"d041cb56b0433b540c5eb079a0ba92ffbdb90e76d3db8a8d3b55abc017161df4\"},{\"file\":\"-r1\\\\import-discovery-handoff-desk-architecture-contract.artifact.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"87aeab3f131bb342c1ea28032dcb286ce23b58d73dc38e303f5713b5e39dd281\"},{\"file\":\"-r1\\\\import-discovery-handoff-desk-formalization-architecture-contract.artifact.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"87aeab3f131bb342c1ea28032dcb286ce23b58d73dc38e303f5713b5e39dd281\"},{\"file\":\"-r1\\\\import-discovery-handoff-desk-formalization-trace.json\",\"declared\":\"a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837\",\"recomputed\":\"0f06d0bc0e3466e24c4f5a6ef3b51d484bb4e55359310335358daca5232ffd76\"}]"
+    },
+    {
+      "id": "J1.deskPins",
+      "ok": true,
+      "detail": "formalization.acceptance-bindings.v1/frf.acceptance-closure.v1/formalization-desk-define-acceptance-contract"
+    },
+    {
+      "id": "J2.submission.pins",
+      "ok": true,
+      "detail": "submission pins match artifact pins"
+    },
+    {
+      "id": "J3.criterionUniverse",
+      "ok": true,
+      "detail": "ac:boundary-1,ac:outcome-1-delivered,ac:outcome-1-deterministic-error,ac:terminal-1-audited,ac:determinism-1"
+    },
+    {
+      "id": "J4.deferrals.standalone",
+      "ok": true,
+      "detail": "zero deferrals, zero standalone evidence bindings (all required branches covered end-to-end)"
+    },
+    {
+      "id": "J5.pinnedTimestamps",
+      "ok": true,
+      "detail": "pinned 2026-08-28T00:00:00Z across submission/artifact/trace"
+    },
+    {
+      "id": "J6.closureLaws",
+      "ok": true,
+      "detail": "requirements coverage all-exact=true + branch coverage all-exact=true over 3 scenarios / 4 branches"
+    },
+    {
+      "id": "K1.workspace.zeroUpstream.consistent",
+      "ok": true,
+      "detail": "0 accepted upstream revisions travel by content address"
+    },
+    {
+      "id": "K2.upstreamProjection.unresolvable",
+      "ok": true,
+      "detail": "scanned 254 workspace files under qualification/: raw-bytes hits=0, canonical-JSON hits=0, .content canonical hits=0, textual mentions=8 (-r3\\define-acceptance-contract-desk-reviewer-build.mjs | -r3\\define-acceptance-contract-desk-reviewer-review.json | -r3\\define-acceptance-contract-desk-reviewer-submission-summary.md | -r3\\define-acceptance-contract-desk-reviewer-trace.json | -r3\\define-acceptance-contract-desk-reviewer-verification.json | -r3\\define-acceptance-contract-desk-reviewer-verify-emission-a.mjs | -r3\\define-acceptance-contract-desk-reviewer-verify-out.json | -r3\\define-acceptance-contract-desk-reviewer-verify.mjs)"
+    },
+    {
+      "id": "L1.fence.scan",
+      "ok": true,
+      "detail": "no WHAT-side forbidden keys anywhere in the bundle (WP03/closure SCOPE_VIOLATION surface)"
+    },
+    {
+      "id": "L2.verificationFlags",
+      "ok": false,
+      "detail": "flag honesty failures: revisionPinsMatchAcceptedRevisions (pins are byte-exact to UNACCEPTED revisions)"
+    },
+    {
+      "id": "M1.importChain.accepted",
+      "ok": true,
+      "detail": "the discovery import chain is the one genuinely accepted link (import artifact b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5, review verdict accepted)"
+    },
+    {
+      "id": "M2.intentRevision.accepted",
+      "ok": false,
+      "detail": "intent candidate of record a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055: reviewer verdicts 'repair' (FR-Define-Product-Intent-001) and 'repair' (FR-Define-Product-Intent-002, both round CRIT-1: prd:scope-2 fabricated disposition authority; MAJ-1: governing anchor) - intent artifact files in workspace: [{\"file\":\"-r2\\\\define-product-intent-desk-product-intent.artifact.json\",\"digest\":\"a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055\"},{\"file\":\"-r3\\\\define-product-intent-desk-product-intent.artifact.json\",\"digest\":\"a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055\"}]; no author reissue exists = true"
+    },
+    {
+      "id": "M3.ucReviewerStage.exists",
+      "ok": false,
+      "detail": "NO reviewer artifacts for the model-use-cases bundle exist anywhere in the corpus (scan found 0); the bundle was authored in violation of its own desk's upstream hold (hold artifact sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7, holdKind=uc-upstream-hold) and admitted for a reviewer stage that never ran"
+    },
+    {
+      "id": "M4.requirementsRevision.accepted",
+      "ok": false,
+      "detail": "requirements candidate of record 86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df: reviewer verdict 'repair' (FR-Derive-System-Requirements-001; CRIT-1 unaccepted lineage asserted accepted, CRIT-2 scope-2 ratification, MAJ-1 governing anchor) + re-staffing confirmation 'RS-Derive-System-Requirements-001' (recomputes) - the verdict stands unremediated and the r3 copy is byte-identical"
+    },
+    {
+      "id": "M5.candidate.acceptedStatusClaims",
+      "ok": false,
+      "detail": "the candidate's material authority (\"the accepted define-product-intent bundle, the accepted model-use-cases scenario bundle and the accepted derive-system-requirements bundle, traveling by content address\"), its accepted* upstream field family and its accepted-* evidence kinds assert accepted intent/UC/requirements revisions; self-check 9 (\"Upstream re-verified before consumption: intent/UC/requirements artifact digests recomputed, member seals recomputed, re...\") asserts \"accepted ... re-sealed\" - all three consumed revisions are NON-accepted (M2/M3/M4), so these are workflow-status fabrications the digest layer cannot see"
+    },
+    {
+      "id": "N1.scope2.notRatified",
+      "ok": false,
+      "detail": "candidate restates the prd:scope-2 exclusion as settled fact (brief + self-check 10), but the accepted capsule material for claim:scope-2 (SC-2 cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da) recomputes to a bare claim statement (no decision) and certificate CERT-1 is a subject-level go; the exclusion authority was established as nonexistent by FR-Define-Product-Intent-001 CRIT-1, FR-Define-Product-Intent-002 CRIT-1 and FR-Derive-System-Requirements-001 CRIT-2; the consumed member still reads \"Explicit disposition of accepted Discovery scope claim 2 at intent freeze; excluded from t...\" - zero derivation edges from prd:scope-2 would be lawful under contest, restating the exclusion as fact is not"
+    }
+  ]
+}

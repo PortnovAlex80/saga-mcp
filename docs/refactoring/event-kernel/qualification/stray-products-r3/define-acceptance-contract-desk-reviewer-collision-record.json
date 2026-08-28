@@ -1,0 +1,130 @@
+{
+  "recordRef": "sha256:102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e",
+  "recordKind": "reviewer-collision-record",
+  "contentDigest": "102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e",
+  "semanticCode": "CL-Define-Acceptance-Contract-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact); raw-bytes pins marked as such",
+  "content": {
+    "recordId": "CL-Define-Acceptance-Contract-001",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "recordKind": "reviewer-collision-record",
+    "candidateOfRecord": {
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    "timeline": [
+      "2026-08-28 03:00:50 - author candidate of record written (artifact/trace/submission; unchanged through the collision)",
+      "2026-08-28 ~03:04-03:10 - emission A verification runs; canonical verify-out written (99/92/7; raw 3db45fd3...)",
+      "2026-08-28 ~03:12-03:13 - emission A writes the five canonical reviewer artifacts (VV 58632e55..., FR 000a871a..., RT 95e6cc35..., FS cd8d5548..., MD)",
+      "2026-08-28 03:14:06-03:15:24 - emission B overwrites the canonical build/verify scripts, verify-out, verification, review, trace and summary in place; the canonical submission filename keeps emission A's bytes",
+      "2026-08-28 (this record) - both emissions preserved by content address; verdict contention routed to adjudication"
+    ],
+    "emissionA": {
+      "emission": "A",
+      "writer": "define-acceptance-contract desk reviewer (first emission)",
+      "verdict": "repair",
+      "verification": {
+        "semanticCode": "VV-Define-Acceptance-Contract-001",
+        "recomputedChecks": 99,
+        "passed": 92,
+        "failed": 7
+      },
+      "review": {
+        "semanticCode": "FR-Define-Acceptance-Contract-001",
+        "finalGate": {
+          "gateVerdict": "repair",
+          "providerId": "reviewer-verdict",
+          "issues": [
+            "CRIT-1",
+            "CRIT-2",
+            "MAJ-1"
+          ]
+        }
+      },
+      "firstWriteAddresses": {
+        "verification": "sha256:58632e555ab648f9039a6d4445ed0224e1ce10d279d41b88424e31c2ddf90510",
+        "review": "sha256:000a871aa1efa2e7ceb6d94bb3d711b2739a4c153c1039608a892d3bfddb09a3",
+        "trace": "sha256:95e6cc350f873034aae3514a8d9df1866fb383447d784af02f36cff998b8a289",
+        "submission": "sha256:cd8d55485d6d594de829a7c67974f1726656f959815ec4b4c05deae3f2679b60",
+        "note": "addresses of the first write to the canonical filenames; the verification/review/trace files were subsequently overwritten in place by emission B; the submission (cd8d5548...) survived under its canonical name at collision-record time"
+      },
+      "reissuedAddresses": {
+        "builder": "define-acceptance-contract-desk-reviewer-build-emission-a.mjs",
+        "evidence": "define-acceptance-contract-desk-reviewer-verify-out-emission-a.json",
+        "verification": "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb",
+        "review": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+        "trace": "sha256:35c551ac922b2d27c1291c351efa50e32e35f4a931c81c7c8ce2c4c16e33a3d5",
+        "submission": "sha256:983ce949d726ce3fbd2bf68a755789c8ca96e6f325b8c41553c1a3d540e73ed6",
+        "note": "re-issued under -emission-a filenames; identical check results (99/92/7, same failed ids) and identical findings; digests differ from firstWriteAddresses only because the workspace-scan evidence (K2 scanned-file count, I4 mention count) grew with the corpus"
+      },
+      "failedCheckIds": [
+        "I4.governingContract.resolves",
+        "L2.verificationFlags",
+        "M2.intentRevision.accepted",
+        "M3.ucReviewerStage.exists",
+        "M4.requirementsRevision.accepted",
+        "M5.candidate.acceptedStatusClaims",
+        "N1.scope2.notRatified"
+      ]
+    },
+    "emissionB": {
+      "emission": "B",
+      "writer": "concurrent writer (unidentified; overwrote the canonical reviewer filenames in place 03:14:06-03:15:24)",
+      "verdict": "accepted",
+      "reviewAddress": "e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "reviewObservations": {
+        "reviewId": "FR-Define-Acceptance-Contract-001",
+        "criticalIssues": 0,
+        "majorIssues": 0,
+        "finalGate": null,
+        "verificationRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43"
+      },
+      "verificationObservations": {
+        "contentDigest": "17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+        "recomputedChecks": 50,
+        "passed": 50,
+        "failed": 0,
+        "shapeNote": "carries a sha256:-prefixed contentDigest (nonstandard shape vs every other desk artifact)"
+      },
+      "submissionObservation": {
+        "note": "the canonical product-submission filename at pin time held EMISSION A's bytes (cd8d5548..., verdict repair, self-checks 9/10/11 honestly unsatisfied) - the canonical namespace is therefore MIXED: emission A's submission beside emission B's verification/review",
+        "contentDigestAtPin": "5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0"
+      },
+      "rawFileHashesAtPin": {
+        "define-acceptance-contract-desk-reviewer-verify.mjs (canonical, emission B)": "39a95574d0c0e411c07392bd840127f523281d6c1faabc5e637cf0e1de76ec3c",
+        "define-acceptance-contract-desk-reviewer-build.mjs (canonical, emission B)": "9fc602e915e2d6ef02e16608b694649aedf2da8b842d629d39ac32a3b8ac7cf6",
+        "define-acceptance-contract-desk-reviewer-review.json (canonical, emission B)": "ed27c5f47c4cde53e70d5f716c5e2fdb7f6827a0e0a0661c469b8d5d7f6e97d5",
+        "define-acceptance-contract-desk-reviewer-trace.json (canonical, emission B; no content envelope digest observed)": "a62b3ea6ed8ad3afe1d79dca3fb250285aa6330d38068e788804577169d5d9fc",
+        "define-acceptance-contract-desk-reviewer-submission-summary.md (canonical, emission B)": "854710a75916985802ed6667c289ae5eff11da09614d3af3255949982c854277",
+        "define-acceptance-contract-desk-reviewer-verification.json (canonical, emission B)": "cd31e5ae38bf483280b3fe54f9050f5fdfeae0220a76056053a1c68bb3ef9b66",
+        "define-acceptance-contract-desk-reviewer-verify-out.json (first canonical out, emission A, 99/92/7)": "3db45fd3c9439778590d53eeac60526ecdc0f9d4e8761f15fffea93f50e56987",
+        "define-acceptance-contract-desk-reviewer-verify-out.json (replaced again before record; 51/48/3 state)": "81ecfa6ff74a1008c671006bddac4fb7cac6c5fef8675d04da4f94fa6a172156",
+        ".reviewer-verify-phase1.json (emission B staging file)": "8abf0ae0694f21f9114312ea1a8b8db05fe922cdf1e701d2fae709f0fabad903"
+      }
+    },
+    "contention": {
+      "contentionId": "CTN-Define-Acceptance-Contract-001",
+      "subject": "reviewer verdict for SR-Define-Acceptance-Contract-001 (sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0)",
+      "emissionA": "repair - grounded in 99 recomputations (REAL cell provider recheck, envelope, trace, governing-anchor resolvability, workspace-wide upstream-accepted adjudication, and the M/N ACCEPTANCE-STATE audit proving the consumed intent/UC/requirements revisions are repair-verdict or never-reviewed and that the candidate restates the prd:scope-2 fabricated exclusion as fact)",
+      "emissionB": "accepted - recorded with zero critical/major findings; the observed verification surface (43-50 checks) contains no status-layer audit (no counterpart of I4/M2-M5/N1), so the acceptance is not evidence-backed against the failures emission A documents",
+      "resolutionDemand": [
+        "The final gate must not consume an accepted reviewer verdict that contradicts recomputable evidence still on disk (emission A verify-out: 7 hard failures over the same candidate).",
+        "Both emissions travel by content address; neither may be erased by filename ownership.",
+        "The in-place overwrite of an admitted reviewer emission violates the r2 ADV-4 precedent (monotonic reissue with superseded addresses recorded); this record is that accounting for round r3.",
+        "Canonical filenames at record time are MIXED across emissions; every consumer must resolve artifacts by content address, never by filename.",
+        "The verdict contention routes to driver/human adjudication together with the underlying candidate defects (CRIT-1 unaccepted lineage asserted accepted; CRIT-2 scope-2 exclusion ratified; MAJ-1 governing anchor unresolvable)."
+      ]
+    },
+    "processFindings": [
+      "PROCESS-1 (repeat of r2 ADV-4): canonical desk filenames were overwritten in place during an open review stage; the r2 record already established the rule - a candidate or emission admitted to a stage is immutable at its content address on disk; revisions reissue under monotonic ids with superseded addresses recorded.",
+      "PROCESS-2: the canonical namespace ended up MIXED (A submission + B verification/review/trace/summary) - filename-keyed consumers would assemble a Frankenstein record; content addressing is the only safe transport (CON-1).",
+      "PROCESS-3: emission B records a verdict (accepted) whose recorded verification surface does not cover the documented failure modes; an acceptance without the status-layer audit is exactly the \"not recomputation-backed positive finding\" defect the r2 reviews named."
+    ],
+    "pinnedTimestamp": "2026-08-28T00:00:00Z"
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "confirmationRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+  "artifactKind": "reviewer-hold-confirmation",
+  "contentDigest": "c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44",
+  "semanticCode": "RC-Freeze-What-Baseline-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "freeze-what-baseline",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.reviewer-hold-confirmation.v1",
+    "deskRef": "freeze-what-baseline",
+    "deskNodeId": "freeze-what-baseline",
+    "role": "reviewer",
+    "itemInstanceId": "formalization-item:freeze-what-baseline",
+    "token": "plan:formalization#item:what-baseline",
+    "confirmationKind": "reviewer-hold-confirmation",
+    "decision": "hold-upheld-no-candidate-to-review",
+    "statement": "The freeze-what-baseline reviewer seat confirms the standing author hold UH-Freeze-What-Baseline-001 (9f2d28b9..., 33/33 receipt 622d7ba1...) and authors NO WHAT-baseline material. There is no candidate to review: the recomputed hold declares noProductAuthored=true. The envelope of this reviewer staffing carries a DELTA against the author frame: upstream-accepted[0] sha256:e210334e... :: \"accepted revision of freeze-what-baseline\" and the summary line \"1 accepted upstream revisions travel by content address\". This staffing adjudicates the delta: the address is UNRESOLVABLE (the full qualification tree scanned in three digest bodies - raw bytes, LF-normalized bytes, canonical-JSON whole-document and .content - 0 hits; it appears nowhere as a declared ref), and it is semantically impossible: no revision of this desk exists to be accepted (noProductAuthored=true), and no reviewer acceptance record of this desk exists. Stale shell metadata, same family as the r2 upstream-accepted claim 65fe9a22... adjudicated in RS-Derive-System-Requirements-001. The claim is recorded for the shell owner and NOT ratified. The verified census is unchanged: 0 of 5 pre-freeze desks accepted; the gate verdict of record FR-Reconcile-What-001 39a94a29... (repair) and its explicit prohibition \"No domain.accepted may fire from this desk toward freeze-what-baseline on this chain\" recompute and stand un-discharged; the only accepted base remains the discovery import chain (b10bb762..., capsule 8/8 + CERT-1 03972527...).",
+    "protocolLineage": {
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "protocolVersionCheck": "CURRENT",
+      "pinnedVia": "transitive: the accepted import artifact of the import-discovery-handoff desk declares this protocol version",
+      "viaImportArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "confirmedHoldOfRecord": {
+      "semanticCode": "UH-Freeze-What-Baseline-001",
+      "file": "freeze-what-baseline-desk-upstream-hold.artifact.json",
+      "ref": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+      "decision": "hold-no-authoring",
+      "noProductAuthored": true,
+      "trace": {
+        "file": "freeze-what-baseline-desk-upstream-hold-trace.json",
+        "ref": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+        "edges": 23
+      },
+      "holdVerifierReceipt": {
+        "file": "freeze-what-baseline-desk-hold-verify-out.json",
+        "verifyOutDigest": "sha256:622d7ba1ae89e16e3871d353e630736448f3ec7663817afeafa25e58696aad9f",
+        "pass": "33/33",
+        "allPass": true
+      }
+    },
+    "reviewedCandidate": {
+      "exists": false,
+      "productKind": "frf-contracts.what-baseline.v1",
+      "reason": "the author seat authored NO product (hold-no-authoring, noProductAuthored=true recomputed from the hold bytes): there is no submission, no artifact and no trace of this desk to review, hence no FR/VV/FS reviewer package of record - this confirmation is the desk's first and only reviewer-stage record"
+    },
+    "envelopeIdentity": {
+      "taskProjection": "8/8 task-projection content addresses equal the standing author-hold frame byte-for-byte (the hold pins the identical 8 digests) and re-derive from the accepted capsule 8/8 + CERT-1 (independently recomputed this staffing)",
+      "skillPins": "protocol bc8a4261... / semantic 2cbcf850... equal the standing r3 staffing pins",
+      "writeAuthority": "verbatim equal: \"write authority: desk artifacts only; allowed=candidate-read,product-read,product-submit\"",
+      "envelopeDelta": [
+        "d1: workspaceSummary - this frame carries \"workspace: 1 accepted upstream revisions travel by content address\"; the author frame carried \"workspace: 0 accepted upstream revisions travel by content address\"",
+        "d2: upstream-accepted[0] sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de :: \"accepted revision of freeze-what-baseline\" - absent from the author frame"
+      ]
+    },
+    "upstreamAcceptedAdjudication": {
+      "declared": "sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de :: accepted revision of freeze-what-baseline",
+      "resolution": "UNRESOLVABLE",
+      "method": "the full qualification tree scanned (stray-products-r1/r2/r3, kits, series; live qualification corpus, count recorded in the verification receipt), three digest bodies per file - raw bytes, LF-normalized bytes, canonical-JSON of the parsed document and of its .content: 0 content hashes to this address and 0 documents canonically contain it; it is not the raw-bytes digest of any file either",
+      "semanticImpossibility": "independent of the scan: the only product kind that could carry this address is frf-contracts.what-baseline.v1, and the recomputed hold of this desk declares noProductAuthored=true - no revision of freeze-what-baseline exists on this chain to be accepted, and no reviewer acceptance record of this desk exists; the nearest baseline-shaped corpus material is the r1 fixture (baseline .content 02e5f6ece3be..., settlement 097154d9fef6...), neither equals this address and neither travels in this chain authority",
+      "family": "stale shell metadata, same family as sha256:65fe9a22... (upstream-accepted of the r2 derive-system-requirements reviewer envelope, adjudicated UNRESOLVABLE in RS-Derive-System-Requirements-001) and sha256:745cadc1...; recorded for the shell owner",
+      "ratified": false,
+      "consequence": "the envelope summary line \"1 accepted upstream revisions travel by content address\" is NOT ratified by this desk: zero accepted upstream revisions travel by content address into freeze-what-baseline; the verified census is unchanged - 0 of 5 pre-freeze desks accepted; the only accepted base remains the discovery import chain (import b10bb762..., capsule 8/8 + CERT-1 03972527...)"
+    },
+    "holdRecheck": {
+      "holdBytesUnchanged": "hold artifact 9f2d28b9... and trace 17c09566... recompute byte-stable from the on-disk files and match the hold build determinism pins",
+      "holdReceipt": "hold verify-out recomputes to self-digest 622d7ba1... with summary 33/33 pass / 0 fail",
+      "upstreamGateUnmoved": "gate verdict of record FR-Reconcile-What-001 39a94a29... (repair) recomputes; the explicit prohibition recomputes from the verdict record nextStage and stands un-discharged; this staffing neither fires nor can fire it",
+      "censusUnmoved": "all five pre-freeze verdict-of-record rows recompute: intent a06dbc57... repair x3 (e49d8d11..., 6c9c8324..., 04632094...); UC 24f0aff2... never reviewed at its own address (the only UC verdict 8aeee351... pins a different candidate c6120e86..., and the r2 authoring violated the desk hold 6cccd162...); requirements 86b00569... repair d31b044c... + RS-001 1c30d28e... with the reviewer seat held (fbc0394b..., b4eaaaba...); acceptance 2b01353d... adjudicated repair CTN-001 (FR-Define-Acceptance-Contract-002 7e76176c..., emission C) with the desk on record hold a53a5e08...; reconcile-what 6400a2dd... repair (CRIT-1 + CRIT-2)",
+      "freezeContractUnmoved": "what-baseline schema raw digest ab1b7f5e... recomputes; acceptanceRecords minItems 5 stands; 0/5 < 5 - the direct lawful-authoring blocker is unchanged"
+    },
+    "taskProjection": {
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "recompute": "all 8 envelope entries recomputed from the accepted import-discovery-handoff capsule sub-artifact contents (9/9 including CERT-1) and matched exactly; identical to the hold frame projection",
+      "envelopeRecomputeSource": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "idempotency": {
+      "law": "desk law on re-staffing: the outcome is idempotent by content address; re-emitting an existing package would mint new addresses for identical semantics",
+      "note": "this is the FIRST reviewer emission of this desk: RC-Freeze-What-Baseline-001 has no predecessor; no FR/VV/FS duplicates are minted because no candidate exists to review"
+    },
+    "emissionDiscipline": {
+      "noProductSubmitted": "this reviewer seat submits NO desk product and fires NO gate effect: domain.frozen from this desk is forbidden by the recomputed prohibition, and frf-contracts.what-baseline.v1 cannot be satisfied (0/5 accepted acceptanceRecords)",
+      "namespaced": "this emission writes ONLY freeze-what-baseline-desk-reviewer-confirmation-namespaced files; zero existing files modified or deleted (the standing freeze-what-baseline set recomputes byte-exact)",
+      "determinism": "pinned timestamps, no clock reads, no randomness"
+    },
+    "resumeContract": [
+      "R1-R4 of the standing hold UH-Freeze-What-Baseline-001 stand unchanged and are carried by reference, not re-authored here",
+      "the envelope delta (e210334e / 1-count summary) adds NO resume path: an unresolvable address cannot discharge R1 (upstream repair routing RA-1..RA-5), R2 (gate verdict discharge) or R3 (authoring on five accepted triples)"
+    ],
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "workspaceSummary": "workspace: 1 accepted upstream revisions travel by content address",
+      "upstreamAccepted": [
+        "sha256:e210334e796f8693dc569354ca0b442c7caf9c390eab78581e07897c9febf9de"
+      ],
+      "writeAuthority": "write authority: desk artifacts only; allowed=candidate-read,product-read,product-submit"
+    },
+    "verification": {
+      "declaredDigestsTrusted": false,
+      "holdArtifactDigestRecomputed": true,
+      "holdTraceDigestRecomputed": true,
+      "holdReceiptDigestRecomputed": true,
+      "capsuleSubArtifactDigestsRecomputed": true,
+      "envelopeProjectionDigestsRecomputed": true,
+      "citedRecordDigestsRecomputed": true,
+      "prohibitionRecomputedFromVerdictRecord": true,
+      "schemaRawDigestRecomputed": true,
+      "upstreamAcceptedScannedUnresolvable": true,
+      "noAcceptedStateAsserted": true,
+      "acceptedStateClaimsGatedOnVerdictRecords": true,
+      "productMaterialAuthored": false,
+      "noGateEffectFired": true,
+      "staleProtocolRefusals": 0,
+      "deterministicAuthoring": true
+    },
+    "traceFile": "freeze-what-baseline-desk-reviewer-confirmation-trace.json",
+    "traceEdges": 26,
+    "traceBinding": "by file and edge count only (acyclic content addressing): the trace embeds THIS confirmation by content digest"
+  }
+}

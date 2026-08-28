@@ -1,0 +1,168 @@
+{
+  "artifactRef": "sha256:cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+  "artifactKind": "formalization-review",
+  "contentDigest": "cfc7b35a5d0b71586e24be6474c5add914ba5f303edbd8bc2789782fd34b4d7b",
+  "semanticCode": "FR-Import-Discovery-Handoff-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Import-Discovery-Handoff-002",
+    "deskRef": "import-discovery-handoff",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r2",
+    "reviewedCandidate": {
+      "submissionRef": "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+      "artifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "artifactSemanticCode": "DI-Import-Discovery-Handoff-001",
+      "traceRef": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+      "productKind": "formalization.discovery-import.v1"
+    },
+    "verificationRef": "sha256:b8a00be93d977bf94c93c68cd712b05696b0f472e1db1e91612fece401bc8d70",
+    "verificationSummary": {
+      "recomputedChecks": 41,
+      "passed": 41,
+      "failed": 0,
+      "trustedByDeclaration": false
+    },
+    "envelopeConsistency": {
+      "taskProjectionContentAddresses": 8,
+      "resolved": 8,
+      "note": "Every envelope claim/constraint/unknown/terminal ref resolves byte-exact to a recomputed sub-artifact digest; no silent drops (WP-18), no digest drift (the r1 CRIT-003 failure mode is absent)."
+    },
+    "capsuleVerification": {
+      "capsuleRef": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "selfAddressRecomputed": true,
+      "protocolVersion": "ek.discovery-handoff-capsule.ek8-wp11f.v1",
+      "lineage": {
+        "lineageId": "lineage:message-service-2026-08",
+        "parentLifecycleRef": "sha256:0794e660975e42cc2ff850b9e9a3ccbde49fccad93149a4958e76d2be8fc2dde"
+      },
+      "parentState": {
+        "status": "discovery-terminal",
+        "terminalProofRef": "sha256:4a919f529fa661d2bbd39688c1996eaabaa309d521fae6ae28a648bd54c007fd"
+      }
+    },
+    "workspaceLaw": "0 accepted upstream revisions travel by content address",
+    "findings": {
+      "positiveFindings": [
+        "41/41 independent recomputations pass; every declared digest in the round is a real content address (fabricated digests of the r1 round are gone).",
+        "Capsule self-address verifies: sha256 over the canonical fact body (ingress.ts order) equals the declared capsuleDigest.",
+        "Envelope-to-capsule identity: all 8 reviewer-frame content addresses match recomputed sub-artifact digests exactly.",
+        "Trace graph resolves against recomputed digests; both terminals are reached by all 4 source claims + the constraint; the unknown is carried forward with owner=discovery, never silently resolved (D10).",
+        "Constraint honored: all desk content deterministic (pinned timestamp, no clock reads, no randomness); retention constraint constraint:retention-1 enforced in author and reviewer artifacts alike.",
+        "Provenance continuity: governingContractRef sha256:a926df62...8f76b2837 resolves to the r1-round desk contract material, chaining the rounds by content address."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "package_bytes_attestation",
+          "note": "Raw capsule package bytes are not present in the desk workspace; packageBytesDigest is well-formed and the capsule self-address recomputes, but byte-level presence/corruption checks (BYTES_MISSING/BYTES_CORRUPT) are kernel ingress authority executed by the driver over public commands, attested by the desk intake receipt (admitted_for_reviewer_stage). Recorded as attestation, not desk-level re-verification."
+        },
+        {
+          "type": "parent_state_refs",
+          "note": "lineage.parentLifecycleRef (sha256:0794e660...) and parentState.terminalProofRef (sha256:4a919f52...) are well-formed content addresses of Discovery-side state, not locally resolvable at this desk. Textual consistency verified: lineage id lineage:message-service-2026-08 matches the certificate subject \"message service\"."
+        },
+        {
+          "type": "terminal_claim_wording",
+          "note": "terminal:delivered-1 statement text duplicates the TC-1 template wording (\"triaged go with recorded strengths\"). The content address is honest and the desk transports capsule content verbatim, so this wording quirk originates Discovery-side; no formalization impact, flagged to the discovery owner for template hygiene."
+        }
+      ],
+      "criticalIssues": [],
+      "majorIssues": []
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts with SHA256 digests",
+        "satisfied": true,
+        "evidence": "A1-C3, D.*: all round digests recomputed and matching"
+      },
+      {
+        "id": 2,
+        "description": "Capsule protocol version matches HANDOFF_PROTOCOL_VERSION",
+        "satisfied": true,
+        "evidence": "G: ek.discovery-handoff-capsule.ek8-wp11f.v1"
+      },
+      {
+        "id": 3,
+        "description": "All sub-artifact digests are recomputed and verified",
+        "satisfied": true,
+        "evidence": "D.*: 9/9 over canonical content; declaredDigestsTrusted=false confirmed honest by L"
+      },
+      {
+        "id": 4,
+        "description": "Lineage binding matches expected discovery-formalization connection",
+        "satisfied": true,
+        "evidence": "F1 + lineage recorded (lineage:message-service-2026-08); kernel-side binding check attested by intake receipt"
+      },
+      {
+        "id": 5,
+        "description": "Parent state is exactly discovery-terminal",
+        "satisfied": true,
+        "evidence": "J1/J2: status + content-addressed terminal proof ref"
+      },
+      {
+        "id": 6,
+        "description": "No active attempts exist in target database",
+        "satisfied": true,
+        "evidence": "verification.activeAttemptsInTargetWorld=0; fresh-run law attested by kernel ingress receipt"
+      },
+      {
+        "id": 7,
+        "description": "Complete trace relationship coverage from source to terminal claims",
+        "satisfied": true,
+        "evidence": "H1-H3: 11 relationships resolve; both terminals fully covered; unknown carried explicitly"
+      },
+      {
+        "id": 8,
+        "description": "Products of kind formalization.discovery-import.v1 are generated",
+        "satisfied": true,
+        "evidence": "B1/B3: candidate artifact DI-Import-Discovery-Handoff-001 bound in the submission"
+      },
+      {
+        "id": 9,
+        "description": "Evidence references include capsule and all sub-artifact refs",
+        "satisfied": true,
+        "evidence": "I1/I2: 11 refs exact, kind coverage exact"
+      },
+      {
+        "id": 10,
+        "description": "0 accepted upstream revisions travel by content address",
+        "satisfied": true,
+        "evidence": "K: consistent in envelope, artifact, submission"
+      }
+    ],
+    "verdict": "accepted",
+    "verdictVocabulary": [
+      "accepted",
+      "repair",
+      "upstream-repair",
+      "human-wait",
+      "terminal-reject"
+    ],
+    "finalGate": {
+      "gateVerdict": "accepted",
+      "providerId": "reviewer-verdict",
+      "issues": []
+    },
+    "evidenceReferences": [
+      "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+      "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+      "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+      "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+      "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+      "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+      "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+      "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+      "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+      "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "sha256:b8a00be93d977bf94c93c68cd712b05696b0f472e1db1e91612fece401bc8d70"
+    ],
+    "conclusion": "The r2 import-discovery-handoff author round is content-integrity-clean: all three candidate artifacts self-verify, all 9 capsule sub-artifacts and the capsule self-address recompute exactly, the reviewer envelope resolves 8/8 content addresses, the trace graph is complete and honest, and the author self-check flags agree with independent recomputation. Verdict: accepted (frozen vocabulary); the shell desk may settle and the formalization stage may proceed on this imported material authority."
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "traceRef": "sha256:e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "e97b710f129eb9d15caf31294d170f0fa7b4b5d3b3941304d0a76074072637ba",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "derive-system-requirements",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Derive-System-Requirements-001",
+    "deskRef": "derive-system-requirements",
+    "role": "reviewer",
+    "traceKind": "reviewer-verdict-trace",
+    "subjectSemanticCode": "FR-Derive-System-Requirements-001",
+    "subjectArtifactRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+    "verdict": "repair",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "reviews",
+        "toId": "SR-Derive-System-Requirements-001",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "description": "Independent reviewer verification of the system-requirements artifact (verdict repair: CRIT-1, CRIT-2, MAJ-1)"
+      },
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "reviews",
+        "toId": "FS-Derive-System-Requirements-001",
+        "toRef": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+        "description": "Independent reviewer verification of the author product submission"
+      },
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "reviews",
+        "toId": "author-trace:derive-system-requirements",
+        "toRef": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+        "description": "Reviewer verification of the author trace graph (13/13 relationships resolve)"
+      },
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts are deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "This independent desk audit (80 recomputations, REAL WP03 validator + acceptance-status audit) is the audited-1 realization at the requirements desk; the repair loop keeps the audit honest"
+      },
+      {
+        "fromId": "FR-Derive-System-Requirements-001",
+        "fromRef": "sha256:d31b044c9530773ac05a25bd9b4cb503164bcf31b4694547011aba43c19816d0",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The repair verdict holds the delivered terminal to its evidence standard: requirements settle only when their entire lineage is accepted material under authority that exists (RA-1..RA-4)"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "The review confirms the carried-forward disposition; neither the author nor the reviewer resolves or drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "FR-Derive-System-Requirements-001",
+          "fr:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "FR-Derive-System-Requirements-001",
+          "fr:outcome-1"
+        ]
+      }
+    }
+  }
+}

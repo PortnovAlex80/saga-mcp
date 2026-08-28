@@ -1,0 +1,234 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; envelope re-derived from the accepted capsule; every cited record digest recomputed; unresolvable instances re-proved",
+  "subject": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+  "recomputed": 45,
+  "passed": 45,
+  "failed": 0,
+  "results": [
+    {
+      "id": "A1.hold.contentDigest",
+      "ok": true,
+      "detail": "recomputed a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+    },
+    {
+      "id": "A2.hold.artifactRef",
+      "ok": true,
+      "detail": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+    },
+    {
+      "id": "A3.hold.pins",
+      "ok": true,
+      "detail": "hold kind + no-authoring pins"
+    },
+    {
+      "id": "A4.hold.pinnedTimestamp",
+      "ok": true,
+      "detail": "2026-08-28T00:00:00Z"
+    },
+    {
+      "id": "B1.import.digest",
+      "ok": true,
+      "detail": "b10bb762b652fe89…"
+    },
+    {
+      "id": "B2.capsule.subArtifacts",
+      "ok": true,
+      "detail": "9/9 sub-artifact digests recompute"
+    },
+    {
+      "id": "B3.envelope.projection",
+      "ok": true,
+      "detail": "8/8 envelope entries resolve to recomputed capsule sub-artifacts"
+    },
+    {
+      "id": "C1.record.FR-Define-Product-Intent-001",
+      "ok": true,
+      "detail": "e49d8d11aadae74a… verdict=repair"
+    },
+    {
+      "id": "C1.record.FR-Define-Product-Intent-001-b",
+      "ok": true,
+      "detail": "6c9c8324d2cb32ac… verdict=repair"
+    },
+    {
+      "id": "C1.record.FR-Define-Product-Intent-002",
+      "ok": true,
+      "detail": "0463209429b6cf9b… verdict=repair"
+    },
+    {
+      "id": "C1.record.UH-Model-Use-Cases-001",
+      "ok": true,
+      "detail": "6cccd16245eafd18… verdict=hold-no-authoring"
+    },
+    {
+      "id": "C1.record.FR-Model-Use-Cases-001",
+      "ok": true,
+      "detail": "8aeee3511c5c3150… verdict=accepted"
+    },
+    {
+      "id": "C1.record.FR-Derive-System-Requirements-001",
+      "ok": true,
+      "detail": "d31b044c9530773a… verdict=repair"
+    },
+    {
+      "id": "C1.record.RS-Derive-System-Requirements-001",
+      "ok": true,
+      "detail": "1c30d28e8222eaa2… verdict=n/a"
+    },
+    {
+      "id": "C1.record.UH-Derive-System-Requirements-001",
+      "ok": true,
+      "detail": "fbc0394bd8f79df2… verdict=hold-no-review"
+    },
+    {
+      "id": "C1.record.UH-Derive-System-Requirements-002",
+      "ok": true,
+      "detail": "b4eaaabaa5010c6e… verdict=hold-no-review"
+    },
+    {
+      "id": "C1.record.FR-Define-Acceptance-Contract-001-a",
+      "ok": true,
+      "detail": "83e675bb18c575cb… verdict=repair"
+    },
+    {
+      "id": "C1.record.VV-Define-Acceptance-Contract-001-a",
+      "ok": true,
+      "detail": "367a38fcf8d0bd06… verdict=n/a"
+    },
+    {
+      "id": "C2.ucVerdict.differentCandidate",
+      "ok": true,
+      "detail": "the only UC accepted verdict pins c6120e86…, not the consumed 24f0aff2…"
+    },
+    {
+      "id": "D1.unresolvable.a926df62",
+      "ok": true,
+      "detail": "governing-contract anchor: no content in the workspace hashes to this address"
+    },
+    {
+      "id": "D1.unresolvable.bff4aca1",
+      "ok": true,
+      "detail": "contending accepted intent instance: no content in the workspace hashes to this address"
+    },
+    {
+      "id": "E1.fence.noProductMaterial",
+      "ok": true,
+      "detail": "no acceptance-bundle material authored"
+    },
+    {
+      "id": "E2.fence.scope2NotRestated",
+      "ok": true,
+      "detail": "prd:scope-2 disposition referenced only as a defect under adjudication, never ratified as fact"
+    },
+    {
+      "id": "E3.status.noAcceptedStateAsserted",
+      "ok": true,
+      "detail": "status-layer flags assert digest-layer facts only"
+    },
+    {
+      "id": "F1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed b5e7969fe2d4b6b2391716e0cfe167d7dc5501e79fa2a7a452a3ad87e4d5053f"
+    },
+    {
+      "id": "F2.trace.subjectBinding",
+      "ok": true,
+      "detail": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+    },
+    {
+      "id": "F3.edge.verifies.claim:scope-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.claim:scope-2",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.claim:constraint-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.claim:outcome-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.constraint:retention-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.unknown:browser-matrix-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.terminal:audited-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.verifies.terminal:delivered-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.import:discovery-handoff",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.cert:discovery-capsule",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.SR-Define-Acceptance-Contract-001",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.FS-Define-Acceptance-Contract-001",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.link:define-product-intent",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.link:model-use-cases",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F3.edge.observes.link:derive-system-requirements",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.trace.vocabularyClosed",
+      "ok": true,
+      "detail": "observes, verifies"
+    },
+    {
+      "id": "F5.holdCoverage",
+      "ok": true,
+      "detail": "exact projection of the hold"
+    },
+    {
+      "id": "G1.determinism.noClockOrRandom",
+      "ok": true,
+      "detail": "builder + verifier read no clock and no randomness"
+    },
+    {
+      "id": "H1.candidateOfRecord.unchanged",
+      "ok": true,
+      "detail": "byte-unchanged since 03:00:50 pin"
+    }
+  ]
+}

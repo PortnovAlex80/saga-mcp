@@ -1,0 +1,259 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; gate + closure + WP03 seam + universe protocol = REAL cell code (dist)",
+  "recomputed": 50,
+  "passed": 50,
+  "failed": 0,
+  "verdict": "accepted",
+  "results": [
+    {
+      "id": "A1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe vs declared 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "A2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "A3.submission.intakeReceipt",
+      "ok": true,
+      "detail": "admitted_for_reviewer_stage"
+    },
+    {
+      "id": "B1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0 vs declared 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0 / candidate 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "B2.artifact.candidateBinding",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "B3.productSeal",
+      "ok": true,
+      "detail": "recomputed 14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 vs declared 14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "B4.memberSeals",
+      "ok": true,
+      "detail": "5/5 criterion member seals recompute over canonical members"
+    },
+    {
+      "id": "B5.statementSeals",
+      "ok": true,
+      "detail": "5/5 verifiable statement seals recompute; all criterion statement refs resolve"
+    },
+    {
+      "id": "C1.providerDeclaration",
+      "ok": true,
+      "detail": "provider frf.acceptance-closure.v1 v1.0.0; digest recomputed locally d2c01adf7412 == REAL acceptanceProviderDigest"
+    },
+    {
+      "id": "C2.universeFromRealProtocol",
+      "ok": true,
+      "detail": "universe fr=fr:boundary-1,fr:outcome-1,fr:terminal-1 nfr=nfr:determinism-1 ruleIds=0 scenarios=3 branches=4 stmts=5"
+    },
+    {
+      "id": "C2b.universeFailClosedSets",
+      "ok": true,
+      "detail": "{\"uc:boundary-1\":[\"branch:boundary-1-main\"],\"uc:outcome-1\":[\"branch:outcome-1-main\",\"branch:outcome-1-deterministic-error\"],\"uc:terminal-1\":[\"branch:terminal-1-main\"]}"
+    },
+    {
+      "id": "C3.wp03PerCriterion",
+      "ok": true,
+      "detail": "5/5 criteria sealed through the REAL WP03 validateAcBinding seam (digests match the recomputed member seals)"
+    },
+    {
+      "id": "C4.bundleReseal",
+      "ok": true,
+      "detail": "REAL validateAcceptanceBundle re-seal sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 matches the declared product seal"
+    },
+    {
+      "id": "C5.gate.accepted",
+      "ok": true,
+      "detail": "verdict=accepted productRef=sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "C6.gate.failClosed",
+      "ok": true,
+      "detail": "impostor provider refused: PROVIDER_NOT_DECLARED"
+    },
+    {
+      "id": "D1.rev1.citationPairsReDerived",
+      "ok": true,
+      "detail": "every scenario-facing criterion cites exactly the scenario+branch material its bound FR derives from (rev-1)"
+    },
+    {
+      "id": "D2.rev2.deferralLaw",
+      "ok": true,
+      "detail": "deferrals=[] and no requirement is both covered and deferred (rev-2 vacuous, recorded)"
+    },
+    {
+      "id": "D3.rev3.noForeignLineage",
+      "ok": true,
+      "detail": "all bound requirement refs inside the exact accepted FR/NFR sets; no RULE material bound (rev-3)"
+    },
+    {
+      "id": "D4.rev4.branchStripped",
+      "ok": true,
+      "detail": "branch-stripped mutant -> repair (MISSING_LINEAGE): AC-complete but scenario-stripped candidates never pass"
+    },
+    {
+      "id": "D4b.rev4.scenarioStripped",
+      "ok": true,
+      "detail": "scenario-stripped mutant -> repair (MISSING_LINEAGE)"
+    },
+    {
+      "id": "D4c.rev4.unsupportedSubstitution",
+      "ok": true,
+      "detail": "unrelated-scenario substitution -> upstream-repair (FOREIGN_LINEAGE): well-formed but semantically unsupported graphs never pass"
+    },
+    {
+      "id": "D4d.rev4.foreignRequirement",
+      "ok": true,
+      "detail": "foreign requirement binding -> upstream-repair (FOREIGN_LINEAGE)"
+    },
+    {
+      "id": "D5.identityAndFence",
+      "ok": true,
+      "detail": "criterion ids unique (5); WHAT-side fence clean at bundle and criterion level"
+    },
+    {
+      "id": "E1.requirementsCoverage",
+      "ok": true,
+      "detail": "every accepted FR/NFR covered: fr:boundary-1, fr:outcome-1, fr:terminal-1, nfr:determinism-1 (no deferrals needed)"
+    },
+    {
+      "id": "E2.terminalResultCoverage",
+      "ok": true,
+      "detail": "every required UC terminal branch covered end to end: branch:boundary-1-main, branch:outcome-1-deterministic-error, branch:outcome-1-main, branch:terminal-1-main (no standalone evidence bindings needed)"
+    },
+    {
+      "id": "E3.evidenceClosedVocabulary",
+      "ok": true,
+      "detail": "evidence kinds audit,monitoring,test from the closed four-value vocabulary; observable terminal results declared"
+    },
+    {
+      "id": "E4.d10NothingDerivedFromOutOfScope",
+      "ok": true,
+      "detail": "prd:scope-2 (out_of_scope) and unknown:browser-matrix-1 derive no criterion, statement, evidence kind or terminal result (D10)"
+    },
+    {
+      "id": "F1.terminalAuditedChain",
+      "ok": true,
+      "detail": "terminal:audited-1 <- prd:terminal-1 <- fr:terminal-1 <- ac:terminal-1-audited (chain resolves)"
+    },
+    {
+      "id": "F2.terminalDeliveredChain",
+      "ok": true,
+      "detail": "terminal:delivered-1 <- prd:outcome-1 <- fr:outcome-1 <- ac:outcome-1-delivered (chain resolves)"
+    },
+    {
+      "id": "F3.constraintHonored",
+      "ok": true,
+      "detail": "constraint:retention-1 honored: the determinism NFR binds the constraint directly upstream; ac:determinism-1 + ac:outcome-1-deterministic-error enforce it here"
+    },
+    {
+      "id": "F4.unknownCarriedForward",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 carried forward with owner discovery; no resolution edge, no fabricated resolution"
+    },
+    {
+      "id": "G1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1 vs declared sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "G2.traceEdges",
+      "ok": true,
+      "detail": "17/17 trace relationships resolve against recomputed seals (criterion/requirement/scenario/branch/statement/terminal)"
+    },
+    {
+      "id": "G3.coverageBlocksAreProjections",
+      "ok": true,
+      "detail": "criterionCoverage = exact projection of the edge set (5/5 blocks)"
+    },
+    {
+      "id": "G4.reverseCoverageBlocks",
+      "ok": true,
+      "detail": "branchCoverage/requirementCoverage/terminalCoverage = exact reverse projections; branch refs resolve to their owning scenario member seal (branch ids carry no separate address)"
+    },
+    {
+      "id": "H1.upstreamArtifacts",
+      "ok": true,
+      "detail": "accepted intent a06dbc57 / uc 24f0aff2 / requirements 86b00569 artifacts re-verified by content address"
+    },
+    {
+      "id": "H2.revisionPinsRefolded",
+      "ok": true,
+      "detail": "prd fold a30229a7 / uc fold 184981e5 / requirements fold 589927fc recompute; pins match"
+    },
+    {
+      "id": "H3.projectionAddressesReDerived",
+      "ok": true,
+      "detail": "8/8 projection content addresses re-derived from the r2 import capsule material (not by declaration): claim:constraint-1, claim:outcome-1, claim:scope-1, claim:scope-2, constraint:retention-1, terminal:audited-1, terminal:delivered-1, unknown:browser-matrix-1"
+    },
+    {
+      "id": "H4.authorEvidenceRefs",
+      "ok": true,
+      "detail": "author payload contract: 21 evidence refs, all resolve inside the verified chain (upstream pins include the accepted intent/uc/requirements trace+submission refs, import artifact, capsule, certificate, governing contract)"
+    },
+    {
+      "id": "H5.authorKindCoverage",
+      "ok": true,
+      "detail": "{\"accepted-prd-intent-bundle\":1,\"accepted-uc-scenarios-bundle\":1,\"accepted-requirements-bundle\":1,\"discovery-import-artifact\":1,\"discovery-handoff-capsule\":1,\"discovery-certificate\":1,\"source-claim\":4,\"constraint\":1,\"unknown\":1,\"terminal-claim\":2,\"architecture-contract\":1,\"accepted-intent-trace\":1,\"accepted-intent-submission\":1,\"accepted-uc-trace\":1,\"accepted-uc-submission\":1,\"accepted-requirements-trace\":1,\"accepted-requirements-submission\":1}"
+    },
+    {
+      "id": "O1.upstreamProjectionAdjudicated",
+      "ok": true,
+      "detail": "upstream-accepted[0] sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d resolves to NO content of the on-disk candidate chain (gate productRef would be sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51); recorded UNRESOLVED-at-desk - the kernel-side session store is not part of this desk workspace; the review proceeds on the content-addressed chain itself, every ref of which resolves"
+    },
+    {
+      "id": "O2.workspaceLawStageRelative",
+      "ok": true,
+      "detail": "author-stage 0 (the desk consumes accepted bundles by pinned refs, not revisions) vs reviewer-stage 1 (the accepted author product) - stage-relative, no contradiction"
+    },
+    {
+      "id": "I1.verification.selfAddress",
+      "ok": true,
+      "detail": "recomputed 17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43 vs declared 17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43"
+    },
+    {
+      "id": "I2.review.selfAddress",
+      "ok": true,
+      "detail": "recomputed e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466 vs declared e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466"
+    },
+    {
+      "id": "I3.reviewerSubmission.selfAddress",
+      "ok": true,
+      "detail": "recomputed 5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0 vs declared 5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0"
+    },
+    {
+      "id": "I4.reviewerTrace.selfAddress",
+      "ok": true,
+      "detail": "recomputed 55e59486c19ebaefd58a90bb9111edc3b115c809c0c7861aab5d19fe09e84fd8 vs declared sha256:55e59486c19ebaefd58a90bb9111edc3b115c809c0c7861aab5d19fe09e84fd8"
+    },
+    {
+      "id": "I5.reviewerSubmission.binding",
+      "ok": true,
+      "detail": "reviewer product submission binds the exact recomputed chain"
+    },
+    {
+      "id": "I6.reviewerTraceEdges",
+      "ok": true,
+      "detail": "13 reviewer trace edges resolve against recomputed digests"
+    },
+    {
+      "id": "I7.review.verdictConsistent",
+      "ok": true,
+      "detail": "review verdict=accepted, criteria 12/12 satisfied"
+    },
+    {
+      "id": "I8.verification.pins",
+      "ok": true,
+      "detail": "verification pins = the recomputed candidate chain + reviewer envelope"
+    }
+  ]
+}

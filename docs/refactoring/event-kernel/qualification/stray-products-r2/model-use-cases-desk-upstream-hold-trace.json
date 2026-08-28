@@ -1,0 +1,218 @@
+{
+  "traceRef": "sha256:02a4dd8f2310a28220ae3342d8dfbaa50bb512b62fb2bfb5fc0f23bf3272a827",
+  "traceKind": "upstream-hold-trace",
+  "contentDigest": "02a4dd8f2310a28220ae3342d8dfbaa50bb512b62fb2bfb5fc0f23bf3272a827",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "model-use-cases",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "model-use-cases",
+    "role": "author",
+    "traceKind": "upstream-hold-trace",
+    "subjectSemanticCode": "UH-Model-Use-Cases-001",
+    "subjectArtifactRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+    "relationVocabulary": [
+      "observes",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "The hold's envelope projection recomputes claim:scope-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "The hold's envelope projection recomputes claim:scope-2 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "The hold's envelope projection recomputes claim:constraint-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "The hold's envelope projection recomputes claim:outcome-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "The hold's envelope projection recomputes constraint:retention-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "The hold's envelope projection recomputes unknown:browser-matrix-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "The hold's envelope projection recomputes terminal:audited-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "The hold's envelope projection recomputes terminal:delivered-1 from capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "observes",
+        "toId": "PRD-Define-Product-Intent-001",
+        "description": "The hold observes the upstream candidate of record (admitted; contested; NOT settled).",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "observes",
+        "toId": "FR-Define-Product-Intent-001",
+        "description": "The hold observes verdict \"repair\" at define-product-intent-desk-reviewer-review.json.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "observes",
+        "toId": "FR-Define-Product-Intent-001-emission-b",
+        "description": "The hold observes verdict \"repair\" at define-product-intent-desk-reviewer-review-emission-b.json.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc"
+      },
+      {
+        "fromId": "UH-Model-Use-Cases-001",
+        "relation": "observes",
+        "toId": "FR-Define-Product-Intent-002-dissent",
+        "description": "The hold observes verdict \"repair\" at define-product-intent-desk-reviewer2-review.json.",
+        "fromRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "toRef": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      }
+    },
+    "upstreamObservationCoverage": {
+      "candidate": {
+        "semanticCode": "PRD-Define-Product-Intent-001",
+        "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "observedBy": [
+          "UH-Model-Use-Cases-001"
+        ]
+      },
+      "reviews": [
+        {
+          "reviewId": "FR-Define-Product-Intent-001",
+          "file": "define-product-intent-desk-reviewer-review.json",
+          "verdict": "repair",
+          "ref": "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f9416a5d6b180d058ac4",
+          "observedBy": [
+            "UH-Model-Use-Cases-001"
+          ]
+        },
+        {
+          "reviewId": "FR-Define-Product-Intent-001",
+          "file": "define-product-intent-desk-reviewer-review-emission-b.json",
+          "verdict": "repair",
+          "ref": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+          "observedBy": [
+            "UH-Model-Use-Cases-001"
+          ]
+        },
+        {
+          "reviewId": "FR-Define-Product-Intent-002",
+          "file": "define-product-intent-desk-reviewer2-review.json",
+          "verdict": "repair",
+          "ref": "sha256:0463209429b6cf9b3460d7a32c0ed3c20a234b60fa8774f596ec7833aa3611fc",
+          "observedBy": [
+            "UH-Model-Use-Cases-001"
+          ]
+        }
+      ]
+    },
+    "holdCoverage": {
+      "gateRefusal": "UPSTREAM_NOT_SUPPLIED",
+      "d5Wait": {
+        "kind": "TypedWait:human-input",
+        "wakeCommands": [
+          "workplace.resolveHumanResponse"
+        ]
+      },
+      "noProductAuthored": true,
+      "resumeContract": "see the hold artifact resumeContract R1-R4"
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

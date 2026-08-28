@@ -1,0 +1,184 @@
+{
+  "artifactRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+  "checks": [
+    {
+      "detail": "artifact content digest recomputes to 9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f",
+      "id": "C1.artifactDigest",
+      "pass": true
+    },
+    {
+      "detail": "trace content digest recomputes to 17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+      "id": "C1.traceDigest",
+      "pass": true
+    },
+    {
+      "detail": "trace subject binds the hold artifact ref",
+      "id": "C1.refs",
+      "pass": true
+    },
+    {
+      "detail": "pinned 2026-08-28T00:00:00Z",
+      "id": "C1.pinnedTimestamp",
+      "pass": true
+    },
+    {
+      "detail": "decision hold-no-authoring; noProductAuthored true",
+      "id": "C2.decision",
+      "pass": true
+    },
+    {
+      "detail": "no baseline section authored; freeze contract cited as the blocking law",
+      "id": "C2.fence",
+      "pass": true
+    },
+    {
+      "detail": "all 8 task-projection content addresses pinned in the hold",
+      "id": "C2.envelopePinned",
+      "pass": true
+    },
+    {
+      "detail": "accepted import artifact digest recomputes",
+      "id": "C3.importDigest",
+      "pass": true
+    },
+    {
+      "detail": "all 9 capsule sub-artifact digests recompute",
+      "id": "C3.capsuleSubArtifacts",
+      "pass": true
+    },
+    {
+      "detail": "envelope 8/8 recompute from accepted capsule content",
+      "id": "C3.envelopeProjection",
+      "pass": true
+    },
+    {
+      "detail": "CERT-1 recomputes",
+      "id": "C3.certificate",
+      "pass": true
+    },
+    {
+      "detail": "published envelopeRecompute block carries 8/8 matches",
+      "id": "C3.envelopeRecomputeBlock",
+      "pass": true
+    },
+    {
+      "detail": "reconcile-what author candidate of record (artifact/trace/submission) digests recompute",
+      "id": "C4.candidateDigests",
+      "pass": true
+    },
+    {
+      "detail": "reviewer round of record (review/verification/trace/submission) digests recompute",
+      "id": "C4.reviewerRound",
+      "pass": true
+    },
+    {
+      "detail": "verdict of record: repair",
+      "id": "C4.verdictRepair",
+      "pass": true
+    },
+    {
+      "detail": "reviewer of record reviewed exactly the author candidate of record",
+      "id": "C4.candidateBinding",
+      "pass": true
+    },
+    {
+      "detail": "explicit no-accept prohibition recomputed from the verdict record",
+      "id": "C4.prohibition",
+      "pass": true
+    },
+    {
+      "detail": "CRIT-1 permanence warning present in the recomputed review",
+      "id": "C4.permanence",
+      "pass": true
+    },
+    {
+      "detail": "collision record recomputes; emission A (repair) is the round of record",
+      "id": "C4.collisionRecord",
+      "pass": true
+    },
+    {
+      "detail": "hold gate block pins exactly the recomputed digests",
+      "id": "C4.gateBlockPinned",
+      "pass": true
+    },
+    {
+      "detail": "intent revision a06dbc57: repair across every emission record",
+      "id": "C5.intent",
+      "pass": true
+    },
+    {
+      "detail": "UC revision 24f0aff2: never reviewed at its own address (only verdict pins a different candidate); hold-violating authoring",
+      "id": "C5.uc",
+      "pass": true
+    },
+    {
+      "detail": "requirements revision 86b00569: repair + re-staff confirmation; reviewer seat held",
+      "id": "C5.requirements",
+      "pass": true
+    },
+    {
+      "detail": "acceptance revision 2b01353d: adjudicated repair (CTN-001, emission C), desk on record hold a53a5e08",
+      "id": "C5.acceptance",
+      "pass": true
+    },
+    {
+      "detail": "census: 0 of 5 pre-freeze desks accepted, every row gated on verdict records",
+      "id": "C6.census",
+      "pass": true
+    },
+    {
+      "detail": "what-baseline schema raw digest recomputes (ab1b7f5e1bc4...)",
+      "id": "C6.schemaPin",
+      "pass": true
+    },
+    {
+      "detail": "the freeze contract itself demands 5 accepted acceptanceRecords - the direct lawful-authoring blocker",
+      "id": "C6.schemaLaw",
+      "pass": true
+    },
+    {
+      "detail": "all 23 trace edges resolve at both ends to recomputed digests",
+      "id": "C7.traceResolution",
+      "pass": true
+    },
+    {
+      "detail": "closed relation vocabulary observed/verifies only",
+      "id": "C7.relationVocabulary",
+      "pass": true
+    },
+    {
+      "detail": "trace task-projection coverage is the exact 8-entry envelope projection",
+      "id": "C7.coverageProjection",
+      "pass": true
+    },
+    {
+      "detail": "318 qualification files scanned (raw + whole-JSON canonical + .content canonical): 0 content hashes to or canonically contains the anchor digest",
+      "id": "C8.governingAnchorUnresolvable",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "C9.freeze-what-baseline-desk-hold-build.mjs",
+      "pass": true
+    },
+    {
+      "detail": "no clock reads, no randomness in emission source",
+      "id": "C9.freeze-what-baseline-desk-hold-verify.mjs",
+      "pass": true
+    }
+  ],
+  "createdAt": "2026-08-28T00:00:00Z",
+  "declaredDigestsTrusted": false,
+  "semanticCode": "UH-Freeze-What-Baseline-001",
+  "summary": {
+    "allPass": true,
+    "fail": 0,
+    "pass": 33,
+    "scanFiles": 318,
+    "total": 33
+  },
+  "traceRef": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202",
+  "verifyOutKind": "freeze-upstream-hold-verify",
+  "workspaceSummary": "0 accepted upstream revisions travel by content address",
+  "verifyOutDigest": "4a19dae4006e7f3b0e1254500c30b8809393d828c7a834e44a733d9c72cc2e24"
+}

@@ -1,0 +1,111 @@
+{
+  "verificationRef": "sha256:61b9ce2e70b979f7e224bcbe17d492a3ffb85410a4b8a8ba139257cfbabd85a5",
+  "verificationKind": "reviewer-verification",
+  "contentDigest": "61b9ce2e70b979f7e224bcbe17d492a3ffb85410a4b8a8ba139257cfbabd85a5",
+  "semanticCode": "VV-Define-Acceptance-Contract-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Define-Acceptance-Contract-002",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; re-seal evidence via the REAL acceptance cell surfaces (dist cells + WP03 seam) through the corpus mechanical verifier re-run by this emission",
+    "subject": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "submissionId": "FS-Define-Acceptance-Contract-001",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "artifactSemanticCode": "SR-Define-Acceptance-Contract-001",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "productKind": "formalization.acceptance-bindings.v1",
+      "productSeal": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    "emission": "C (adjudicating reviewer emission)",
+    "recomputedChecks": 10,
+    "passed": 10,
+    "failed": 0,
+    "trustedByDeclaration": false,
+    "results": [
+      {
+        "id": "C1.chain.selfAddresses",
+        "ok": true,
+        "detail": "candidate artifact 2b01353d... recomputed by this emission (canonical JSON) and equals its declared contentDigest; the consumed upstream artifact digests recompute: intent a06dbc57..., UC 24f0aff2..., requirements 86b00569... (r3 copies hashed directly)."
+      },
+      {
+        "id": "C2.chain.reseals",
+        "ok": true,
+        "detail": "REAL validateAcceptanceBundle re-seal equals the declared product seal sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 (mechanical verifier re-run check E2; script imports verified to be the REAL dist acceptance cell, the REAL acceptanceUniverseFrom protocol and the WP03 validateAcBinding seam)."
+      },
+      {
+        "id": "C3.intentVerdicts.repairNoReissue",
+        "ok": true,
+        "detail": "FR-Define-Product-Intent-001 and FR-Define-Product-Intent-002 (reviewer2) read directly by this emission: both verdict repair, both reviewedCandidate.artifactRef = sha256:a06dbc57... (the exact revision the candidate consumes); both CRIT-1 (prd:scope-2 fabricated disposition authority); no intent reissue exists (r2/r3 intent artifacts hash to the same repair-verdict revision)."
+      },
+      {
+        "id": "C4.ucReviewerStage.absent",
+        "ok": true,
+        "detail": "corpus-wide scan by this emission: the only model-use-cases files mentioning a reviewer are the r2/r3 product submissions and the r2 upstream-hold artifact (holdKind=uc-upstream-hold, sha256:6cccd162...); no UC reviewer review/verification artifact exists anywhere. The consumed UC bundle 24f0aff2... never passed a reviewer stage."
+      },
+      {
+        "id": "C5.requirementsVerdict.repair",
+        "ok": true,
+        "detail": "FR-Derive-System-Requirements-001 read directly by this emission: verdict repair against artifactRef sha256:86b00569... (CRIT-1 unaccepted lineage asserted accepted; CRIT-2 scope-2 ratification; MAJ-1 governing anchor), plus re-staffing confirmation RS-Derive-System-Requirements-001; the r3 requirements copy hashes to the same repair-verdict revision."
+      },
+      {
+        "id": "C6.scope2.noAuthority",
+        "ok": true,
+        "detail": "capsule SC-2 content read directly (digest cb291aa7...): {claimId: claim:scope-2, statement: \"Accepted discovery source claim 2 of the message service subject.\"} — a bare claim, no decision; CERT-1 read directly: {kind: discovery-certificate, decision: go, subject: message service} — subject-level go. No Discovery exclusion decision for prd:scope-2 exists; three upstream verdict records established the cited authority nonexistent."
+      },
+      {
+        "id": "C7.governingContract.unresolvable",
+        "ok": true,
+        "detail": "independent workspace scan by this emission: 261 files under qualification/ — 0 content-address hits for sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 (raw bytes, whole-JSON canonical, .content canonical), 97 textual mentions. UNRESOLVED (MAJ-1 confirmed independently)."
+      },
+      {
+        "id": "C8.envelopeProjection.phantom",
+        "ok": true,
+        "detail": "upstream-accepted[0] sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d resolves to no content workspace-wide (0/261 files; mechanical verifier K2 concurs). Adjudicated UNRESOLVABLE: stale shell metadata for the shell owner (r2 RA-5 open)."
+      },
+      {
+        "id": "C9.emissionB.surfaceGap",
+        "ok": true,
+        "detail": "emission B verification enumerated by this emission: 50 checks in 10 groups (selfAddress, productSeals, gate, reviewerDuties, coverage, terminals, trace, upstream, envelope, reviewerRound) — all digest/gate-level; it contains NO counterpart of I4/L2/M2/M3/M4/M5/N1. Its accepted verdict therefore does not engage — and is contradicted by — the recomputable status-layer failures."
+      },
+      {
+        "id": "C10.emissionA.reproduces",
+        "ok": true,
+        "detail": "the corpus mechanical verifier re-run by this emission reproduces emission A exactly: 99 recomputations, 92 pass, 7 fail, identical failedCheckIds, ZERO per-check verdict differences against the committed emission-a out file (2 detail-string diffs only: workspace scan-count drift, 254 -> 261 files, expected as the collision artifacts grew the corpus)."
+      }
+    ],
+    "contentionAdjudication": {
+      "contentionId": "CTN-Define-Acceptance-Contract-001",
+      "collisionRecord": {
+        "semanticCode": "CL-Define-Acceptance-Contract-001",
+        "ref": "sha256:102be8821f2a76239dd92b6cccfde764300485c5bf9e163bf2b9f0f7c6a3784e"
+      },
+      "resolution": "VERDICT OF RECORD: repair (emission A confirmed; emission B superseded)",
+      "grounds": [
+        "The seven status-layer failures re-derive under this emission's own reads and scans (C3-C7), independent of emission A's script.",
+        "The candidate chain is digest-clean and re-seals through the REAL cell (C1/C2) — the defects are at the workflow-status layer, which the kernel surface cannot see; the desk review seat exists precisely to adjudicate it.",
+        "Emission B's accepted verdict is not evidence-backed: its 50-check surface contains no status-layer audit (C9), so acceptance would contradict recomputable evidence still on disk — exactly what collision record CL-001 resolution demand 1 forbids the final gate to consume.",
+        "The r2 precedent (CL-Define-Product-Intent-001) resolved the identical defect class the same way: the digest-only accepted emission was WRONG; the status-auditing repair emission was correct."
+      ],
+      "superseded": {
+        "emission": "B",
+        "review": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+        "verification": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+        "submission": "sha256:5ee3d51b62d80fd5feb339ec3549709d0d599d757bf99578c51b6e3763d6a1d0",
+        "reason": "accepted verdict without a status-layer audit; superseded by content-addressed evidence, preserved (never erased) under CL-001"
+      },
+      "confirmed": {
+        "emission": "A",
+        "review": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+        "verification": "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb",
+        "trace": "sha256:35c551ac922b2d27c1291c351efa50e32e35f4a931c81c7c8ce2c4c16e33a3d5",
+        "submission": "sha256:983ce949d726ce3fbd2bf68a755789c8ca96e6f325b8c41553c1a3d540e73ed6",
+        "note": "repair verdict confirmed by independent re-derivation; emission A's reissued -emission-a artifacts remain the preserved A record"
+      }
+    }
+  }
+}

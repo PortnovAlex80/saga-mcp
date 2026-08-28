@@ -1,0 +1,508 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; WP03 validator: real ac-binding.mjs through the REAL cell seam; bundle validator: real validateAcceptanceBundle; universe: real acceptanceUniverseFrom desk protocol; upstream: real PRD/UC/WP03-requirements validators + REAL cell folds",
+  "recomputed": 100,
+  "passed": 100,
+  "failed": 0,
+  "results": [
+    {
+      "id": "A1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0 vs declared 2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "A2.artifact.artifactRef",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "A3.artifact.kindPins",
+      "ok": true,
+      "detail": "desk product kind + WP03 contract + cell provider pins"
+    },
+    {
+      "id": "A4.artifact.productSeal.declared",
+      "ok": true,
+      "detail": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "B1.upstreamMember.prd:boundary-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 605b59c45d1099f7…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:scope-2",
+      "ok": true,
+      "detail": "PRD seal recomputed f3faf6889cd4adbd…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:constraint-1",
+      "ok": true,
+      "detail": "PRD seal recomputed f89c984a37f5b751…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:outcome-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 0f089cfa6a151e1c…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:terminal-1",
+      "ok": true,
+      "detail": "PRD seal recomputed 694e26f7e7ded74f…"
+    },
+    {
+      "id": "B1.upstreamMember.prd:unknown-1",
+      "ok": true,
+      "detail": "PRD seal recomputed ca9b003c86110918…"
+    },
+    {
+      "id": "B2.upstreamIntentFold.ok",
+      "ok": true,
+      "detail": "revisionDigest a30229a75bed4c5d… pins the accepted requirements bundle"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:boundary-1",
+      "ok": true,
+      "detail": "UC seal recomputed defe9b1f817b1e97…"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:outcome-1",
+      "ok": true,
+      "detail": "UC seal recomputed ceb0fa710e0388db…"
+    },
+    {
+      "id": "B3.upstreamScenario.uc:terminal-1",
+      "ok": true,
+      "detail": "UC seal recomputed e711405c4b8a2074…"
+    },
+    {
+      "id": "B4.upstreamUcRevision.pin",
+      "ok": true,
+      "detail": "recomputed 184981e5724c286d… pins the accepted requirements bundle"
+    },
+    {
+      "id": "B5.upstreamRequirement.fr:boundary-1",
+      "ok": true,
+      "detail": "requirement seal recomputed 8a6b2eb29c445cd4…"
+    },
+    {
+      "id": "B5.upstreamRequirement.fr:outcome-1",
+      "ok": true,
+      "detail": "requirement seal recomputed 8aa05466ba38295f…"
+    },
+    {
+      "id": "B5.upstreamRequirement.fr:terminal-1",
+      "ok": true,
+      "detail": "requirement seal recomputed 75f0b82fc223a0a1…"
+    },
+    {
+      "id": "B5.upstreamRequirement.nfr:determinism-1",
+      "ok": true,
+      "detail": "requirement seal recomputed 6d95a8f2a9413381…"
+    },
+    {
+      "id": "B6.upstreamRequirementsRevalidated",
+      "ok": true,
+      "detail": "accepted requirements bundle re-sealed sha256:60083eb4a2ba553d0… against its recomputed universe"
+    },
+    {
+      "id": "C1.universe.protocol",
+      "ok": true,
+      "detail": "id sets: fr=3 nfr=1 scenarios=3 branches=4 stmts=5"
+    },
+    {
+      "id": "C2.product.seal",
+      "ok": true,
+      "detail": "REAL validateAcceptanceBundle re-seal sha256:14fda7910eedff5a8… matches the declared product seal"
+    },
+    {
+      "id": "C3.criterion.ac:boundary-1",
+      "ok": true,
+      "detail": "WP03 seam sealed sha256:d131f6680efa96c47…; seal recomputed d131f6680efa96c4…"
+    },
+    {
+      "id": "C3.criterion.ac:outcome-1-delivered",
+      "ok": true,
+      "detail": "WP03 seam sealed sha256:abb800e9a3b8f9932…; seal recomputed abb800e9a3b8f993…"
+    },
+    {
+      "id": "C3.criterion.ac:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "WP03 seam sealed sha256:0a81953587f40eea4…; seal recomputed 0a81953587f40eea…"
+    },
+    {
+      "id": "C3.criterion.ac:terminal-1-audited",
+      "ok": true,
+      "detail": "WP03 seam sealed sha256:fbb3d676c5bf8f346…; seal recomputed fbb3d676c5bf8f34…"
+    },
+    {
+      "id": "C3.criterion.ac:determinism-1",
+      "ok": true,
+      "detail": "WP03 seam sealed sha256:4a0ceb7edbcd1dd3d…; seal recomputed 4a0ceb7edbcd1dd3…"
+    },
+    {
+      "id": "C4.statement.stmt:boundary-1-response",
+      "ok": true,
+      "detail": "statement seal recomputed cf08f2c25718bc21…; resolves in the accepted desk input set"
+    },
+    {
+      "id": "C4.statement.stmt:outcome-1-delivered",
+      "ok": true,
+      "detail": "statement seal recomputed 80ad5f1b7f53e83a…; resolves in the accepted desk input set"
+    },
+    {
+      "id": "C4.statement.stmt:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "statement seal recomputed 235e8b0977e02a98…; resolves in the accepted desk input set"
+    },
+    {
+      "id": "C4.statement.stmt:terminal-1-audited",
+      "ok": true,
+      "detail": "statement seal recomputed c644594793316738…; resolves in the accepted desk input set"
+    },
+    {
+      "id": "C4.statement.stmt:determinism-1",
+      "ok": true,
+      "detail": "statement seal recomputed 3ca4a3f2301e1022…; resolves in the accepted desk input set"
+    },
+    {
+      "id": "D1.closure.requirementsCoverage",
+      "ok": true,
+      "detail": "issues: 0"
+    },
+    {
+      "id": "D2.closure.acToSource",
+      "ok": true,
+      "detail": "issues: 0"
+    },
+    {
+      "id": "D3.closure.terminalResultCoverage",
+      "ok": true,
+      "detail": "issues: 0"
+    },
+    {
+      "id": "D4.probe.strippedBranchCitation",
+      "ok": true,
+      "detail": "MISSING_LINEAGE: AC ac:boundary-1 retains its UC scenario binding but strips the terminal scenari…"
+    },
+    {
+      "id": "D5.probe.foreignScenarioSubstitution",
+      "ok": true,
+      "detail": "FOREIGN_LINEAGE: criterion ac:boundary-1 cites UC scenario(s) uc:terminal-1 that no bound require…"
+    },
+    {
+      "id": "D6.probe.foreignRequirement",
+      "ok": true,
+      "detail": "FOREIGN_LINEAGE: AC ac:boundary-1 binds requirement(s) fr:foreign-1 outside the exact accepted FR…"
+    },
+    {
+      "id": "D7.probe.uncoveredRequirement",
+      "ok": true,
+      "detail": "COVERAGE_GAP: requirement nfr:determinism-1 is covered by no AC criterion and carries no expli…"
+    },
+    {
+      "id": "D8.probe.whatSideKey",
+      "ok": true,
+      "detail": "SCOPE_VIOLATION: AC remains WHAT-side verification and must not contain architecture or files all…"
+    },
+    {
+      "id": "E1.envelope.claim:scope-1",
+      "ok": true,
+      "detail": "digest matched b15c35da54dd0164…"
+    },
+    {
+      "id": "E1.envelope.claim:scope-2",
+      "ok": true,
+      "detail": "digest matched cb291aa71e7be582…"
+    },
+    {
+      "id": "E1.envelope.claim:constraint-1",
+      "ok": true,
+      "detail": "digest matched 6652762b7d8d26aa…"
+    },
+    {
+      "id": "E1.envelope.claim:outcome-1",
+      "ok": true,
+      "detail": "digest matched 3d576e96e9c101b4…"
+    },
+    {
+      "id": "E1.envelope.constraint:retention-1",
+      "ok": true,
+      "detail": "digest matched 807393968f3d6e0e…"
+    },
+    {
+      "id": "E1.envelope.unknown:browser-matrix-1",
+      "ok": true,
+      "detail": "digest matched 38fc9cb187adaf25…"
+    },
+    {
+      "id": "E1.envelope.terminal:audited-1",
+      "ok": true,
+      "detail": "digest matched 4a559317fdfd23d4…"
+    },
+    {
+      "id": "E1.envelope.terminal:delivered-1",
+      "ok": true,
+      "detail": "digest matched 8ce2f289656b7447…"
+    },
+    {
+      "id": "E2.governing.pin",
+      "ok": true,
+      "detail": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+    },
+    {
+      "id": "E3.workspace.summary",
+      "ok": true,
+      "detail": "0 accepted upstream revisions travel by content address"
+    },
+    {
+      "id": "E4.pinned.timestamps",
+      "ok": true,
+      "detail": "all three pinned at 2026-08-28T00:00:00Z"
+    },
+    {
+      "id": "F1.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1 vs declared 2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "F2.trace.traceRef",
+      "ok": true,
+      "detail": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "F3.trace.subjectBinding",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "F4.edge.ac:boundary-1.verifies.fr:boundary-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:boundary-1.covers.branch:boundary-1-main",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:boundary-1.cites.stmt:boundary-1-response",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-delivered.verifies.fr:outcome-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-delivered.covers.branch:outcome-1-main",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-delivered.cites.stmt:outcome-1-delivered",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-delivered.supports.terminal:delivered-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-deterministic-error.verifies.fr:outcome-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-deterministic-error.covers.branch:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:outcome-1-deterministic-error.cites.stmt:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:terminal-1-audited.verifies.fr:terminal-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:terminal-1-audited.covers.branch:terminal-1-main",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:terminal-1-audited.cites.stmt:terminal-1-audited",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:terminal-1-audited.supports.terminal:audited-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:determinism-1.verifies.nfr:determinism-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F4.edge.ac:determinism-1.cites.stmt:determinism-1",
+      "ok": true,
+      "detail": "both ends resolve to recomputed digests"
+    },
+    {
+      "id": "F5.trace.vocabularyClosed",
+      "ok": true,
+      "detail": "cites, covers, supports, verifies"
+    },
+    {
+      "id": "F6.projection.criterion.ac:boundary-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.criterion.ac:outcome-1-delivered",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.criterion.ac:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.criterion.ac:terminal-1-audited",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.criterion.ac:determinism-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.requirement.fr:boundary-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.requirement.fr:outcome-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.requirement.fr:terminal-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.requirement.nfr:determinism-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + recomputed digest"
+    },
+    {
+      "id": "F6.projection.branch.branch:boundary-1-main",
+      "ok": true,
+      "detail": "resolves to owning scenario uc:boundary-1 seal + exact edge projection"
+    },
+    {
+      "id": "F6.projection.branch.branch:outcome-1-main",
+      "ok": true,
+      "detail": "resolves to owning scenario uc:outcome-1 seal + exact edge projection"
+    },
+    {
+      "id": "F6.projection.branch.branch:outcome-1-deterministic-error",
+      "ok": true,
+      "detail": "resolves to owning scenario uc:outcome-1 seal + exact edge projection"
+    },
+    {
+      "id": "F6.projection.branch.branch:terminal-1-main",
+      "ok": true,
+      "detail": "resolves to owning scenario uc:terminal-1 seal + exact edge projection"
+    },
+    {
+      "id": "F6.projection.terminal.terminal:audited-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + envelope digest"
+    },
+    {
+      "id": "F6.projection.terminal.terminal:delivered-1",
+      "ok": true,
+      "detail": "exact projection of the edge set + envelope digest"
+    },
+    {
+      "id": "G1.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe vs declared 6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "G2.submission.submissionRef",
+      "ok": true,
+      "detail": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe"
+    },
+    {
+      "id": "G3.submission.candidate.binding",
+      "ok": true,
+      "detail": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+    },
+    {
+      "id": "G4.submission.traceBinding",
+      "ok": true,
+      "detail": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    {
+      "id": "G5.submission.evidenceSet",
+      "ok": true,
+      "detail": "21 unique evidence refs, envelope + upstream + governing included"
+    },
+    {
+      "id": "G6.submission.coverageSum",
+      "ok": true,
+      "detail": "coverage sums to 21 over 21 refs"
+    },
+    {
+      "id": "G7.submission.intakeReceipt",
+      "ok": true,
+      "detail": "evidence:DeskIntakeReceipt#define-acceptance-contract:author"
+    },
+    {
+      "id": "G8.submission.selfCheck",
+      "ok": true,
+      "detail": "12 self-check rows all satisfied"
+    },
+    {
+      "id": "H1.fence.noForbiddenKeys",
+      "ok": true,
+      "detail": "no WHAT-side allocation keys in the bundle or any criterion"
+    },
+    {
+      "id": "H2.fence.noOutOfScopeDerivation",
+      "ok": true,
+      "detail": "out-of-scope intent member prd:scope-2 derives no criterion material"
+    },
+    {
+      "id": "H3.fence.unknownDerivesNothing",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 is cited in no criterion material"
+    },
+    {
+      "id": "H4.determinism.noClockOrRandom",
+      "ok": true,
+      "detail": "builder + verifier read no clock and no randomness"
+    },
+    {
+      "id": "H5.evidence.vocabularyClosed",
+      "ok": true,
+      "detail": "closed four-value evidence kinds + declared observable terminal results"
+    },
+    {
+      "id": "H6.identity.criterionIdsUnique",
+      "ok": true,
+      "detail": "ac:boundary-1, ac:determinism-1, ac:outcome-1-delivered, ac:outcome-1-deterministic-error, ac:terminal-1-audited"
+    }
+  ]
+}

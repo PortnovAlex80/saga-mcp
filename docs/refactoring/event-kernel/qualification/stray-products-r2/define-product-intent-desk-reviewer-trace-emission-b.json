@@ -1,0 +1,100 @@
+{
+  "traceRef": "sha256:266bf0025adb024963efd362b4ec5fc91180a02d63b087109e03ac0b0452a4a4",
+  "traceKind": "reviewer-verdict-trace",
+  "contentDigest": "266bf0025adb024963efd362b4ec5fc91180a02d63b087109e03ac0b0452a4a4",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "traceId": "RT-Define-Product-Intent-001",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "traceKind": "reviewer-verdict-trace",
+    "subjectSemanticCode": "FR-Define-Product-Intent-001",
+    "subjectArtifactRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+    "verdict": "repair",
+    "relationVocabulary": [
+      "reviews",
+      "derived_from",
+      "constrained_by",
+      "resolves",
+      "supports",
+      "enforces",
+      "produces"
+    ],
+    "relationships": [
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "reviews",
+        "toId": "PRD-Define-Product-Intent-001",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "description": "Independent reviewer verification of the product-intent artifact (verdict repair: CRIT-1, MAJ-1)"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "reviews",
+        "toId": "FS-Define-Product-Intent-001",
+        "toRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+        "description": "Independent reviewer verification of the author product submission"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "reviews",
+        "toId": "author-trace:define-product-intent",
+        "toRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+        "description": "Reviewer verification of the author trace graph (12/12 relationships resolve)"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "description": "Reviewer artifacts are deterministic: pinned timestamp, computed digests only"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "description": "This independent desk audit (64 recomputations, REAL WP03 validator) is the audited-1 realization at the intent desk; the repair loop keeps the audit honest"
+      },
+      {
+        "fromId": "FR-Define-Product-Intent-001",
+        "fromRef": "sha256:6c9c8324d2cb32ac05f9e5dbc97c8b97f9b5fb7e6bea723bbb08df0f362fd7dc",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "description": "The repair verdict holds the delivered terminal to its evidence standard: delivery intent settles only when the intent surface carries every accepted source claim under authority that exists (RA-1) and the governing anchor resolves (RA-2)"
+      }
+    ],
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "The review confirms the carried-forward disposition; neither the author nor the reviewer resolves or drops the unknown."
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "FR-Define-Product-Intent-001",
+          "prd:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "FR-Define-Product-Intent-001",
+          "prd:outcome-1"
+        ]
+      }
+    }
+  }
+}

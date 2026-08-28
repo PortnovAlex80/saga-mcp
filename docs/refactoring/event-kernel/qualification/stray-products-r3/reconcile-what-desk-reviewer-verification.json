@@ -1,0 +1,65 @@
+{
+  "verificationRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Reconcile-What-001",
+    "deskRef": "reconcile-what",
+    "role": "reviewer",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; report: real reconcileWhat through the REAL acceptanceUniverseFrom desk protocol (independent snapshot re-derivation); upstream: real PRD/UC validators + REAL cell folds + WP03 requirements re-seal + real validateAcceptanceBundle re-seal; status audit: verdict records re-digested then read directly",
+    "subject": {
+      "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+      "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+      "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+      "reportSealRef": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+      "supersededPriorEmission": "sha256:c22d4787a789742113858ff53e31565795da5cb5a478d0eece501fc00a4c70e9"
+    },
+    "recomputedChecks": 84,
+    "passed": 81,
+    "failed": 3,
+    "trustedByDeclaration": false,
+    "contentLayer": {
+      "outcome": "report mechanics sound; payload contract defective",
+      "note": "Every declared digest recomputes; the REAL cell surface recomputes the identical report (verdict consistent, 0 findings, 4 rows) from an independently re-derived snapshot; report-only and computed-verdict laws hold mechanically; the F-2 kill works both directions; the restructured trace and coverage blocks resolve against independently recomputed seals; the envelope matches this reviewer frame 8/8. Regressions vs the superseded emission: 6 double-prefixed evidence refs, coverage sum 27 != 28 refs, this frame's protocol/semantic skill digests replaced by a stale r1 protocol-skill ref."
+    },
+    "statusAudit": {
+      "outcome": "authority chain broken; reviewer authority fabricated",
+      "consumedRevisions": {
+        "intent": {
+          "ref": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+          "verdict": "repair x3 emissions (FR-Define-Product-Intent-001 + emission-b + FR-Define-Product-Intent-002)",
+          "reissue": "none (r2 revision == r3 revision)"
+        },
+        "useCases": {
+          "ref": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+          "verdict": "NEVER REVIEWED (no reviewer artifact exists in r2/r3)",
+          "reissue": "n/a; authored in violation of the desk upstream hold 6cccd162"
+        },
+        "requirements": {
+          "ref": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+          "verdict": "repair (FR-Derive-System-Requirements-001) + re-staff confirmation RS-001 (confirms the verdict, not an acceptance)",
+          "reissue": "none (r2 revision == r3 revision)"
+        },
+        "acceptance": {
+          "ref": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+          "verdict": "REPAIR is the verdict of record (CTN-Define-Acceptance-Contract-001: emission A repair 83e675bb confirmed, accepted emission e5249d78 superseded)",
+          "reissue": "none; the desk is on record hold a53a5e08"
+        }
+      },
+      "onlyAcceptedChain": "the discovery import chain (sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5)",
+      "candidateAssertions": "the reissue STRENGTHENS the false authority claims relative to the superseded emission: materialAuthority now says \"the reviewer-accepted define-acceptance-contract bundle\"; verification now declares reviewerAcceptedCandidateOfRecord=true; the cited reviewer gate is the SUPERSEDED accepted emission e5249d78 while the adjudication confirmed the repair emission 83e675bb; the candidate remains silent on the contention, the holds and every repair verdict",
+      "governingAnchor": "UNRESOLVABLE at this desk (own scan: 0 files of the qualification tree hash to a926df6284a1afb5; MAJ-1 of the upstream adjudication re-derived and still open)"
+    },
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "workspaceSummary": "0 accepted upstream revisions travel by content address",
+      "upstreamAccepted": []
+    },
+    "envelopeConsistency": "this reviewer frame declares the SAME 8 task-projection content addresses and the SAME workspace summary as the author frame (8/8 resolved, 0 adjudicated). The candidate's evidence set, however, cites a protocol-skill ref (95fafc84) that belongs to the r1 envelope family, not to this round's frame (bc8a4261), and omits the semantic-skill digest entirely. The 0-revision workspace summary is not merely stage-relative here: no gate on this chain has accepted anything - the acceptance-desk verdict of record is repair - so 0 is the true state of the whole r3 chain above the import."
+  }
+}

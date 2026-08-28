@@ -1,0 +1,61 @@
+{
+  "recordRef": "sha256:68a6ca48d0c4ae2bcaf4f6206f9d41cc54dc9720edbc8dd2adf8bf9005bf21f9",
+  "recordKind": "collision-record-superseding",
+  "contentDigest": "68a6ca48d0c4ae2bcaf4f6206f9d41cc54dc9720edbc8dd2adf8bf9005bf21f9",
+  "semanticCode": "CR-Define-Product-Intent-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "recordId": "CR-Define-Product-Intent-002",
+    "supersedes": "sha256:b54c5ba7a8f0f6996595db4a2fca6ae419781f3c167666f1f7a25af55e116a08",
+    "supersessionReason": "that record described the collision state as of its writing; the namespace was contended again afterwards (canonical set and the emission-b preservation namespace were both overwritten by concurrent writers). This record is the final observed census from this writer; canonical-set arbitration belongs to the driver (single-seat enforcement), and this writer stops writing after it.",
+    "deskRef": "define-product-intent",
+    "role": "reviewer",
+    "round": "stray-products-r2",
+    "verdictOfRecord": "repair",
+    "convergence": "Every live reviewer emission in the desk directory carries verdict repair with the same two findings (CRIT-1 fabricated disposition authority on prd:scope-2; MAJ-1 unresolvable governing-contract anchor sha256:a926df62...). Canonical FR-001 review = sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f6a5d6b180d058ac4; collision-free FR-002 reissue = sha256:0463209429b6...; the withdrawn accepted emission is cited below. The verdict of record is repair under either identity.",
+    "census": {
+      "note": "digests observed live at record time; canonical filenames were overwritten repeatedly, so an address set is identified by content, not by filename",
+      "canonicalFR001": {
+        "review": "sha256:e49d8d11aadae74a79d0d5d37c67d2e5ecb630139c71f4a5d6b180d058ac4",
+        "verification": "sha256:c0215ebcbf494c3d4c71c7e8f342cfa91eb9dddcf6f50f78f5d20f4b0be7579a",
+        "trace": "sha256:1bf917cf4c12",
+        "submission": "sha256:3473cdb7ef7d",
+        "verdict": "repair",
+        "note": "emission-A lineage regenerated again against a fresh evidence run"
+      },
+      "collisionFreeFR002": {
+        "review": "sha256:0463209429b6",
+        "verification": "sha256:e1390d6e539d",
+        "trace": "sha256:84324a50809f",
+        "submission": "sha256:a0bc5e4d50ac",
+        "verdict": "repair",
+        "note": "reviewer2 writer - deliberate collision-free reissue under FR/VV -002 identity after the namespace contention at 01:07"
+      },
+      "withdrawnAcceptedEmission": {
+        "review": "sha256:77e9a93116848c48c2ab19bf56160bb7b3ce3aeedeef72b40d3b37e8d46c62fd",
+        "verification": "sha256:6dc354848383fa7e8eb33f137b16df0a9955e8846e335ef6e1c4de2d38c35317",
+        "trace": "sha256:2bff9245659238787d20b611f549a41db5e05dec64dd992049d5fb3f3cb3b2ec",
+        "submission": "sha256:8881558b4e5653cad80a5af1941cf62e2fc8546e46e93147d5ae72f308663475",
+        "verdict": "accepted",
+        "status": "WITHDRAWN - no longer on disk; attested by the superseded record sha256:b54c5ba7... and by this record"
+      },
+      "preservedNamespaceRewritten": {
+        "note": "the -emission-b files this writer created to preserve its emission were later overwritten by a concurrent writer with repair-verdict content (FR-001 id); recorded as another instance of the in-place-overwrite defect class (ADV-4 family). Files now at: review sha256:6c9c8324d2cb, verification sha256:dc422dcfa4ea"
+      }
+    },
+    "withdrawal": {
+      "verdict": "accepted",
+      "by": "this writer (second reviewer emission)",
+      "reason": "CRIT-1 verified independently before withdrawal: prd:scope-2 disposition reason cites a Discovery exclusion decision that does not exist in the accepted capsule (SC-2 sha256:cb291aa7... is a bare claim statement; CERT-1 sha256:03972527... is a subject-level go). The accepted verdict was reached on digest-integrity and formal gate-law evidence alone and is WRONG on semantic disposition honesty. MAJ-1 also independently confirmed (six r1 claimant files declare sha256:a926df62... and all recompute to different digests)."
+    },
+    "findings": {
+      "CRIT1": "CONFIRMED - fabricated disposition authority on prd:scope-2 (out_of_scope citing a nonexistent capsule decision); repair action RA-1 applies",
+      "MAJ1": "CONFIRMED - governing-contract anchor unresolvable workspace-wide; repair action RA-2 applies; the accepted import review positive finding about this ref was not recomputation-backed",
+      "processFinding": "the desk review seat admitted at least three concurrent emissions into one namespace; in-place overwrites hit both the canonical filenames and a preservation namespace; driver-side single-seat claim enforcement for reviewer desks is required before this round can settle cleanly"
+    },
+    "stopNotice": "this writer emits no further desk artifacts after this record"
+  }
+}

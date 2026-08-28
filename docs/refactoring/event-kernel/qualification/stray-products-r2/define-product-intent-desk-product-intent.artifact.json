@@ -1,0 +1,243 @@
+{
+  "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+  "artifactKind": "product-intent",
+  "productKind": "frf-cell.product-intent.v1",
+  "contentDigest": "a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+  "semanticCode": "PRD-Define-Product-Intent-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "frf-cell.product-intent.v1",
+    "deskRef": "define-product-intent",
+    "deskNodeId": "define-product-intent",
+    "role": "author",
+    "itemInstanceId": "formalization-item:define-product-intent",
+    "token": "plan:formalization#item:product-intent",
+    "productKind": "frf-cell.product-intent.v1",
+    "effectId": "formalization.accept-products",
+    "checkProviderId": "frf-cell.product-intent.members.v1",
+    "contractKind": "frf-contracts.prd-intent-member.v1",
+    "brief": "Message service product intent authored from the accepted Discovery handoff capsule: deterministic responses only, the accepted outcome delivered with an audited go terminal state, and the browser support matrix carried forward as a discovery-owned unknown.",
+    "members": [
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:boundary-1",
+        "memberKind": "system-boundary",
+        "statement": "The subject of this intent is the message service exactly as scoped by accepted Discovery source claim 1; the desk adds no scope beyond the accepted Discovery capsule.",
+        "sourceClaimRefs": [
+          "claim:scope-1"
+        ],
+        "disposition": {
+          "disposition": "scenario_required"
+        }
+      },
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:scope-2",
+        "memberKind": "scope-exclusion",
+        "statement": "Accepted Discovery source claim 2 is explicitly dispositioned out of scope at intent freeze; no interaction scenario or downstream material is derived from it in this release.",
+        "sourceClaimRefs": [
+          "claim:scope-2"
+        ],
+        "disposition": {
+          "disposition": "out_of_scope",
+          "owner": "product-owner",
+          "reason": "Explicit disposition of accepted Discovery scope claim 2 at intent freeze; excluded from this release by the Discovery decision recorded in the capsule."
+        }
+      },
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:constraint-1",
+        "memberKind": "constraint",
+        "statement": "Deterministic responses only; no nondeterministic content.",
+        "sourceClaimRefs": [
+          "claim:constraint-1"
+        ],
+        "disposition": {
+          "disposition": "direct_requirement",
+          "reason": "An operational determinism constraint binding every response and every downstream artifact; it has no meaningful interaction or operational scenario of its own."
+        }
+      },
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:outcome-1",
+        "memberKind": "outcome",
+        "statement": "The message service delivers the accepted Discovery outcome (source claim 4) and closes terminal lifecycle claim terminal:delivered-1.",
+        "sourceClaimRefs": [
+          "claim:outcome-1"
+        ],
+        "scopeClaimRefs": [
+          "claim:scope-1"
+        ],
+        "terminalClaimRefs": [
+          "terminal:delivered-1"
+        ],
+        "disposition": {
+          "disposition": "scenario_required"
+        }
+      },
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:terminal-1",
+        "memberKind": "terminal-claim",
+        "statement": "At terminal state the formalized message service is audited: the subject is triaged go with recorded strengths (terminal lifecycle claim terminal:audited-1).",
+        "sourceClaimRefs": [
+          "claim:outcome-1"
+        ],
+        "terminalClaimRefs": [
+          "terminal:audited-1"
+        ],
+        "disposition": {
+          "disposition": "scenario_required"
+        }
+      },
+      {
+        "schemaVersion": "frf-contracts.prd-intent-member.v1",
+        "memberId": "prd:unknown-1",
+        "memberKind": "assumption-unknown",
+        "statement": "Browser support matrix unknown (owner: discovery); the unknown travels with the capsule and is not resolved at the intent desk.",
+        "sourceClaimRefs": [
+          "claim:constraint-1"
+        ],
+        "disposition": {
+          "disposition": "deferred",
+          "owner": "discovery",
+          "reason": "Browser support matrix unknown (owner: discovery); carried forward verbatim from the accepted Discovery capsule."
+        }
+      }
+    ],
+    "memberSeals": [
+      {
+        "memberId": "prd:boundary-1",
+        "digest": "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+        "ref": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+      },
+      {
+        "memberId": "prd:scope-2",
+        "digest": "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+        "ref": "sha256:f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141"
+      },
+      {
+        "memberId": "prd:constraint-1",
+        "digest": "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "ref": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+      },
+      {
+        "memberId": "prd:outcome-1",
+        "digest": "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "ref": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+      },
+      {
+        "memberId": "prd:terminal-1",
+        "digest": "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "ref": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+      },
+      {
+        "memberId": "prd:unknown-1",
+        "digest": "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+        "ref": "sha256:ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b"
+      }
+    ],
+    "upstream": {
+      "importArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "importArtifactDigest": "b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "capsuleRef": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "capsuleDigest": "f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "certificateRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+      "materialAuthority": "the verified Discovery handoff capsule imported by the import-discovery-handoff desk (r2)",
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "verifiedAgainstTaskProjection": true
+    },
+    "constraintDispositions": [
+      {
+        "constraintId": "constraint:retention-1",
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "disposition": "honored",
+        "enforcedBy": [
+          "prd:constraint-1"
+        ],
+        "constrainedMembers": [
+          "prd:outcome-1",
+          "prd:terminal-1"
+        ]
+      }
+    ],
+    "unknownDispositions": [
+      {
+        "unknownId": "unknown:browser-matrix-1",
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "disposition": "carried_forward",
+        "owner": "discovery",
+        "note": "No resolution edge is recorded: the intent desk does not resolve the unknown; it travels with the capsule into the downstream desks."
+      }
+    ],
+    "terminalOwnership": [
+      {
+        "terminalClaimId": "terminal:audited-1",
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "ownedByMemberId": "prd:terminal-1"
+      },
+      {
+        "terminalClaimId": "terminal:delivered-1",
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "ownedByMemberId": "prd:outcome-1"
+      }
+    ],
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address",
+    "verification": {
+      "acceptedUpstreamRevisionsTravelingByContentAddress": 0,
+      "claimDigestsMatchedTaskProjection": true,
+      "coverageLawSatisfied": true,
+      "declaredDigestsTrusted": false,
+      "deterministicAuthoring": true,
+      "fenceRespectedNoFinalContent": true,
+      "memberSealsRecomputedOverCanonicalMembers": true,
+      "staleProtocolRefusals": 0,
+      "terminalClaimsOwnedByMembers": true
+    }
+  }
+}

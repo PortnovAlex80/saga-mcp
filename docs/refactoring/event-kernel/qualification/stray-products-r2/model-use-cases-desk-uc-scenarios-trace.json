@@ -1,0 +1,195 @@
+{
+  "traceRef": "sha256:f49ddc6fc7d6ca3cad0d0e27e9d9a8a158eabef55d4437e0023519fdaed08c85",
+  "traceKind": "uc-scenarios-trace",
+  "contentDigest": "f49ddc6fc7d6ca3cad0d0e27e9d9a8a158eabef55d4437e0023519fdaed08c85",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "model-use-cases",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "model-use-cases",
+    "role": "author",
+    "traceKind": "uc-scenarios-trace",
+    "subjectSemanticCode": "UC-Model-Use-Cases-001",
+    "subjectArtifactRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+    "relationVocabulary": [
+      "constrained_by",
+      "derived_from",
+      "enforces",
+      "supports"
+    ],
+    "relationships": [
+      {
+        "fromId": "uc:boundary-1",
+        "relation": "derived_from",
+        "toId": "prd:boundary-1",
+        "description": "The boundary scenario models the system-boundary intent member (exact accepted PRD lineage).",
+        "fromRef": "sha256:defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+        "toRef": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+      },
+      {
+        "fromId": "uc:outcome-1",
+        "relation": "derived_from",
+        "toId": "prd:outcome-1",
+        "description": "The delivery scenario models the outcome intent member and its owned terminal claim terminal:delivered-1.",
+        "fromRef": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "toRef": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+      },
+      {
+        "fromId": "uc:terminal-1",
+        "relation": "derived_from",
+        "toId": "prd:terminal-1",
+        "description": "The terminal-triage scenario models the terminal-claim intent member and its owned terminal claim terminal:audited-1.",
+        "fromRef": "sha256:e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+        "toRef": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+      },
+      {
+        "fromId": "uc:boundary-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The boundary scenario steps return deterministic service responses only.",
+        "fromRef": "sha256:defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "uc:outcome-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The delivery scenario produces deterministic responses; its error branch invents no nondeterministic content.",
+        "fromRef": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "uc:terminal-1",
+        "relation": "enforces",
+        "toId": "constraint:retention-1",
+        "description": "The terminal-triage scenario records the audit deterministically (go triage with recorded strengths).",
+        "fromRef": "sha256:e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "uc:outcome-1",
+        "relation": "supports",
+        "toId": "terminal:delivered-1",
+        "description": "The delivery scenario main terminal branch realizes the delivered terminal lifecycle claim.",
+        "fromRef": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "uc:terminal-1",
+        "relation": "supports",
+        "toId": "terminal:audited-1",
+        "description": "The terminal-triage scenario main terminal branch realizes the audited terminal lifecycle claim.",
+        "fromRef": "sha256:e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      }
+    ],
+    "scenarioCoverage": {
+      "uc:boundary-1": {
+        "digest": "defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+        "derivedFrom": [
+          "prd:boundary-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": []
+      },
+      "uc:outcome-1": {
+        "digest": "ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+        "derivedFrom": [
+          "prd:outcome-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:delivered-1"
+        ]
+      },
+      "uc:terminal-1": {
+        "digest": "e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+        "derivedFrom": [
+          "prd:terminal-1"
+        ],
+        "enforces": [
+          "constraint:retention-1"
+        ],
+        "supports": [
+          "terminal:audited-1"
+        ]
+      }
+    },
+    "prdMemberCoverage": {
+      "prd:boundary-1": {
+        "digest": "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "uc:boundary-1"
+        ]
+      },
+      "prd:scope-2": {
+        "digest": "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+        "disposition": "out_of_scope",
+        "coveredBy": []
+      },
+      "prd:constraint-1": {
+        "digest": "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+        "disposition": "direct_requirement",
+        "coveredBy": []
+      },
+      "prd:outcome-1": {
+        "digest": "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "uc:outcome-1"
+        ]
+      },
+      "prd:terminal-1": {
+        "digest": "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+        "disposition": "scenario_required",
+        "coveredBy": [
+          "uc:terminal-1"
+        ]
+      },
+      "prd:unknown-1": {
+        "digest": "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+        "disposition": "deferred",
+        "coveredBy": []
+      }
+    },
+    "terminalCoverage": {
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "supportedBy": [
+          "uc:terminal-1"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "supportedBy": [
+          "uc:outcome-1"
+        ]
+      }
+    },
+    "constraintCoverage": {
+      "constraintId": "constraint:retention-1",
+      "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "disposition": "honored",
+      "enforcedBy": [
+        "uc:boundary-1",
+        "uc:outcome-1",
+        "uc:terminal-1"
+      ],
+      "constrainedMembers": []
+    },
+    "unknownCoverage": {
+      "unknownId": "unknown:browser-matrix-1",
+      "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "disposition": "carried_forward",
+      "owner": "discovery",
+      "note": "No resolution edge is recorded: the unknown travels with the capsule; no scenario, branch or evidence kind is derived from it."
+    },
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

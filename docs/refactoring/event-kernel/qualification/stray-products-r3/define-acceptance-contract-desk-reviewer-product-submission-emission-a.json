@@ -1,0 +1,130 @@
+{
+  "submissionRef": "sha256:983ce949d726ce3fbd2bf68a755789c8ca96e6f325b8c41553c1a3d540e73ed6",
+  "submissionId": "FS-Define-Acceptance-Contract-002",
+  "contentDigest": "983ce949d726ce3fbd2bf68a755789c8ca96e6f325b8c41553c1a3d540e73ed6",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-acceptance-contract",
+    "deskNodeId": "define-acceptance-contract",
+    "role": "reviewer",
+    "itemInstanceId": "formalization-item:define-acceptance-contract",
+    "token": "plan:formalization#item:acceptance-contract",
+    "verdict": "repair",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+      "contentDigest": "83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383"
+    },
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+        "sha256:35c551ac922b2d27c1291c351efa50e32e35f4a931c81c7c8ce2c4c16e33a3d5",
+        "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb"
+      ],
+      "evidenceKindCoverage": {
+        "discovery-handoff-capsule": 1,
+        "discovery-certificate": 1,
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "architecture-contract": 1,
+        "formalization-review": 1,
+        "reviewer-verdict-trace": 1,
+        "reviewer-verification": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "reviewRef": "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+    "traceRef": "sha256:35c551ac922b2d27c1291c351efa50e32e35f4a931c81c7c8ce2c4c16e33a3d5",
+    "verificationRef": "sha256:367a38fcf8d0bd061fa2e023aba4aaab0060a82a71278ca358d6b3415b5602bb",
+    "reviewedCandidateRefs": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "authorTraceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#define-acceptance-contract:reviewer",
+      "status": "review_complete_verdict_recorded",
+      "receivedFrom": "reviewer",
+      "nextStage": "final-gate",
+      "note": "Verdict repair returned to the define-acceptance-contract author desk (CRIT-1 unaccepted lineage asserted accepted; CRIT-2 scope-2 exclusion ratified; MAJ-1 unresolvable governing-contract anchor). The final gate consumes the reviewer verdict per the driver contract."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed: 99 checks, nothing trusted by declaration, REAL cell provider rechecked with zero softening",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-envelope task-projection content addresses resolved; workspace projection 32892970... adjudicated UNRESOLVABLE (author 0 upheld)",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "Verdict recorded with findings, evidence, and required actions (CRIT-1, CRIT-2, MAJ-1, ADV-1..3; RA-1..RA-6)",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Reviewer artifacts deterministic: pinned timestamp, no clock reads, no randomness",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored across author and reviewer artifacts",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Upstream ACCEPTANCE STATE independently audited from verdict records, not round labels (M1-M5)",
+        "satisfied": true
+      },
+      {
+        "id": 9,
+        "description": "Candidate's consumed upstream genuinely accepted",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: three of four consumed links are repair-verdict or never-reviewed; verdict repair rather than blind acceptance"
+      },
+      {
+        "id": 10,
+        "description": "No fabricated disposition ratified into the acceptance surface",
+        "satisfied": false,
+        "note": "CRIT-2 recorded honestly: the candidate restates the prd:scope-2 exclusion as fact"
+      },
+      {
+        "id": 11,
+        "description": "Governing contract evidence ref verified before inheritance",
+        "satisfied": false,
+        "note": "MAJ-1 recorded honestly: the anchor fails independent recomputation workspace-wide; r2 RA-2/RA-4 debt remains open"
+      }
+    ]
+  }
+}

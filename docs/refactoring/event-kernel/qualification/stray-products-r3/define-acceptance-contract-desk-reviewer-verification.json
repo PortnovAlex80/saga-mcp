@@ -1,0 +1,116 @@
+{
+  "verificationRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Define-Acceptance-Contract-001",
+    "deskRef": "define-acceptance-contract",
+    "role": "reviewer",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts",
+    "subject": {
+      "submissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "artifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "traceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1"
+    },
+    "recomputedChecks": 50,
+    "passed": 50,
+    "failed": 0,
+    "trustedByDeclaration": false,
+    "validator": {
+      "providerId": "frf.acceptance-closure.v1",
+      "version": "1.0.0",
+      "contract": "validateAcceptanceBundle",
+      "seam": "wp03:validateAcBinding (frf-contracts.ac-binding.v1), called once per criterion with the accepted id-set universe",
+      "universe": {
+        "frIds": [
+          "fr:boundary-1",
+          "fr:outcome-1",
+          "fr:terminal-1"
+        ],
+        "nfrIds": [
+          "nfr:determinism-1"
+        ],
+        "ruleIds": [],
+        "ucScenarioIds": [
+          "uc:boundary-1",
+          "uc:outcome-1",
+          "uc:terminal-1"
+        ],
+        "ucBranchIdsByScenario": {
+          "uc:boundary-1": [
+            "branch:boundary-1-main"
+          ],
+          "uc:outcome-1": [
+            "branch:outcome-1-main",
+            "branch:outcome-1-deterministic-error"
+          ],
+          "uc:terminal-1": [
+            "branch:terminal-1-main"
+          ]
+        },
+        "verifiableStatementIds": [
+          "stmt:boundary-1-response",
+          "stmt:determinism-1",
+          "stmt:outcome-1-delivered",
+          "stmt:outcome-1-deterministic-error",
+          "stmt:terminal-1-audited"
+        ],
+        "evidenceBindingIds": []
+      },
+      "universeDerivedThrough": "the REAL acceptanceUniverseFrom protocol over the accepted requirements bundle + accepted UC set + the desk-authored verifiable-statement id set",
+      "trustedByDeclaration": false
+    },
+    "memberSeals": [
+      {
+        "criterionId": "ac:boundary-1",
+        "digest": "d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+        "ref": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2"
+      },
+      {
+        "criterionId": "ac:outcome-1-delivered",
+        "digest": "abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+        "ref": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e"
+      },
+      {
+        "criterionId": "ac:outcome-1-deterministic-error",
+        "digest": "0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+        "ref": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b"
+      },
+      {
+        "criterionId": "ac:terminal-1-audited",
+        "digest": "fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+        "ref": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d"
+      },
+      {
+        "criterionId": "ac:determinism-1",
+        "digest": "4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034",
+        "ref": "sha256:4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034"
+      }
+    ],
+    "groups": {
+      "selfAddress": "A1-A3: submission/product/trace content digests recomputed and bound; intake receipt stage pinned",
+      "productSeals": "B1-B5: product seal, 5/5 criterion member seals and 5/5 verifiable statement seals recompute over canonical members",
+      "gate": "C1-C6: provider declaration verifies fail-closed; universe derived through the REAL acceptanceUniverseFrom; 5/5 criteria sealed through the REAL WP03 validateAcBinding seam; REAL validateAcceptanceBundle re-seal equals the declared product seal; REAL evaluateAcceptanceGate verdict accepted with productRef = the seal; impostor provider refused PROVIDER_NOT_DECLARED",
+      "reviewerDuties": "D1-D5: rev-1 citation pairs re-derived from the bound requirements' derivations; rev-2 deferral law (vacuous, none present); rev-3 no FOREIGN_LINEAGE (no RULE bindings); rev-4 adversarial probes (branch-stripped -> repair/MISSING_LINEAGE, scenario-stripped -> repair/MISSING_LINEAGE, unrelated-scenario substitution -> upstream-repair/FOREIGN_LINEAGE, foreign requirement -> upstream-repair/FOREIGN_LINEAGE); duplicate-id scan + WHAT-side fence clean",
+      "coverage": "E1-E4: 4/4 accepted FR/NFR covered end to end; 4/4 required UC terminal branches covered with zero standalone evidence bindings; evidence kinds from the closed four-value vocabulary; prd:scope-2 and unknown:browser-matrix-1 derive nothing (D10)",
+      "terminals": "F1-F4: terminal:audited-1 and terminal:delivered-1 support chains resolve through the accepted PRD members and FRs to their criteria; constraint:retention-1 honored; unknown carried forward with owner discovery",
+      "trace": "G1-G4: author trace digest recomputes; 16/16 relationships resolve against recomputed seals; coverage blocks are exact forward/reverse projections; branch refs resolve to their owning scenario member seals",
+      "upstream": "H1-H5: accepted intent/uc/requirements artifacts re-verified by content address; revision pins re-fold (prd a30229a7, uc 184981e5); 8/8 projection content addresses re-derived from the r2 import capsule material; author payload contract 21/21 evidence refs resolve",
+      "envelope": "O1-O2: upstream-accepted[0] adjudicated UNRESOLVED-at-desk; workspace law stage-relative",
+      "reviewerRound": "I1-I8: the on-disk reviewer round (verification/review/product submission/trace) self-addresses and bindings recompute"
+    },
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "workspaceSummary": "1 accepted upstream revisions travel by content address",
+      "upstreamAccepted": [
+        "sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d"
+      ]
+    },
+    "envelopeAdjudication": "O1: upstream-accepted[0] sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d :: accepted revision of define-acceptance-contract - UNRESOLVED at this desk. Under the driver semantics (src/workflow-kernel/workshops/formalization/driver.ts building the reviewer envelope from state.gateOutcomes.authorGate.productRef, which the acceptance gate emits as sha256 over the canonical bundle product) the ref for THIS candidate chain would be sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51. The projected address matches no address the on-disk chain can produce (product seal 14fda791..., artifact content 2b01353d..., criteria member fold a0bda564...) and no file content or name in the desk workspace (repo-wide raw scan: zero hits). The kernel-side session store is not part of the desk workspace, so the projected revision cannot be inspected from here. Recorded as an envelope finding, not a candidate defect: the review proceeds on the content-addressed r3 candidate chain itself, every ref of which resolves and reseals."
+  }
+}

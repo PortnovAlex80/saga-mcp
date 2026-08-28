@@ -1,0 +1,439 @@
+{
+  "verificationRef": "sha256:10325cc9abfcc1ee9acb2f02226c2581fd56f3fe103c825d41c1ea3c7afe4975",
+  "artifactKind": "reviewer-verification",
+  "contentDigest": "10325cc9abfcc1ee9acb2f02226c2581fd56f3fe103c825d41c1ea3c7afe4975",
+  "semanticCode": "VV-Reconcile-What-002",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "verificationId": "VV-Reconcile-What-002",
+    "deskRef": "reconcile-what",
+    "role": "reviewer",
+    "emission": "B (corrected; supersedes this seat's content-only B-1 first pass by content address)",
+    "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; THREE layers: content (real acceptance.reconcileWhat + real PRD/UC/WP03 validators + real folds + real acceptanceUniverseFrom/validateAcceptanceBundle re-seals + adversarial probes, same-provider recheck, zero softening), status (verdict-record audit over the primary records: the CTN-Define-Acceptance-Contract-001 adjudication, the r2 repair verdicts, the UC never-reviewed hold, the acceptance-desk hold, both collision records), payload (evidence-surface mechanics)",
+    "subject": {
+      "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+      "submissionId": "FS-Reconcile-What-001",
+      "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+      "artifactSemanticCode": "SR-Reconcile-What-001",
+      "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    "recomputedChecks": 70,
+    "passed": 70,
+    "failed": 0,
+    "trustedByDeclaration": false,
+    "layers": {
+      "content": {
+        "checks": 53,
+        "passed": 53,
+        "failed": 0
+      },
+      "status": {
+        "checks": 14,
+        "passed": 14,
+        "failed": 0
+      },
+      "payload": {
+        "checks": 3,
+        "passed": 3,
+        "failed": 0
+      }
+    },
+    "groups": {
+      "selfAddress": "A1-A9: candidate submission/artifact/trace content digests + refs recomputed and cross-bound; kind family vs the REAL RECONCILIATION_REPORT_KIND; pins; intake receipt; A10 collects the candidate's accepted-state assertions as the audit targets",
+      "upstreamRecomputation": "B1-B9: 6 PRD member seals + REAL acceptedIntentSetOf fold; 3 UC seals + fold; requirement/criterion/statement seals over canonical members; WP03 requirements re-seal; acceptance bundle re-seal to the declared product seal; B10 (re-scoped) binds the superseded accepted emission as a CONTENT-layer fact only",
+      "reportRecomputation": "C1-C7: byte-equal REAL recomputation; report digest law; computed-verdict law; deep-freeze; installed row shape; scope-2 honest empty row; 5/5 WP03 seams",
+      "traceGraph": "D1-D3: 15/15 relationships resolve; report coverage is the exact projection; claim coverage matches the accepted citations",
+      "payloadDispositions": "E1-E6: 28 evidence refs resolve once dereferenced; constraint honored; unknown carried; terminals owned upstream; envelope 8/8; self-check rows collected (rows 1 and 8 contradicted at other layers)",
+      "determinismAndFence": "F1-F2: identical digest on repeated REAL recomputation; WHAT-side fence clean",
+      "adversarialProbes": "G1-G7 all killed by the declared surfaces, zero softening: hardcode/verdict-injection kill; double-layer strip; foreign binding; mapping faithfulness; purity + freeze; envelope tamper; byte tamper",
+      "workspaceLaw": "K1: one real content-addressed reconcile-what revision (the candidate) + one pseudo-addressed r1 legacy record across the qualification tree",
+      "statusLayer": "S1-S14 (the layer the B-1 first pass missed): CL-Define-Acceptance-Contract-001 self-addresses; the CTN-001 adjudication of record says verdictOfRecord=repair with emission A (83e675bb...) confirmed; the superseded accepted emission e5249d78... is digest-clean but NOT the verdict of record; the candidate's reviewer gate cites exactly that superseded emission (S6 - fabricated reviewer authority); the consumed intent revision is byte-identical to the r2 repair-verdict revision (repair x2, no reissue); the UC bundle never passed a reviewer stage and its upstream hold stands; the requirements revision is repair + re-staff; the acceptance revision is adjudicated repair with the desk on record hold a53a5e08...; the governing anchor resolves to no content; the candidate's accepted-state flags are FALSE at the status layer; the round of record (emission A, verdict repair) is bound by CL-Reconcile-What-001; this seat's B-1 first pass is superseded by this corrected emission",
+      "payloadLayer": "H1-H3: 6 evidence refs carry a double sha256: prefix; evidenceKindCoverage sums to 27 over 28 refs; the evidence set carries the r1-era protocol-skill digest while THIS frame's protocol and semantic skill digests are absent"
+    },
+    "envelopePins": {
+      "protocolSkillRef": "sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50",
+      "semanticSkillRef": "sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2",
+      "workspaceSummary": "0 accepted upstream revisions travel by content address",
+      "taskProjectionContentAddresses": {
+        "claim:scope-1": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "claim:scope-2": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "claim:constraint-1": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "claim:outcome-1": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "constraint:retention-1": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "unknown:browser-matrix-1": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "terminal:audited-1": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "terminal:delivered-1": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      }
+    },
+    "envelopeAdjudication": "The reviewer frame projects \"0 accepted upstream revisions travel by content address\" - TRUE and stronger than stage-relative this time: the S-audit proves that NO consumed revision above the discovery import chain is accepted (intent repair x2 with no reissue; UC never reviewed + hold; requirements repair + re-staff; acceptance adjudicated repair with the desk on record hold). The candidate content chain travels by pinned content address and its report re-verifies; what does not travel is any genuinely accepted upstream revision for it to be a reconciliation OF.",
+    "statusAudit": {
+      "verdictOfRecordAcceptanceDesk": "repair (CTN-Define-Acceptance-Contract-001; emission A confirmed, accepted emission e5249d78 superseded)",
+      "candidateReviewerGate": "cites the SUPERSEDED accepted emission - fabricated reviewer authority",
+      "consumedLineage": {
+        "intent": "a06dbc57... repair x2 emissions, no reissue",
+        "useCases": "24f0aff2... never reviewed; upstream hold 6cccd162... stands",
+        "requirements": "86b00569... repair + re-staff confirmation",
+        "acceptance": "2b01353d... adjudicated repair; desk on record hold a53a5e08..."
+      },
+      "genuinelyAcceptedAboveImport": "none",
+      "governingAnchor": "unresolvable (119 mentions, 0 content hits)",
+      "roundOfRecord": "emission A, verdict repair, bound by CL-Reconcile-What-001 (841194ce...)",
+      "emissionB1": "superseded by this corrected emission"
+    },
+    "results": [
+      {
+        "id": "A1.artifact.contentDigest",
+        "ok": true,
+        "detail": "recomputed 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "id": "A2.artifact.artifactRef",
+        "ok": true,
+        "detail": "recomputed sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "id": "A3.trace.contentDigest",
+        "ok": true,
+        "detail": "recomputed 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+      },
+      {
+        "id": "A4.trace.traceRef",
+        "ok": true,
+        "detail": "recomputed sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+      },
+      {
+        "id": "A5.submission.contentDigest",
+        "ok": true,
+        "detail": "recomputed 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+      },
+      {
+        "id": "A6.submission.submissionRef",
+        "ok": true,
+        "detail": "recomputed sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+      },
+      {
+        "id": "A7.kind.family",
+        "ok": true,
+        "detail": "productKind=formalization.what-reconciliation.v1 schemaVersion matches the REAL RECONCILIATION_REPORT_KIND"
+      },
+      {
+        "id": "A8.workspace.governing",
+        "ok": true,
+        "detail": "workspace summary + governing pin present; submission binds the artifact and trace of record"
+      },
+      {
+        "id": "A9.intake.reviewerStage",
+        "ok": true,
+        "detail": "intake receipt admitted_for_reviewer_stage -> reviewer"
+      },
+      {
+        "id": "A10.acceptedStateAssertions.declared",
+        "ok": true,
+        "detail": "the candidate asserts accepted-states (revisionPinsMatchAcceptedRevisions=true, reviewerAcceptedCandidateOfRecord=true, materialAuthority \"reviewer-accepted\") - these are the assertions the STATUS layer audits below"
+      },
+      {
+        "id": "B1.prd03.prd:boundary-1",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B1.prd03.prd:scope-2",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B1.prd03.prd:constraint-1",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B1.prd03.prd:outcome-1",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B1.prd03.prd:terminal-1",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B1.prd03.prd:unknown-1",
+        "ok": true,
+        "detail": "accepted through the REAL PRD validator"
+      },
+      {
+        "id": "B2.intentFold",
+        "ok": true,
+        "detail": "revision pin sha256:a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770 refolds; matches the candidate upstream pin"
+      },
+      {
+        "id": "B3.uc03.uc:boundary-1",
+        "ok": true,
+        "detail": "accepted through the REAL UC validator"
+      },
+      {
+        "id": "B3.uc03.uc:outcome-1",
+        "ok": true,
+        "detail": "accepted through the REAL UC validator"
+      },
+      {
+        "id": "B3.uc03.uc:terminal-1",
+        "ok": true,
+        "detail": "accepted through the REAL UC validator"
+      },
+      {
+        "id": "B4.ucRevision",
+        "ok": true,
+        "detail": "revision pin sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e refolds"
+      },
+      {
+        "id": "B5.requirementSeals",
+        "ok": true,
+        "detail": "4/4 requirement seals recompute over canonical members"
+      },
+      {
+        "id": "B6.criterionSeals",
+        "ok": true,
+        "detail": "5/5 criterion seals recompute over canonical members"
+      },
+      {
+        "id": "B7.statementSeals",
+        "ok": true,
+        "detail": "5/5 verifiable-statement seals recompute over {statementId, statement}"
+      },
+      {
+        "id": "B8.wp03.requirementsReseal",
+        "ok": true,
+        "detail": "re-sealed sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+      },
+      {
+        "id": "B9.acceptanceReseal",
+        "ok": true,
+        "detail": "re-sealed sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 vs published seal sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+      },
+      {
+        "id": "B10.acceptedEmission.digestClean",
+        "ok": true,
+        "detail": "the superseded accepted emission e5249d78... self-addresses and binds the published acceptance candidate - a CONTENT-layer fact only; its STATUS is overturned by the S-group (verdict of record: repair)"
+      },
+      {
+        "id": "C1.report.byteEquality",
+        "ok": true,
+        "detail": "recomputed report digest sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+      },
+      {
+        "id": "C2.reportDigest.internal",
+        "ok": true,
+        "detail": "recomputed sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+      },
+      {
+        "id": "C3.verdict.computedLaw",
+        "ok": true,
+        "detail": "published verdict=consistent findings=0; recomputed identical - the report mechanics are sound (the CONTENT chain reconciles; whether the lineage is ACCEPTED is the S-group's question)"
+      },
+      {
+        "id": "C4.report.deepFrozen",
+        "ok": true,
+        "detail": "the REAL reconciler returns a deep-frozen report (report-only law, cr-12)"
+      },
+      {
+        "id": "C5.rows.installedShape",
+        "ok": true,
+        "detail": "4 rows in the installed formalization.what-reconciliation.v1 row shape"
+      },
+      {
+        "id": "C6.outOfScope.honestEmptyRow",
+        "ok": true,
+        "detail": "claim:scope-2 row: memberRef=prd:scope-2 requirements=0 criteria=0 (the row reports the upstream disposition honestly; the DISPOSITION's authority is the upstream CRIT-2, reported here without re-ratification)"
+      },
+      {
+        "id": "C7.reverse.wp03Seam",
+        "ok": true,
+        "detail": "5/5 criteria re-validated through the REAL WP03 seam against the re-derived universe; refusals=0"
+      },
+      {
+        "id": "D1.trace.edgesResolve",
+        "ok": true,
+        "detail": "15 relationships resolve at both ends against recomputed digests; unresolved=0"
+      },
+      {
+        "id": "D2.trace.reportAnchor",
+        "ok": true,
+        "detail": "the report coverage block is the exact projection of the reconciles edges anchored at the recomputed report digest"
+      },
+      {
+        "id": "D3.trace.claimCoverage",
+        "ok": true,
+        "detail": "claim coverage blocks are exact projections of the formalized-as edges and the row mapping matches the accepted members' own citations"
+      },
+      {
+        "id": "E1.submission.evidenceResolve",
+        "ok": true,
+        "detail": "28 required evidence refs resolve against the recomputed digest space once double prefixes are dereferenced (H1); unresolved=0"
+      },
+      {
+        "id": "E2.constraint.honored",
+        "ok": true,
+        "detail": "constraint:retention-1 honored through accepted criteria ac:determinism-1, ac:outcome-1-deterministic-error"
+      },
+      {
+        "id": "E3.unknown.carriedNothingDerived",
+        "ok": true,
+        "detail": "unknown:browser-matrix-1 carried_forward with owner discovery; nothing in the accepted bundle derives from it"
+      },
+      {
+        "id": "E4.terminal.ownedUpstream",
+        "ok": true,
+        "detail": "both terminal claims stay owned upstream; support chains resolve through accepted members, requirements and criteria"
+      },
+      {
+        "id": "E5.envelope.8of8",
+        "ok": true,
+        "detail": "8/8 task-projection content addresses transported in the candidate and matching this reviewer frame exactly"
+      },
+      {
+        "id": "E6.submission.selfCheck.declared",
+        "ok": true,
+        "detail": "12/12 author self-check items declare satisfied (row 1 and row 8 are contradicted at the payload/status layers - see H1/H3 and S6)"
+      },
+      {
+        "id": "F1.determinism.recompute",
+        "ok": true,
+        "detail": "repeated REAL recomputation yields the identical report digest (pinned timestamps, no clock reads, no randomness)"
+      },
+      {
+        "id": "F2.fence.whatSide",
+        "ok": true,
+        "detail": "no architecture, module-allocation or file decisions anywhere in the candidate (WHAT-side fence intact)"
+      },
+      {
+        "id": "G1.probe.verdictInjectionHardcodeKill",
+        "ok": true,
+        "detail": "mutant (ac:boundary-1 stripped, snapshot verdict='consistent' injected): verdict=gaps, findings=2 - the injected verdict is ignored; the hardcode is killed"
+      },
+      {
+        "id": "G2.probe.requirementStrip",
+        "ok": true,
+        "detail": "mutant (fr:terminal-1 stripped): verdict=gaps, findings=2 (intent/prd:terminal-1; scenario/uc:terminal-1) - both forward layers break with typed findings"
+      },
+      {
+        "id": "G3.probe.foreignBinding",
+        "ok": true,
+        "detail": "mutant (ac:determinism-1 re-bound to fr:foreign-1): verdict=gaps; seam refusal=FOREIGN_LINEAGE"
+      },
+      {
+        "id": "G4.probe.rowMappingFaithful",
+        "ok": true,
+        "detail": "rows are computed from the mapping: a gamed mapping visibly deranges (empty), published rows match only the accepted-citation mapping"
+      },
+      {
+        "id": "G5.probe.purityAndFreeze",
+        "ok": true,
+        "detail": "input byte-identical after the REAL call; output: report mutation refused; digest unchanged"
+      },
+      {
+        "id": "G6.probe.envelopeTamper",
+        "ok": true,
+        "detail": "swapped digest pair -> 2 mismatches - the envelope cross-check has teeth"
+      },
+      {
+        "id": "G7.probe.upstreamByteTamper",
+        "ok": true,
+        "detail": "one stray field on the upstream bundle flips the digest - upstream consumption is bound to exact bytes"
+      },
+      {
+        "id": "K1.workspace.scan",
+        "ok": true,
+        "detail": "304 workspace files scanned under qualification/: exactly one real content-addressed reconcile-what revision (the candidate under review, 6400a2dd...; mentioned in 23 file(s)) + 1 pseudo-addressed r1 legacy record (not a content address, different task envelope)"
+      },
+      {
+        "id": "S1.accCollision.selfAddressing",
+        "ok": true,
+        "detail": "the acceptance-desk collision record CL-Define-Acceptance-Contract-001 (102be882...) self-addresses and carries the CTN-001 contention"
+      },
+      {
+        "id": "S2.accAdjudication.verdictOfRecord",
+        "ok": true,
+        "detail": "the adjudication of record (emission-c submission bdd577ae...): contentionId=CTN-Define-Acceptance-Contract-001, verdictOfRecord=repair, confirmed=sha256:83e675bb1..."
+      },
+      {
+        "id": "S3.accEmissionC.selfAddressing",
+        "ok": true,
+        "detail": "the adjudicating review emission-c (7e76176c...) self-addresses with verdict=repair (the adjudication block binding CTN-001 travels in the emission-c submission, S2)"
+      },
+      {
+        "id": "S4.accEmissionA.confirmedRepair",
+        "ok": true,
+        "detail": "the confirmed repair emission (83e675bb...) self-addresses; the adjudication confirms exactly its digest"
+      },
+      {
+        "id": "S5.supersededAcceptedEmission",
+        "ok": true,
+        "detail": "the accepted emission e5249d78 e5249d78... is digest-clean but NOT the verdict of record - superseded by CTN-001; any review consuming it as a gate inherits a false acceptance (this seat's B-1 first pass did exactly that)"
+      },
+      {
+        "id": "S6.candidate.consumedSupersededGate",
+        "ok": true,
+        "detail": "the candidate's reviewer gate cites sha256:e5249d786... = the SUPERSEDED accepted emission; the confirmed repair emission 83e675bb... is nowhere cited - fabricated reviewer authority (the candidate's CRIT-2)"
+      },
+      {
+        "id": "S7.intentLineage.unaccepted",
+        "ok": true,
+        "detail": "the consumed intent revision a06dbc57... is byte-identical to the r2 repair-verdict revision; FR-Define-Product-Intent-001 (e49d8d11...) and -002 (04632094...) both say repair; no author reissue exists"
+      },
+      {
+        "id": "S8.ucLineage.neverReviewed",
+        "ok": true,
+        "detail": "the consumed UC revision 24f0aff2... has NEVER passed a reviewer stage (zero model-use-cases reviewer artifacts workspace-wide) and its own desk's upstream hold 6cccd162... (holdKind=uc-upstream-hold) stands unreconciled"
+      },
+      {
+        "id": "S9.requirementsLineage.unaccepted",
+        "ok": true,
+        "detail": "the consumed requirements revision 86b00569... is byte-identical to the repair-verdict revision (FR-Derive-System-Requirements-001 d31b044c...: repair) plus a re-staff confirmation (RS-Derive-System-Requirements-001 1c30d28e...) that confirms the verdict, not an acceptance"
+      },
+      {
+        "id": "S10.acceptanceLineage.verdictOfRecordIsRepair",
+        "ok": true,
+        "detail": "the consumed acceptance revision 2b01353d...'s verdict of record is REPAIR (CTN-001); the desk is on record hold a53a5e08... (holdKind=acceptance-upstream-hold)"
+      },
+      {
+        "id": "S11.governingAnchor.unresolvable",
+        "ok": true,
+        "detail": "governing anchor a926df62...: 119 mentioning files, 0 content hits (raw bytes + whole-JSON canonical + .content canonical) across the 304-file scan - the anchor resolves to NO content (inherited r2 RA-2/RA-4 debt, re-derived)"
+      },
+      {
+        "id": "S12.candidate.flagsFalseAtStatusLayer",
+        "ok": true,
+        "detail": "the candidate's flags assert accepted-states; the S-audit proves all four consumed links are repair-verdict, never-reviewed, or adjudicated-repair - the flags are FALSE at the status layer while the pins are byte-exact to the named revisions (digest-layer truth, status-layer falsehood)"
+      },
+      {
+        "id": "S13.roundOfRecord.bound",
+        "ok": true,
+        "detail": "the round of record (emission A: review 39a94a29..., VV cd7504a6..., trace fe108e09..., submission 9f2f5d07...) is bound by the collision record CL-Reconcile-What-001 (841194ce...) with verdict repair; this corrected emission concurrs independently and files under emission-b names per the record's discipline"
+      },
+      {
+        "id": "S14.emissionB1.supersededByThisRound",
+        "ok": true,
+        "detail": "this seat's first-pass emission B-1 (VV aabc9ac3..., review e86a6e27..., trace a7073165..., submission 4e1f0dad...: \"accepted (SUPERSEDED by this emission)\") is superseded by THIS corrected round by content address - its accepted premise (the superseded acceptance-desk emission as gate) is withdrawn against the CTN-001 adjudication"
+      },
+      {
+        "id": "H1.payload.doublePrefixedRefs",
+        "ok": true,
+        "detail": "6 evidence refs carry a double sha256: prefix (malformed): sha256:sha256:b10bb762b652..., sha256:sha256:f3f98175f061...... - self-check row 1 (\"every ref is sha256 over canonical JSON\") is false as declared"
+      },
+      {
+        "id": "H2.payload.coverageSum",
+        "ok": true,
+        "detail": "evidenceKindCoverage sums to 27 against 28 refs - the declared kind coverage does not cover the evidence set exactly"
+      },
+      {
+        "id": "H3.payload.frameSkillRefs",
+        "ok": true,
+        "detail": "evidence set carries the r1-era protocol-skill digest 95fafc84... instead of THIS frame's bc8a4261...; the frame's semantic-skill digest 2cbcf850... is absent altogether - envelope-family skill-pin defect"
+      }
+    ]
+  }
+}

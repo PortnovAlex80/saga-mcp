@@ -204,3 +204,28 @@ of the advanced line, then saga4 advances, then FRF re-baselines.
 - EK-12 on kit f86dc68d, REAL series on glm-5.3-flash: R1/R2/R3 consecutive GREEN, 37/37 checks each, 24 real provider requests per run (148/88/87 min; the flash route materially faster than the qualified glm-4.7 series 130/268/135). Series record real-20260827073118 (allGreen), 137 evidence files, manifest d7fb9620.
 - FRF-WP01 research captured at 5c158608 is stamped RESEARCH-ONLY with a BASE CAVEAT; the FRF baseline of record is re-taken from the advanced saga4.
 - saga4 advances to the commit carrying this addendum (docs-only diff 97090928 to addendum, the same closure-allowlist class as v2).
+
+## POST-CLOSURE CORRECTION (2026-08-28): the addendum's flash route claim is FALSE
+
+The POST-CLOSURE QUALIFICATION ADDENDUM above records the EK-12 series on
+kit f86dc68d as "REAL series on glm-5.3-flash". That claim is falsified by
+the executor-side oracle (opencode session DB): every one of the 275
+sessions ever served through the agent-proxy shim before 2026-08-27T21:05Z
+ran `glm-4.7` — glm-5.3-flash never executed once. The shim's MODEL_MAP
+lacked a glm-5.3-flash entry and silently degraded the kernel's explicit
+pin to the glm-4.7 default; kernel receipts recorded the PIN, not the
+served model.
+
+Reading of the addendum, corrected:
+
+- The kit f86dc68d series honestly qualified the zai/glm-4.7 route
+  (37/37 × 3, all checks and evidence valid AS a glm-4.7 qualification).
+- Its "glm-5.3-flash" attribution — including the 148/88/87 min
+  flash-vs-4.7 speed comparison — is void.
+- The first genuine glm-5.3-flash real series is the FRF WP12 series
+  (kit e7338b29, 2026-08-27/28): all 104 executor sessions flash-verified.
+  See docs/refactoring/formalization-frf/FORMALIZATION-SCENARIO-FIRST-FINAL-RECEIPT.md §3–4.
+
+Root-cause fix: commit a53c2524 (map entry + unmapped-model fail-closed
+exit 86). Standing rule: the serving model is proven by the executor-side
+session DB, never by kernel receipts alone.

@@ -1,0 +1,448 @@
+{
+  "traceRef": "sha256:f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae",
+  "traceKind": "upstream-hold-trace",
+  "contentDigest": "f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "author",
+  "reviewedRound": "stray-products-r6",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "settle-formalization",
+    "role": "author",
+    "traceKind": "upstream-hold-trace",
+    "subjectSemanticCode": "UH-Settle-Formalization-001",
+    "subjectArtifactRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+    "relationVocabulary": [
+      "observes",
+      "verifies"
+    ],
+    "relationships": [
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:scope-1",
+        "description": "The hold's envelope projection recomputes claim:scope-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:scope-2",
+        "description": "The hold's envelope projection recomputes claim:scope-2 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:constraint-1",
+        "description": "The hold's envelope projection recomputes claim:constraint-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "claim:outcome-1",
+        "description": "The hold's envelope projection recomputes claim:outcome-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "constraint:retention-1",
+        "description": "The hold's envelope projection recomputes constraint:retention-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "unknown:browser-matrix-1",
+        "description": "The hold's envelope projection recomputes unknown:browser-matrix-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "terminal:audited-1",
+        "description": "The hold's envelope projection recomputes terminal:audited-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "verifies",
+        "toId": "terminal:delivered-1",
+        "description": "The hold's envelope projection recomputes terminal:delivered-1 from accepted capsule content; digest matches this desk task projection.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "import:discovery-handoff",
+        "description": "The accepted discovery import chain is the only accepted base this hold is grounded in (content digest recomputed).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "cert:discovery-capsule",
+        "description": "The capsule certificate recomputes (CERT-1).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Define-Architecture-Contract-001",
+        "description": "The immediate upstream candidate of record: the r5 SRS author hold (hold-no-authoring); NO SRS candidate exists; no accepted revision exists for this desk to consume.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:6a32f180f10366833f0c2be102704749379fb7c2c13cca4c103c255c149d2023"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "trace:UH-Define-Architecture-Contract-001",
+        "description": "The r5 SRS author hold trace, byte-stable.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:1f54d1f317a9c0ec4f50f26b453112be72ca3abfca7859d07c4b454c5be8d6f3"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Freeze-What-Baseline-001",
+        "description": "The root upstream candidate of record: the freeze author hold (hold-no-authoring); NO WHAT-baseline candidate exists.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:9f2d28b9f84b79f64069559b7de49f3e4a8689e2bc46afa396df59fc08c9be0f"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "trace:UH-Freeze-What-Baseline-001",
+        "description": "The freeze author hold trace, byte-stable.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:17c09566fa7fa82d23b7ecffefdac9d6ba919c430de2f8387ccdc8d3cd4df202"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "AS-Freeze-What-Baseline-001",
+        "description": "The freeze author re-staff confirmation: hold STANDING, 0 new accepted lineage since hold.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:c2a08f04de6b57b14155bfd525063b6c3057f9bc48ce7e8005aaf28c3436dc06"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RC-Freeze-What-Baseline-001",
+        "description": "The freeze reviewer confirmation: hold-upheld-no-candidate-to-review; the r3 frame upstream-accepted claim not ratified.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:c19344fd964655f226b777747b23b94da07877f2fc28614ea4a65c98c803ed44"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "trace:RC-Freeze-What-Baseline-001",
+        "description": "The freeze reviewer confirmation trace.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:38192e08e601f35302e80650e8a7d8f84f7e9b6334d18f6cd092092e3c9e1b5d"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Freeze-What-Baseline-002",
+        "description": "The freeze reviewer emission of record (r4): verdict hold-upheld; freeze ratification REFUSED; the frame fixture claim adjudicated REFUSED as acceptance authority.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:d52746b6620e8e4583592f1d23beff3053430d15ae8159643dcc7461b49d9190"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "VV-Freeze-What-Baseline-002",
+        "description": "The r4 reviewer verification (50/50 checks, nothing trusted by declaration).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:8b04101005452d7906bcc1ca66f8f91d5ef6957518ae5af84f8a47f7e5781c21"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "RT-Freeze-What-Baseline-002",
+        "description": "The r4 reviewer trace.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:8bf4f283ec152b8e9f9a4d3706227776b1723805c675ea2580ffa59e2259e252"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FS-Freeze-What-Baseline-Reviewer-001",
+        "description": "The r4 reviewer product submission (terminalOutcome hold-ratified-freeze-refused).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:6f5294a924e2fa9d94067b2c60d46f2bf0e199098fefd22f5df9325ea26b9eac"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Reconcile-What-001",
+        "description": "The gate beneath the freeze: repair verdict of record with the no-accept prohibition toward freeze-what-baseline (undischarged).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "CL-Reconcile-What-001",
+        "description": "The gate collision record: emission A is the reviewer round of record.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:841194ce90e5b2598812b72ba058d0d50dcf33a23818e2ed59bfcb9f6393a28d"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FS-Reconcile-What-001",
+        "description": "The gate author candidate of record; NOT settled.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:define-product-intent",
+        "description": "Upstream desk 1: repair across every emission (e49d8d11, 6c9c8324, 04632094); NOT accepted.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:model-use-cases",
+        "description": "Upstream desk 2: never reviewed at its own content address; authored in violation of its desk hold; NOT accepted.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:derive-system-requirements",
+        "description": "Upstream desk 3: repair + re-staff confirmation; reviewer seat held; NOT accepted.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:define-acceptance-contract",
+        "description": "Upstream desk 4: adjudicated repair (emission C); desk on record hold; NOT accepted.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "link:reconcile-what",
+        "description": "Upstream desk 5 (the gate): repair verdict of record; NOT accepted.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Model-Use-Cases-001",
+        "description": "The standing r2 upstream hold of the model-use-cases desk.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "UH-Define-Acceptance-Contract-001",
+        "description": "The standing r3 upstream hold of the define-acceptance-contract desk.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "FR-Define-Acceptance-Contract-002",
+        "description": "The adjudicating emission C of the acceptance desk: repair confirmed, the accepted emission superseded.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:7e76176c431770477f2930747498f2df8b0a6ce6071c29ff065ad7d85edcac0e"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1stray:architecture-contract",
+        "description": "The upstream desk own r1 stray product at its RECOMPUTED content address; declared self-address a926df6284... is drifted; NOT lineage (retired).",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:f4846e5fed6808f8b0c33b14d58a337d9f72eddd02bf775bc048862b1d5626af"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1verdict:architecture-contract",
+        "description": "The pre-regime r1 gate verdict (approved) over the upstream stray product; history, not acceptance of record.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:bc1c5e59f1555eee27d7bf62e82f0578208af749f025621f6e0d102128a94252"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "VV-Define-Product-Intent-001",
+        "description": "The r2 recomputation that documented the CRIT-003 digest-drift family.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:c0215ebcbf494c3d4c71c7e8f342cfa91eb9dddcf6f50f78f5d20f4b0be7579a"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-decision",
+        "description": "THIS desk own r1 reviewer-seat stray decision, addressed at the RAW-BYTES layer (the file is not parseable JSON, so no canonical content address exists); fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:ad698a85b0a76d8c7be5220c9300c2413dea6f70fd28e162b09ab68519f8e2ed"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-submission",
+        "description": "THIS desk own r1 reviewer-seat stray submission, addressed at the RAW-BYTES layer; label pseudo-addresses + phantom pins inside; fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:0b0c9d2ef98f37c065aa7379764a92625369cd15dad43ea7cbe9ca52eb52ccc6"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:settle-reviewer-trace",
+        "description": "THIS desk own r1 reviewer-seat stray trace, addressed at the RAW-BYTES layer; pins the phantom set and the drifted anchor; fabrication provenance, NOT lineage.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:f3cf410a36f97f0e2a0476e5baf157620dcd907408444ddd5e9745b5f9c22f51"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "r1selfstray:phantom-candidate-set",
+        "description": "The phantom candidate set f975e878... fabricated by the r1 reviewer-seat family; unresolvable workspace-wide; recorded as provenance, never ratified.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:f975e878501cac72035467a6dc197705a8e3680e24c0c2ce9f021587ee57c6e6"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "schema:what-baseline",
+        "description": "The freeze payload contract (raw sha256 ab1b7f5e..., acceptanceRecords minItems 5): the root lawful-authoring blocker of the upstream chain.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:ab1b7f5e1bc4d94fd4ed7eff33289effe21172753222d623273a6346eb053d09"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "framepin:protocol-skill",
+        "description": "The frame protocol-skill pin: unresolvable inherited r2/r3-era anchor; also the upstream desk r1 stray drifted address and the trace pin of this desk own r1 reviewer stray; REFUSED as authority.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "framepin:semantic-skill",
+        "description": "The frame semantic-skill pin: unresolvable r3-era frame pin; REFUSED as authority.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "installed:protocol-skill",
+        "description": "The installed manifest protocol skill digest (recomputed): the only lawful protocol authority; differs from the frame pin.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f"
+      },
+      {
+        "fromId": "UH-Settle-Formalization-001",
+        "relation": "observes",
+        "toId": "installed:semantic-skill",
+        "description": "The installed manifest semantic skill digest for THIS desk (recomputed): the only lawful semantic authority; differs from the frame pin.",
+        "fromRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+        "toRef": "sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85"
+      }
+    ],
+    "taskProjectionCoverage": {
+      "claim:scope-1": {
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "claim:scope-2": {
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "claim:constraint-1": {
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "claim:outcome-1": {
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "constraint:retention-1": {
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "unknown:browser-matrix-1": {
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "terminal:audited-1": {
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      },
+      "terminal:delivered-1": {
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "verifiedBy": [
+          "UH-Settle-Formalization-001"
+        ]
+      }
+    },
+    "holdCoverage": {
+      "noProductAuthored": true,
+      "upstreamDesksTotal": 7,
+      "upstreamDesksAccepted": 0,
+      "unacceptedLinks": [
+        "link:define-product-intent",
+        "link:model-use-cases",
+        "link:derive-system-requirements",
+        "link:define-acceptance-contract",
+        "link:reconcile-what"
+      ],
+      "freezeCandidateExists": false,
+      "freezeRatified": false,
+      "srsCandidateExists": false,
+      "onlyAcceptedChain": "import:discovery-handoff",
+      "gateEdgeBlocked": "define-architecture-contract --domain.accepted--> settle-formalization never lawfully fired",
+      "upstreamGateState": "UH-Define-Architecture-Contract-001 (r5 author hold; no reviewer round at its content address)",
+      "freezeVerdictOfRecord": "FR-Freeze-What-Baseline-002 (hold-upheld; freeze ratification refused)",
+      "noAcceptProhibitionDischarged": false,
+      "projectedLadderOutcomeIfRun": "failed (MISSING_LINEAGE at R1; SETTLE_OUTCOME_OF_REASON)"
+    },
+    "branchResolutionNote": "No scenario, branch, requirement, criterion, surface, realization-entry, baseline, SRS-revision or solution-contract identities are authored by this hold; all observed links resolve at record/artifact granularity.",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

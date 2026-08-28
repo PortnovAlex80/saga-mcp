@@ -1,0 +1,87 @@
+{
+  "traceKind": "desk-trace",
+  "deskRef": "define-acceptance-contract",
+  "role": "reviewer",
+  "reviewRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+  "productRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+  "edges": [
+    {
+      "relationType": "derived_from",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "description": "reviewer verdict over the authored acceptance-bindings bundle (candidate of record)"
+    },
+    {
+      "relationType": "derived_from",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "description": "reviewer verdict over the author desk submission FS-Define-Acceptance-Contract-001"
+    },
+    {
+      "relationType": "derived_from",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "description": "reviewer re-verification of the author trace graph (16/16 relationships resolve)"
+    },
+    {
+      "relationType": "verified_by",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+      "description": "independent recomputation record backing the verdict (50/50 pass; REAL gate + REAL WP03 seam)"
+    },
+    {
+      "relationType": "verifies",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+      "description": "claim:scope-1 realized by boundary + outcome criteria through fr:boundary-1 / fr:outcome-1"
+    },
+    {
+      "relationType": "verifies",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+      "description": "claim:scope-2 (out_of_scope) disposed by explicit exclusion: no criterion, statement or evidence derives from it"
+    },
+    {
+      "relationType": "verifies",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+      "description": "claim:constraint-1 carried by prd:constraint-1 into nfr:determinism-1 and enforced by ac:determinism-1"
+    },
+    {
+      "relationType": "verifies",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+      "description": "claim:outcome-1 realized by the delivered + deterministic-error criteria through fr:outcome-1"
+    },
+    {
+      "relationType": "carries_forward",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+      "description": "constraint:retention-1 preserved: honored by ac:determinism-1 + ac:outcome-1-deterministic-error (D-series: determinism travels by content address)"
+    },
+    {
+      "relationType": "carries_forward",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+      "description": "unknown:browser-matrix-1 preserved (D10: unknowns never disappear at a workshop boundary; owner: discovery; no resolution edge)"
+    },
+    {
+      "relationType": "bound_to",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+      "description": "terminal:audited-1 bound via accepted member prd:terminal-1 and fr:terminal-1 to ac:terminal-1-audited"
+    },
+    {
+      "relationType": "bound_to",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+      "description": "terminal:delivered-1 bound via accepted member prd:outcome-1 and fr:outcome-1 to ac:outcome-1-delivered"
+    },
+    {
+      "relationType": "adjudicates",
+      "fromRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "toRef": "sha256:32892970b44cb1d25a5fdce61e4cea43500ccd1cc4cb8fb03e2b268e1758645d",
+      "description": "upstream-accepted[0] envelope projection adjudicated UNRESOLVED-at-desk (recorded finding; under driver semantics the gate productRef of this chain is sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51)"
+    }
+  ]
+}

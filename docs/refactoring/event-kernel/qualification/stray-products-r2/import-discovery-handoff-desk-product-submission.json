@@ -1,0 +1,108 @@
+{
+  "submissionRef": "sha256:2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+  "submissionId": "FS-Import-Discovery-Handoff-002",
+  "contentDigest": "2a7392591b0f7177b8a4b4fe09ee83c563fb4da021af809b4157810a87acc21e",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "import-discovery-handoff",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "import-discovery-handoff",
+    "deskNodeId": "import-discovery-handoff",
+    "role": "author",
+    "itemInstanceId": "formalization-item:import-discovery-handoff",
+    "token": "plan:discovery-handoff#item:import",
+    "candidate": {
+      "kind": "formalization.discovery-import.v1",
+      "artifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "contentDigest": "b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5"
+    },
+    "payloadContract": {
+      "productKind": "formalization.discovery-import.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+      ],
+      "evidenceKindCoverage": {
+        "discovery-handoff-capsule": 1,
+        "discovery-certificate": 1,
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "architecture-contract": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "traceRef": "sha256:2e5bb8ce3f26de726729c107760d43d5c81350b1a412f5c504d95352a0ef8274",
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#import-discovery-handoff:author",
+      "status": "admitted_for_reviewer_stage",
+      "receivedFrom": "author",
+      "nextStage": "reviewer",
+      "note": "The kernel-side ingress (ingestDiscoveryHandoff against a fresh database) is executed by the driver over public commands; this receipt records desk-level intake of the authored candidate only."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts with SHA256 digests",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Capsule protocol version matches HANDOFF_PROTOCOL_VERSION",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All sub-artifact digests are recomputed and verified",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "Lineage binding matches expected discovery-formalization connection",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Parent state is exactly discovery-terminal",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "No active attempts exist in target database",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "Complete trace relationship coverage from source to terminal claims",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Products of kind formalization.discovery-import.v1 are generated",
+        "satisfied": true
+      },
+      {
+        "id": 9,
+        "description": "Evidence references include capsule and all sub-artifact refs",
+        "satisfied": true
+      },
+      {
+        "id": 10,
+        "description": "0 accepted upstream revisions travel by content address",
+        "satisfied": true
+      }
+    ]
+  }
+}

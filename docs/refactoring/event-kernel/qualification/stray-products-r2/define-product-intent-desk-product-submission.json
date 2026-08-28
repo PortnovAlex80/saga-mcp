@@ -1,0 +1,109 @@
+{
+  "submissionRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+  "submissionId": "FS-Define-Product-Intent-001",
+  "contentDigest": "91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "define-product-intent",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "define-product-intent",
+    "deskNodeId": "define-product-intent",
+    "role": "author",
+    "itemInstanceId": "formalization-item:define-product-intent",
+    "token": "plan:formalization#item:product-intent",
+    "candidate": {
+      "kind": "frf-cell.product-intent.v1",
+      "artifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "contentDigest": "a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055"
+    },
+    "payloadContract": {
+      "productKind": "frf-cell.product-intent.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+        "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+      ],
+      "evidenceKindCoverage": {
+        "discovery-handoff-capsule": 1,
+        "discovery-certificate": 1,
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "architecture-contract": 1
+      },
+      "terminalOutcome": "success"
+    },
+    "traceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#define-product-intent:author",
+      "status": "admitted_for_reviewer_stage",
+      "receivedFrom": "author",
+      "nextStage": "reviewer",
+      "note": "The kernel-side product submission (product_submit against the workflow kernel) is executed by the driver over public commands; this receipt records desk-level intake of the authored candidate only."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed desk artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Bundle schemaVersion frf-cell.product-intent.v1; all six members frf-contracts.prd-intent-member.v1 and pass the WP03 validator",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "Coverage law: all four accepted source claims realized or explicitly dispositioned by members",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "Exactly one closed-vocabulary disposition per member; owner+reason on deferred/out_of_scope; reason on direct_requirement",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Fence respected: no final acceptance/acceptanceCriteria/fr/nfr/requirements/rule/scenarios/srs/useCases content",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "Both terminal lifecycle claims owned by PRD intent members",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "constraint:retention-1 honored: deterministic authoring (pinned timestamp, no clock reads, no randomness)",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "unknown:browser-matrix-1 carried forward with owner discovery; no fabricated resolution edge",
+        "satisfied": true
+      },
+      {
+        "id": 9,
+        "description": "Trace relationships all resolve against recomputed digests; coverages recomputed from the edge set",
+        "satisfied": true
+      },
+      {
+        "id": 10,
+        "description": "0 accepted upstream revisions travel by content address",
+        "satisfied": true
+      }
+    ],
+    "workspaceSummary": "0 accepted upstream revisions travel by content address"
+  }
+}

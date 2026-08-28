@@ -1,0 +1,208 @@
+{
+  "artifactRef": "sha256:82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+  "artifactKind": "formalization-review",
+  "contentDigest": "82af3f8ffeb77f560649e59d99d98722411060889695c3683ac6b5665a6c6941",
+  "semanticCode": "FR-Settle-Formalization-001",
+  "createdAt": "2026-08-28T02:00:00Z",
+  "deskRef": "settle-formalization",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "reviewId": "FR-Settle-Formalization-Reviewer-001",
+    "semanticCode": "FR-Settle-Formalization-001",
+    "deskRef": "settle-formalization",
+    "role": "reviewer",
+    "reviewedRound": "stray-products-r7",
+    "provenanceNote": "UH-Settle-Formalization-002 (factory-testbed round, 792b6ce0...) is the review-sequence predecessor at this desk - a hold-no-review on THIS EXACT frame; recorded and carried forward, extended by this package with the new content since (the r6 author hold re-emission, the arch-gate reviewer refusal of record, and the corpus-wide mention re-scan).",
+    "reviewedCandidate": {
+      "artifactRef": "sha256:b40d7616bb607ccfe389258829d304f065e1cac46888b6541c3c5c35b8402251",
+      "traceRef": "sha256:f7ee0830d5812841dc70417fc3143a8030fadfd5d1018871aaab40c60c1b3bae",
+      "productKind": "formalization.upstream-hold.v1",
+      "declaredDecision": "hold-no-authoring",
+      "note": "the candidate of record at this desk is the r6 author-seat settlement upstream hold (the latest author emission of the qualification series; the testbed twins 8e1bcf73.../7ce5eb48... recompute byte-stable as predecessor evidence, same decision); NO solution-contract candidate exists at this desk (noProductAuthored: true; product_submit unused at the author stage) - none was ever lawfully authorable on this chain"
+    },
+    "verificationRef": "sha256:6dad7278358bcc9d94c87941a74866fcb2922aa3e73a265b8bc61429abd882b5",
+    "verificationSummary": {
+      "recomputedChecks": 24,
+      "passed": 24,
+      "failed": 0,
+      "trustedByDeclaration": false
+    },
+    "envelopeConsistency": {
+      "taskProjectionContentAddresses": 8,
+      "resolved": 8,
+      "adjudicated": 1,
+      "note": "All 8 claim/constraint/unknown/terminal addresses match this frame exactly and re-derive from the accepted capsule (9/9 with CERT-1). The frame carries the reviewer drift pair bc8a4261.../2cbcf850... as skill pins (hash-resolve to no content; recorded as provenance), the tool-schemas layer and write authority 'candidate-read,product-read,product-submit' (recorded verbatim), plus upstream-accepted[0] sha256:d751f194... :: 'accepted revision of settle-formalization' and the workspace line 'workspace: 1 accepted upstream revisions travel by content address' - adjudicated below at the content layer. This frame pins NO governingContractRef; the r2-era anchor a926df6284... (the author-frame pin carried by prior records) remains unresolvable workspace-wide. The author frames of this desk carry ZERO upstream-accepted entries; this reviewer frame's count delta (0 -> 1) is stage-relative shell projection, not kernel supply."
+    },
+    "workspaceLaw": "frame claim, verbatim: \"workspace: 1 accepted upstream revisions travel by content address\" (upstream-accepted[0] sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95 :: accepted revision of settle-formalization) - adjudicated FALSE at the status layer: the address hash-resolves to zero workspace contents and is process-impossible and wrong-referent; the truthful recomputed census is 0 of 7 accepted upstream desks; the desk of record holds noProductAuthored=true; the inbound domain.accepted edge has never lawfully fired.",
+    "reviewerSequence": {
+      "first": {
+        "semanticCode": "UH-Settle-Formalization-002",
+        "ref": "sha256:792b6ce07899114b47b1728cc8e0c9bd5ed867f4d4ad7024d0d83a6559c7f7f3",
+        "kind": "reviewer-seat desk hold (hold-no-review, typedWait external-availability; no FR/VV/RT/FS package minted: no candidate existed to review)",
+        "disposition": "hold-no-review; frame address adjudicated PHANTOM at its DEBUT (content-unresolved, process-impossible, wrong-referent)"
+      },
+      "thisRecord": "FR-Settle-Formalization-Reviewer-001 is the SECOND reviewer-stage record at this desk and mints the desk's first content-addressed FR/VV/RT/FS reviewer package. This is NOT a re-emission of identical semantics (the idempotency law is respected): NEW adjudication content exists since the prior record - (a) the r6 qualification-round author hold re-emission UH-Settle-Formalization-001 (b40d7616..., census 0 of 7, verifier 48/48), which supersedes-in-sequence the testbed author holds as the candidate of record; (b) the immediate upstream gate now carries a reviewer refusal of record - FR-Define-Architecture-Contract-001 (d813908b..., verifier 53/53) - which the prior record recorded as absent; (c) the address d751f194... now HAS corpus mentions - exactly its own prior adjudication set - while still resolving to zero contents; (d) the testbed round's second consecutive author hold (7ce5eb48...) with the author envelope re-pinned at ZERO upstream-accepted entries. The prior record's disposition is carried forward unchanged; its staffing-scoped scan finding is superseded by this workspace-wide three-body re-scan.",
+      "authorRestaffContext": "the author seat of record is the r6 hold (hold-no-authoring, census 0 of 7, verifier 48/48); its resume contract R1-R5 is the desk's current lawful path"
+    },
+    "claimedAcceptanceAdjudication": {
+      "frameEntry": "upstream-accepted[0] sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95 :: accepted revision of settle-formalization",
+      "frameWorkspaceSummary": "workspace: 1 accepted upstream revisions travel by content address",
+      "resolution": "UNRESOLVED at the content layer: a workspace-wide three-body scan (raw bytes, whole-JSON canonical, .content canonical; this round excluded) hash-resolves the address to ZERO contents",
+      "processLaw": "process-impossible: the desk of record authors no product (UH-Settle-Formalization-001, r6 author hold, recomputed; noProductAuthored=true, product_submit unused at the author stage; the testbed twins 8e1bcf73.../7ce5eb48... concur); no settle gate has ever returned outcome formalized, no intake receipt (admitted_for_reviewer_stage), no sealed contract and no reviewer verdict exists anywhere for this desk - an \"accepted revision of settle-formalization\" cannot exist on this chain",
+      "wrongReferentLaw": "decisive even under a resolving reading: the entry names THIS desk's own revision, while settlement consumes the frozen whole-WHAT baseline (frf-contracts.what-baseline.v1) + the accepted SRS revision + the authored desk inputs (the twelve-kind handoff values and the post-freeze repository/policy authority refs) over the single inbound edge define-architecture-contract --domain.accepted--> settle-formalization, which has never lawfully fired (the arch desk is on record hold 6a32f180... with its r6 reviewer refusal of record d813908b...); a desk-own projection supplies no reviewable subject and cures neither dispatch refusal",
+      "textualMentions": {
+        "count": 6,
+        "files": [
+          ".factory-testbed/settle-formalization-author-hold2-verify.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold-build.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold-verify-out.json",
+          ".factory-testbed/settle-formalization-reviewer-hold-verify.mjs",
+          ".factory-testbed/settle-formalization-reviewer-hold.artifact.json",
+          ".factory-testbed/settle-formalization-reviewer-hold.md"
+        ],
+        "note": "every mention lives in a phantom-adjudication family of THIS desk: the prior reviewer-stage adjudication set (UH-Settle-Formalization-002, factory-testbed round: the hold, its builder, its summary, its verifier receipt and its verifier script, all refusing the address) plus the testbed second author hold's verifier (UH-Settle-Formalization-003 verification, whose byte-equality note records the reviewer staffing's \"desk-own phantom d751f194 and a projected 1-count\" and whose F1 check adjudicates all FOUR phantom addresses resolving to NO content); at its debut staffing the address had ZERO mentions of any kind - the only mentions added since are its own refusal records; zero ratifying citations exist anywhere"
+      },
+      "authorityAudit": {
+        "isWorkplaceProductionRevisionOfThisChain": false,
+        "reviewerStageAtThisAddress": false,
+        "hashResolvedContents": 0,
+        "ratifyingCitations": 0
+      },
+      "adjudication": "REFUSED as acceptance authority (phantom-upstream-projection; stale shell metadata; CRIT-1 family)",
+      "parallelReviewerRecord": {
+        "semanticCode": "UH-Settle-Formalization-002",
+        "ref": "sha256:792b6ce07899114b47b1728cc8e0c9bd5ed867f4d4ad7024d0d83a6559c7f7f3",
+        "traceRef": "sha256:cfca9e19b7824af07b5f5adc164a238b98d31ff056375df05ff8f420f6d870da",
+        "disposition": "hold-no-review (typedWait external-availability); the SAME address adjudicated PHANTOM at its staffing (content-unresolved, process-impossible, wrong-referent) - the address DEBUTED at that reviewer staffing, the identical shell-projection debut pattern this frame family repeats at every desk",
+        "deltaAdjudicatedByThisRecord": "the prior record scanned a staffing in which the address had ZERO prior mentions; THIS staffing's workspace-wide re-scan finds the address textually present ONLY inside its own prior adjudication set (the testbed settle reviewer hold family) and still hash-resolving to zero contents in all three body layers. The DISPOSITION is unchanged: both reviewer records refuse the claim. NEW since that record and carried into this package: (a) the r6 qualification-round author hold re-emission (b40d7616..., census 0 of 7, verifier 48/48); (b) the arch-gate reviewer refusal of record FR-Define-Architecture-Contract-001 (d813908b..., verifier 53/53) - the immediate upstream gate is now refused at reviewer stage, not merely held at author stage; (c) the testbed round's second consecutive author hold (7ce5eb48..., envelope byte-equal to hold #1 with ZERO upstream-accepted entries)."
+      },
+      "familyHistory": "the desk-own-revision phantom family (r2 ADV-4): requirements-desk 65fe9a22... (\"accepted revision of derive-system-requirements\", unresolved across five staffings), acceptance-desk 32892970... (testbed UH-Define-Acceptance-Contract-002), architecture-desk b7f34c48... (testbed UH-Define-Architecture-Contract-002; re-refused by the r6 arch reviewer package), and THIS desk-own d751f194... (testbed UH-Settle-Formalization-002 at its debut; re-adjudicated and refused here) - four desks, each variant debuting at that desk's reviewer staffing with a per-stage regenerated address",
+      "countDeltaLaw": "the author frames of this desk carry ZERO upstream-accepted entries and the workspace line \"0 accepted upstream revisions travel by content address\" (r6 author hold frameAdjudication recomputed TRUE at census 0 of 7); the reviewer frame carries ONE entry and the line \"1 accepted upstream revisions travel by content address\". The count delta (0 -> 1) is stage-relative shell projection, not kernel supply: the lawful recomputed supply remains 0 accepted upstream revisions"
+    },
+    "findings": {
+      "positiveFindings": [
+        "The envelope recomputes 8/8 from the accepted capsule (9/9 including CERT-1); the discovery import chain remains the only genuinely accepted base.",
+        "The author-seat hold of record (UH-Settle-Formalization-001, r6, b40d7616... / trace f7ee0830...) re-derives byte-stable with its 48/48 verifier green; the testbed author twins (8e1bcf73..., 7ce5eb48...) recompute as consistent predecessor evidence, both verifier receipts VERIFIED with 0 fails.",
+        "The claimed accepted revision was adjudicated at the CONTENT layer, not by label: a workspace-wide three-body scan hash-resolves d751f194... to ZERO contents, and every textual mention is the desk's own prior refusing adjudication set (the address's debut adjudication at UH-Settle-Formalization-002).",
+        "Two independent reviewer staffings agree on the disposition: UH-Settle-Formalization-002 (hold-no-review, phantom adjudication at the address's debut) and this seat (hold-upheld, claim refused); the reviewer package is minted only because new adjudication content exists since the prior record.",
+        "The immediate upstream gate is now refused at REVIEWER stage: FR-Define-Architecture-Contract-001 (d813908b..., verifier 53/53) recomputes and binds the r5 arch hold (6a32f180...) as its reviewed candidate - the single inbound edge define-architecture-contract --domain.accepted--> settle-formalization is refused-at-source, not merely unstaffed upstream.",
+        "The freeze gate recomputes exactly: freeze ratification REFUSED by FR-Freeze-What-Baseline-002 (d52746b6..., effect never fired), the standing freeze hold (9f2d28b9...) with AS-001/RC-001 confirmations, and the no-accept prohibition of FR-Reconcile-What-001 (39a94a29..., repair) undischarged.",
+        "The census recomputes 0 of 7: intent repair x3, UC never reviewed at its own content address, SRS repair with held reviewer seat, acceptance adjudicated repair on record hold, reconcile-what repair with the prohibition, freeze with no candidate ever authored, architecture on hold with reviewer refusal - none accepted.",
+        "The installed desk declaration re-derives from the installed manifest and cell sources (kernel node, frf-contracts.solution-contract.v1, formalization.settlement-structure.v1/settleSolutionContract, the domain.accepted inbound edge, the R1/R2/R3 ladder, MISSING_LINEAGE -> failed routing, and the reviewer route law: the verdict is the reviewer's only product, bound to the exact sealed artifact + canonical digest).",
+        "The r1 reviewer-seat stray family of this desk recomputes at the raw-bytes layer exactly as retired: decision unparseable (ad698a85...), label pseudo-addresses, phantom candidate set f975e878... plus the 7 invented refs - none collides with this envelope; never lineage."
+      ],
+      "advisoryNotes": [
+        {
+          "type": "verdict_semantics",
+          "note": "This seat's verdict \"hold-upheld\" follows the r4/r6 reviewer-stage-of-record semantics (the candidate of record is the author-seat hold, verified and upheld). No product verdict (accepted/rejected) is minted - the reviewer verdict vocabulary is a pure function over the exact sealed candidate artifact and stays uncomputed over the absent subject, exactly as the prior record and the installed reviewer route require. The FS package is a review-complete refusal record with effectFired: false; product_submit is used only to lodge it."
+        },
+        {
+          "type": "frame_family_history",
+          "note": "the desk-own-revision phantom family (r2 ADV-4): requirements-desk 65fe9a22... (\"accepted revision of derive-system-requirements\", unresolved across five staffings), acceptance-desk 32892970... (testbed UH-Define-Acceptance-Contract-002), architecture-desk b7f34c48... (testbed UH-Define-Architecture-Contract-002; re-refused by the r6 arch reviewer package), and THIS desk-own d751f194... (testbed UH-Settle-Formalization-002 at its debut; re-adjudicated and refused here) - four desks, each variant debuting at that desk's reviewer staffing with a per-stage regenerated address"
+        },
+        {
+          "type": "count_delta_law",
+          "note": "the author frames of this desk carry ZERO upstream-accepted entries and the workspace line \"0 accepted upstream revisions travel by content address\" (r6 author hold frameAdjudication recomputed TRUE at census 0 of 7); the reviewer frame carries ONE entry and the line \"1 accepted upstream revisions travel by content address\". The count delta (0 -> 1) is stage-relative shell projection, not kernel supply: the lawful recomputed supply remains 0 accepted upstream revisions"
+        }
+      ],
+      "criticalIssues": [
+        {
+          "id": "CRIT-1",
+          "severity": "CRITICAL",
+          "title": "Frame declares an accepted desk-own revision; the address is a phantom - unresolved, process-impossible, wrong-referent",
+          "detail": "The frame's workspace line (\"workspace: 1 accepted upstream revisions travel by content address\") and its upstream-accepted[0] entry assert accepted-chain authority. Mechanical resolution: sha256:d751f19421553fe7729ca96ab5ed803720c7b42da63daf28b61246460c867a95 hash-resolves to ZERO workspace contents in all three body layers over 2829 files; its 6 textual mentions are exactly its own prior adjudication set (the testbed settle reviewer hold family, which refused it at the address's debut). Process-impossible: this desk's author seat of record holds noProductAuthored=true with product_submit unused; no settle gate has ever returned outcome formalized; no intake receipt, sealed contract or reviewer verdict exists anywhere for this desk, so an \"accepted revision of settle-formalization\" cannot exist. Wrong-referent: even under a resolving reading, the entry names THIS desk's own revision, while settlement consumes the frozen whole-WHAT baseline + the accepted SRS revision + the authored desk inputs over the never-fired domain.accepted edge. A settlement or review ratified over this \"upstream\" would inherit the fabricated authority permanently.",
+          "requiredAction": "Verdict: refuse the claim as acceptance authority. Lawful path unchanged: resume contract R1-R5 of the r6 author hold (the freeze desk R1-R4 completes first; the arch desk re-staffs against the REAL frozen baseline; authoring precedes any reviewer stage; the holds are never carried as product lineage; the r1 reviewer-seat stray family stays retired)."
+        },
+        {
+          "id": "CRIT-2",
+          "severity": "CRITICAL",
+          "title": "No sealed candidate exists at this desk to review; the reviewer stage stays closed over products, and the terminal ladder makes fabrication self-destructive",
+          "detail": "The reviewer verdict vocabulary (accepted/rejected) is a pure function over the exact sealed candidate artifact + canonical digest (the installed reviewer route, recomputed from source) and cannot be honestly computed over an absent subject: no solution-contract candidate was ever authored (noProductAuthored=true across all four author emissions), no author product submission exists, and no intake receipt (admitted_for_reviewer_stage) was ever issued at this desk. Additionally, per the prior reviewer-stage record (recomputed byte-stable, which re-proved the dispatch behavior live at its staffing): the settlement dispatch on a malformed/fabricated candidate returns verdict terminal-reject with outcome failed - a fabricated candidate would not repair, it would terminally fail the whole formalization flow at complete-failed. Minting an accepted verdict over nothing would be the fabricated-desk-history class this conveyor exists to catch.",
+          "requiredAction": "No product verdict is minted. The candidate of record (the r6 author-seat hold) is verified and upheld; product_submit is used only to lodge this review-complete refusal package with effectFired: false."
+        },
+        {
+          "id": "CRIT-3",
+          "severity": "CRITICAL",
+          "title": "The inbound edge has never lawfully fired; the immediate upstream gate is now refused at reviewer stage",
+          "detail": "The single inbound edge define-architecture-contract --domain.accepted--> settle-formalization has never lawfully fired: the arch desk of record holds noProductAuthored (UH-Define-Architecture-Contract-001, 6a32f180..., verifier 29/29) and - NEW since the prior reviewer record - its reviewer seat has now minted the refusal of record FR-Define-Architecture-Contract-001 (d813908b..., hold-upheld, verifier 53/53, frame claim refused). Beneath it, the freeze ratification stands REFUSED (d52746b6..., effect never fired) and the no-accept prohibition of FR-Reconcile-What-001 (39a94a29...) stands undischarged. Therefore no frozen WHAT baseline exists, no accepted SRS revision exists, and NONE of the five settlement input classes exists: any lawful ladder run refuses at R1 with MISSING_LINEAGE, routed to the outcome failed.",
+          "requiredAction": "The prohibition stands. This seat upholds the author hold and refuses any settlement authoring or review on this chain state."
+        }
+      ],
+      "majorIssues": [
+        {
+          "id": "MAJ-1",
+          "severity": "MAJOR",
+          "title": "Frame skill digests resolve to no workspace content; the reviewer-frame drift pair is stable across staffings; the anchor debt remains open",
+          "detail": "The frame pins protocol-skill sha256:bc8a4261b2bd33a83378e25f6c9909335ab33990e7219565b927757877f66e50 and semantic-skill sha256:2cbcf8501af67d0deccfa6b99d3f36b8bd11cdc10529eab921b7eeeee91c72a2; both hash-resolve to zero workspace contents (mentioned textually 68/68 times as standing frame pins). The installed manifest pins recompute (sha256:b88267a1df84ae503d0e9744734a26671506f7bb719cb7b457f8d5ad6745997f / sha256:b130ee25da08aa27133b2b277f2215c044832489bcb0afcd23e576b0fb925e85) and BOTH differ. The pin-swap pattern is now stable: AUTHOR frames pin the pair a926df6284.../95fafc847b... (the r2/r3-era anchor debt), REVIEWER frames pin this pair bc8a4261.../2cbcf850... - byte-equal at both settle reviewer staffings (the testbed one and this one). Both pairs are envelope provenance, never ratified. The author-frame anchor a926df6284... also still resolves to zero contents - the anchor debt remains open; this round's frame pins no governingContractRef at all.",
+          "requiredAction": "The frame issuer must materialize the skill/anchor refs as real content-addressed material (or re-pin to what exists) before any future settlement may cite them."
+        }
+      ]
+    },
+    "acceptanceCriteria": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true,
+        "evidence": "VV/FR/RT/FS self-address and cross-bind; single-dereference evidence list in the submission"
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed by this seat; nothing trusted by declaration",
+        "satisfied": true,
+        "evidence": "A-G check groups re-run (24/24 pass); 2829 files scanned"
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-frame task-projection content addresses resolved",
+        "satisfied": true,
+        "evidence": "B1: 8/8 exact from the accepted capsule"
+      },
+      {
+        "id": 4,
+        "description": "The frame's upstream-accepted entry adjudicated at the content layer, not by label",
+        "satisfied": true,
+        "evidence": "A1-A2: zero hash-resolutions workspace-wide (three body layers); the only mentions are the address's own debut adjudication set"
+      },
+      {
+        "id": 5,
+        "description": "Verdict grounded in re-digested records, not round labels or prior review text",
+        "satisfied": true,
+        "evidence": "B3-B5, C1-C3, D1-D6, E1-E3: author holds, the gate reviewer refusal, freeze refusal round, confirmations, all seven census rows, the prior reviewer record, the r1 stray family and the installed desk/reviewer-route law re-digested"
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored; unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true,
+        "evidence": "no disposition, binding or resolution authored by this seat; the 8 envelope claims observed as content addresses only"
+      },
+      {
+        "id": 7,
+        "description": "Reviewer artifacts deterministic: pinned timestamps, no clock reads, no randomness",
+        "satisfied": true,
+        "evidence": "pinned CREATED_AT; deterministic builder; no randomness"
+      },
+      {
+        "id": 8,
+        "description": "Frame workspace summary TRUE of the chain",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: the one projected address is a desk-own phantom; census 0 of 7; the count delta from the author frames is shell projection"
+      },
+      {
+        "id": 9,
+        "description": "A sealed solution-contract candidate exists at this desk to review",
+        "satisfied": false,
+        "note": "none ever lawfully authored; the candidate of record is the author-seat hold, which this seat verifies and upholds; no product verdict is minted"
+      },
+      {
+        "id": 10,
+        "description": "The claimed accepted revision is a chain WorkplaceProductionRevision with a completed reviewer stage",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: phantom address, process-impossible, wrong-referent"
+      }
+    ],
+    "verdict": "hold-upheld",
+    "decision": "REFUSE the frame upstream-accepted claim as acceptance authority (phantom-upstream-projection, desk-own-revision family); uphold UH-Settle-Formalization-001 (r6 author hold); mint no solution-contract product verdict over the absent candidate; the desk awaits resume contract R1-R5",
+    "nextStage": "HOLD STANDS - no settlement authoring or review may occur at this desk on this chain state. Resume contract R1-R5 of the r6 author hold unchanged: (R1) the freeze desk resume contract R1-R4 completes first - genuinely accepted revisions land for the four upstream desks through completed reviewer stages at their own content addresses, RA-5 re-runs reconcile-what over the NEW accepted chain, its reviewer verdict alone discharges the no-accept prohibition, and the freeze ratifies on five accepted pre-freeze desks; (R2) domain.frozen fires only from the ratified freeze; the define-architecture-contract desk re-staffs against the REAL frozen WHAT-baseline revision, authors a genuine sealed SRS and passes a completed reviewer stage - domain.accepted fires only from that accepted revision (its reviewer refusal of record d813908b... is the current gate state); (R3) this desk re-staffs only with ALL FIVE settlement input classes - never a fixture, never a stray product, never a frame assertion; (R4) settlement runs the ladder exactly (pins -> binding resolution -> seal; A2 fence) before emitting domain.formalized; (R5) this hold, the prior reviewer hold and this refusal are not carried as product lineage; the r1 reviewer-seat stray family stays retired - not resumed, not repaired in place, not re-submitted."
+  }
+}

@@ -1,0 +1,278 @@
+{
+  "rule": "sha256(canonicalJson) per src/workflow-kernel/domain/digest.ts; report: real acceptance.reconcileWhat over a snapshot re-derived through the real acceptanceUniverseFrom protocol (reviewer same-provider recheck, zero softening); upstream: real PRD/UC/WP03 validators + REAL cell folds + real validateAcceptanceBundle re-seal; adversarial probes G1-G7 all killed by the declared surfaces",
+  "recomputed": 54,
+  "passed": 54,
+  "failed": 0,
+  "results": [
+    {
+      "id": "A1.artifact.contentDigest",
+      "ok": true,
+      "detail": "recomputed 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared 6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A2.artifact.artifactRef",
+      "ok": true,
+      "detail": "recomputed sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191 vs declared sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191"
+    },
+    {
+      "id": "A3.trace.contentDigest",
+      "ok": true,
+      "detail": "recomputed 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared 09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A4.trace.traceRef",
+      "ok": true,
+      "detail": "recomputed sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0 vs declared sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0"
+    },
+    {
+      "id": "A5.submission.contentDigest",
+      "ok": true,
+      "detail": "recomputed 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared 0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+    },
+    {
+      "id": "A6.submission.submissionRef",
+      "ok": true,
+      "detail": "recomputed sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba vs declared sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba"
+    },
+    {
+      "id": "A7.kind.family",
+      "ok": true,
+      "detail": "productKind=formalization.what-reconciliation.v1 schemaVersion=formalization.what-reconciliation.v1/formalization.what-reconciliation.v1 vs RECONCILIATION_REPORT_KIND=formalization.what-reconciliation.v1"
+    },
+    {
+      "id": "A8.workspace.governing",
+      "ok": true,
+      "detail": "workspace summary + governing pin present; submission binds the artifact and trace of record"
+    },
+    {
+      "id": "A9.intake.reviewerStage",
+      "ok": true,
+      "detail": "intake receipt admitted_for_reviewer_stage -> reviewer (this reviewer stage is the admitted next stage)"
+    },
+    {
+      "id": "A10.semanticSkill.authorPin",
+      "ok": true,
+      "detail": "author evidence set pins the semantic skill sha256:95fafc847b24ebf5a6cb142b9ae96db9f08308ea3bb7e7eab9b534858108eebd"
+    },
+    {
+      "id": "B1.prd03.prd:boundary-1",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B1.prd03.prd:scope-2",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B1.prd03.prd:constraint-1",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B1.prd03.prd:outcome-1",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B1.prd03.prd:terminal-1",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B1.prd03.prd:unknown-1",
+      "ok": true,
+      "detail": "accepted through the REAL PRD validator"
+    },
+    {
+      "id": "B2.intentFold",
+      "ok": true,
+      "detail": "revision pin sha256:a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770 refolds; matches the candidate upstream pin"
+    },
+    {
+      "id": "B3.uc03.uc:boundary-1",
+      "ok": true,
+      "detail": "accepted through the REAL UC validator"
+    },
+    {
+      "id": "B3.uc03.uc:outcome-1",
+      "ok": true,
+      "detail": "accepted through the REAL UC validator"
+    },
+    {
+      "id": "B3.uc03.uc:terminal-1",
+      "ok": true,
+      "detail": "accepted through the REAL UC validator"
+    },
+    {
+      "id": "B4.ucRevision",
+      "ok": true,
+      "detail": "revision pin sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e refolds"
+    },
+    {
+      "id": "B5.requirementSeals",
+      "ok": true,
+      "detail": "4/4 requirement seals recompute over canonical members"
+    },
+    {
+      "id": "B6.criterionSeals",
+      "ok": true,
+      "detail": "5/5 criterion seals recompute over canonical members"
+    },
+    {
+      "id": "B7.statementSeals",
+      "ok": true,
+      "detail": "5/5 verifiable-statement seals recompute over {statementId, statement}"
+    },
+    {
+      "id": "B8.wp03.requirementsReseal",
+      "ok": true,
+      "detail": "re-sealed sha256:60083eb4a2ba553d0924c9b9ffe12ad9e703f9adc2f7da6bd5584a1747620690"
+    },
+    {
+      "id": "B9.acceptanceReseal",
+      "ok": true,
+      "detail": "re-sealed sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51 vs published seal sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+    },
+    {
+      "id": "B10.reviewerOfRecord",
+      "ok": true,
+      "detail": "the acceptance reviewer decision says accepted over exactly the published author candidate (verification ref binds the recomputed reviewer VV digest 17eb4d7f...)"
+    },
+    {
+      "id": "C1.report.byteEquality",
+      "ok": true,
+      "detail": "recomputed report digest sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    {
+      "id": "C2.reportDigest.internal",
+      "ok": true,
+      "detail": "recomputed sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1 vs declared sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    {
+      "id": "C3.verdict.computedLaw",
+      "ok": true,
+      "detail": "published verdict=consistent findings=0; recomputed verdict=consistent findings=0"
+    },
+    {
+      "id": "C4.report.deepFrozen",
+      "ok": true,
+      "detail": "the REAL reconciler returns a deep-frozen report (report-only law, cr-12)"
+    },
+    {
+      "id": "C5.rows.installedShape",
+      "ok": true,
+      "detail": "4 rows in the installed formalization.what-reconciliation.v1 row shape"
+    },
+    {
+      "id": "C6.outOfScope.honestEmptyRow",
+      "ok": true,
+      "detail": "claim:scope-2 row: memberRef=prd:scope-2 requirements=0 criteria=0 (honest empty row, derives nothing)"
+    },
+    {
+      "id": "C7.reverse.wp03Seam",
+      "ok": true,
+      "detail": "5/5 criteria re-validated through the REAL WP03 seam against the re-derived universe; refusals=0"
+    },
+    {
+      "id": "D1.trace.edgesResolve",
+      "ok": true,
+      "detail": "15 relationships (9 reconciles + 6 formalized-as) resolve at both ends against recomputed digests; unresolved=0"
+    },
+    {
+      "id": "D2.trace.reportAnchor",
+      "ok": true,
+      "detail": "the report coverage block is the exact projection of the reconciles edges anchored at the recomputed report digest"
+    },
+    {
+      "id": "D3.trace.claimCoverage",
+      "ok": true,
+      "detail": "claim coverage blocks are exact projections of the formalized-as edges and the row mapping matches the accepted members' own citations"
+    },
+    {
+      "id": "E1.submission.evidenceResolve",
+      "ok": true,
+      "detail": "28 required evidence refs resolve against the recomputed digest space; unresolved=0"
+    },
+    {
+      "id": "E2.constraint.honored",
+      "ok": true,
+      "detail": "constraint:retention-1 honored through accepted criteria ac:determinism-1, ac:outcome-1-deterministic-error"
+    },
+    {
+      "id": "E3.unknown.carriedNothingDerived",
+      "ok": true,
+      "detail": "unknown:browser-matrix-1 carried_forward with owner discovery; nothing in the accepted bundle derives from it (no fabricated resolution edge)"
+    },
+    {
+      "id": "E4.terminal.ownedUpstream",
+      "ok": true,
+      "detail": "both terminal claims stay owned upstream; support chains resolve through accepted members, requirements and criteria"
+    },
+    {
+      "id": "E5.envelope.8of8",
+      "ok": true,
+      "detail": "8/8 task-projection content addresses transported in the candidate and matching this reviewer frame exactly (no silent drops, no digest drift)"
+    },
+    {
+      "id": "E6.submission.selfCheck",
+      "ok": true,
+      "detail": "12/12 author self-check items satisfied"
+    },
+    {
+      "id": "F1.determinism.recompute",
+      "ok": true,
+      "detail": "three independent recomputations of the report yield the identical digest (pinned timestamps, no clock reads, no randomness)"
+    },
+    {
+      "id": "F2.fence.whatSide",
+      "ok": true,
+      "detail": "no architecture, module-allocation or file decisions anywhere in the candidate (WHAT-side fence intact)"
+    },
+    {
+      "id": "G1.probe.verdictInjectionHardcodeKill",
+      "ok": true,
+      "detail": "mutant (ac:boundary-1 stripped, snapshot.verdict='consistent' injected): verdict=gaps, findings=2 (forward/COVERAGE_GAP; forward/COVERAGE_GAP) - the injected verdict is ignored and the hardcode is killed"
+    },
+    {
+      "id": "G2.probe.requirementStrip",
+      "ok": true,
+      "detail": "mutant (fr:terminal-1 stripped): verdict=gaps, findings=2 (intent/prd:terminal-1; scenario/uc:terminal-1) - intent and scenario survival layers both break with typed COVERAGE_GAP findings"
+    },
+    {
+      "id": "G3.probe.foreignBinding",
+      "ok": true,
+      "detail": "mutant (ac:determinism-1 re-bound to fr:foreign-1): verdict=gaps; seam refusal=FOREIGN_LINEAGE (criterion ac:determinism-1: AC ac:determinism-1 binds requirement(s) fr:foreign-1 outside the exact accepted FR/NFR id sets)"
+    },
+    {
+      "id": "G4.probe.rowMappingFaithful",
+      "ok": true,
+      "detail": "mutant mapping (claim:scope-1 -> prd:scope-2) yields memberRef=prd:scope-2 with 0 requirements / 0 criteria (visible deranging), while the published row binds prd:boundary-1 with 1 requirements - the mapping cannot silently inflate coverage"
+    },
+    {
+      "id": "G5.probe.purityAndFreeze",
+      "ok": true,
+      "detail": "snapshot byte-identical before/after the REAL call (pure); report mutation attempts: report mutation refused; recomputed digest unchanged"
+    },
+    {
+      "id": "G6.probe.envelopeTamper",
+      "ok": true,
+      "detail": "swapped scope-1/scope-2 digest pair -> 2 mismatches (claim:scope-1, claim:scope-2) - the envelope cross-check kills digest drift"
+    },
+    {
+      "id": "G7.probe.upstreamByteTamper",
+      "ok": true,
+      "detail": "one stray field on the accepted bundle flips the digest (004972eb... != declared 2b01353d...) - upstream consumption is bound to exact bytes, not narrative"
+    },
+    {
+      "id": "K1.workspace.scan",
+      "ok": true,
+      "detail": "286 workspace files scanned under qualification/: candidate digest mentioned in 10 file(s); reconcile-what artifact revisions found: 1 real content-addressed (exactly the candidate under review, 6400a2dd...) + 1 pseudo-addressed legacy record (reconcile-what-desk-architecture-contract.artifact.json (sha256:pending-computation) - not a content address, legacy r1 regime, different task envelope; cannot travel as an accepted revision)"
+    },
+    {
+      "id": "K2.frame.adjudication",
+      "ok": true,
+      "detail": "reviewer frame projects \"0 accepted upstream revisions travel by content address\": TRUE for the desk's own revisions - no reconcile-what revision is accepted yet (the candidate awaits this review); the consumed upstream chain travels by pinned content addresses and the acceptance-bindings revision carries the accepted verdict record (FR-Define-Acceptance-Contract-001 e5249d78..., 50/50 recomputations) - stage-relative, consistent with the author's 0-count (its own revisions)"
+    }
+  ]
+}

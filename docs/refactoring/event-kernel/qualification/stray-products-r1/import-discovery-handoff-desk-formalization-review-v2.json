@@ -1,0 +1,244 @@
+{
+  "reviewRef": "FR-Import-Discovery-Handoff-001-v2",
+  "deskRef": "import-discovery-handoff",
+  "reviewerRole": "reviewer",
+  "decisionTimestamp": "2026-08-28T00:00:00Z",
+  "decision": "REJECTED",
+  "severity": "CRITICAL",
+  "supersedes": "FR-Import-Discovery-Handoff-001 (import-discovery-handoff-desk-formalization-review.json, verdict ACCEPT_FOR_GATE_SUBMISSION)",
+  "reviewedArtifactSet": [
+    {
+      "file": "import-discovery-handoff-desk-architecture-contract.md",
+      "kind": "architecture-contract",
+      "declaredDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "actualSha256": "75a3828fdf06d4f5ae2037e717666b106018fce152fd0825502851de9548a671",
+      "match": false
+    },
+    {
+      "file": "import-discovery-handoff-desk-architecture-contract.artifact.json",
+      "kind": "architecture-contract-artifact",
+      "declaredDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "actualSha256": "efc54d80ca6e679c29100f814ec8b2a9d7a3ffdc35ec494b5158e1408259ab9f",
+      "match": false
+    },
+    {
+      "file": "import-discovery-handoff-desk-formalization-trace.json",
+      "kind": "formalization-trace",
+      "declaredDigest": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+      "actualSha256": "b2f520546a44bc6e3e8412ead47ac08271ca50f2181773923ee175bac097e4e9",
+      "match": false
+    },
+    {
+      "file": "import-discovery-handoff-desk-formalization-product.json",
+      "kind": "desk-product",
+      "declaredDigest": "sha256:e3a8b2c4d6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0",
+      "actualSha256": "2d98341ae9e9e8889fc5c4402664b446a1df6828589470284460bff6ca722184",
+      "match": false
+    },
+    {
+      "file": "import-discovery-handoff-desk-formalization-review.json",
+      "kind": "formalization-review",
+      "declaredDigest": "sha256:8f3a1c7b9e2d4f6a8c0b1e3d5f7a9c2b4d6e8f0a2c4e6g8h0i2j4k6l8m0n2o4p",
+      "actualSha256": "6a3eda9d04671f8a43704bbceb48d1178e472db4b6c3513cb8124f0672be509c",
+      "match": false
+    }
+  ],
+  "criticalFindings": [
+    {
+      "issueId": "CRIT-001",
+      "severity": "CRITICAL",
+      "category": "invalid-digest-format",
+      "title": "Non-hex pseudo-digests used as content addresses",
+      "description": "The desk's review and product artifacts cite digests containing the letters g through z, which are not hex characters. The kernel's own ingress law (SHA256_HEX = /^[0-9a-f]{64}$/, src/workflow-kernel/workshops/formalization/ingress.ts:39) refuses such refs as BYTES_CORRUPT. The prior review therefore certified acceptance criteria using content addresses the kernel itself would refuse at its own boundary.",
+      "evidence": [
+        {
+          "artifact": "import-discovery-handoff-desk-formalization-review.json",
+          "field": "artifactRef / contentDigest / reviewDigest",
+          "value": "sha256:8f3a1c7b9e2d4f6a8c0b1e3d5f7a9c2b4d6e8f0a2c4e6g8h0i2j4k6l8m0n2o4p",
+          "invalidBecause": "contains non-hex characters (g-p)"
+        },
+        {
+          "artifact": "import-discovery-handoff-desk-formalization-product.json",
+          "field": "content.formalizationReview.reviewRef and content.traceRelationships.traceRef",
+          "value": "sha256:9e4d8f2a1c3b5e7d9f0a2c4e6g8h0i2j4k6l8m0n2o4p6r8s0t2u4v6w8x0y2z4",
+          "invalidBecause": "contains non-hex characters (g-z)"
+        }
+      ],
+      "violatedPrinciples": ["CON-1", "TC-1 acceptance criterion 1", "ingress.ts SHA256_HEX law"],
+      "impact": "Complete content-address transport failure for the review layer. No downstream component can resolve these refs to bytes."
+    },
+    {
+      "issueId": "CRIT-002",
+      "severity": "CRITICAL",
+      "category": "content-address-collision",
+      "title": "One digest declared as the content address of 35 distinct files",
+      "description": "Digest a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837 is declared simultaneously as the architecture-contract digest (contract .md header line 4), the trace digest (trace.json traceRef AND contentDigest, lines 2-4), and the subjectContractDigest of the prior review - and is additionally cited by 30+ files of other desks in this qualification set (define-acceptance-contract, define-architecture-contract, define-product-intent, freeze-what-baseline, settle-formalization). A content address addresses exactly one artifact; one address for dozens of distinct artifacts collapses the entire content-address namespace.",
+      "evidence": [
+        {
+          "fact": "actual sha256 of import-discovery-handoff-desk-architecture-contract.md",
+          "value": "75a3828fdf06d4f5ae2037e717666b106018fce152fd0825502851de9548a671"
+        },
+        {
+          "fact": "actual sha256 of import-discovery-handoff-desk-architecture-contract.artifact.json (byte-identical to import-discovery-handoff-desk-formalization-architecture-contract.artifact.json)",
+          "value": "efc54d80ca6e679c29100f814ec8b2a9d7a3ffdc35ec494b5158e1408259ab9f"
+        },
+        {
+          "fact": "actual sha256 of import-discovery-handoff-desk-formalization-trace.json",
+          "value": "b2f520546a44bc6e3e8412ead47ac08271ca50f2181773923ee175bac097e4e9"
+        },
+        {
+          "fact": "declared digest is identical across all three while all three actual digests differ",
+          "value": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837"
+        }
+      ],
+      "violatedPrinciples": ["CON-1", "ADR-053 (sealed revision = content address)", "capsule law: capsuleRef is DERIVED from canonical facts (ingress.ts:99-129)"],
+      "impact": "Self-address verification at ingress would refuse every one of these artifacts (BYTES_CORRUPT). The declared addresses are provably not content-derived."
+    },
+    {
+      "issueId": "CRIT-003",
+      "severity": "CRITICAL",
+      "category": "foreign-unresolvable-claim-digests",
+      "title": "Trace and evidence digests are unresolvable and belong to a different desk's claim set",
+      "description": "The desk trace and product evidence cite SC-1..TC-2 digests (fbe292e8..., c9bfe922..., 423be112..., d7ce453b..., f7acf9d1..., c292f694..., f3d0a6a4...). (a) None of the seven digests matches the sha256 of any file in the qualification tree - they resolve to no content. (b) They are the derive-system-requirements desk's WP-053 claim set, not the capsule projected to THIS desk. The task projection of the import-discovery-handoff desk carries source-claim digests b15c35da..., cb291aa7..., 6652762b..., 3d576e96..., constraint 807393968f..., unknown 38fc9cb1..., terminal claims 4a559317... and 8ce2f289... The trace claims 'contentAddressing: verified' while every endpoint of every trace edge is unresolvable or foreign.",
+      "evidence": [
+        {
+          "fact": "sha256 of all 90 files under stray-products-r1/ computed; matches for the seven cited claim digests",
+          "value": "NONE"
+        },
+        {
+          "fact": "task projection of this desk (protocol message task-projection layer) source-claim[0]",
+          "value": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909 :: claim:scope-1"
+        },
+        {
+          "fact": "digest cited by trace.json/product.json as SC-1",
+          "value": "sha256:fbe292e862ab174b29de15cbbf85b34e4211b3a0e508fd39245015c9ea12b180"
+        },
+        {
+          "fact": "claim-ID mapping of the projected capsule matches the installed WP11 fixture universe exactly",
+          "value": "4 source claims (claim:scope-1|2, claim:constraint-1, claim:outcome-1), 1 constraint (constraint:retention-1), 1 unknown (unknown:browser-matrix-1), 2 terminal claims (terminal:audited-1, terminal:delivered-1) == tests/workflow-kernel/workshops/formalization/support.mjs:82-85"
+        }
+      ],
+      "violatedPrinciples": ["CON-1", "task protocol integrity", "TC-2 (evidence references include capsule and all sub-artifact refs)"],
+      "impact": "The trace graph cannot be used for verification or lineage tracking; the desk's evidence chain does not bind to the accepted Discovery material it claims to import."
+    }
+  ],
+  "secondaryFindings": [
+    {
+      "issueId": "SEC-001",
+      "severity": "HIGH",
+      "category": "pattern-fabricated-digests",
+      "title": "Product and submission digests are alternating-pattern strings",
+      "description": "productDigest sha256:e3a8b2c4d6f8a0b2... and submissionDigest sha256:b1c2d3e4f5a6b7c8... are sequential alternating hex patterns, not digests of any content (actual product file sha256 is 2d98341a...). Declared digests are never trusted per the capsule law; these fail even recomputation plausibility.",
+      "violatedPrinciples": ["CON-1", "ingress.ts:231-240 (digest recomputation over canonical content)"]
+    },
+    {
+      "issueId": "SEC-002",
+      "severity": "MEDIUM",
+      "category": "product-kind-mismatch",
+      "title": "Reviewer product declares a kind the shell desk does not produce",
+      "description": "import-discovery-handoff-desk-formalization-product.json declares productKind formalization.review-complete.v1, while the shell desk's declared outputProductKind is formalization.discovery-import.v1 (driver.ts:749, contract Product Specification section). The prior review's acceptance criterion 8 ('Products of kind formalization.discovery-import.v1 are generated') is marked satisfied by a product of a different kind.",
+      "violatedPrinciples": ["TC-1/TC-2 product-kind criterion", "declared product schema binding at product_submit intake"]
+    },
+    {
+      "issueId": "SEC-003",
+      "severity": "LOW",
+      "category": "prior-verdict-void",
+      "title": "The prior ACCEPT verdict certified verifiably false criteria",
+      "description": "FR-Import-Discovery-Handoff-001 marked acceptance criterion 1 (all desk artifacts content-addressed with SHA256 digests) as satisfied using a non-hex pseudo-digest and a collision digest. An ACCEPT verdict whose own artifactRef cannot resolve is void; this v2 review supersedes it."
+    }
+  ],
+  "substantiveContractAssessment": {
+    "status": "COMPLIANT",
+    "note": "The architecture contract's SUBSTANCE (AC-Import-Discovery-Handoff-001) was verified line-by-line against the real implementation and is accurate. The rejection is confined to content-address integrity of the formalization artifact set, not to the contract's semantics. The repair is mechanical.",
+    "verificationMatrix": [
+      { "contractClaim": "Protocol version ek.discovery-handoff-capsule.ek8-wp11f.v1 enforced, stale capsules refused", "implementation": "HANDOFF_PROTOCOL_VERSION constant + STALE_PROTOCOL refusal, ingress.ts:33,196-198", "verdict": "verified" },
+      { "contractClaim": "Capsule self-address recomputed over canonical facts; declared digests never trusted", "implementation": "factBody sha256OfCanonical check + capsuleRef derivation, ingress.ts:208-221; sub-artifact recomputation, ingress.ts:232-240", "verdict": "verified" },
+      { "contractClaim": "Package bytes present and hash-pinned (BYTES_MISSING / BYTES_CORRUPT)", "implementation": "ingress.ts:222-229,244-247", "verdict": "verified" },
+      { "contractClaim": "Lineage binding against expected discovery-formalization connection (FOREIGN_LINEAGE)", "implementation": "ingress.ts:250-255", "verdict": "verified" },
+      { "contractClaim": "Only legal producing parent state is discovery-terminal (ILLEGAL_PARENT_STATE)", "implementation": "HANDOFF_LEGAL_PARENT_STATES = ['discovery-terminal'] (ingress.ts:36) + terminalProofRef content-address check, ingress.ts:258-263", "verdict": "verified" },
+      { "contractClaim": "No active attempts in target database (fresh-run law)", "implementation": "ingress.ts:266-271", "verdict": "verified" },
+      { "contractClaim": "Import via factoryRun.bootstrap + factoryRun.importCapsule through the FactoryRun sole-writer repository", "implementation": "ingress.ts:274-301; CapsuleIngressReceipt evidence ref, ingress.ts:315", "verdict": "verified" },
+      { "contractClaim": "Shell desk wiring: token plan:discovery-handoff#item:import, item formalization-item:import-discovery-handoff, product kind formalization.discovery-import.v1, effect formalization.accept-products", "implementation": "driver.ts:737-754", "verdict": "verified" },
+      { "contractClaim": "Capsule universe: non-empty source and terminal claims; 4 SC + 1 CON + 1 UNK + 2 TC", "implementation": "ingress.ts:241-243; fixture universe support.mjs:82-85 matches the task projection claim IDs exactly", "verdict": "verified" }
+    ]
+  },
+  "workspaceCheck": {
+    "protocolMessageSummary": "0 accepted upstream revisions travel by content address",
+    "traceWorkspaceContext": "acceptedUpstreamRevisions: 0",
+    "productMetadata": "workspaceStatus: 0 accepted upstream revisions travel by content address",
+    "status": "CONSISTENT",
+    "note": "Unlike the define-product-intent desk (0-vs-1 disagreement, CRIT-001 of its v2 decision), this desk's workspace state agrees across protocol, trace and product layers. The chain seed at the shell desk is the capsule itself with zero desk-folded revisions (driver.ts:697-706,717)."
+  },
+  "acceptanceCriteriaStatus": {
+    "TC-1": {
+      "criteria": [
+        "All desk artifacts are content-addressed with SHA256 digests",
+        "Capsule protocol version matches HANDOFF_PROTOCOL_VERSION",
+        "All sub-artifact digests are recomputed and verified",
+        "Lineage binding matches expected discovery-formalization connection",
+        "Parent state is exactly discovery-terminal",
+        "No active attempts exist in target database"
+      ],
+      "status": "FAILED",
+      "failedCriteria": ["All desk artifacts are content-addressed with SHA256 digests", "All sub-artifact digests are recomputed and verified"],
+      "reason": "CRIT-001/002/003: non-hex digests, collision digest, unresolvable and foreign claim digests"
+    },
+    "TC-2": {
+      "criteria": [
+        "Complete trace relationship coverage from source to terminal claims",
+        "Products of kind formalization.discovery-import.v1 are generated",
+        "Evidence references include capsule and all sub-artifact refs",
+        "0 accepted upstream revisions travel by content address"
+      ],
+      "status": "FAILED",
+      "failedCriteria": ["Complete trace relationship coverage from source to terminal claims", "Products of kind formalization.discovery-import.v1 are generated", "Evidence references include capsule and all sub-artifact refs"],
+      "reason": "Trace endpoints unresolvable/foreign; product kind mismatch (SEC-002); evidence refs do not bind to the projected capsule"
+    }
+  },
+  "complianceStatus": {
+    "adr053": "SUBSTANCE COMPLIANT / TRANSPORT FAILED - contract semantics match ADR-053, artifact digests do not verify",
+    "conveyorMentalModel": "COMPLIANT (one desk, one workplace, reviewer consumes gate outcome - substance verified)",
+    "wp11fProtocol": "COMPLIANT in contract text and implementation; the qualification artifacts fail the protocol's own digest law",
+    "workspace": "CONSISTENT (0 accepted upstream revisions across all layers)",
+    "protocolIntegrity": "FAILED - desk set cites a foreign claim set and fabricated addresses"
+  },
+  "requiredActions": [
+    {
+      "actionId": "ACTION-001",
+      "priority": "CRITICAL",
+      "description": "Recompute every desk artifact's digest over its canonical bytes",
+      "details": "sha256 over exact file content for the contract .md, contract .artifact.json, trace, product and review artifacts. One artifact = one address; the address goes in the artifact's own header only if it is computed over content that excludes the self-address field (two-pass sealing), otherwise reference the content address from the parent artifact only."
+    },
+    {
+      "actionId": "ACTION-002",
+      "priority": "CRITICAL",
+      "description": "Remove non-hex pseudo-digests",
+      "details": "Replace 8f3a1c7b...m0n2o4p and 9e4d8f2a...y2z4 everywhere (review, review.artifact, product, product-submission, submission-summary) with computed SHA-256 values."
+    },
+    {
+      "actionId": "ACTION-003",
+      "priority": "CRITICAL",
+      "description": "Rebind the trace to this desk's capsule universe",
+      "details": "Replace the derive-system-requirements claim digests with the projected capsule digests (b15c35da..., cb291aa7..., 6652762b..., 3d576e96..., 807393968f..., 38fc9cb1..., 4a559317..., 8ce2f289...) IF those can be resolved against actual capsule bytes; otherwise reference artifacts by claim ID (claim:scope-1 ...) and mark digests as pending capsule-byte resolution. Never keep unresolvable digests."
+    },
+    {
+      "actionId": "ACTION-004",
+      "priority": "HIGH",
+      "description": "Fix the product kind",
+      "details": "The shell desk product must declare formalization.discovery-import.v1 (driver.ts:749) or an explicit, registered deviation must be documented."
+    },
+    {
+      "actionId": "ACTION-005",
+      "priority": "HIGH",
+      "description": "Re-run the reviewer verdict on the repaired set",
+      "details": "Resubmit for review after ACTION-001..004. The substantive contract assessment need not be re-authored: it is verified compliant (see substantiveContractAssessment)."
+    }
+  ],
+  "recommendation": "REJECT the formalization artifact set for mechanical digest repair and resubmission. The architecture contract AC-Import-Discovery-Handoff-001 is substantively sound and accurately mirrors the real ingress (ingress.ts) and shell-desk wiring (driver.ts) - no semantic re-authoring is required. But the set fails its own CON-1 transport law three ways: non-hex pseudo-digests, one collision digest addressing 35 files, and evidence digests that are unresolvable and foreign to this desk's capsule projection. The prior ACCEPT verdict is void because its own content address cannot resolve. This repeats the exact CRIT-003 defect class recorded in define-product-intent-reviewer-decision-v2.json; the desk formalization pipeline that emits these digests is the common cause and should be fixed at that level.",
+  "reviewerNotes": "Verified with real computations, not declared values: sha256 of all five reviewed files was recomputed; the seven cited claim digests were checked against every file in the qualification tree (zero matches); the projection claim IDs were matched against the installed fixture universe (tests/workflow-kernel/workshops/formalization/support.mjs:82-85); every substantive contract claim was checked against src/workflow-kernel/workshops/formalization/ingress.ts and driver.ts with line references above.",
+  "nextSteps": [
+    "Execute ACTION-001..004 (mechanical repair)",
+    "Resubmit the desk formalization set for review",
+    "File the pipeline-level defect: the desk formalization emitter fabricates digests instead of computing them (common cause across stray-products-r1 desks)"
+  ]
+}

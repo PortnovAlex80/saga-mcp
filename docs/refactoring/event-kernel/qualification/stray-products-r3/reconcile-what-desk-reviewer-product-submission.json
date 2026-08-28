@@ -1,0 +1,148 @@
+{
+  "submissionRef": "sha256:9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce",
+  "submissionId": "FS-Reconcile-What-002",
+  "contentDigest": "9f2f5d073647ad88d73cf21c9a3dab2ae898df9f3f4ed3b67d9e4db8962b64ce",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "reviewer",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "deskRef": "reconcile-what",
+    "deskNodeId": "reconcile-what",
+    "role": "reviewer",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address",
+    "verdict": "repair",
+    "candidate": {
+      "kind": "formalization.review-complete.v1",
+      "artifactRef": "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+      "contentDigest": "39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6"
+    },
+    "reviewedCandidate": {
+      "submissionRef": "sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+      "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+      "traceRef": "sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+      "productKind": "formalization.what-reconciliation.v1",
+      "declaredReportSeal": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+      "declaredVerdict": "consistent",
+      "supersededPriorEmission": "sha256:c22d4787a789742113858ff53e31565795da5cb5a478d0eece501fc00a4c70e9"
+    },
+    "verificationRef": "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+    "traceRef": "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373",
+    "payloadContract": {
+      "productKind": "formalization.review-complete.v1",
+      "effectId": "formalization.accept-products",
+      "requiredEvidenceRefs": [
+        "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+        "sha256:sha256:0f4e4fafac2e9f5eebd9216345f08577d332ee72839f569b3bb58b1a08dd53ba",
+        "sha256:sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+        "sha256:sha256:09e800469f38c2d926dc1ef24974ca3b2f01ce72913ffcc5832dde071d6581e0",
+        "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1",
+        "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+        "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+        "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+        "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+        "sha256:6cccd16245eafd18b27dcc075eaa34306370786ae2429aac00b16da75d9d1ae7",
+        "sha256:a53a5e08a9c7f0f6ad550fd5d2db142238683e1d285458eb2ded5330cce39d84",
+        "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+        "sha256:83e675bb18c575cb0b30e3ededd2cca6b58b88c08cb50be9c08dfb130808c383",
+        "sha256:cd7504a69eff07d39f9945f8cf3da3f7cf8c4d8e91932c897dab5f5fbab35cac",
+        "sha256:39a94a2911f9db41eaec4c86354387d2d8f386441c6e9830290f81e5afffd9f6",
+        "sha256:fe108e09db2dedb37dbb151d46e56090128c7bc44da339e44be62a47e7755373"
+      ],
+      "evidenceKindCoverage": {
+        "source-claim": 4,
+        "constraint": 1,
+        "unknown": 1,
+        "terminal-claim": 2,
+        "author-submission": 1,
+        "product": 1,
+        "author-desk-trace": 1,
+        "report-seal": 1,
+        "architecture-contract": 1,
+        "consumed-revision-under-repair": 4,
+        "upstream-hold": 2,
+        "superseded-acceptance-review": 1,
+        "confirmed-repair-review": 1,
+        "reviewer-verification": 1,
+        "formalization-review": 1,
+        "reviewer-desk-trace": 1
+      },
+      "terminalOutcome": "repair-routed"
+    },
+    "intakeReceipt": {
+      "receiptRef": "evidence:DeskIntakeReceipt#reconcile-what:reviewer",
+      "status": "review_complete_verdict_recorded",
+      "receivedFrom": "reviewer",
+      "nextStage": "verdict repair routed to the upstream owning desks (RA-1..RA-4); reconcile-what re-runs over genuinely accepted revisions with no fabricated reviewer states (RA-5); NO accept effect toward freeze-what-baseline on this chain",
+      "note": "The report mechanics re-verify 100%, but the candidate's premise - accepted (and now claimed \"reviewer-accepted\") upstream material - is false for all four consumed revisions (CRIT-1), and the asserted reviewer acceptance never existed (CRIT-2), while the reissue regressed the payload contract (MAJ-2). The reviewer verdict is recorded desk-level; kernel-side routing is executed by the driver over public commands."
+    },
+    "acceptanceCriteriaSelfCheck": [
+      {
+        "id": 1,
+        "description": "Content-addressed reviewer artifacts: every ref is sha256 over canonical JSON of content",
+        "satisfied": true
+      },
+      {
+        "id": 2,
+        "description": "Independent recomputation performed by this emission (content layer re-run; status layer audited from re-digested verdict records)",
+        "satisfied": true
+      },
+      {
+        "id": 3,
+        "description": "All 8 reviewer-frame task-projection content addresses resolved 8/8; workspace summary verbatim",
+        "satisfied": true
+      },
+      {
+        "id": 4,
+        "description": "Verdict grounded in re-digested records, not round labels or prior reviews' text (S-group reads the r2/r3 verdict records directly)",
+        "satisfied": true
+      },
+      {
+        "id": 5,
+        "description": "Findings recorded with severity, evidence and required actions (CRIT-1, CRIT-2, MAJ-1, MAJ-2; RA-1..RA-5)",
+        "satisfied": true
+      },
+      {
+        "id": 6,
+        "description": "constraint:retention-1 honored across the reviewer artifacts; unknown:browser-matrix-1 carried forward, never resolved by the review",
+        "satisfied": true
+      },
+      {
+        "id": 7,
+        "description": "Terminal claims stay owned upstream and remain supported in the reviewer trace",
+        "satisfied": true
+      },
+      {
+        "id": 8,
+        "description": "Reviewer artifacts deterministic: pinned timestamps, no clock reads, no randomness",
+        "satisfied": true
+      },
+      {
+        "id": 9,
+        "description": "Upstream consumed by the candidate is GENUINELY ACCEPTED",
+        "satisfied": false,
+        "note": "CRIT-1 recorded honestly: all four consumed revisions are repair-verdict or never-reviewed; verdict repair rather than blind acceptance"
+      },
+      {
+        "id": 10,
+        "description": "Reviewer states asserted by the candidate exist",
+        "satisfied": false,
+        "note": "CRIT-2 recorded honestly: the asserted this-desk reviewer acceptance never existed; the cited gate is the superseded emission"
+      },
+      {
+        "id": 11,
+        "description": "Governing contract anchor verified before inheritance",
+        "satisfied": false,
+        "note": "MAJ-1 re-derived honestly: the anchor resolves to no content; recorded, not gated past"
+      }
+    ]
+  }
+}

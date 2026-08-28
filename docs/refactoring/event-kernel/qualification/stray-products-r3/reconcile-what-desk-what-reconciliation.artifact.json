@@ -1,0 +1,505 @@
+{
+  "artifactRef": "sha256:6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+  "artifactKind": "what-reconciliation",
+  "productKind": "formalization.what-reconciliation.v1",
+  "contentDigest": "6400a2dd78e9c3e74b7e83d9b7416fd71fc1017146d226a240e85e067ebdf191",
+  "semanticCode": "SR-Reconcile-What-001",
+  "createdAt": "2026-08-28T00:00:00Z",
+  "deskRef": "reconcile-what",
+  "role": "author",
+  "digestRule": "sha256 over canonical JSON of content (recursively key-sorted, compact)",
+  "content": {
+    "schemaVersion": "formalization.what-reconciliation.v1",
+    "deskRef": "reconcile-what",
+    "deskNodeId": "reconcile-what",
+    "role": "author",
+    "itemInstanceId": "formalization-item:reconcile-what",
+    "token": "plan:formalization#item:reconcile-what",
+    "productKind": "formalization.what-reconciliation.v1",
+    "effectId": "formalization.accept-products",
+    "checkProviderId": "formalization.reconciliation-structure.v1",
+    "deskSkillId": "formalization-desk-reconcile-what",
+    "brief": "Report-only reconciliation of the closed WHAT chain over the exact accepted upstream chain (accepted define-product-intent bundle, accepted model-use-cases scenario bundle, accepted derive-system-requirements bundle, reviewer-accepted define-acceptance-contract bundle): the report is COMPUTED by the REAL installed reconciliation surface acceptance.reconcileWhat over a snapshot recomputed from accepted material only (acceptance universe re-derived through the REAL acceptanceUniverseFrom protocol; requirements re-sealed through the REAL WP03 validator; acceptance bundle re-sealed through the REAL validateAcceptanceBundle). The verdict is never hardcoded, never a parameter, never trusted from input. prd:scope-2 (out_of_scope) carries an honest empty row; unknown:browser-matrix-1 stays carried_forward with owner discovery and derives nothing; constraint:retention-1 is honored through ac:determinism-1 and ac:outcome-1-deterministic-error.",
+    "product": {
+      "schemaVersion": "formalization.what-reconciliation.v1",
+      "verdict": "consistent",
+      "gaps": [],
+      "findings": [],
+      "reconciledBy": "frf-cells.acceptance.reconciliation.v1 (report-only; computed verdict)",
+      "rows": [
+        {
+          "sourceClaimRef": "claim:constraint-1",
+          "memberRef": "prd:constraint-1",
+          "scenarioRef": "direct",
+          "requirementRefs": [
+            "nfr:determinism-1"
+          ],
+          "criterionRefs": [
+            "ac:determinism-1"
+          ]
+        },
+        {
+          "sourceClaimRef": "claim:outcome-1",
+          "memberRef": "prd:outcome-1",
+          "scenarioRef": "direct",
+          "requirementRefs": [
+            "fr:outcome-1"
+          ],
+          "criterionRefs": [
+            "ac:outcome-1-delivered",
+            "ac:outcome-1-deterministic-error"
+          ]
+        },
+        {
+          "sourceClaimRef": "claim:scope-1",
+          "memberRef": "prd:boundary-1",
+          "scenarioRef": "direct",
+          "requirementRefs": [
+            "fr:boundary-1"
+          ],
+          "criterionRefs": [
+            "ac:boundary-1"
+          ]
+        },
+        {
+          "sourceClaimRef": "claim:scope-2",
+          "memberRef": "prd:scope-2",
+          "scenarioRef": "direct",
+          "requirementRefs": [],
+          "criterionRefs": []
+        }
+      ],
+      "reportDigest": "sha256:3b313f28abb54f9fbb56eda2a2c4b6b0ae12b81b7c3b1cb711b3bd727e467ff1"
+    },
+    "reportOnlyLaw": "the reconciler validates and reports; it adds, deletes and patches nothing; a lawful repair is a new immutable revision in the OWNING upstream cell (plan \"#Desk contracts/reconcile-what\")",
+    "snapshotProvenance": {
+      "universeSource": "acceptanceUniverseFrom over the accepted requirements bundle, the accepted UC scenario set and the accepted define-acceptance-contract deskInput (verifiable statement ids + standalone evidence bindings)",
+      "requirementsSource": "the accepted derive-system-requirements bundle (frf-contracts.requirements-bundle.v1), re-sealed through the REAL WP03 validator",
+      "prdSource": {
+        "memberIds": [
+          "prd:boundary-1",
+          "prd:constraint-1",
+          "prd:outcome-1",
+          "prd:scope-2",
+          "prd:terminal-1",
+          "prd:unknown-1"
+        ],
+        "scenarioRequiredMemberIds": [
+          "prd:boundary-1",
+          "prd:outcome-1",
+          "prd:terminal-1"
+        ]
+      },
+      "useCasesSource": {
+        "scenarioIds": [
+          "uc:boundary-1",
+          "uc:outcome-1",
+          "uc:terminal-1"
+        ],
+        "branchIdsByScenario": {
+          "uc:boundary-1": [
+            "branch:boundary-1-main"
+          ],
+          "uc:outcome-1": [
+            "branch:outcome-1-main",
+            "branch:outcome-1-deterministic-error"
+          ],
+          "uc:terminal-1": [
+            "branch:terminal-1-main"
+          ]
+        }
+      },
+      "sourceClaimsSource": "claim ids from this desk task projection; claimToMember derived from the ACCEPTED intent members' own claim citations (first member in sorted order wins the row)",
+      "claimToMember": {
+        "claim:constraint-1": "prd:constraint-1",
+        "claim:outcome-1": "prd:outcome-1",
+        "claim:scope-1": "prd:boundary-1",
+        "claim:scope-2": "prd:scope-2"
+      }
+    },
+    "claimCoverage": [
+      {
+        "claimId": "claim:constraint-1",
+        "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+        "memberRefs": [
+          "prd:constraint-1",
+          "prd:unknown-1"
+        ],
+        "rowMemberRef": "prd:constraint-1",
+        "requirementRefs": [
+          "nfr:determinism-1"
+        ],
+        "criterionRefs": [
+          "ac:determinism-1"
+        ],
+        "note": "memberRefs is the full accepted mapping (a claim may formalize into several members); rowMemberRef is the row mapping the kernel report carries (first member in sorted order)."
+      },
+      {
+        "claimId": "claim:outcome-1",
+        "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+        "memberRefs": [
+          "prd:outcome-1",
+          "prd:terminal-1"
+        ],
+        "rowMemberRef": "prd:outcome-1",
+        "requirementRefs": [
+          "fr:outcome-1",
+          "fr:terminal-1"
+        ],
+        "criterionRefs": [
+          "ac:outcome-1-delivered",
+          "ac:outcome-1-deterministic-error",
+          "ac:terminal-1-audited"
+        ],
+        "note": "memberRefs is the full accepted mapping (a claim may formalize into several members); rowMemberRef is the row mapping the kernel report carries (first member in sorted order)."
+      },
+      {
+        "claimId": "claim:scope-1",
+        "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+        "memberRefs": [
+          "prd:boundary-1"
+        ],
+        "rowMemberRef": "prd:boundary-1",
+        "requirementRefs": [
+          "fr:boundary-1"
+        ],
+        "criterionRefs": [
+          "ac:boundary-1"
+        ],
+        "note": "memberRefs is the full accepted mapping (a claim may formalize into several members); rowMemberRef is the row mapping the kernel report carries (first member in sorted order)."
+      },
+      {
+        "claimId": "claim:scope-2",
+        "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+        "memberRefs": [
+          "prd:scope-2"
+        ],
+        "rowMemberRef": "prd:scope-2",
+        "requirementRefs": [],
+        "criterionRefs": [],
+        "note": "memberRefs is the full accepted mapping (a claim may formalize into several members); rowMemberRef is the row mapping the kernel report carries (first member in sorted order)."
+      }
+    ],
+    "upstream": {
+      "materialAuthority": "the accepted define-product-intent bundle, the accepted model-use-cases scenario bundle, the accepted derive-system-requirements bundle and the reviewer-accepted define-acceptance-contract bundle, traveling by content address",
+      "acceptedIntentArtifactRef": "sha256:a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "acceptedIntentArtifactDigest": "a06dbc57ba63eb8541c6478e3aba1012af52c8084de0e2fb7719256ffde1e055",
+      "acceptedIntentTraceRef": "sha256:6e35f34ccb5a74cb18e2b0c8a7302587018a6e4a11baa787c1a5815926eb35d9",
+      "acceptedIntentSubmissionRef": "sha256:91878e07e14b01789737d9a7bd49075c01a9691f7c751b339bd2d34727ba50e0",
+      "acceptedUcArtifactRef": "sha256:24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+      "acceptedUcArtifactDigest": "24f0aff29b3fc3a3e021c79c771e798cd46cc490ff0bda02d7e25133fbbf8a4b",
+      "acceptedUcTraceRef": "sha256:f49ddc6fc7d6ca3cad0d0e27e9d9a8a158eabef55d4437e0023519fdaed08c85",
+      "acceptedUcSubmissionRef": "sha256:9209335d51f98168a2f9574ec1181eb468a3087b34acde44f68b54010dd39047",
+      "acceptedRequirementsArtifactRef": "sha256:86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+      "acceptedRequirementsArtifactDigest": "86b00569cf719318f2d366e6708c01f8abbeecf9b5795132e41da48c14fc97df",
+      "acceptedRequirementsTraceRef": "sha256:fd0b0b1f7470cd7825a0c83082b96b503ef3dabdcf70a92369050418a8706e26",
+      "acceptedRequirementsSubmissionRef": "sha256:05e713efdd1847bf18fc21ed335a981db1963020417e0a2078eef62fe2e824aa",
+      "acceptedAcceptanceArtifactRef": "sha256:2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "acceptedAcceptanceArtifactDigest": "2b01353dadc2e2b682b353afc54a5fbf4c9abf6f0f6f0fb8a5eada8029b733f0",
+      "acceptedAcceptanceTraceRef": "sha256:2835aea3f7bbf362afabf729ca37a18827bd9579c76f30daad12d8a2272a84e1",
+      "acceptedAcceptanceSubmissionRef": "sha256:6e19d3cb452d020eb4dc80eb40e9bacd98da74aa61008c38c6f894d8364704fe",
+      "acceptanceReviewerReviewRef": "sha256:e5249d786aa3318a7426dde2ba36e111437d4e0ab0e7e6f9e7cda3b9463ce466",
+      "acceptanceReviewerVerificationRef": "sha256:17eb4d7fe2a9704df2ae45ef572a3905690a0d34ce4fd59d871f88da83850a43",
+      "importArtifactRef": "sha256:b10bb762b652fe89be23eaf3073c619a448ab52559eabba24d2715374e357dd5",
+      "capsuleRef": "sha256:f3f98175f061fa289d49f4684f78273022c97b9e12bc535255c4b3d4c6a0534e",
+      "certificateRef": "sha256:03972527d7062f851af75688f054537ceac6ecf2ddd5e3af8bde34ecd627cb21",
+      "acceptedIntentSet": {
+        "memberDigests": [
+          "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+          "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+          "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+          "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+          "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+          "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+        ],
+        "prdMemberIds": [
+          "prd:boundary-1",
+          "prd:constraint-1",
+          "prd:outcome-1",
+          "prd:scope-2",
+          "prd:terminal-1",
+          "prd:unknown-1"
+        ],
+        "revisionDigest": "a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770",
+        "scenarioRequiredMemberIds": [
+          "prd:boundary-1",
+          "prd:outcome-1",
+          "prd:terminal-1"
+        ]
+      },
+      "acceptedUcSet": {
+        "memberDigests": [
+          "ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+          "defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+          "e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543"
+        ],
+        "scenarioIds": [
+          "uc:boundary-1",
+          "uc:outcome-1",
+          "uc:terminal-1"
+        ],
+        "branchIdsByScenario": {
+          "uc:boundary-1": [
+            "branch:boundary-1-main"
+          ],
+          "uc:outcome-1": [
+            "branch:outcome-1-main",
+            "branch:outcome-1-deterministic-error"
+          ],
+          "uc:terminal-1": [
+            "branch:terminal-1-main"
+          ]
+        },
+        "revisionDigest": "184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e"
+      },
+      "acceptedRequirementsSet": {
+        "memberDigests": [
+          "6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+          "75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+          "8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+          "8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+        ],
+        "requirementIds": [
+          "fr:boundary-1",
+          "fr:outcome-1",
+          "fr:terminal-1",
+          "nfr:determinism-1"
+        ],
+        "frIds": [
+          "fr:boundary-1",
+          "fr:outcome-1",
+          "fr:terminal-1"
+        ],
+        "nfrIds": [
+          "nfr:determinism-1"
+        ],
+        "ruleIds": [],
+        "prdRevisionDigest": "sha256:a30229a75bed4c5d7b4a9660f6a7644d333e6c0c63064901da9aa020cadca770",
+        "ucRevisionDigest": "sha256:184981e5724c286d1ad71da645abd6fa8ee78ff8cba3746fbe461d4096b2457e",
+        "branchIdsByScenario": {
+          "uc:boundary-1": [
+            "branch:boundary-1-main"
+          ],
+          "uc:outcome-1": [
+            "branch:outcome-1-main",
+            "branch:outcome-1-deterministic-error"
+          ],
+          "uc:terminal-1": [
+            "branch:terminal-1-main"
+          ]
+        }
+      },
+      "acceptedAcceptanceSeal": {
+        "digest": "14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51",
+        "ref": "sha256:14fda7910eedff5a84f69d13e5b85070fe395f349d75263d145543f781085f51"
+      },
+      "acceptedIntentSeals": [
+        {
+          "memberId": "prd:boundary-1",
+          "digest": "605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954",
+          "ref": "sha256:605b59c45d1099f738ca2a45916685f2d303c28af81b557336988560cf2c5954"
+        },
+        {
+          "memberId": "prd:scope-2",
+          "digest": "f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141",
+          "ref": "sha256:f3faf6889cd4adbd3ce3836ed2b6e5c85f60f98ca0a3c49248ef29904a0fc141"
+        },
+        {
+          "memberId": "prd:constraint-1",
+          "digest": "f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a",
+          "ref": "sha256:f89c984a37f5b7512b803d97974be87999201ae680d2c1499a105907aeb9e75a"
+        },
+        {
+          "memberId": "prd:outcome-1",
+          "digest": "0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16",
+          "ref": "sha256:0f089cfa6a151e1c36415e861ac67461dd3213b9ce09b32b9e398ac082d30b16"
+        },
+        {
+          "memberId": "prd:terminal-1",
+          "digest": "694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc",
+          "ref": "sha256:694e26f7e7ded74f1a9250c2d673febcec8b5d9cd74ff91570297eae156ebcfc"
+        },
+        {
+          "memberId": "prd:unknown-1",
+          "digest": "ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b",
+          "ref": "sha256:ca9b003c86110918d93624324a9bac7a66128c9fcb5cf9e4d0d6935f30a2be8b"
+        }
+      ],
+      "acceptedUcSeals": [
+        {
+          "scenarioId": "uc:boundary-1",
+          "digest": "defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d",
+          "ref": "sha256:defe9b1f817b1e975e2476bcded8d02e150222bab679fe65adae8dd7e6d3137d"
+        },
+        {
+          "scenarioId": "uc:outcome-1",
+          "digest": "ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d",
+          "ref": "sha256:ceb0fa710e0388dbd7f69d38b911d0bafb71209f4ad0d9c616c6cfdbbd75285d"
+        },
+        {
+          "scenarioId": "uc:terminal-1",
+          "digest": "e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543",
+          "ref": "sha256:e711405c4b8a20742ea90545d43b46babe52de676f5cb027f8568daba540b543"
+        }
+      ],
+      "acceptedRequirementSeals": [
+        {
+          "requirementId": "fr:boundary-1",
+          "digest": "8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529",
+          "ref": "sha256:8a6b2eb29c445cd48bfad123fcb1957517f504685559371f21adcc05c3976529"
+        },
+        {
+          "requirementId": "fr:outcome-1",
+          "digest": "8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521",
+          "ref": "sha256:8aa05466ba38295f128cd8a4f589011cf579399751505d504307d96d3aa1f521"
+        },
+        {
+          "requirementId": "fr:terminal-1",
+          "digest": "75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17",
+          "ref": "sha256:75f0b82fc223a0a1d49905be1464af08dfce8ea872913bdf002d1213e3825e17"
+        },
+        {
+          "requirementId": "nfr:determinism-1",
+          "digest": "6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee",
+          "ref": "sha256:6d95a8f2a9413381a70fd501f247d7c95a3ed0e2313c5237c231d166140ed7ee"
+        }
+      ],
+      "acceptedCriterionSeals": [
+        {
+          "criterionId": "ac:boundary-1",
+          "digest": "d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2",
+          "ref": "sha256:d131f6680efa96c477a0d5604dc5aaf8ddb94f7eeaccee49e4c002c2249bf5c2"
+        },
+        {
+          "criterionId": "ac:outcome-1-delivered",
+          "digest": "abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e",
+          "ref": "sha256:abb800e9a3b8f9932ac3252ee95250b15046f42dbe8b9e2ef1b243f4b907b59e"
+        },
+        {
+          "criterionId": "ac:outcome-1-deterministic-error",
+          "digest": "0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b",
+          "ref": "sha256:0a81953587f40eea468aa78cac4595b90101c8f59dfddcd6ee5c25bc7830987b"
+        },
+        {
+          "criterionId": "ac:terminal-1-audited",
+          "digest": "fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d",
+          "ref": "sha256:fbb3d676c5bf8f346ef11fe9c675638e15e23ce8bd4feed87ffaf8c3f307130d"
+        },
+        {
+          "criterionId": "ac:determinism-1",
+          "digest": "4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034",
+          "ref": "sha256:4a0ceb7edbcd1dd3d0b94f0d96d6d27b607b4cd9f1599f4e15e387460edf5034"
+        }
+      ],
+      "verifiedSubArtifacts": [
+        {
+          "id": "claim:scope-1",
+          "digest": "b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909",
+          "ref": "sha256:b15c35da54dd016492f397d71a59883d38cfb0c5e55aaa51f68c4d3f210d1909"
+        },
+        {
+          "id": "claim:scope-2",
+          "digest": "cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da",
+          "ref": "sha256:cb291aa71e7be582a96811d65be7d59bf66949b76fb1faa8fc7d1d421f0837da"
+        },
+        {
+          "id": "claim:constraint-1",
+          "digest": "6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b",
+          "ref": "sha256:6652762b7d8d26aacbaeb11f1b1e1529b26c2974ecf8ab0a01f0eb2b651d753b"
+        },
+        {
+          "id": "claim:outcome-1",
+          "digest": "3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0",
+          "ref": "sha256:3d576e96e9c101b4b7187be8ce0d6f4542c161e8b8f9fa7323397329ac4e85b0"
+        },
+        {
+          "id": "constraint:retention-1",
+          "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+          "ref": "sha256:807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be"
+        },
+        {
+          "id": "unknown:browser-matrix-1",
+          "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+          "ref": "sha256:38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf"
+        },
+        {
+          "id": "terminal:audited-1",
+          "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+          "ref": "sha256:4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f"
+        },
+        {
+          "id": "terminal:delivered-1",
+          "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+          "ref": "sha256:8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988"
+        }
+      ],
+      "verifiedAgainstTaskProjection": true
+    },
+    "constraintDispositions": [
+      {
+        "constraintId": "constraint:retention-1",
+        "digest": "807393968f3d6e0e10f502544a9a4f6345727af5cfdfabf00f0319c9288945be",
+        "disposition": "honored",
+        "enforcedBy": [
+          "ac:determinism-1",
+          "ac:outcome-1-deterministic-error"
+        ],
+        "constrainedCriteria": [
+          "ac:boundary-1",
+          "ac:outcome-1-delivered",
+          "ac:outcome-1-deterministic-error",
+          "ac:terminal-1-audited"
+        ],
+        "note": "The reconciliation observes the constraint honored through the accepted criteria that enforce it (the determinism NFR binds the constraint directly upstream); the reconciler itself adds no enforcement."
+      }
+    ],
+    "unknownDispositions": [
+      {
+        "unknownId": "unknown:browser-matrix-1",
+        "digest": "38fc9cb187adaf2527e9233f75acd6a5283b74ddce292318e6b027c8d345baaf",
+        "disposition": "carried_forward",
+        "owner": "discovery",
+        "note": "No resolution edge is recorded: the reconciler does not resolve the browser support matrix unknown; no criterion, evidence kind, verifiable statement or observable terminal result is derived from it."
+      }
+    ],
+    "terminalSupport": [
+      {
+        "terminalClaimId": "terminal:audited-1",
+        "digest": "4a559317fdfd23d4286fd9b0859d10d714a10f971357b33f4a4202db05dd056f",
+        "ownedByMemberId": "prd:terminal-1",
+        "supportedByRequirementId": "fr:terminal-1",
+        "verifiedByCriterionId": "ac:terminal-1-audited"
+      },
+      {
+        "terminalClaimId": "terminal:delivered-1",
+        "digest": "8ce2f289656b7447911eedbd261a9243bbb8e43a1d3e4479e366f4be5b3cc988",
+        "ownedByMemberId": "prd:outcome-1",
+        "supportedByRequirementId": "fr:outcome-1",
+        "verifiedByCriterionId": "ac:outcome-1-delivered"
+      }
+    ],
+    "governingContractRef": "sha256:a926df6284a1afb5e1d7e899b1279acd746d40d48658de6dd0d2a368f76b2837",
+    "workspaceSummary": "0 accepted upstream revisions travel by content address",
+    "verification": {
+      "acceptedUpstreamRevisionsTravelingByContentAddress": 0,
+      "acceptanceBundleResealedAgainstRecomputedUniverse": true,
+      "claimDigestsMatchedTaskProjection": true,
+      "computedVerdictNeverHardcoded": true,
+      "declaredDigestsTrusted": false,
+      "deterministicAuthoring": true,
+      "memberSealsRecomputedOverCanonicalMembers": true,
+      "reportFrozenDeepImmutable": true,
+      "reportOnlyNoMutations": true,
+      "reviewerAcceptedCandidateOfRecord": true,
+      "revisionPinsMatchAcceptedRevisions": true,
+      "snapshotRecomputedFromAcceptedMaterial": true,
+      "staleProtocolRefusals": 0,
+      "upstreamRequirementsBundleReverified": true,
+      "wp03SeamRefusals": 0
+    }
+  }
+}
