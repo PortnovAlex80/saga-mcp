@@ -3,6 +3,7 @@ import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
 import { runGraph } from '../kernel/runner.js';
 import { completeHumanTask, resolveHumanGate } from '../operator.js';
+import { DEFAULT_WORKSHOPS, startDiscovery } from '../workshops.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -59,6 +60,26 @@ export const definitions: Tool[] = [
       },
       required: ['run_id', 'node', 'decision'],
     },
+  },
+  {
+    name: 'discovery_start',
+    description: 'Default Discovery Desk: accepts an idea, runs the brief skill (Discovery workshop), publishes the brief artifact to discovery/brief.md in the product repo.',
+    annotations: { title: 'Discovery Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        idea: { type: 'string', description: 'The raw idea written into the start node' },
+        repo: { type: 'string', description: 'Product repo path (default: SAGA_PRODUCT_REPO or ../saga5-canary/product-repo)' },
+        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
+      },
+      required: ['idea'],
+    },
+  },
+  {
+    name: 'workshops_list',
+    description: 'List default workshops (declarative desk graphs) and their shapes.',
+    annotations: { title: 'Workshops', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'event_tail',
@@ -123,6 +144,29 @@ export const handlers: Record<string, ToolHandler> = {
     getRun(db, runId);
     completeHumanTask(db, runId, node, decision);
     return event;
+  },
+
+  discovery_start: (args) => {
+    const db = getDb();
+    return startDiscovery(db, {
+      idea: String(args.idea ?? ''),
+      repo: args.repo === undefined ? undefined : String(args.repo),
+      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+    });
+  },
+
+  workshops_list: () => {
+    const shape = (graph: unknown) => {
+      const doc = graph as { nodes: Record<string, { type: string }>; connections: Record<string, { main: Array<Array<{ node: string }>> }> };
+      return Object.keys(doc.nodes).map((name) => ({
+        node: name,
+        type: doc.nodes[name].type,
+        next: (doc.connections[name]?.main?.[0] ?? []).map((t) => t.node),
+      }));
+    };
+    return Object.fromEntries(
+      Object.entries(DEFAULT_WORKSHOPS).map(([name, w]) => [name, { title: w.title, shape: shape(w.graph) }])
+    );
   },
 
   event_tail: (args) => {

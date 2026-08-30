@@ -332,9 +332,12 @@ async function main(): Promise<void> {
       );
       output = [{ json: { text, model: params.model ?? process.env.LLM_MODEL ?? 'default' } }];
     } else {
+      // Scripted worker: echoes the rendered prompt back — same physics as a
+      // real model call (the text field flows downstream exactly like a reply).
       output = [{
         json: {
-          echo: inputs.flat().map((item) => item.json),
+          text: renderPrompt(params.prompt ?? '', inputs),
+          echo: inputs.map((item) => item.json),
           note: 'scripted activity worker',
         },
       }];

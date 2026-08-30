@@ -20,6 +20,7 @@ import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { handlers as factoryHandlers } from './tools/factory.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
+import { startDiscovery } from './workshops.js';
 
 const WORKER_PATH = fileURLToPath(new URL('./runtime/worker.js', import.meta.url));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,16 @@ export function startBridge(opts: {
       }
       if (req.method === 'POST' && /^\/api\/runs\/([\w-]+)\/resume$/.test(url.pathname)) {
         sendJson(res, 200, resumeRun(db, url.pathname.split('/')[3] ?? ''));
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/discovery') {
+        const args = JSON.parse(await readBody(req)) as { idea?: string; repo?: string; mode?: string };
+        if (!args.idea) throw new Error('idea is required: напишите идею в стартовый узел');
+        sendJson(res, 200, startDiscovery(db, {
+          idea: String(args.idea),
+          repo: args.repo === undefined ? undefined : String(args.repo),
+          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+        }));
         return;
       }
       if (req.method === 'POST' && /^\/api\/runs\/([\w-]+)\/resolve$/.test(url.pathname)) {
