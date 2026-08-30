@@ -3,7 +3,7 @@ import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
 import { runGraph } from '../kernel/runner.js';
 import { completeHumanTask, resolveHumanGate } from '../operator.js';
-import { DEFAULT_WORKSHOPS, startDiscovery, startFormalization } from '../workshops.js';
+import { DEFAULT_WORKSHOPS, startDiscovery, startFormalization, startProduct } from '../workshops.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -86,6 +86,20 @@ export const definitions: Tool[] = [
         repo: { type: 'string', description: 'Product repo path' },
         mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
       },
+    },
+  },
+  {
+    name: 'product_start',
+    description: 'Unified product conveyor: Discovery + Formalization in ONE run — idea → brief (LLM) → gate → publish brief → SRS (LLM) → gate → publish SRS.',
+    annotations: { title: 'Product Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        idea: { type: 'string', description: 'The raw idea written into the start node' },
+        repo: { type: 'string', description: 'Product repo path' },
+        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
+      },
+      required: ['idea'],
     },
   },
   {
@@ -172,6 +186,15 @@ export const handlers: Record<string, ToolHandler> = {
     const db = getDb();
     return startFormalization(db, {
       brief: args.brief === undefined ? undefined : String(args.brief),
+      repo: args.repo === undefined ? undefined : String(args.repo),
+      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+    });
+  },
+
+  product_start: (args) => {
+    const db = getDb();
+    return startProduct(db, {
+      idea: String(args.idea ?? ''),
       repo: args.repo === undefined ? undefined : String(args.repo),
       mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
     });

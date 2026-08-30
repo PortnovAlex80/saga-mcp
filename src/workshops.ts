@@ -83,7 +83,7 @@ const FORMALIZATION_GRAPH = {
     brief: {
       type: 'emit',
       parameters: {
-        items: [{ json: { text: '' } }],
+        items: [{ json: { text: '', source_ref: '' } }],
       },
     },
     srs: {
@@ -139,7 +139,116 @@ const FORMALIZATION_GRAPH = {
   },
 };
 
+const PRODUCT_GRAPH = {
+  nodes: {
+    idea: { type: 'emit', parameters: { items: [{ json: { text: '' } }] } },
+    brief: {
+      type: 'llm',
+      parameters: {
+        mode: 'opencode',
+        model: MODEL,
+        prompt: [
+          'Ты — ведущий аналитик (цех Discovery). По сырой идее сделай короткий продуктовый бриф:',
+          '1) суть продукта одним предложением;',
+          '2) целевая аудитория;',
+          '3) три ключевые ценности;',
+          '4) основные риски и открытые вопросы;',
+          '5) критерий готовности (что считаем результатом).',
+          'Формат — markdown. Только бриф, без вступлений.',
+          '',
+          'Идея:',
+          '{{text}}',
+        ].join('\n'),
+      },
+    },
+    brief_gate: {
+      type: 'gate',
+      parameters: {
+        checks: [
+          { op: 'not_contains', field: 'text', value: '\uFFFD' },
+          { op: 'nonempty', field: 'text' },
+          { op: 'regex', field: 'text', pattern: 'Суть продукта' },
+          { op: 'regex', field: 'text', pattern: 'аудитор' },
+          { op: 'regex', field: 'text', pattern: 'ценност' },
+          { op: 'regex', field: 'text', pattern: 'риск' },
+          { op: 'regex', field: 'text', pattern: 'ритери' },
+        ],
+        repair_target: 'brief',
+        max_repairs: 2,
+        title: 'Discovery: бриф не соответствует контракту',
+      },
+    },
+    publish_brief: {
+      type: 'effect',
+      parameters: {
+        mode: 'git',
+        repo: '', // injected at start time
+        branch: 'main',
+        message: 'discovery: brief artifact',
+        files: [{ path: 'discovery/brief.md', field: 'text' }],
+      },
+    },
+    srs: {
+      type: 'llm',
+      parameters: {
+        mode: 'opencode',
+        model: MODEL,
+        prompt: [
+          'Ты — системный аналитик (цех Formalization). По утверждённому брифу подготовь SRS в markdown:',
+          '1) Обзор;',
+          '2) Функциональные требования — пронумерованные FR-1, FR-2, …',
+          '3) Нефункциональные требования — NFR-1, …',
+          '4) Варианты использования — UC-1, UC-2, … (актор, сценарий);',
+          '5) Критерии приёмки — AC-1, AC-2, …, каждый проверяемый и привязан к FR.',
+          'Только документ, без вступлений.',
+          '',
+          'Бриф:',
+          '{{text}}',
+        ].join('\n'),
+      },
+    },
+    srs_gate: {
+      type: 'gate',
+      parameters: {
+        checks: [
+          { op: 'not_contains', field: 'text', value: '\uFFFD' },
+          { op: 'nonempty', field: 'text' },
+          { op: 'regex', field: 'text', pattern: 'FR-[0-9]' },
+          { op: 'regex', field: 'text', pattern: 'UC-[0-9]' },
+          { op: 'regex', field: 'text', pattern: 'AC-[0-9]' },
+        ],
+        repair_target: 'srs',
+        max_repairs: 2,
+        title: 'Formalization: SRS не соответствует контракту',
+      },
+    },
+    publish_srs: {
+      type: 'effect',
+      parameters: {
+        mode: 'git',
+        repo: '', // injected at start time
+        branch: 'main',
+        message: 'formalization: SRS artifact',
+        files: [{ path: 'formalization/srs.md', field: 'text' }],
+      },
+    },
+  },
+  connections: {
+    idea: { main: [[{ node: 'brief' }]] },
+    brief: { main: [[{ node: 'brief_gate' }]] },
+    // Принятая ревизия брифа расходится в две стороны: публикация артефакта
+    // и следующий цех (SRS читает бриф по точным дайджестам того же стола).
+    brief_gate: { main: [[{ node: 'publish_brief' }, { node: 'srs' }]] },
+    srs: { main: [[{ node: 'srs_gate' }]] },
+    srs_gate: { main: [[{ node: 'publish_srs' }]] },
+  },
+};
+
 export const DEFAULT_WORKSHOPS: Record<string, { title: string; graph: unknown }> = {
+  product: {
+    title: 'Продуктовый конвейер — Discovery + Formalization единым прогоном',
+    graph: PRODUCT_GRAPH,
+  },
   discovery: {
     title: 'Discovery Desk — идея → бриф → артефакт',
     graph: DISCOVERY_GRAPH,
@@ -196,6 +305,33 @@ export function startDiscovery(
   return { ...result, repo };
 }
 
+/** The unified product conveyor: Discovery + Formalization in ONE run.
+ *  The brief is accepted by its gate, published as an artifact, and the SAME
+ *  accepted material (exact digests) flows into the SRS stage — data passes
+ *  between the workshops by reference through the content-addressed desk. */
+export function startProduct(
+  db: Database.Database,
+  opts: { idea: string; repo?: string; mode?: string }
+): RunResult & { repo: string } {
+  if (!opts.idea || !opts.idea.trim()) {
+    throw new Error('IDEA_REQUIRED: напишите идею в стартовый узел');
+  }
+  if (opts.idea.includes('\uFFFD')) {
+    throw new Error('IDEA_NOT_UTF8: идея пришла в битой кодировке (символы \uFFFD)');
+  }
+  const graph = JSON.parse(JSON.stringify(PRODUCT_GRAPH)) as typeof PRODUCT_GRAPH;
+  graph.nodes.idea.parameters.items[0].json.text = opts.idea.trim();
+  if (opts.mode) {
+    graph.nodes.brief.parameters.mode = opts.mode as 'echo' | 'opencode' | 'api';
+    graph.nodes.srs.parameters.mode = opts.mode as 'echo' | 'opencode' | 'api';
+  }
+  const repo = ensureProductRepo(opts.repo);
+  graph.nodes.publish_brief.parameters.repo = repo;
+  graph.nodes.publish_srs.parameters.repo = repo;
+  const result = runGraph(db, JSON.stringify(graph), { name: 'product' });
+  return { ...result, repo };
+}
+
 /** The Formalization Desk: takes the ACCEPTED discovery artifact (or an
  *  explicitly provided brief), runs the SRS skill, lands
  *  formalization/srs.md. First lifecycle link: the previous workshop's
@@ -220,6 +356,8 @@ export function startFormalization(
   }
   const graph = JSON.parse(JSON.stringify(FORMALIZATION_GRAPH)) as typeof FORMALIZATION_GRAPH;
   graph.nodes.brief.parameters.items[0].json.text = brief;
+  // передача ссылкой: вход следующего цеха ссылается на артефакт предыдущего
+  graph.nodes.brief.parameters.items[0].json.source_ref = 'discovery/brief.md';
   if (opts.mode) {
     graph.nodes.srs.parameters.mode = opts.mode as 'echo' | 'opencode' | 'api';
   }
