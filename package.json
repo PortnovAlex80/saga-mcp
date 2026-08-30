@@ -6,7 +6,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "saga-mcp": "dist/index.js"
+    "saga-mcp": "dist/index.js",
+    "saga5-bridge": "dist/bridge.js"
   },
   "files": [
     "dist",
@@ -22,7 +23,8 @@
     "dev": "tsc && node dist/index.js",
     "lint": "eslint src/",
     "prepublishOnly": "npm run build",
-    "test": "tsc && node --test"
+    "test": "tsc && node --test",
+    "bridge": "node dist/bridge.js"
   },
   "keywords": [
     "saga5",

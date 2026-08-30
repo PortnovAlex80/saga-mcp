@@ -41,6 +41,8 @@ function Desk() {
   const [importText, setImportText] = useState('');
   const [paramText, setParamText] = useState('');
   const [paramError, setParamError] = useState('');
+  const [runInfo, setRunInfo] = useState('');
+  const [running, setRunning] = useState(false);
 
   const selected: DeskNode | undefined = nodes.find((n) => n.selected);
 
@@ -97,6 +99,33 @@ function Desk() {
     },
     [setNodes, setEdges]
   );
+
+  const runOnKernel = useCallback(async () => {
+    setRunning(true);
+    setRunInfo('запуск…');
+    try {
+      const doc = toGraphDoc(nodes, edges);
+      const res = await fetch('/api/graph', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'desk-run', graph_json: JSON.stringify(doc) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      let status: string = data.status;
+      for (let i = 0; i < 75 && (status === 'running' || status === 'new'); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        const poll = await fetch(`/api/runs/${data.runId}`);
+        const polled = await poll.json();
+        status = polled.run?.status ?? status;
+      }
+      setRunInfo(`run ${String(data.runId).slice(0, 8)}… → ${status}`);
+    } catch (error) {
+      setRunInfo(`ошибка: ${error instanceof Error ? error.message : String(error)} (мост запущен? npm run bridge)`);
+    } finally {
+      setRunning(false);
+    }
+  }, [nodes, edges]);
 
   const importGraph = useCallback(() => {
     try {
@@ -163,9 +192,19 @@ function Desk() {
               <button onClick={() => { setImportText(JSON.stringify(toGraphDoc(nodes, edges), null, 2)); setDrawerOpen(true); }}>
                 JSON
               </button>
-              <button disabled title="M2: запуск через HTTP-мост к ядру (factory_start)">
+              <button
+                disabled={running || nodes.length === 0}
+                onClick={runOnKernel}
+                title="Построить прогон через мост ядра (npm run bridge)"
+              >
                 ▶ Run
               </button>
+              {runInfo && <span className="run-info">{runInfo}</span>}
+            </div>
+          </Panel>
+          <Panel position="top-right">
+            <div className="legend">
+              <span className="run-info">ядро: emit/template/collect/fail локально · llm — активность (воркер-процесс)</span>
             </div>
           </Panel>
         </ReactFlow>

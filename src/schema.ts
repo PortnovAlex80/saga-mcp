@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS executions (
   timeouts_json TEXT,
   retry_json    TEXT,
   lease         TEXT,
+  started_at    TEXT,
   heartbeat_at  TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at   TEXT

@@ -178,3 +178,6 @@ button.danger { border-color: #7f3b3b; color: #fca5a5; }
   font-size: 12px;
   padding: 8px;
 }
+
+.run-info { color: #a5b4fc; font-size: 12px; margin-left: 8px; }
+.legend { background: rgba(27, 27, 38, 0.85); border-radius: 6px; padding: 4px 8px; }
