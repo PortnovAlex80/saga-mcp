@@ -2,6 +2,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
 import { runGraph } from '../kernel/runner.js';
+import { completeHumanTask, resolveHumanGate } from '../operator.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -42,6 +43,21 @@ export const definitions: Tool[] = [
         },
       },
       required: ['graph_json'],
+    },
+  },
+  {
+    name: 'operator_resolve',
+    description: 'Operator decision at a human gate: approve re-runs the gate, reject fails its node.',
+    annotations: { title: 'Operator Resolve', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string', description: 'Run id' },
+        node: { type: 'string', description: 'Gate node id' },
+        decision: { type: 'string', enum: ['approve', 'reject'], description: 'Operator decision' },
+        note: { type: 'string', description: 'Optional decision note' },
+      },
+      required: ['run_id', 'node', 'decision'],
     },
   },
   {
@@ -95,6 +111,18 @@ export const handlers: Record<string, ToolHandler> = {
       throw new Error('GRAPH_INVALID: graph_json is required');
     }
     return runGraph(db, graphJson, { name: args.name === undefined ? undefined : String(args.name) });
+  },
+
+  operator_resolve: (args) => {
+    const db = getDb();
+    const runId = String(args.run_id ?? '');
+    const node = String(args.node ?? '');
+    const decision = args.decision === 'reject' ? 'reject' : 'approve';
+    if (!runId || !node) throw new Error('run_id and node are required');
+    const event = resolveHumanGate(db, runId, node, decision, args.note ? String(args.note) : undefined);
+    getRun(db, runId);
+    completeHumanTask(db, runId, node, decision);
+    return event;
   },
 
   event_tail: (args) => {

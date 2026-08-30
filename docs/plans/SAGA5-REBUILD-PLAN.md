@@ -233,23 +233,22 @@ NodeToolbar, Panel) и `Development/n8n-src` (приёмы UX).
 Каждый milestone — зелёный, демонстрируемый, коммителен; без «временно
 сломанного HEAD».
 
-- **M0 — каркас.** Ветка `saga5`: удалить `src/process-modules`,
+- **M0 — каркас. ✅** `d2d9b0c2`. Ветка `saga5`: удалить `src/process-modules`,
   `src/modules/*` (цеха), фабричные таблицы; новая `schema.ts` (~10 таблиц по
   §2.2); MCP-каркас + тулы доски (перенос из upstream-стиля).
   DoD: сервер поднимается, доска работает, `npm test` зелёный.
-- **M1 — ядро-интерпретатор.** Граф + items + стек исполнения; события
-  `RunStarted/NodeScheduled/NodeCompleted`; **scripted-воркер**
-  (детерминированный исполнитель вместо LLM). DoD: сквозной прогон
-  демонстрационного графа (например, mini-discovery) без LLM, восстановление
-  после kill -9 в любой точке (replay истории).
-- **M2 — LLM-активности.** Реальный воркер-процесс: spawn, `desk_read/
-  desk_submit`, таймауты `schedule-to-start/start-to-close/heartbeat`,
-  RetryPolicy с nonRetryable-типами. DoD: один узел выполняется реальной
-  моделью; зависший воркер честно ловится heartbeat-таймаутом.
-- **M3 — цикл качества.** Gate-узлы, DeskRevision-запечатывание, repair-бюджет
-  из декларативной политики, `human_required` → доска. DoD: property-тест
-  partition-invariance (сценарий Run 011 из ADR-053 как общий тест: материал
-  собран двумя исполнениями — ревизия целостна).
+- **M1 — ядро-интерпретатор. ✅** `1ae19016`. Граф + items + события;
+  **scripted-воркер**; DoD: сквозной прогон графа без LLM, восстановление
+  после SIGKILL в любой точке (replay истории) — зелёный.
+- **M2 — LLM-активности. ✅** `bb193965` + `584bb1e2`. Реальный воркер-процесс:
+  spawn через opencode CLI, `desk_read/desk_submit`, таймауты
+  (schedule-to-start/start-to-close/heartbeat), RetryPolicy; живой прогон
+  на `zai-coding-plan/glm-5.3-flash` через мост; Run-кнопка стола оживлена.
+- **M3 — цикл качества. ✅** `current`. Gate-узлы (детерминированные проверки),
+  запечатывание DeskRevision (content-addressed манифест, дайджесты членов —
+  единственный авторитет), repair-бюджет из декларативной политики,
+  `human_required` → blocked-задача доски + `operator_resolve` (тул + HTTP).
+  DoD: Run 011 как интеграционный тест + property partition-invariance — зелёные.
 - **M4 — эффекты.** Git-интеграция как effect с idempotency-key и typed
   receipt; компенсация — явная. DoD: конфликт интеграции — типизированный
   исход, не стирание принятого материала.

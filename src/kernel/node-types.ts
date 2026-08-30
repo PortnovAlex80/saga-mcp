@@ -13,8 +13,9 @@ export interface Item {
 export interface NodeExecuteContext {
   nodeId: string;
   parameters: Record<string, unknown>;
-  /** Input items per inbound edge, in connection order. */
-  inputs: Item[][];
+  /** The accumulated desk of all inbound nodes: every completed material's
+   *  items in event order, exact digests (ADR-053: never 'latest'). */
+  inputs: Item[];
 }
 
 export interface NodeType {
@@ -23,6 +24,9 @@ export interface NodeType {
    *  (lease + heartbeat + typed timeouts + retry). The kernel never calls
    *  execute() for them; it only schedules and folds their executions. */
   activity?: boolean;
+  /** Gates are decided by the kernel itself (deterministic checks over the
+   *  sealed desk revision): accepted | repair_required | human_required. */
+  gate?: boolean;
   execute(ctx: NodeExecuteContext): Item[];
 }
 
@@ -63,7 +67,7 @@ const template: NodeType = {
     if (typeof tmpl !== 'string') {
       throw new Error('NODE_PARAMETERS_INVALID: template requires parameters.template (string)');
     }
-    const sourceItems = ctx.inputs.flat();
+    const sourceItems = ctx.inputs;
     const items = sourceItems.length > 0 ? sourceItems : [{ json: {} }];
     return items.map((item) => ({
       json: { text: renderTemplateString(tmpl, item.json) },
@@ -73,7 +77,7 @@ const template: NodeType = {
 
 const collect: NodeType = {
   name: 'collect',
-  execute: (ctx) => [{ json: { items: ctx.inputs.flat().map((item) => item.json) } }],
+  execute: (ctx) => [{ json: { items: ctx.inputs.map((item) => item.json) } }],
 };
 
 const fail: NodeType = {
@@ -100,7 +104,20 @@ const llm: NodeType = {
   },
 };
 
-const REGISTRY: Record<string, NodeType> = { emit, template, collect, fail, llm };
+// The quality gate. Decided by the kernel over the sealed desk revision —
+// never executed as an ordinary node. parameters:
+//   checks: [{op: 'nonempty'|'contains'|'regex', field?, value?, pattern?}]
+//   repair_target: node re-executed on repair_required (default: first inbound)
+//   max_repairs: repair_required budget before human_required (default 2)
+const gate: NodeType = {
+  name: 'gate',
+  gate: true,
+  execute: () => {
+    throw new Error('GATE_MISUSE: gates are decided by the kernel, not executed');
+  },
+};
+
+const REGISTRY: Record<string, NodeType> = { emit, template, collect, fail, llm, gate };
 
 export function getNodeType(name: string): NodeType {
   const type = REGISTRY[name];

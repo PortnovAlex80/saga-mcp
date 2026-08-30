@@ -71,9 +71,8 @@ function parseArgs(): string {
   return id;
 }
 
-function renderPrompt(tmpl: string, items: Item[][]): string {
-  const flat = items.flat();
-  const lines = flat.map((item) => renderTemplateString(tmpl, item.json));
+function renderPrompt(tmpl: string, items: Item[]): string {
+  const lines = items.map((item) => renderTemplateString(tmpl, item.json));
   return lines.join('\n\n');
 }
 

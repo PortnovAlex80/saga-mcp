@@ -55,6 +55,12 @@ export function parseGraph(graphJson: string): ParsedGraph {
     if (!knownTypes.has(node.type)) {
       throw new Error(`NODE_TYPE_UNKNOWN: '${node.type}' on node '${name}' (known: ${[...knownTypes].sort().join(', ')})`);
     }
+    if (node.type === 'gate') {
+      const params = (node.parameters ?? {}) as { repair_target?: string };
+      if (params.repair_target && !raw.nodes[params.repair_target]) {
+        throw new Error(`GRAPH_REF_INVALID: gate '${name}' repair_target '${params.repair_target}' is not a node`);
+      }
+    }
   }
 
   const inbound: Record<string, string[]> = {};

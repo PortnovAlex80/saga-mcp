@@ -19,6 +19,7 @@ import { runGraph, resumeRun } from './kernel/runner.js';
 import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { handlers as factoryHandlers } from './tools/factory.js';
+import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
 
 const WORKER_PATH = fileURLToPath(new URL('./runtime/worker.js', import.meta.url));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,10 +65,27 @@ export function startBridge(opts: {
     }
   }
 
+  function projectHumanGates(): void {
+    const decisions = db
+      .prepare(
+        "SELECT run_id, payload_json FROM events WHERE type = 'gate.decided' AND payload_json LIKE '%\"verdict\":\"human_required\"%'"
+      )
+      .all() as Array<{ run_id: string; payload_json: string }>;
+    for (const row of decisions) {
+      const payload = JSON.parse(row.payload_json) as { node_id: string; revision_digest?: string };
+      try {
+        ensureHumanTask(db, row.run_id, payload.node_id, payload.revision_digest);
+      } catch {
+        // projection only — never break the sweep on board failures
+      }
+    }
+  }
+
   function tick(): void {
     try {
       sweep(db);
       spawnPending();
+      projectHumanGates();
     } catch (error) {
       process.stderr.write(`[bridge] sweep error: ${error instanceof Error ? error.message : error}\n`);
     }
@@ -130,6 +148,16 @@ export function startBridge(opts: {
       }
       if (req.method === 'POST' && /^\/api\/runs\/([\w-]+)\/resume$/.test(url.pathname)) {
         sendJson(res, 200, resumeRun(db, url.pathname.split('/')[3] ?? ''));
+        return;
+      }
+      if (req.method === 'POST' && /^\/api\/runs\/([\w-]+)\/resolve$/.test(url.pathname)) {
+        const runId = url.pathname.split('/')[3] ?? '';
+        const args = JSON.parse(await readBody(req)) as { node?: string; decision?: string; note?: string };
+        if (!args.node) throw new Error('node is required');
+        const decision = args.decision === 'reject' ? 'reject' : 'approve';
+        const event = resolveHumanGate(db, runId, String(args.node), decision, args.note ? String(args.note) : undefined);
+        completeHumanTask(db, runId, String(args.node), decision);
+        sendJson(res, 200, event);
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
