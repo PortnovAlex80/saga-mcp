@@ -1,6 +1,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
+import { runGraph } from '../kernel/runner.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -25,6 +26,22 @@ export const definitions: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'factory_start',
+    description: 'Register a declarative workflow graph and run it to completion on the kernel (M1: scripted node types only).',
+    annotations: { title: 'Factory Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Workflow name (dedup: same name + same graph bytes reuse the workflow row)' },
+        graph_json: {
+          type: 'string',
+          description: 'Declarative graph: {nodes: {name: {type, parameters}}, connections: {name: {main: [[{node}]]}}}',
+        },
+      },
+      required: ['graph_json'],
     },
   },
   {
@@ -69,6 +86,15 @@ export const handlers: Record<string, ToolHandler> = {
       timers_due: pendingTimers,
       materials_stored: materialCount,
     };
+  },
+
+  factory_start: (args) => {
+    const db = getDb();
+    const graphJson = String(args.graph_json ?? '');
+    if (!graphJson) {
+      throw new Error('GRAPH_INVALID: graph_json is required');
+    }
+    return runGraph(db, graphJson, { name: args.name === undefined ? undefined : String(args.name) });
   },
 
   event_tail: (args) => {

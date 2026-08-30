@@ -9,8 +9,9 @@ import type { EventRow, RunRow, WorkflowRow } from './types.js';
 type Payload = Record<string, unknown>;
 
 /** Inserts the next event for a run and advances `runs.next_seq`.
- *  Assumes an open transaction — public wrappers provide one. */
-function appendEventInTx(db: Database.Database, runId: string, type: string, payload: Payload): EventRow {
+ *  Exported for kernel transactions that append several events atomically;
+ *  assumes an open transaction. */
+export function appendEventInTx(db: Database.Database, runId: string, type: string, payload: Payload): EventRow {
   const run = db
     .prepare('SELECT next_seq FROM runs WHERE id = ?')
     .get(runId) as { next_seq: number } | undefined;
