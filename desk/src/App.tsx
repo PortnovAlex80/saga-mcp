@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -67,6 +67,22 @@ function Desk() {
   const [paramError, setParamError] = useState('');
   const [runInfo, setRunInfo] = useState('');
   const [running, setRunning] = useState(false);
+  const [workshops, setWorkshops] = useState<Record<string, { title: string; graph: GraphDoc }>>({});
+  const [wsName, setWsName] = useState('');
+  const [ideaText, setIdeaText] = useState('');
+
+  useEffect(() => {
+    fetch('/api/workshops')
+      .then((r) => r.json())
+      .then((list) => {
+        setWorkshops(list);
+        const first = Object.keys(list)[0];
+        if (first) setWsName(first);
+      })
+      .catch(() => {
+        /* мост не поднят — цеха можно нарисовать руками */
+      });
+  }, []);
 
   const selected: DeskNode | undefined = nodes.find((n) => n.selected);
 
@@ -93,10 +109,33 @@ function Desk() {
 
   const openInspector = useCallback(
     (node: DeskNode) => {
+      const first = (node.data.parameters.items as Array<{ json?: Record<string, unknown> }> | undefined)?.[0];
+      const text = first?.json?.text;
+      setIdeaText(typeof text === 'string' ? text : '');
       setParamText(JSON.stringify(node.data.parameters, null, 2));
       setParamError('');
     },
     []
+  );
+
+  /** Дружественное поле идеи для emit-узлов: правим items[0].json.text,
+   *  не заставляя оператора редактировать JSON. */
+  const onIdeaChange = useCallback(
+    (text: string) => {
+      setIdeaText(text);
+      if (!selected) return;
+      setNodes((current) =>
+        current.map((n) => {
+          if (n.id !== selected.id) return n;
+          const items = Array.isArray(n.data.parameters.items)
+            ? [...(n.data.parameters.items as Array<Record<string, unknown>>)]
+            : [{ json: {} }];
+          items[0] = { ...items[0], json: { ...(items[0]?.json ?? {}), text } };
+          return { ...n, data: { ...n.data, parameters: { ...n.data.parameters, items } } };
+        })
+      );
+    },
+    [selected, setNodes]
   );
 
   const applyParams = useCallback(() => {
@@ -214,6 +253,16 @@ function Desk() {
           <MiniMap pannable />
           <Panel position="top-left">
             <div className="toolbar">
+              {Object.keys(workshops).length > 0 && (
+                <>
+                  <select value={wsName} onChange={(e) => setWsName(e.target.value)}>
+                    {Object.entries(workshops).map(([name, w]) => (
+                      <option key={name} value={name}>{w.title}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => loadDoc(workshops[wsName].graph)}>Открыть цех</button>
+                </>
+              )}
               <button onClick={() => loadDoc(DEMO_GRAPH)}>Demo</button>
               <button onClick={() => { setNodes([]); setEdges([]); }}>Clear</button>
               <button onClick={() => { setImportText(JSON.stringify(toGraphDoc(nodes, edges), null, 2)); setDrawerOpen(true); }}>
@@ -229,11 +278,6 @@ function Desk() {
               {runInfo && <span className="run-info">{runInfo}</span>}
             </div>
           </Panel>
-          <Panel position="top-right">
-            <div className="legend">
-              <span className="run-info">ядро: emit/template/collect/fail локально · llm — активность (воркер-процесс)</span>
-            </div>
-          </Panel>
         </ReactFlow>
       </div>
 
@@ -244,12 +288,36 @@ function Desk() {
             <p>
               <b>{selected.id}</b> <span className="tag">{selected.data.sagaType}</span>
             </p>
-            <label>parameters (JSON)</label>
-            <textarea value={paramText} onChange={(e) => setParamText(e.target.value)} rows={12} />
-            {paramError && <p className="error">{paramError}</p>}
+            {selected.data.sagaType === 'emit' ? (
+              <>
+                <label>Идея (текст задачи)</label>
+                <textarea
+                  value={ideaText}
+                  onChange={(e) => onIdeaChange(e.target.value)}
+                  rows={8}
+                  placeholder="опиши идею или задачу…"
+                />
+                <details>
+                  <summary>parameters (JSON)</summary>
+                  <textarea value={paramText} onChange={(e) => setParamText(e.target.value)} rows={8} />
+                  <button onClick={applyParams}>Применить JSON</button>
+                </details>
+              </>
+            ) : (
+              <>
+                <label>parameters (JSON)</label>
+                <textarea value={paramText} onChange={(e) => setParamText(e.target.value)} rows={12} />
+                {paramError && <p className="error">{paramError}</p>}
+                <div className="row">
+                  <button onClick={applyParams}>Применить</button>
+                  <button className="danger" onClick={deleteSelected}>Удалить</button>
+                </div>
+              </>
+            )}
             <div className="row">
-              <button onClick={applyParams}>Применить</button>
-              <button className="danger" onClick={deleteSelected}>Удалить</button>
+              {selected.data.sagaType === 'emit' && (
+                <button className="danger" onClick={deleteSelected}>Удалить</button>
+              )}
             </div>
           </>
         ) : (

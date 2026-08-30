@@ -181,3 +181,17 @@ button.danger { border-color: #7f3b3b; color: #fca5a5; }
 
 .run-info { color: #a5b4fc; font-size: 12px; margin-left: 8px; }
 .legend { background: rgba(27, 27, 38, 0.85); border-radius: 6px; padding: 4px 8px; }
+
+.toolbar { display: flex; gap: 8px; align-items: center; }
+.toolbar select {
+  background: #2a2a3d;
+  color: #e6e6ef;
+  border: 1px solid #3a3a52;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  max-width: 260px;
+}
+details { color: #8b8ba3; font-size: 12px; }
+details textarea { margin-top: 6px; }
+summary { cursor: pointer; }

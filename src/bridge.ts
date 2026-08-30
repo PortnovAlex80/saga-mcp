@@ -20,7 +20,7 @@ import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { handlers as factoryHandlers } from './tools/factory.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
-import { startDiscovery } from './workshops.js';
+import { DEFAULT_WORKSHOPS, ensureProductRepo, startDiscovery } from './workshops.js';
 
 const WORKER_PATH = fileURLToPath(new URL('./runtime/worker.js', import.meta.url));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -132,7 +132,17 @@ export function startBridge(opts: {
       if (req.method === 'POST' && url.pathname === '/api/graph') {
         const args = JSON.parse(await readBody(req)) as { name?: string; graph_json?: string };
         if (!args.graph_json) throw new Error('graph_json is required');
-        sendJson(res, 200, runGraph(db, String(args.graph_json), {
+        // Host-layer default: effect nodes without a repo publish into the
+        // product repo (same default the Discovery Desk uses).
+        const doc = JSON.parse(String(args.graph_json)) as {
+          nodes?: Record<string, { type: string; parameters?: Record<string, unknown> }>;
+        };
+        for (const node of Object.values(doc.nodes ?? {})) {
+          if (node.type === 'effect' && node.parameters && !node.parameters.repo) {
+            node.parameters.repo = ensureProductRepo();
+          }
+        }
+        sendJson(res, 200, runGraph(db, JSON.stringify(doc), {
           name: args.name === undefined ? undefined : String(args.name),
         }));
         return;
@@ -169,6 +179,10 @@ export function startBridge(opts: {
         const event = resolveHumanGate(db, runId, String(args.node), decision, args.note ? String(args.note) : undefined);
         completeHumanTask(db, runId, String(args.node), decision);
         sendJson(res, 200, event);
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/workshops') {
+        sendJson(res, 200, DEFAULT_WORKSHOPS);
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
