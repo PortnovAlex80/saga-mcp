@@ -7,8 +7,7 @@ export const definitions: Tool[] = [
   {
     name: 'comment_add',
     description:
-      'Add a comment to a task. Comments create a chronological discussion thread — useful for leaving breadcrumbs across sessions. ' +
-      'Call shape: comment_add({ task_id: <integer>, content: "<string>", author: "<string (optional)>" }). The parameter is "task_id" (not "id"). Required: task_id, content.',
+      'Add a comment to a task. Comments create a chronological discussion thread — useful for leaving breadcrumbs across sessions.',
     annotations: { title: 'Add Comment', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -22,9 +21,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'comment_list',
-    description:
-      'List all comments on a task in chronological order. ' +
-      'Call shape: comment_list({ task_id: <integer> }). The parameter is "task_id" (not "id").',
+    description: 'List all comments on a task in chronological order.',
     annotations: { title: 'List Comments', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

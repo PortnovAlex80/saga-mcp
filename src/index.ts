@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Saga5 MCP server — event-sourced conveyor kernel + operator board.
+// M0 scaffold: board tools (upstream model) + read-only kernel surface.
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -6,10 +8,6 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { definitions as projectDefs, handlers as projectHandlers } from './tools/projects.js';
 import { definitions as epicDefs, handlers as epicHandlers } from './tools/epics.js';
@@ -22,88 +20,8 @@ import { definitions as activityDefs, handlers as activityHandlers } from './too
 import { definitions as commentDefs, handlers as commentHandlers } from './tools/comments.js';
 import { definitions as templateDefs, handlers as templateHandlers } from './tools/templates.js';
 import { definitions as exportImportDefs, handlers as exportImportHandlers } from './tools/export-import.js';
-import { definitions as dispatcherDefs, handlers as dispatcherHandlers } from './tools/dispatcher.js';
-import { definitions as artifactDefs, handlers as artifactHandlers } from './tools/artifacts.js';
-import { definitions as repositoryDefs, handlers as repositoryHandlers } from './tools/repositories.js';
-import { definitions as lifecycleDefs, handlers as lifecycleHandlers } from './tools/lifecycle.js';
-import { definitions as observationDefs, handlers as observationHandlers } from './tools/observations.js';
-import { definitions as conflictDefs, handlers as conflictHandlers } from './tools/conflicts.js';
-import { definitions as providerDefs, handlers as providerHandlers } from './tools/providers.js';
-import { definitions as productDefs, handlers as productHandlers } from './tools/products.js';
-import {
-  definitions as processModuleDefs,
-  handlers as processModuleHandlers,
-} from './tools/process-modules.js';
-import {
-  definitions as processNodeSubmissionDefs,
-  handlers as processNodeSubmissionHandlers,
-} from './tools/process-node-submissions.js';
-import {
-  definitions as deliveryApprovalDefs,
-  handlers as deliveryApprovalHandlers,
-} from './tools/delivery-approvals.js';
-import {
-  definitions as lifecycleRunDefs,
-  handlers as lifecycleRunHandlers,
-} from './tools/lifecycle-runs.js';
-import {
-  definitions as settlementDebugDefs,
-  handlers as settlementDebugHandlers,
-} from './tools/settlement-debug.js';
-import {
-  authorizeSagaToolCall,
-  visibleSagaToolNames,
-} from './shared/authority/authorize-tool-call.js';
-import { closeDb, getDb } from './db.js';
-import {
-  installWorkshopPayloadContracts,
-  recordWorkshopBindingReceipt,
-} from './process-modules/application/workshop-capability-manifest.js';
-
-// ADR-053 Phase 1: the worker MCP host is a separate process from the
-// lifecycle orchestrator, but BOTH install payload contracts from the SAME
-// single source of truth — `WORKSHOP_PAYLOAD_CONTRACTS` in the workshop
-// capability manifest. There is no hand-list to drift: adding a contract to
-// the manifest registers it in both processes. Durable WorkIntent pins still
-// reject any id/version/digest drift at runtime.
-installWorkshopPayloadContracts();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-export function assertManagedExecutionIdentity(env: NodeJS.ProcessEnv = process.env): void {
-  const marker = env.SAGA_MANAGED_EXECUTION;
-  const executionId = env.SAGA_EXECUTION_ID;
-  if (marker !== undefined && marker !== '0' && marker !== '1') {
-    throw new Error(`AUTHORITY_CONTEXT_INVALID: invalid SAGA_MANAGED_EXECUTION='${marker}'`);
-  }
-  if (marker === '1' && !executionId) {
-    throw new Error('AUTHORITY_CONTEXT_INVALID: managed MCP child is missing SAGA_EXECUTION_ID');
-  }
-  if (marker !== '1' && executionId) {
-    throw new Error('AUTHORITY_CONTEXT_INVALID: SAGA_EXECUTION_ID requires SAGA_MANAGED_EXECUTION=1');
-  }
-}
-
-/**
- * Saga4 exposes one worker-production desk for every workshop:
- *
- *   product_submit / product_read / candidate_read
- *
- * Discovery-specific proposal/normalization/readiness submit protocols are no
- * longer registered on the MCP surface. Discovery compatibility tables may
- * still exist as deterministic kernel/read-model projections behind
- * `product_submit`, but a worker cannot select another persistence protocol by
- * choosing a module-specific tool.
- */
-const INTERNAL_ONLY_TOOL_NAMES = new Set([
-  'project_create',
-  'project_resolve_by_name',
-  'epic_create',
-  'process_run_start',
-  'process_run_set',
-  'process_run_cancel',
-]);
+import { definitions as factoryDefs, handlers as factoryHandlers } from './tools/factory.js';
+import { closeDb } from './db.js';
 
 const ALL_TOOLS: Tool[] = [
   ...projectDefs,
@@ -117,20 +35,8 @@ const ALL_TOOLS: Tool[] = [
   ...searchDefs,
   ...activityDefs,
   ...exportImportDefs,
-  ...dispatcherDefs,
-  ...artifactDefs,
-  ...repositoryDefs,
-  ...lifecycleDefs,
-  ...observationDefs,
-  ...conflictDefs,
-  ...providerDefs,
-  ...productDefs,
-  ...processModuleDefs,
-  ...processNodeSubmissionDefs,
-  ...deliveryApprovalDefs,
-  ...lifecycleRunDefs,
-  ...settlementDebugDefs,
-].filter(tool => !INTERNAL_ONLY_TOOL_NAMES.has(tool.name));
+  ...factoryDefs,
+];
 
 const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> = {
   ...projectHandlers,
@@ -144,35 +50,17 @@ const ALL_HANDLERS: Record<string, (args: Record<string, unknown>) => unknown> =
   ...searchHandlers,
   ...activityHandlers,
   ...exportImportHandlers,
-  ...dispatcherHandlers,
-  ...artifactHandlers,
-  ...repositoryHandlers,
-  ...lifecycleHandlers,
-  ...observationHandlers,
-  ...conflictHandlers,
-  ...providerHandlers,
-  ...productHandlers,
-  ...processModuleHandlers,
-  ...processNodeSubmissionHandlers,
-  ...deliveryApprovalHandlers,
-  ...lifecycleRunHandlers,
-  ...settlementDebugHandlers,
+  ...factoryHandlers,
 };
-for (const name of INTERNAL_ONLY_TOOL_NAMES) delete ALL_HANDLERS[name];
 
 const server = new Server(
-  { name: 'tracker', version: '1.0.0' },
+  { name: 'saga', version: '3.0.0-alpha.0' },
   { capabilities: { tools: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  const visibleNames = visibleSagaToolNames(getDb());
-  return {
-    tools: visibleNames === null
-      ? ALL_TOOLS
-      : ALL_TOOLS.filter(tool => visibleNames.has(tool.name)),
-  };
-});
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: ALL_TOOLS,
+}));
 
 function friendlyError(msg: string): string {
   if (msg.includes('UNIQUE constraint failed')) {
@@ -199,89 +87,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!handler) {
       throw new Error(`Unknown tool: ${name}`);
     }
-    const decision = authorizeSagaToolCall({ toolName: name, db: getDb() });
-    if (!decision.allow) {
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify({ code: decision.code, ...decision.details }, null, 2),
-        }],
-        isError: true,
-      };
-    }
-    if (decision.advisory) {
-      console.error(`[saga-authority] advisory ${decision.observation} (execution=${decision.executionId ?? '-'})`);
-    }
-
     const result = handler(args ?? {});
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    const friendly = friendlyError(msg);
     return {
-      content: [{ type: 'text', text: `Error: ${friendly}` }],
+      content: [{ type: 'text', text: `Error: ${friendlyError(msg)}` }],
       isError: true,
     };
   }
 });
 
 async function main() {
-  assertManagedExecutionIdentity();
-  recordWorkshopBindingReceipt({
-    db: getDb(),
-    role: 'worker-mcp',
-    processIdentity: `worker-mcp:${process.pid}`,
-  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Tracker MCP Server running on stdio');
-
-  if (process.env.TRACKER_AUTOSTART !== '0' && process.env.DB_PATH) {
-    try {
-      const trackerPath = path.join(__dirname, '..', 'tracker-view', 'tracker-view.mjs');
-      if (existsSync(trackerPath)) {
-        const trackerPort = process.env.TRACKER_PORT || '4321';
-        const child = spawn('node', [trackerPath], {
-          detached: true,
-          stdio: 'ignore',
-          env: {
-            ...process.env,
-            PORT: trackerPort,
-            DB_PATH: process.env.DB_PATH,
-            TRACKER_SPAWNED: '1',
-          },
-        });
-        child.unref();
-        console.error(`Tracker view → http://localhost:${trackerPort} (set TRACKER_AUTOSTART=0 to disable)`);
-      }
-    } catch (err) {
-      console.error('Tracker view failed to start (non-fatal):', err instanceof Error ? err.message : err);
-    }
-  }
-
-  if (process.env.DOCS_GRAPH_AUTOSTART !== '0' && process.env.DB_PATH) {
-    try {
-      const docsGraphPath = path.join(__dirname, '..', 'tracker-view', 'docs-graph', 'server.mjs');
-      if (existsSync(docsGraphPath)) {
-        const docsPort = process.env.DOCS_GRAPH_PORT || '4322';
-        const child = spawn('node', [docsGraphPath], {
-          detached: true,
-          stdio: 'ignore',
-          env: {
-            ...process.env,
-            DOCS_GRAPH_PORT: docsPort,
-            DB_PATH: process.env.DB_PATH,
-          },
-        });
-        child.unref();
-        console.error(`Docs graph   → http://localhost:${docsPort} (set DOCS_GRAPH_AUTOSTART=0 to disable)`);
-      }
-    } catch (err) {
-      console.error('Docs graph failed to start (non-fatal):', err instanceof Error ? err.message : String(err));
-    }
-  }
+  console.error('Saga5 MCP server running on stdio');
 }
 
 process.on('SIGINT', () => {

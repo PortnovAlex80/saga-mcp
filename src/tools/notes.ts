@@ -8,8 +8,7 @@ export const definitions: Tool[] = [
   {
     name: 'note_save',
     description:
-      'Create or update a note. Notes capture decisions, context, progress, meeting notes, blockers, technical details, or release info. If "id" is provided, updates the existing note; otherwise creates a new one. ' +
-      'Call shape: note_save({ id: <integer (optional, omit to create new)>, title: "<string>", content: "<string>", note_type: "general|decision|context|meeting|technical|blocker|progress|release", related_entity_type: "project|epic|task", related_entity_id: <integer>, tags: ["<string>", ...] }). Required: title, content. Pass "id" only when updating an existing note.',
+      'Create or update a note. Notes capture decisions, context, progress, meeting notes, blockers, technical details, or release info. If "id" is provided, updates the existing note; otherwise creates a new one.',
     annotations: { title: 'Save Note', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -35,9 +34,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'note_list',
-    description:
-      'List notes with optional filters. Returns notes sorted by most recent first. ' +
-      'Call shape: note_list({ note_type: "general|decision|context|meeting|technical|blocker|progress|release", related_entity_type: "project|epic|task", related_entity_id: <integer>, tag: "<string>", limit: <integer> }). All params optional.',
+    description: 'List notes with optional filters. Returns notes sorted by most recent first.',
     annotations: { title: 'List Notes', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -55,9 +52,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'note_search',
-    description:
-      'Search across note titles and content by keyword. ' +
-      'Call shape: note_search({ query: "<string>", note_type: "general|decision|context|meeting|technical|blocker|progress|release", limit: <integer> }). Required: query.',
+    description: 'Search across note titles and content by keyword.',
     annotations: { title: 'Search Notes', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -74,9 +69,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'note_delete',
-    description:
-      'Delete a note by ID. ' +
-      'Call shape: note_delete({ id: <integer> }). The parameter is "id".',
+    description: 'Delete a note by ID.',
     annotations: { title: 'Delete Note', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

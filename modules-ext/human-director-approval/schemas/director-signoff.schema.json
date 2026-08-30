@@ -1,8 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "saga3.human-director.signoff.v1",
-  "title": "Director Sign-off Interaction Contract (Human Director Approval package)",
-  "type": "object",
-  "additionalProperties": true,
-  "description": "Interaction contract for the director-signoff Human node. The director-console adapter (director-console-adapter@1.0.0) owns the durable request/decision store bound behind this id; the runtime pauses the node until a decision is recorded. Wave 2 ContractSchemaRegistry registers a concrete codec behind this id."
-}

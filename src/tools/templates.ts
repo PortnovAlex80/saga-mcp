@@ -7,7 +7,7 @@ export const definitions: Tool[] = [
   {
     name: 'template_create',
     description:
-      'Create a reusable task template. Templates define a set of tasks that can be instantiated into any epic. Use {variable} placeholders for dynamic values. Call shape: template_create({ name: "<string (unique)>", description: "<string>", tasks: [ { title: "<string (supports {variable} placeholders)>", description: "<string>", priority: "low|medium|high|critical", estimated_hours: <number>, tags: ["<string>", ...] }, ... ] }). Required: name, tasks (each task requires title).',
+      'Create a reusable task template. Templates define a set of tasks that can be instantiated into any epic. Use {variable} placeholders for dynamic values.',
     annotations: { title: 'Create Template', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -35,7 +35,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'template_list',
-    description: 'List all available task templates. Call shape: template_list({}). No arguments.',
+    description: 'List all available task templates.',
     annotations: { title: 'List Templates', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -45,7 +45,7 @@ export const definitions: Tool[] = [
   {
     name: 'template_apply',
     description:
-      'Apply a template to create tasks in an epic. Replaces {variable} placeholders with provided values. Call shape: template_apply({ template_id: <integer>, epic_id: <integer>, variables: { "<key>": "<value>", ... } }). Required: template_id, epic_id.',
+      'Apply a template to create tasks in an epic. Replaces {variable} placeholders with provided values.',
     annotations: { title: 'Apply Template', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -63,7 +63,7 @@ export const definitions: Tool[] = [
   },
   {
     name: 'template_delete',
-    description: 'Delete a task template. Call shape: template_delete({ id: <integer> }). The parameter is "id" (not "template_id"). Required: id.',
+    description: 'Delete a task template.',
     annotations: { title: 'Delete Template', readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',

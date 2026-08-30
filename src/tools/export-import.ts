@@ -7,7 +7,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_export',
     description:
-      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing. Call shape: tracker_export({ project_id: <integer> }). project_id is optional — omit if only one project exists.',
+      'Export a full project as nested JSON. Includes all epics, tasks, subtasks, comments, dependencies, and related notes. Useful for backup, migration, or sharing.',
     annotations: { title: 'Export Project', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -22,7 +22,7 @@ export const definitions: Tool[] = [
   {
     name: 'tracker_import',
     description:
-      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity. Call shape: tracker_import({ data: <object, the full export JSON from tracker_export> }). Required: data.',
+      'Import a project from JSON (matching tracker_export format). Creates all entities with new IDs and remaps references. Uses a transaction for atomicity.',
     annotations: { title: 'Import Project', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
@@ -81,18 +81,6 @@ function handleExport(args: Record<string, unknown>) {
         actual_hours: task.actual_hours,
         due_date: task.due_date,
         source_ref: task.source_ref,
-        task_kind: task.task_kind,
-        workflow_stage: task.workflow_stage,
-        execution_skill: task.execution_skill,
-        review_skill: task.review_skill,
-        execution_mode: task.execution_mode,
-        _original_project_repository_id: task.project_repository_id,
-        integration_state: task.integration_state,
-        integrated_at: task.integrated_at,
-        integrated_commit: task.integrated_commit,
-        _original_generated_from_task_id: task.generated_from_task_id,
-        _original_verification_target_artifact_id: task.verification_target_artifact_id,
-        generation_key: task.generation_key,
         tags: task.tags,
         metadata: task.metadata,
         depends_on: deps.map((d) => d.depends_on_task_id),
@@ -119,9 +107,6 @@ function handleExport(args: Record<string, unknown>) {
       branch: epic.branch,
       tags: epic.tags,
       metadata: epic.metadata,
-      // saga4 cutover (EXECUTION-PLAN §B.1 #8): the `episode_workflows` row
-      // snapshot used to be serialized here. Lifecycle runs are now the source
-      // of truth, so the writer is gone and this reader is dropped to match.
       tasks: taskData,
     };
   });
@@ -168,33 +153,9 @@ function handleExport(args: Record<string, unknown>) {
     tags: n.tags,
     metadata: n.metadata,
   }));
-  const repositoryRows = db.prepare(`
-    SELECT pr.id AS _original_id, pr.role, pr.local_path, pr.integration_branch,
-           pr.docs_root, pr.status, pr.metadata,
-           r.name, r.remote_url, r.default_branch
-      FROM project_repositories pr JOIN repositories r ON r.id=pr.repository_id
-     WHERE pr.project_id=? ORDER BY pr.id
-  `).all(projectId) as Array<Record<string, unknown>>;
-  const repositoryData = repositoryRows.map(repo => ({
-    ...repo,
-    checkouts: db.prepare(
-      `SELECT machine_id,local_path,status,metadata,last_seen_at
-       FROM repository_checkouts WHERE project_repository_id=? ORDER BY machine_id`,
-    ).all(repo._original_id),
-  }));
-  const artifactData = db.prepare(
-    `SELECT * FROM artifacts WHERE project_id=? ORDER BY epic_id,id`,
-  ).all(projectId) as Array<Record<string, unknown>>;
-  const artifactIds = artifactData.map(a => a.id as number);
-  const traceData = artifactIds.length === 0 ? [] : db.prepare(
-    `SELECT * FROM artifact_traces WHERE source_id IN (${artifactIds.map(() => '?').join(',')})`,
-  ).all(...artifactIds);
-  const evidenceData = artifactIds.length === 0 ? [] : db.prepare(
-    `SELECT * FROM verification_evidence WHERE artifact_id IN (${artifactIds.map(() => '?').join(',')})`,
-  ).all(...artifactIds);
 
   return {
-    format_version: '1.5',
+    format_version: '1.2',
     exported_at: new Date().toISOString(),
     project: {
       name: project.name,
@@ -202,11 +163,7 @@ function handleExport(args: Record<string, unknown>) {
       status: project.status,
       tags: project.tags,
       metadata: project.metadata,
-      repositories: repositoryData,
       epics: epicData,
-      artifacts: artifactData,
-      artifact_traces: traceData,
-      verification_evidence: evidenceData,
     },
     notes: noteData,
   };
@@ -217,8 +174,8 @@ function handleImport(args: Record<string, unknown>) {
   const data = args.data as Record<string, unknown>;
 
   const version = data.format_version as string;
-  if (!['1.0', '1.1', '1.2', '1.3', '1.4', '1.5'].includes(version)) {
-    throw new Error(`Unsupported format version: ${version}. Expected 1.0 through 1.5.`);
+  if (version !== '1.0' && version !== '1.1' && version !== '1.2') {
+    throw new Error(`Unsupported format version: ${version}. Expected "1.0", "1.1", or "1.2".`);
   }
 
   const projectData = data.project as Record<string, unknown>;
@@ -229,8 +186,6 @@ function handleImport(args: Record<string, unknown>) {
   const result = db.transaction(() => {
     const epicIdMap = new Map<number, number>();
     const taskIdMap = new Map<number, number>();
-    const repositoryBindingIdMap = new Map<number, number>();
-    const artifactIdMap = new Map<number, number>();
 
     // 1. Create project
     const project = db.prepare(
@@ -246,34 +201,6 @@ function handleImport(args: Record<string, unknown>) {
     const newProjectId = project.id as number;
     logActivity(db, 'project', newProjectId, 'created', null, null, null, `Project '${projectData.name}' imported`);
 
-    const repositoryData = (projectData.repositories as Array<Record<string, unknown>>) ?? [];
-    for (const repoData of repositoryData) {
-      const repo = db.prepare(`
-        INSERT INTO repositories (name,remote_url,default_branch)
-        VALUES (?,?,?) RETURNING id
-      `).get(repoData.name, repoData.remote_url ?? null, repoData.default_branch ?? 'main') as { id: number };
-      const binding = db.prepare(`
-        INSERT INTO project_repositories
-          (project_id,repository_id,role,local_path,integration_branch,docs_root,status,metadata)
-        VALUES (?,?,?,?,?,?,?,?) RETURNING id
-      `).get(
-        newProjectId, repo.id, repoData.role ?? 'component', repoData.local_path ?? null,
-        repoData.integration_branch ?? 'dev', repoData.docs_root ?? null,
-        repoData.status ?? 'active', repoData.metadata ?? '{}',
-      ) as { id: number };
-      if (repoData._original_id != null) {
-        repositoryBindingIdMap.set(repoData._original_id as number, binding.id);
-      }
-      for (const checkout of (repoData.checkouts as Array<Record<string, unknown>>) ?? []) {
-        db.prepare(
-          `INSERT INTO repository_checkouts
-           (project_repository_id,machine_id,local_path,status,metadata,last_seen_at)
-           VALUES (?,?,?,?,?,?)`,
-        ).run(binding.id, checkout.machine_id, checkout.local_path, checkout.status ?? 'active',
-          checkout.metadata ?? '{}', checkout.last_seen_at ?? new Date().toISOString());
-      }
-    }
-
     // 2. Create epics and their children
     const epics = (projectData.epics as Array<Record<string, unknown>>) ?? [];
     let epicCount = 0;
@@ -284,11 +211,6 @@ function handleImport(args: Record<string, unknown>) {
 
     // Collect deferred dependencies (need all tasks created first)
     const deferredDeps: Array<{ newTaskId: number; originalDeps: number[] }> = [];
-    const deferredGeneratedFrom: Array<{ newTaskId: number; originalTaskId: number }> = [];
-    const deferredVerificationTargets: Array<{
-      newTaskId: number;
-      originalArtifactId: number;
-    }> = [];
 
     for (const epicData of epics) {
       const epic = db.prepare(
@@ -318,11 +240,8 @@ function handleImport(args: Record<string, unknown>) {
       for (const taskData of tasks) {
         const task = db.prepare(
           `INSERT INTO tasks (epic_id, title, description, status, priority, sort_order,
-           assigned_to, estimated_hours, actual_hours, due_date, source_ref,
-           task_kind,workflow_stage,execution_skill,review_skill,execution_mode,
-           project_repository_id,integration_state,integrated_at,integrated_commit,
-           generation_key,tags,metadata)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
+           assigned_to, estimated_hours, actual_hours, due_date, source_ref, tags, metadata)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`
         ).get(
           newEpicId,
           taskData.title,
@@ -335,18 +254,6 @@ function handleImport(args: Record<string, unknown>) {
           taskData.actual_hours ?? null,
           taskData.due_date ?? null,
           taskData.source_ref ?? null,
-          taskData.task_kind ?? null,
-          taskData.workflow_stage ?? null,
-          taskData.execution_skill ?? null,
-          taskData.review_skill ?? null,
-          taskData.execution_mode ?? 'git_change',
-          taskData._original_project_repository_id == null
-            ? null
-            : repositoryBindingIdMap.get(taskData._original_project_repository_id as number) ?? null,
-          taskData.integration_state ?? 'not_required',
-          taskData.integrated_at ?? null,
-          taskData.integrated_commit ?? null,
-          taskData.generation_key ?? null,
           taskData.tags ?? '[]',
           taskData.metadata ?? '{}'
         ) as Record<string, unknown>;
@@ -362,21 +269,6 @@ function handleImport(args: Record<string, unknown>) {
         const originalDeps = (taskData.depends_on as number[]) ?? [];
         if (originalDeps.length > 0) {
           deferredDeps.push({ newTaskId, originalDeps });
-        }
-        if (taskData._original_generated_from_task_id != null) {
-          deferredGeneratedFrom.push({
-            newTaskId,
-            originalTaskId: taskData._original_generated_from_task_id as number,
-          });
-        }
-        if (
-          taskData._original_verification_target_artifact_id !== null
-          && taskData._original_verification_target_artifact_id !== undefined
-        ) {
-          deferredVerificationTargets.push({
-            newTaskId,
-            originalArtifactId: taskData._original_verification_target_artifact_id as number,
-          });
         }
 
         // 4. Create subtasks
@@ -404,9 +296,6 @@ function handleImport(args: Record<string, unknown>) {
           commentCount++;
         }
       }
-      // saga4 cutover (EXECUTION-PLAN §B.1 #8a): the `episode_workflows` INSERT
-      // that mirrored the exported `workflow` row is gone — lifecycle runs own
-      // `workflow` field on imported epics (if present) is simply ignored.
     }
 
     // 6. Create dependencies with ID remapping
@@ -419,82 +308,9 @@ function handleImport(args: Record<string, unknown>) {
           depCount++;
         }
       }
-
-    }
-    for (const { newTaskId, originalTaskId } of deferredGeneratedFrom) {
-      const mapped = taskIdMap.get(originalTaskId);
-      if (mapped != null) {
-        db.prepare('UPDATE tasks SET generated_from_task_id=? WHERE id=?').run(mapped, newTaskId);
-      }
     }
 
-    // 7. Requirements artifacts, traces and immutable verification evidence.
-    const artifacts = (projectData.artifacts as Array<Record<string, unknown>>) ?? [];
-    const deferredParents: Array<{ id: number; parent: number }> = [];
-    for (const artifact of artifacts) {
-      const mappedEpic = epicIdMap.get(artifact.epic_id as number);
-      if (!mappedEpic) continue;
-      const inserted = db.prepare(
-        `INSERT INTO artifacts
-         (project_id,epic_id,type,code,title,path,status,project_repository_id,
-          content_hash,accepted_hash,drift_state,tags,metadata)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id`,
-      ).get(
-        newProjectId, mappedEpic, artifact.type, artifact.code ?? null, artifact.title,
-        artifact.path, artifact.status ?? 'draft',
-        artifact.project_repository_id == null ? null
-          : repositoryBindingIdMap.get(artifact.project_repository_id as number) ?? null,
-        artifact.content_hash ?? null, artifact.accepted_hash ?? null,
-        artifact.drift_state ?? 'unknown', artifact.tags ?? '[]', artifact.metadata ?? '{}',
-      ) as { id: number };
-      artifactIdMap.set(artifact.id as number, inserted.id);
-      if (artifact.parent_artifact_id != null) {
-        deferredParents.push({ id: inserted.id, parent: artifact.parent_artifact_id as number });
-      }
-    }
-    for (const parent of deferredParents) {
-      const mapped = artifactIdMap.get(parent.parent);
-      if (mapped) db.prepare('UPDATE artifacts SET parent_artifact_id=? WHERE id=?').run(mapped, parent.id);
-    }
-    for (const target of deferredVerificationTargets) {
-      const mapped = artifactIdMap.get(target.originalArtifactId);
-      if (mapped !== undefined) {
-        db.prepare(
-          'UPDATE tasks SET verification_target_artifact_id=? WHERE id=?',
-        ).run(mapped, target.newTaskId);
-      }
-    }
-    for (const trace of (projectData.artifact_traces as Array<Record<string, unknown>>) ?? []) {
-      const source = artifactIdMap.get(trace.source_id as number);
-      const target = trace.target_type === 'artifact'
-        ? artifactIdMap.get(trace.target_id as number)
-        : taskIdMap.get(trace.target_id as number);
-      if (source && target) {
-        db.prepare(
-          `INSERT OR IGNORE INTO artifact_traces (source_id,target_type,target_id,link_type)
-           VALUES (?,?,?,?)`,
-        ).run(source, trace.target_type, target, trace.link_type);
-      }
-    }
-    for (const evidence of (projectData.verification_evidence as Array<Record<string, unknown>>) ?? []) {
-      const task = taskIdMap.get(evidence.task_id as number);
-      const artifact = artifactIdMap.get(evidence.artifact_id as number);
-      if (task && artifact) {
-        db.prepare(
-          `INSERT INTO verification_evidence
-           (task_id,artifact_id,outcome,evidence,content_hash,recorded_by,provider,execution_id,created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)`,
-        ).run(task, artifact, evidence.outcome, evidence.evidence, evidence.content_hash ?? null,
-          evidence.recorded_by ?? null, evidence.provider ?? null, evidence.execution_id ?? null,
-          evidence.created_at ?? new Date().toISOString());
-      }
-    }
-    // saga4 cutover (EXECUTION-PLAN §B.1 #8b): the `episode_workflows`
-    // `baseline_artifact_id` backfill UPDATE is gone — that column lived on the
-    // on accepted AC artifacts themselves (accepted_hash), which are remapped
-    // above through `artifactIdMap`.
-
-    // 8. Create notes with ID remapping
+    // 7. Create notes with ID remapping
     const importNotes = (data.notes as Array<Record<string, unknown>>) ?? [];
     let noteCount = 0;
 
