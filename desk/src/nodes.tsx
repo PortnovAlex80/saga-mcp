@@ -10,6 +10,8 @@ const STYLE: Record<string, { accent: string; glyph: string }> = {
   collect: { accent: '#f472b6', glyph: '⤵' },
   fail: { accent: '#f87171', glyph: '✕' },
   llm: { accent: '#a78bfa', glyph: '✦' },
+  gate: { accent: '#fbbf24', glyph: '⚖' },
+  effect: { accent: '#2dd4bf', glyph: '⚡' },
 };
 
 export function SagaNode({ data, selected }: NodeProps<DeskNode>) {

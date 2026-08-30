@@ -30,6 +30,8 @@ const NODE_COLORS: Record<string, string> = {
   collect: '#f472b6',
   fail: '#f87171',
   llm: '#a78bfa',
+  gate: '#fbbf24',
+  effect: '#2dd4bf',
 };
 
 let dropCounter = 0;
@@ -41,6 +43,17 @@ const DEFAULT_PARAMETERS: Record<string, Record<string, unknown>> = {
     mode: 'opencode',
     model: 'zai-coding-plan/glm-5.3-flash',
     prompt: '{{text}}',
+  },
+  gate: {
+    checks: [{ op: 'nonempty' }],
+    max_repairs: 2,
+  },
+  effect: {
+    mode: 'git',
+    repo: '',
+    branch: 'main',
+    message: 'apply desk material',
+    files: [{ path: 'index.html', field: 'text' }],
   },
 };
 

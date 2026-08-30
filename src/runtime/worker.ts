@@ -53,6 +53,12 @@ function sha(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
+/** Models often wrap code in ```lang fences even when told not to. */
+function stripCodeFences(text: string): string {
+  const match = text.trim().match(/^```[a-zA-Z]*\r?\n([\s\S]*?)\r?\n?```$/);
+  return match ? match[1] : text.trim();
+}
+
 function git(cwd: string, args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
@@ -310,8 +316,8 @@ async function main(): Promise<void> {
     } else if ((params.mode ?? 'echo') === 'opencode') {
       const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs);
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
-      const text = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
-      output = [{ json: { text: text.trim(), model } }];
+      const text = stripCodeFences(await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000));
+      output = [{ json: { text, model } }];
     } else if ((params.mode ?? 'echo') === 'api') {
       const baseUrl = process.env.LLM_BASE_URL;
       if (!baseUrl) throw new Error('LLM_BASE_URL is required for mode=api');

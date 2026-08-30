@@ -20,7 +20,7 @@ export interface GraphDoc {
   connections: Record<string, { main: Array<Array<{ node: string }>> }>;
 }
 
-export const NODE_TYPES = ['emit', 'template', 'collect', 'fail', 'llm'] as const;
+export const NODE_TYPES = ['emit', 'template', 'collect', 'fail', 'llm', 'gate', 'effect'] as const;
 
 export function toGraphDoc(nodes: DeskNode[], edges: Edge[]): GraphDoc {
   const doc: GraphDoc = { nodes: {}, connections: {} };
