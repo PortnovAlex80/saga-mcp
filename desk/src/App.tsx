@@ -29,6 +29,7 @@ const NODE_COLORS: Record<string, string> = {
   template: '#60a5fa',
   collect: '#f472b6',
   fail: '#f87171',
+  llm: '#a78bfa',
 };
 
 let dropCounter = 0;
