@@ -8,6 +8,9 @@
 // no trace — which is the point: the sweep reaps stale heartbeats and the
 // kernel decides retries. `mode: 'echo'` is the scripted worker: same physics
 // as the real API call, deterministic, no network.
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { getDb, closeDb } from '../db.js';
 import { getRun } from '../events.js';
 import { getExecution, heartbeatExecution, completeActivity, failActivity } from '../kernel/executions.js';
@@ -16,12 +19,46 @@ import { renderTemplateString, type Item } from '../kernel/node-types.js';
 
 interface LlmParameters {
   prompt?: string;
-  mode?: 'echo' | 'api';
+  mode?: 'echo' | 'api' | 'opencode';
   model?: string;
   system?: string;
   temperature?: number;
   sleep_ms?: number;
   crash_attempt?: number;
+}
+
+/** Real model worker: the opencode CLI (auth lives in its own config,
+ *  e.g. the Z.AI coding plan). Resolved without shell so prompts with any
+ *  characters survive Windows. */
+function opencodeBin(): string {
+  if (process.env.OPENCODE_BIN) return process.env.OPENCODE_BIN;
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    const candidate = path.join(
+      process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe'
+    );
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'opencode';
+}
+
+function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(opencodeBin(), ['run', '-m', model, prompt], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    const killTimer = setTimeout(() => child.kill(), timeoutMs);
+    child.on('error', (error) => { clearTimeout(killTimer); reject(error); });
+    child.on('exit', (code) => {
+      clearTimeout(killTimer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error(`opencode exited ${code}: ${stderr.slice(-500)}`));
+    });
+  });
 }
 
 function parseArgs(): string {
@@ -115,7 +152,12 @@ async function main(): Promise<void> {
     }
 
     let output: Item[];
-    if ((params.mode ?? 'echo') === 'api') {
+    if ((params.mode ?? 'echo') === 'opencode') {
+      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs);
+      const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
+      const text = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
+      output = [{ json: { text: text.trim(), model } }];
+    } else if ((params.mode ?? 'echo') === 'api') {
       const baseUrl = process.env.LLM_BASE_URL;
       if (!baseUrl) throw new Error('LLM_BASE_URL is required for mode=api');
       const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs);

@@ -13,6 +13,8 @@ export interface ActivityTimeouts {
   schedule_to_start_s: number;
   /** Max time from claim to settle enforced via heartbeat freshness. */
   heartbeat_s: number;
+  /** Hard budget for the whole activity body (worker self-kills past it). */
+  start_to_close_s?: number;
 }
 
 export interface ActivityRetry {
@@ -22,6 +24,7 @@ export interface ActivityRetry {
 export const DEFAULT_TIMEOUTS: ActivityTimeouts = {
   schedule_to_start_s: 30,
   heartbeat_s: 15,
+  start_to_close_s: 180,
 };
 
 export const DEFAULT_RETRY: ActivityRetry = { max_attempts: 2 };

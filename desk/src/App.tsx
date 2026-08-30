@@ -34,6 +34,16 @@ const NODE_COLORS: Record<string, string> = {
 
 let dropCounter = 0;
 
+/** Defaults that make a dropped node runnable as-is: the llm activity talks
+ *  to the real model through the opencode CLI (Z.AI coding plan). */
+const DEFAULT_PARAMETERS: Record<string, Record<string, unknown>> = {
+  llm: {
+    mode: 'opencode',
+    model: 'zai-coding-plan/glm-5.3-flash',
+    prompt: '{{text}}',
+  },
+};
+
 function Desk() {
   const [nodes, setNodes, onNodesChange] = useNodesState<DeskNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -49,7 +59,10 @@ function Desk() {
 
   const addNode = useCallback(
     (sagaType: string, position: { x: number; y: number }) => {
-      const data: DeskNodeData = { sagaType, parameters: {} };
+      const data: DeskNodeData = {
+        sagaType,
+        parameters: DEFAULT_PARAMETERS[sagaType] ? { ...DEFAULT_PARAMETERS[sagaType] } : {},
+      };
       setNodes((current) => {
         let id = `${sagaType}_${++dropCounter}`;
         while (current.some((n) => n.id === id)) id = `${sagaType}_${++dropCounter}`;
