@@ -36,6 +36,12 @@ const NODE_COLORS: Record<string, string> = {
 
 let dropCounter = 0;
 
+/** Раскладка стола живёт в localStorage браузера; источник истины цехов —
+ *  бекенд (/api/workshops). Ключ версии — чтобы старые раскладки не ломались. */
+const STORAGE_KEY = 'saga5-desk-doc-v1';
+const restoredRef = { current: false };
+const autoOpenedRef = { current: false };
+
 /** Defaults that make a dropped node runnable as-is: the llm activity talks
  *  to the real model through the opencode CLI (Z.AI coding plan). */
 const DEFAULT_PARAMETERS: Record<string, Record<string, unknown>> = {
@@ -67,6 +73,34 @@ function Desk() {
   const [paramError, setParamError] = useState('');
   const [runInfo, setRunInfo] = useState('');
   const [running, setRunning] = useState(false);
+  // Восстановление раскладки стола из localStorage (только layout, не истина).
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const doc = JSON.parse(raw) as GraphDoc;
+        if (doc?.nodes && Object.keys(doc.nodes).length > 0) {
+          restoredRef.current = true;
+          const { nodes: restoredNodes, edges: restoredEdges } = fromGraphDoc(doc);
+          setNodes(restoredNodes);
+          setEdges(restoredEdges);
+        }
+      }
+    } catch {
+      /* битая раскладка — начинаем с пустого стола */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Каждое изменение раскладки — в localStorage.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toGraphDoc(nodes, edges)));
+    } catch {
+      /* переполнение localStorage не должно ломать стол */
+    }
+  }, [nodes, edges]);
+
   const [workshops, setWorkshops] = useState<Record<string, { title: string; graph: GraphDoc }>>({});
   const [wsName, setWsName] = useState('');
   const [ideaText, setIdeaText] = useState('');
@@ -77,11 +111,20 @@ function Desk() {
       .then((list) => {
         setWorkshops(list);
         const first = Object.keys(list)[0];
-        if (first) setWsName(first);
+        // Пустой стол + есть цеха → открываем первый цех автоматически,
+        // чтобы стол никогда не встречал оператора пустотой.
+        if (first && nodes.length === 0 && !restoredRef.current) {
+          autoOpenedRef.current = true;
+          setWsName(first);
+          const { nodes: docNodes, edges: docEdges } = fromGraphDoc(list[first].graph);
+          setNodes(docNodes);
+          setEdges(docEdges);
+        }
       })
       .catch(() => {
         /* мост не поднят — цеха можно нарисовать руками */
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selected: DeskNode | undefined = nodes.find((n) => n.selected);
@@ -238,6 +281,12 @@ function Desk() {
           addNode(sagaType, screenToFlowPosition({ x: e.clientX, y: e.clientY }));
         }}
       >
+        {nodes.length === 0 && (
+          <div className="canvas-hint">
+            Стол пуст: выбери цех сверху и нажми «Открыть цех»,
+            либо перетащи узлы из палитры
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}

@@ -122,7 +122,12 @@ export function startBridge(opts: {
         ? absolute
         : path.join(DESK_DIST, 'index.html');
     const body = readFileSync(safe);
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(safe)] ?? 'application/octet-stream' });
+    const headers: Record<string, string> = {
+      'Content-Type': MIME[path.extname(safe)] ?? 'application/octet-stream',
+    };
+    // index.html — always fresh (hashed assets are immutable anyway)
+    if (safe.endsWith('.html')) headers['Cache-Control'] = 'no-cache';
+    res.writeHead(200, headers);
     res.end(body);
   }
 
@@ -185,11 +190,11 @@ export function startBridge(opts: {
         sendJson(res, 200, DEFAULT_WORKSHOPS);
         return;
       }
-      if (req.method === 'GET' && url.pathname === '/api/state') {
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/state') {
         sendJson(res, 200, factoryHandlers.factory_status({}));
         return;
       }
-      if (req.method === 'GET') {
+      if (req.method === 'GET' || req.method === 'HEAD') {
         serveStatic(res, url.pathname);
         return;
       }

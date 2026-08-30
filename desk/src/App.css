@@ -195,3 +195,15 @@ button.danger { border-color: #7f3b3b; color: #fca5a5; }
 details { color: #8b8ba3; font-size: 12px; }
 details textarea { margin-top: 6px; }
 summary { cursor: pointer; }
+
+.canvas-hint {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #6d6d85;
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
+  max-width: 340px;
+}
