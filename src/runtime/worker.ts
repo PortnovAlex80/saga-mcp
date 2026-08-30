@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDb, closeDb } from '../db.js';
-import { getRun } from '../events.js';
+import { getRun, getEvents } from '../events.js';
 import {
   getExecution,
   heartbeatExecution,
@@ -231,6 +231,20 @@ function renderPrompt(tmpl: string, items: Item[]): string {
   return lines.join('\n\n');
 }
 
+/** Repair feedback: the gate's rejection reasons travel into the retry's
+ *  prompt, so the worker fixes WHAT failed — not just rolls the dice again. */
+function readRepairFeedback(db: ReturnType<typeof getDb>, runId: string, nodeId: string): string | null {
+  let last: { reasons?: unknown } | null = null;
+  for (const event of getEvents(db, runId)) {
+    if (event.type !== 'repair.requested') continue;
+    const payload = JSON.parse(event.payload_json) as { target?: string; reasons?: string[] };
+    if (payload.target === nodeId) last = payload;
+  }
+  const reasons = last?.reasons;
+  if (!Array.isArray(reasons) || reasons.length === 0) return null;
+  return reasons.map((r) => `- ${r}`).join('\n');
+}
+
 async function callApi(
   baseUrl: string,
   apiKey: string,
@@ -301,6 +315,12 @@ async function main(): Promise<void> {
 
   try {
     const inputs = readActivityInputs(db, execution.run_id, workflow.graph_json, execution.node_id);
+    const feedback = execution.attempt > 1
+      ? readRepairFeedback(db, execution.run_id, execution.node_id)
+      : null;
+    const repairNote = feedback
+      ? `\n\nПрежняя попытка не прошла приёмку. Замечания приёмки:\n${feedback}\nУстрани их в новой версии.`
+      : '';
     if (typeof params.sleep_ms === 'number' && params.sleep_ms > 0) {
       await new Promise((resolve) => setTimeout(resolve, params.sleep_ms));
     }
@@ -314,7 +334,7 @@ async function main(): Promise<void> {
       effectSettlement = applied.effect;
       crashAfterEffect = applied.crashAfter;
     } else if ((params.mode ?? 'echo') === 'opencode') {
-      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs);
+      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + repairNote;
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
       const text = stripCodeFences(await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000));
       output = [{ json: { text, model } }];
@@ -336,7 +356,7 @@ async function main(): Promise<void> {
       // real model call (the text field flows downstream exactly like a reply).
       output = [{
         json: {
-          text: renderPrompt(params.prompt ?? '', inputs),
+          text: renderPrompt(params.prompt ?? '', inputs) + repairNote,
           echo: inputs.map((item) => item.json),
           note: 'scripted activity worker',
         },

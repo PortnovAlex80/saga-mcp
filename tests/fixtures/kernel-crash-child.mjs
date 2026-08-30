@@ -12,6 +12,6 @@ for (;;) {
   resumeRun(db, runId, { maxNodeExecutions: 1 });
   const run = getRun(db, runId);
   if (run.status !== 'running') break;
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  await new Promise((resolve) => setTimeout(resolve, 8));
 }
 closeDb();

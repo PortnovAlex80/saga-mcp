@@ -41,10 +41,20 @@ const DISCOVERY_GRAPH = {
     quality: {
       type: 'gate',
       parameters: {
-        checks: [{ op: 'nonempty', field: 'text' }],
+        // Executable acceptance criteria = the brief skill's 5-point contract.
+        // A section missing from the artifact fails the gate with a typed
+        // reason that travels back into the repair attempt's prompt.
+        checks: [
+          { op: 'nonempty', field: 'text' },
+          { op: 'regex', field: 'text', pattern: 'Суть продукта' },
+          { op: 'regex', field: 'text', pattern: 'аудитор' },
+          { op: 'regex', field: 'text', pattern: 'ценност' },
+          { op: 'regex', field: 'text', pattern: 'риск' },
+          { op: 'regex', field: 'text', pattern: 'ритери' },
+        ],
         repair_target: 'brief',
         max_repairs: 2,
-        title: 'Discovery: пустой бриф',
+        title: 'Discovery: бриф не соответствует контракту',
       },
     },
     artifact: {

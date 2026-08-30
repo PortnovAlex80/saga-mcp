@@ -72,8 +72,10 @@ test('discovery desk: idea in → brief skill → artifact committed', async () 
   const commit = spawnSync('git', ['log', '--format=%s'], { cwd: productRepo, encoding: 'utf8' });
   assert.match(commit.stdout, /discovery: brief artifact/);
 
-  // kernel evidence: revision sealed by the gate, effect receipted
-  assert.equal(getEvents(db, started.runId).filter((e) => e.type === 'revision.sealed').length, 1);
+  // kernel evidence: the gate ran its contract checks (echo can trip a repair
+  // cycle: the brief contract regexes fail on the raw prompt, the feedback
+  // text satisfies them → accepted), the effect settled applied
+  assert.ok(getEvents(db, started.runId).filter((e) => e.type === 'revision.sealed').length >= 1);
   assert.equal(JSON.parse(
     getEvents(db, started.runId).filter((e) => e.type === 'effect.receipted').at(-1).payload_json
   ).outcome, 'applied');
