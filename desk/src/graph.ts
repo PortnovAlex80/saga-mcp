@@ -5,9 +5,13 @@ import type { Node, Edge } from '@xyflow/react';
 
 export type NodeParameters = Record<string, unknown>;
 
+export type NodeRunStatus = 'queued' | 'running' | 'done' | 'failed' | 'wait';
+
 export interface DeskNodeData extends Record<string, unknown> {
   sagaType: string;
   parameters: NodeParameters;
+  /** Live overlay (W2): folded from the run's event log by the desk. */
+  status?: NodeRunStatus;
 }
 
 export type DeskNode = Node<DeskNodeData, 'saga'>;

@@ -14,14 +14,24 @@ const STYLE: Record<string, { accent: string; glyph: string }> = {
   effect: { accent: '#2dd4bf', glyph: '⚡' },
 };
 
+const STATUS_BADGE: Record<string, { glyph: string; title: string }> = {
+  queued: { glyph: '…', title: 'в очереди' },
+  running: { glyph: '▶', title: 'выполняется' },
+  done: { glyph: '✓', title: 'принято' },
+  failed: { glyph: '✗', title: 'отказ' },
+  wait: { glyph: '⏳', title: 'ожидание (gate/оператор)' },
+};
+
 export function SagaNode({ data, selected }: NodeProps<DeskNode>) {
   const style = STYLE[data.sagaType] ?? { accent: '#94a3b8', glyph: '?' };
+  const badge = data.status ? STATUS_BADGE[data.status] : undefined;
   return (
-    <div className={`saga-node${selected ? ' selected' : ''}`}>
+    <div className={`saga-node${selected ? ' selected' : ''}${data.status ? ` st-${data.status}` : ''}`}>
       <Handle type="target" position={Position.Left} />
       <div className="saga-node-head" style={{ background: style.accent }}>
         <span>{style.glyph}</span>
         <span className="saga-node-type">{data.sagaType}</span>
+        {badge && <span className={`st-badge st-${data.status}`} title={badge.title}>{badge.glyph}</span>}
       </div>
       <div className="saga-node-body">
         <code>{JSON.stringify(data.parameters)}</code>

@@ -34,13 +34,70 @@ const NODE_COLORS: Record<string, string> = {
   effect: '#2dd4bf',
 };
 
-let dropCounter = 0;
+// W2: fold the run's event log into per-node visual states (same idea as the
+// kernel's fold, only for painting).
+interface NodeReport {
+  status: 'queued' | 'running' | 'done' | 'failed' | 'wait';
+  verdict?: string;
+  reasons?: string[];
+  outcome?: string;
+}
+
+function foldEvents(events: Array<{ type: string; payload_json: string }>): Record<string, NodeReport> {
+  const report: Record<string, NodeReport> = {};
+  const set = (id: string, patch: Partial<NodeReport>) => {
+    const prev = report[id];
+    report[id] = {
+      status: patch.status ?? prev?.status ?? 'queued',
+      verdict: patch.verdict ?? prev?.verdict,
+      reasons: patch.reasons ?? prev?.reasons,
+      outcome: patch.outcome ?? prev?.outcome,
+    };
+  };
+  for (const e of events) {
+    let p: Record<string, unknown>;
+    try { p = JSON.parse(e.payload_json); } catch { continue; }
+    const id = typeof p.node_id === 'string' ? p.node_id : '';
+    switch (e.type) {
+      case 'node.scheduled':
+      case 'execution.scheduled':
+        if (id) set(id, { status: 'queued' });
+        break;
+      case 'node.started':
+      case 'execution.started':
+        if (id) set(id, { status: 'running' });
+        break;
+      case 'node.completed':
+        if (id) set(id, { status: 'done' });
+        break;
+      case 'node.failed':
+        if (id) set(id, { status: 'failed' });
+        break;
+      case 'execution.failed':
+      case 'execution.timed_out':
+        if (id) set(id, { status: 'failed' });
+        break;
+      case 'gate.decided':
+        if (id) {
+          if (p.verdict === 'accepted') set(id, { status: 'done', verdict: 'accepted' });
+          else set(id, { status: 'wait', verdict: String(p.verdict), reasons: p.reasons as string[] });
+        }
+        break;
+      case 'effect.receipted':
+        if (id) set(id, { outcome: String(p.outcome) });
+        break;
+    }
+  }
+  return report;
+}
 
 /** Раскладка стола живёт в localStorage браузера; источник истины цехов —
  *  бекенд (/api/workshops). Ключ версии — чтобы старые раскладки не ломались. */
 const STORAGE_KEY = 'saga5-desk-doc-v1';
 const restoredRef = { current: false };
 const autoOpenedRef = { current: false };
+
+let dropCounter = 0;
 
 /** Defaults that make a dropped node runnable as-is: the llm activity talks
  *  to the real model through the opencode CLI (Z.AI coding plan). */
@@ -73,6 +130,7 @@ function Desk() {
   const [paramError, setParamError] = useState('');
   const [runInfo, setRunInfo] = useState('');
   const [running, setRunning] = useState(false);
+  const [nodeReport, setNodeReport] = useState<Record<string, NodeReport>>({});
   // Восстановление раскладки стола из localStorage (только layout, не истина).
   useEffect(() => {
     try {
@@ -212,6 +270,8 @@ function Desk() {
   const runOnKernel = useCallback(async () => {
     setRunning(true);
     setRunInfo('запуск…');
+    setNodeReport({});
+    setNodes((current) => current.map((n) => ({ ...n, data: { ...n.data, status: undefined } })));
     try {
       const doc = toGraphDoc(nodes, edges);
       const res = await fetch('/api/graph', {
@@ -222,11 +282,17 @@ function Desk() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? res.statusText);
       let status: string = data.status;
-      for (let i = 0; i < 75 && (status === 'running' || status === 'new'); i++) {
+      const paint = async () => {
+        const evData = await fetch(`/api/runs/${data.runId}/events?limit=300`).then((r) => r.json());
+        const report = foldEvents(evData.events ?? []);
+        setNodeReport(report);
+        setNodes((current) => current.map((n) => ({ ...n, data: { ...n.data, status: report[n.id]?.status } })));
+        return evData.run?.status as string | undefined;
+      };
+      status = (await paint()) ?? status;
+      for (let i = 0; i < 90 && (status === 'running' || status === 'new'); i++) {
         await new Promise((resolve) => setTimeout(resolve, 800));
-        const poll = await fetch(`/api/runs/${data.runId}`);
-        const polled = await poll.json();
-        status = polled.run?.status ?? status;
+        status = (await paint()) ?? status;
       }
       setRunInfo(`run ${String(data.runId).slice(0, 8)}… → ${status}`);
     } catch (error) {
@@ -234,7 +300,7 @@ function Desk() {
     } finally {
       setRunning(false);
     }
-  }, [nodes, edges]);
+  }, [nodes, edges, setNodes]);
 
   const importGraph = useCallback(() => {
     try {
@@ -336,7 +402,19 @@ function Desk() {
           <>
             <p>
               <b>{selected.id}</b> <span className="tag">{selected.data.sagaType}</span>
+              {nodeReport[selected.id] && (
+                <span className={`st-badge st-${nodeReport[selected.id].status}`}>{nodeReport[selected.id].status}</span>
+              )}
             </p>
+            {nodeReport[selected.id]?.verdict && (
+              <p className="gate-report">
+                gate: <b>{nodeReport[selected.id].verdict}</b>
+                {nodeReport[selected.id].reasons?.map((r, i) => <div key={i} className="error">{r}</div>)}
+              </p>
+            )}
+            {nodeReport[selected.id]?.outcome && (
+              <p className="gate-report">эффект: <b>{nodeReport[selected.id].outcome}</b></p>
+            )}
             {selected.data.sagaType === 'emit' ? (
               <>
                 <label>Идея (текст задачи)</label>
