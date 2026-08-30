@@ -44,7 +44,7 @@ saga-launch-ref.txt
 sim-workspace/
 
 # Generated product emitted into repo root by factory smoke runs.
-index.html
+/index.html
 
 # Saga runtime package-store — content-addressed cache of module resources,
 # materialized at install time by production-install.ts. Regenerable from
