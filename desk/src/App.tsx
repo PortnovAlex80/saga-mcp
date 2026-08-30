@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react';
 import { Board } from './Board';
 import { Wiki } from './Wiki';
+import { Workers } from './Workers';
 import { nodeTypes } from './nodes';
 import {
   NODE_TYPES,
@@ -484,10 +485,11 @@ function Desk() {
   );
 }
 
-type View = 'desk' | 'board' | 'wiki';
+type View = 'desk' | 'board' | 'wiki' | 'workers';
 
 const VIEWS: Array<{ id: View; label: string; hint: string }> = [
   { id: 'board', label: 'Доска', hint: 'канбан: карточка = стол узла, колонка выводится из журнала' },
+  { id: 'workers', label: 'Воркеры', hint: 'смена: кто нанят, на чём, что производит сейчас; лимит найма' },
   { id: 'desk', label: 'Стол', hint: 'граф цеха: узлы, связи, параметры' },
   { id: 'wiki', label: 'Артефакты', hint: 'мини-вики: материалы завода, чтение и правка' },
 ];
@@ -527,6 +529,7 @@ export default function App() {
           }}
         />
       )}
+      {view === 'workers' && <Workers />}
       {view === 'wiki' && <Wiki runId={wikiRun} onClearRun={() => setWikiRun(undefined)} />}
     </ReactFlowProvider>
   );

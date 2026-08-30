@@ -92,6 +92,12 @@ CREATE TABLE IF NOT EXISTS executions (
   lease         TEXT,
   started_at    TEXT,
   heartbeat_at  TEXT,
+  -- Live tail of what the worker is producing right now. OPERATIONAL only:
+  -- it is overwritten on every heartbeat and is never read by a decision.
+  -- The log keeps the replayable fact (how many characters had arrived);
+  -- the text itself is a window into a non-deterministic process, not
+  -- material. Material is what the worker SUBMITS.
+  progress      TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at   TEXT
 );

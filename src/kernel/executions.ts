@@ -40,9 +40,22 @@ export interface ExecutionRow {
   retry_json: string;
   lease: string | null;
   heartbeat_at: string | null;
+  /** Live output tail — operational, overwritten each heartbeat. */
+  progress: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+}
+
+/** How much of a worker's live output the monitor keeps. A window, not a log. */
+export const PROGRESS_TAIL_CHARS = 2000;
+
+/** What one attempt spent. Provenance of the attempt, never of the material. */
+export interface ModelUsage {
+  input?: number;
+  output?: number;
+  reasoning?: number;
+  cost?: number;
 }
 
 export function getExecution(db: Database.Database, executionId: string): ExecutionRow {
@@ -131,20 +144,36 @@ export function claimExecution(
   return { lease };
 }
 
-/** Worker: proves liveness. Operational only — sweeps read heartbeat_at. */
+/** Worker: proves liveness, and may show what it is producing right now.
+ *
+ *  The event carries only the REPLAYABLE fact — how many characters had
+ *  arrived by this beat. The text itself goes to the `progress` column, which
+ *  is overwritten every beat: it is a window into a non-deterministic process,
+ *  not material, and no decision may read it. Material is what the worker
+ *  submits at settle time. */
 export function heartbeatExecution(
   db: Database.Database,
   executionId: string,
   lease: string,
+  opts: { progress?: string } = {},
   now = new Date()
 ): void {
+  const tail = opts.progress === undefined ? undefined : opts.progress.slice(-PROGRESS_TAIL_CHARS);
   db.transaction(() => {
     const row = getExecution(db, executionId);
     if (row.status !== 'running' || row.lease !== lease) {
       throw new Error(`EXECUTION_LEASE_INVALID: ${executionId}`);
     }
-    appendEventInTx(db, row.run_id, 'execution.heartbeat', { execution_id: executionId });
-    db.prepare('UPDATE executions SET heartbeat_at = ? WHERE id = ?').run(now.toISOString(), executionId);
+    appendEventInTx(db, row.run_id, 'execution.heartbeat', {
+      execution_id: executionId,
+      ...(opts.progress === undefined ? {} : { progress_chars: opts.progress.length }),
+    });
+    if (tail === undefined) {
+      db.prepare('UPDATE executions SET heartbeat_at = ? WHERE id = ?').run(now.toISOString(), executionId);
+    } else {
+      db.prepare('UPDATE executions SET heartbeat_at = ?, progress = ? WHERE id = ?')
+        .run(now.toISOString(), tail, executionId);
+    }
   }).immediate();
 }
 
@@ -165,7 +194,7 @@ export function completeActivity(
   executionId: string,
   lease: string,
   items: Item[],
-  opts: { effect?: EffectSettlement } = {},
+  opts: { effect?: EffectSettlement; usage?: ModelUsage } = {},
   now = new Date()
 ): { digest: string } {
   return db.transaction(() => {
@@ -173,7 +202,12 @@ export function completeActivity(
     if (row.status !== 'running' || row.lease !== lease) {
       throw new Error(`EXECUTION_LEASE_INVALID: ${executionId}`);
     }
-    appendEventInTx(db, row.run_id, 'execution.completed', { execution_id: executionId });
+    // Token spend belongs to the ATTEMPT, not to the material: identical
+    // answers must stay content-identical, whatever they cost.
+    appendEventInTx(db, row.run_id, 'execution.completed', {
+      execution_id: executionId,
+      ...(opts.usage ? { usage: opts.usage } : {}),
+    });
     const { digest } = putMaterial(db, 'node_output', JSON.stringify(items));
     appendEventInTx(db, row.run_id, 'material.submitted', {
       node_id: row.node_id,

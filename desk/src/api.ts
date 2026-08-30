@@ -70,6 +70,43 @@ export interface WorkshopInfo {
   inputs: WorkshopInput[];
 }
 
+export interface Limits {
+  max_workers: number;
+  min_spawn_interval_ms: number;
+}
+
+export interface WorkerView {
+  execution_id: string;
+  run_id: string;
+  workflow: string;
+  node_id: string;
+  attempt: number;
+  status: string;
+  worker_kind: string | null;
+  model?: string;
+  mode?: string;
+  prompt_preview?: string;
+  started_at: string | null;
+  heartbeat_at: string | null;
+  elapsed_s: number;
+  heartbeat_age_s: number | null;
+  heartbeat_s: number;
+  start_to_close_s: number | null;
+  schedule_to_start_s: number;
+  stale: boolean;
+  progress: string;
+  progress_chars: number;
+  usage?: { input?: number; output?: number; reasoning?: number; cost?: number };
+}
+
+export interface WorkersData {
+  limits: Limits;
+  hired: number;
+  stats: { running: number; queued: number; stale: number; succeeded: number; failed: number };
+  live: WorkerView[];
+  recent: WorkerView[];
+}
+
 export interface RunEvent {
   seq: number;
   type: string;
@@ -133,4 +170,11 @@ export const api = {
       }
     ),
   resume: (runId: string) => json(`/api/runs/${runId}/resume`, { method: 'POST' }),
+  workers: () => json<WorkersData>('/api/workers'),
+  setLimits: (limits: Partial<Limits>) =>
+    json<{ limits: Limits; hired: number }>('/api/limits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(limits),
+    }),
 };

@@ -121,7 +121,66 @@ test('one start path: POST /api/workshops/:name/start validates declared inputs'
   assert.match((await unknown.json()).error, /WORKSHOP_UNKNOWN/);
 });
 
-after(() => {
+test('the operator throttle caps hiring: two ready activities, one worker allowed', async () => {
+  const applied = await (await fetch(`${base}/api/limits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_workers: 1, min_spawn_interval_ms: 0 }),
+  })).json();
+  assert.equal(applied.limits.max_workers, 1);
+
+  const slow = (name) => ({
+    type: 'llm',
+    parameters: {
+      mode: 'echo',
+      sleep_ms: 2500,
+      prompt: name,
+      timeouts: { heartbeat_s: 20, schedule_to_start_s: 20, start_to_close_s: 30 },
+    },
+  });
+  const started = await (await fetch(`${base}/api/graph`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'throttle',
+      graph_json: JSON.stringify({
+        nodes: { seed: { type: 'emit', parameters: { items: [{ json: { text: 'x' } }] } }, a: slow('a'), b: slow('b') },
+        connections: { seed: { main: [[{ node: 'a' }, { node: 'b' }]] } },
+      }),
+    }),
+  })).json();
+  assert.ok(started.runId);
+
+  await new Promise((resolve) => setTimeout(resolve, 900));
+  const workers = await (await fetch(`${base}/api/workers`)).json();
+  const mine = workers.live.filter((worker) => worker.run_id === started.runId);
+  assert.equal(mine.filter((worker) => worker.status === 'running').length, 1,
+    'only one worker is hired at a time');
+  assert.equal(mine.filter((worker) => worker.status === 'new').length, 1,
+    'the second stays queued — a cap, not a loss');
+  assert.equal(workers.limits.max_workers, 1);
+
+  // Lift the cap and let the run finish: a worker still holding the database
+  // would make the temp-dir cleanup fail on Windows.
+  await fetch(`${base}/api/limits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_workers: 4 }),
+  });
+  let status = 'running';
+  for (let i = 0; i < 60 && status !== 'success' && status !== 'error'; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    status = (await (await fetch(`${base}/api/runs/${started.runId}`)).json()).run.status;
+  }
+  assert.equal(status, 'success', 'the queued worker ran once a slot freed up');
+});
+
+after(async () => {
   bridge.stop();
-  rmSync(dir, { recursive: true, force: true });
+  await new Promise((resolve) => setTimeout(resolve, 300)); // let killed children release the db
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* Windows may still hold a worker's file handle; the temp dir is disposable */
+  }
 });

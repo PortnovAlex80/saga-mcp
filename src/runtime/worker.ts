@@ -20,6 +20,7 @@ import {
   completeActivity,
   failActivity,
   type EffectSettlement,
+  type ModelUsage,
 } from '../kernel/executions.js';
 import { readActivityInputs, nodeDefinitionFor } from '../kernel/runner.js';
 import { renderTemplateString, type Item } from '../kernel/node-types.js';
@@ -206,22 +207,108 @@ function opencodeBin(): string {
   return 'opencode';
 }
 
-function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<string> {
+/** Live window into what the worker is doing. Read by the heartbeat, shown in
+ *  the operator's monitor — never by a decision.
+ *
+ *  Honest limitation: `opencode run` does not stream tokens — measured, the
+ *  whole answer arrives in one chunk at the end. So this is NOT a thought
+ *  stream; it is a PHASE log built from `--format json` events (step started,
+ *  answer received, tool used). That is the truth the CLI can actually tell,
+ *  and it is what distinguishes "the model is thinking" from "the call hung
+ *  before it ever started". */
+const live = { text: '' };
+
+/** Best-effort final write of the phase log. Operational only. */
+function flushProgress(db: ReturnType<typeof getDb>, executionId: string, lease: string): void {
+  if (!live.text) return;
+  try {
+    heartbeatExecution(db, executionId, lease, { progress: live.text });
+  } catch {
+    /* the attempt may already be reaped — the monitor is not worth a failure */
+  }
+}
+
+function noteRaw(line: string): void {
+  live.text = `${live.text}${line}\n`;
+}
+
+function note(started: number, line: string): void {
+  noteRaw(`[+${((Date.now() - started) / 1000).toFixed(1)}s] ${line}`);
+}
+
+interface OpencodeResult {
+  text: string;
+  usage?: ModelUsage;
+}
+
+/** Parses opencode's NDJSON event stream. Falls back to raw stdout when a
+ *  provider or version emits something we do not recognise — a monitor must
+ *  never be the reason a worker fails. */
+function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<OpencodeResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(opencodeBin(), ['run', '-m', model, prompt], {
+    const started = Date.now();
+    note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
+    const child = spawn(opencodeBin(), ['run', '--format', 'json', '-m', model, prompt], {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
     let stderr = '';
-    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    let pending = '';
+    const texts: string[] = [];
+    let usage: ModelUsage | undefined;
+
+    const consume = (line: string): void => {
+      if (!line.trim()) return;
+      let event: { type?: string; part?: Record<string, unknown> };
+      try {
+        event = JSON.parse(line) as { type?: string; part?: Record<string, unknown> };
+      } catch {
+        return; // not an event line — kept in stdout for the fallback
+      }
+      const part = event.part ?? {};
+      if (event.type === 'step_start') {
+        note(started, 'модель начала шаг');
+      } else if (event.type === 'text' && typeof part.text === 'string') {
+        texts.push(part.text);
+        note(started, `получен ответ · ${part.text.length} симв.`);
+      } else if (event.type === 'tool' || event.type === 'tool_use') {
+        note(started, `инструмент: ${String(part.name ?? part.tool ?? '—')}`);
+      } else if (event.type === 'step_finish') {
+        const tokens = part.tokens as Record<string, unknown> | undefined;
+        usage = {
+          input: Number(tokens?.input ?? 0) || undefined,
+          output: Number(tokens?.output ?? 0) || undefined,
+          reasoning: Number(tokens?.reasoning ?? 0) || undefined,
+          cost: Number(part.cost ?? 0) || undefined,
+        };
+        note(started, `шаг завершён · ${usage.output ?? '?'} токенов ответа`);
+      }
+    };
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk;
+      pending += chunk;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      for (const line of lines) consume(line);
+    });
     child.stderr?.on('data', (chunk) => { stderr += chunk; });
     const killTimer = setTimeout(() => child.kill(), timeoutMs);
     child.on('error', (error) => { clearTimeout(killTimer); reject(error); });
     child.on('exit', (code) => {
       clearTimeout(killTimer);
-      if (code === 0) resolve(stdout);
-      else reject(new Error(`opencode exited ${code}: ${stderr.slice(-500)}`));
+      if (pending) consume(pending);
+      if (code !== 0) {
+        reject(new Error(`opencode exited ${code}: ${stderr.slice(-500)}`));
+        return;
+      }
+      if (texts.length > 0) {
+        resolve({ text: texts.join('\n'), usage });
+        return;
+      }
+      note(started, 'событий не распознано — беру сырой вывод');
+      resolve({ text: stdout, usage });
     });
   });
 }
@@ -319,7 +406,7 @@ async function main(): Promise<void> {
   const beatMs = Math.max(200, Math.floor(((timeouts.heartbeat_s ?? 15) * 1000) / 3));
   const beat = setInterval(() => {
     try {
-      heartbeatExecution(db, executionId, lease);
+      heartbeatExecution(db, executionId, lease, { progress: live.text });
     } catch (error) {
       console.error('[worker] heartbeat failed:', error instanceof Error ? error.message : error);
       clearInterval(beat);
@@ -342,6 +429,7 @@ async function main(): Promise<void> {
     let output: Item[];
     let effectSettlement: EffectSettlement | undefined;
     let crashAfterEffect = false;
+    let usage: ModelUsage | undefined;
     if ((params.mode ?? 'echo') === 'git') {
       const applied = performGitEffect(execution, params, inputs);
       output = applied.items;
@@ -350,8 +438,11 @@ async function main(): Promise<void> {
     } else if ((params.mode ?? 'echo') === 'opencode') {
       const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + repairNote;
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
-      const text = stripCodeFences(await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000));
-      output = [{ json: { text, model } }];
+      const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
+      // Usage is provenance of the ATTEMPT, not of the material: keeping it out
+      // of the item keeps identical answers content-identical.
+      usage = answer.usage;
+      output = [{ json: { text: stripCodeFences(answer.text), model } }];
     } else if ((params.mode ?? 'echo') === 'api') {
       const baseUrl = process.env.LLM_BASE_URL;
       if (!baseUrl) throw new Error('LLM_BASE_URL is required for mode=api');
@@ -378,19 +469,27 @@ async function main(): Promise<void> {
     }
 
     clearInterval(beat);
+    // The last phases land after the final beat; flush them so the finished
+    // card shows the whole story. A monitor write must never block a settle.
+    flushProgress(db, executionId, lease);
     if (crashAfterEffect) {
       // Kill-test seam: the external change happened, the receipt did not.
       console.error(`[worker] simulated crash AFTER effect on attempt ${execution.attempt}`);
       closeDb();
       process.exit(1);
     }
-    completeActivity(db, executionId, lease, output, effectSettlement ? { effect: effectSettlement } : {});
+    completeActivity(db, executionId, lease, output, {
+      ...(effectSettlement ? { effect: effectSettlement } : {}),
+      ...(usage ? { usage } : {}),
+    });
     closeDb();
     process.exit(0);
   } catch (error) {
     clearInterval(beat);
     const message = error instanceof Error ? error.message : String(error);
     console.error('[worker] failed:', message);
+    noteRaw(`ОТКАЗ: ${message.slice(0, 300)}`);
+    flushProgress(db, executionId, lease);
     try {
       if (error instanceof EffectConflict) {
         failActivity(db, executionId, lease, 'effect_conflict', message, { effect: error.settlement });

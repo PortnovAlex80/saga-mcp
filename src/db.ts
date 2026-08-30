@@ -21,8 +21,23 @@ export function getDb(): Database.Database {
   db.pragma('synchronous = NORMAL');
 
   db.exec(SCHEMA_SQL);
+  migrate(db);
 
   return db;
+}
+
+/** Additive column migrations. `CREATE TABLE IF NOT EXISTS` never touches an
+ *  existing table, so a database created by an older build needs the new
+ *  columns added explicitly. Only additive, only nullable — a migration must
+ *  never rewrite the log or the material store. */
+function migrate(database: Database.Database): void {
+  const columns = (table: string): Set<string> =>
+    new Set(
+      (database.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name)
+    );
+  if (!columns('executions').has('progress')) {
+    database.exec('ALTER TABLE executions ADD COLUMN progress TEXT');
+  }
 }
 
 export function closeDb(): void {

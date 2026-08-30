@@ -21,6 +21,8 @@ import { runGraph, resumeRun } from './kernel/runner.js';
 import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
+import { liveWorkers, recentWorkers, workerStats } from './kernel/workers.js';
+import { limitsStamp, readLimits, writeLimits, type Limits } from './limits.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate, submitOperatorMaterial } from './operator.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
 import type { Item } from './kernel/node-types.js';
@@ -51,11 +53,36 @@ export function startBridge(opts: {
   const db = getDb();
   const children = new Set<ChildProcess>();
 
+  // Hiring throttle. The file beside the database is the source of truth, so
+  // an operator (UI, MCP tool or editor) can retune a running factory; we
+  // re-read it only when its mtime moves.
+  let limits: Limits = readLimits(undefined, {
+    max_workers: opts.maxWorkers ?? Number(process.env.SAGA_MAX_WORKERS ?? 4) ?? 4,
+    min_spawn_interval_ms: Number(process.env.SAGA_MIN_SPAWN_INTERVAL_MS ?? 0) || 0,
+  });
+  let limitsSeenAt = limitsStamp();
+  let lastSpawnAt = 0;
+
+  function refreshLimits(): void {
+    const stamp = limitsStamp();
+    if (stamp !== limitsSeenAt) {
+      limitsSeenAt = stamp;
+      limits = readLimits(undefined, limits);
+    }
+  }
+
   function spawnPending(): void {
-    for (const id of queuedExecutionIds(db, (opts.maxWorkers ?? 4) - children.size)) {
-      if (children.size >= (opts.maxWorkers ?? 4)) break;
+    const free = limits.max_workers - children.size;
+    if (free <= 0) return;
+    for (const id of queuedExecutionIds(db, free)) {
+      if (children.size >= limits.max_workers) break;
+      // Rate limit: at most one hire per interval, so a plan with a
+      // requests-per-minute ceiling is respected even when the queue is deep.
+      const now = Date.now();
+      if (limits.min_spawn_interval_ms > 0 && now - lastSpawnAt < limits.min_spawn_interval_ms) break;
       const claim = claimExecution(db, id);
       if (!claim) continue;
+      lastSpawnAt = now;
       const child = spawn(process.execPath, [WORKER_PATH, '--execution', id], {
         env: { ...process.env, SAGA_LEASE: claim.lease },
         stdio: ['ignore', 'ignore', 'pipe', 'ignore'],
@@ -78,6 +105,7 @@ export function startBridge(opts: {
 
   function tick(): void {
     try {
+      refreshLimits();
       sweep(db);
       spawnPending();
       projectHumanGates();
@@ -166,6 +194,25 @@ export function startBridge(opts: {
         const args = JSON.parse((await readBody(req)) || '{}') as Record<string, unknown>;
         const input = (args.input as Record<string, unknown>) ?? args;
         sendJson(res, 200, startWorkshop(db, startMatch[1], input));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/workers') {
+        sendJson(res, 200, {
+          limits,
+          hired: children.size,
+          stats: workerStats(db),
+          live: liveWorkers(db),
+          recent: recentWorkers(db, Number(url.searchParams.get('recent') ?? 12) || 12),
+        });
+        return;
+      }
+      if (url.pathname === '/api/limits' && (req.method === 'GET' || req.method === 'POST')) {
+        if (req.method === 'POST') {
+          const args = JSON.parse((await readBody(req)) || '{}') as Partial<Limits>;
+          limits = writeLimits(args);
+          limitsSeenAt = limitsStamp();
+        }
+        sendJson(res, 200, { limits, hired: children.size });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/board') {
@@ -270,7 +317,13 @@ if (invokedDirectly) {
     process.on(signal, () => process.exit(0));
   }
   const handle = startBridge();
+  const active = readLimits(undefined, {
+    max_workers: Number(process.env.SAGA_MAX_WORKERS ?? 4) || 4,
+    min_spawn_interval_ms: Number(process.env.SAGA_MIN_SPAWN_INTERVAL_MS ?? 0) || 0,
+  });
   process.stderr.write(
-    `Saga5 bridge on http://localhost:${handle.port} (sweep ${process.env.SAGA_SWEEP_MS ?? 1000}ms, max ${process.env.SAGA_MAX_WORKERS ?? 4} workers)\n`
+    `Saga5 bridge on http://localhost:${handle.port} ` +
+    `(sweep ${process.env.SAGA_SWEEP_MS ?? 1000}ms, max ${active.max_workers} workers, ` +
+    `hire interval ${active.min_spawn_interval_ms}ms)\n`
   );
 }

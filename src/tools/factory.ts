@@ -5,6 +5,8 @@ import { artifactBody, artifactIndex, runArtifacts } from '../kernel/artifacts.j
 import { board, operatorQueue } from '../kernel/board.js';
 import { runGraph } from '../kernel/runner.js';
 import { kernelStats } from '../kernel/stats.js';
+import { liveWorkers, recentWorkers, workerStats } from '../kernel/workers.js';
+import { readLimits, writeLimits } from '../limits.js';
 import { completeHumanTask, resolveHumanGate, submitOperatorMaterial } from '../operator.js';
 import { DEFAULT_WORKSHOPS, startWorkshop } from '../workshops.js';
 import type { Item } from '../kernel/node-types.js';
@@ -138,6 +140,29 @@ export const definitions: Tool[] = [
     },
   },
   {
+    name: 'workers_view',
+    description: 'Worker monitor: who is hired right now, on which model, for how long, how fresh their heartbeat is and what they are producing at this second (live tail, operational only).',
+    annotations: { title: 'Workers', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        recent: { type: 'number', description: 'How many settled attempts to include (default 12)' },
+      },
+    },
+  },
+  {
+    name: 'limits_set',
+    description: 'Operator throttle: how many workers may be hired at once and how often. Stored beside the database; a running bridge picks the change up within a sweep. Omit a field to keep it.',
+    annotations: { title: 'Limits', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        max_workers: { type: 'number', description: 'Concurrent workers (1–64). GLM plans throttle above ~2–3.' },
+        min_spawn_interval_ms: { type: 'number', description: 'Minimum delay between two hires, ms (0–600000)' },
+      },
+    },
+  },
+  {
     name: 'event_tail',
     description: 'Last events of a run, oldest first (the append-only event log is the kernel authority).',
     annotations: { title: 'Event Tail', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -241,6 +266,24 @@ export const handlers: Record<string, ToolHandler> = {
       args.note === undefined ? undefined : String(args.note)
     );
   },
+
+  workers_view: (args) => {
+    const db = getDb();
+    return {
+      limits: readLimits(),
+      stats: workerStats(db),
+      live: liveWorkers(db),
+      recent: recentWorkers(db, Number(args.recent ?? 12) || 12),
+    };
+  },
+
+  limits_set: (args) => ({
+    limits: writeLimits({
+      max_workers: args.max_workers === undefined ? undefined : Number(args.max_workers),
+      min_spawn_interval_ms:
+        args.min_spawn_interval_ms === undefined ? undefined : Number(args.min_spawn_interval_ms),
+    }),
+  }),
 
   event_tail: (args) => {
     const runId = String(args.run_id ?? '');
