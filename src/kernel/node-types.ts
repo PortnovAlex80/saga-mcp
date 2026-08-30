@@ -117,7 +117,20 @@ const gate: NodeType = {
   },
 };
 
-const REGISTRY: Record<string, NodeType> = { emit, template, collect, fail, llm, gate };
+// The external-effect activity (M4): authorized side effects (git, deploy)
+// performed by the worker process with an idempotency key and a typed receipt.
+// parameters:
+//   mode: 'git'        — commit desk material into a repository
+//   repo, branch, message, files: [{path, field}], action?: 'git_revert'
+const effect: NodeType = {
+  name: 'effect',
+  activity: true,
+  execute: () => {
+    throw new Error('ACTIVITY_MISUSE: effect nodes are executed by worker processes, not by the kernel');
+  },
+};
+
+const REGISTRY: Record<string, NodeType> = { emit, template, collect, fail, llm, gate, effect };
 
 export function getNodeType(name: string): NodeType {
   const type = REGISTRY[name];

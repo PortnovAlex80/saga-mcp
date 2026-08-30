@@ -8,23 +8,172 @@
 // no trace — which is the point: the sweep reaps stale heartbeats and the
 // kernel decides retries. `mode: 'echo'` is the scripted worker: same physics
 // as the real API call, deterministic, no network.
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { getDb, closeDb } from '../db.js';
 import { getRun } from '../events.js';
-import { getExecution, heartbeatExecution, completeActivity, failActivity } from '../kernel/executions.js';
+import {
+  getExecution,
+  heartbeatExecution,
+  completeActivity,
+  failActivity,
+  type EffectSettlement,
+} from '../kernel/executions.js';
 import { readActivityInputs } from '../kernel/runner.js';
 import { renderTemplateString, type Item } from '../kernel/node-types.js';
 
 interface LlmParameters {
   prompt?: string;
-  mode?: 'echo' | 'api' | 'opencode';
+  mode?: 'echo' | 'api' | 'opencode' | 'git';
   model?: string;
   system?: string;
   temperature?: number;
   sleep_ms?: number;
   crash_attempt?: number;
+  crash_after_effect?: number;
+  repo?: string;
+  branch?: string;
+  message?: string;
+  files?: Array<{ path: string; field?: string }>;
+  effect_key?: string;
+}
+
+/** Typed effect conflict: carries its own durable settlement. */
+class EffectConflict extends Error {
+  settlement: EffectSettlement;
+  constructor(message: string, settlement: EffectSettlement) {
+    super(message);
+    this.settlement = settlement;
+  }
+}
+
+function sha(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
+
+interface DesiredFile {
+  path: string;
+  content: string;
+}
+
+function desiredFiles(params: LlmParameters, inputs: Item[]): DesiredFile[] {
+  return (params.files ?? [])
+    .map((f) => ({
+      path: f.path,
+      content: inputs.map((item) => (item.json[f.field ?? 'text'] ?? '')).join('\n'),
+    }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+function findCommitByKey(repo: string, key: string): string | null {
+  let log: string;
+  try {
+    log = git(repo, ['log', '--format=%H%x00%B%x00']);
+  } catch {
+    return null; // empty repository — no prior effect commits
+  }
+  const parts = log.split('\0');
+  // entries alternate hash / body
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    if (parts[i + 1].includes(`Effect-Key: ${key}`)) return parts[i];
+  }
+  return null;
+}
+
+function fileAt(repo: string, commit: string, filePath: string): string | null {
+  try {
+    return git(repo, ['show', `${commit}:${filePath}`]);
+  } catch {
+    return null;
+  }
+}
+
+/** git_commit effect: idempotent by key, typed outcomes, no silent retries
+ *  of already-applied state. */
+function performGitEffect(
+  execution: { run_id: string; node_id: string; attempt: number },
+  params: LlmParameters,
+  inputs: Item[]
+): { items: Item[]; effect: EffectSettlement; crashAfter: boolean } {
+  const repo = params.repo ?? '';
+  if (!repo || !existsSync(repo)) {
+    throw new Error(`EFFECT_REPO_MISSING: '${repo}'`);
+  }
+  const branch = params.branch ?? 'main';
+  const desired = desiredFiles(params, inputs);
+  const desiredDigest = sha(JSON.stringify(desired));
+  const key = params.effect_key ?? sha(`${execution.run_id}:${execution.node_id}:${desiredDigest}`);
+  const baseSettlement = {
+    key,
+    desired_digest: desiredDigest,
+  };
+
+  // Idempotency first: observe external state before repeating (§26.3).
+  const existing = findCommitByKey(repo, key);
+  if (existing) {
+    const matches = desired.every((f) => fileAt(repo, existing, f.path) === f.content);
+    if (matches) {
+      return {
+        items: [{ json: { effect_key: key, outcome: 'already_applied', commit: existing, branch } }],
+        effect: {
+          ...baseSettlement,
+          outcome: 'already_applied',
+          receipt: { commit: existing, branch },
+        },
+        crashAfter: false,
+      };
+    }
+    throw new EffectConflict(
+      `effect key reused with different desired state (commit ${existing})`,
+      {
+        ...baseSettlement,
+        outcome: 'conflict',
+        receipt: { reason: 'key_reuse_different_content', commit: existing },
+      }
+    );
+  }
+
+  if (git(repo, ['status', '--porcelain']).length > 0) {
+    throw new EffectConflict('worktree is dirty', {
+      ...baseSettlement,
+      outcome: 'conflict',
+      receipt: { reason: 'worktree_dirty' },
+    });
+  }
+
+  const headBefore = safeHead(repo);
+  for (const file of desired) {
+    const fullPath = path.join(repo, file.path);
+    mkdirSync(path.dirname(fullPath), { recursive: true });
+    writeFileSync(fullPath, file.content, 'utf8');
+  }
+  git(repo, ['add', '-A']);
+  git(repo, ['commit', '-m', params.message ?? 'saga5 effect', '-m', `Effect-Key: ${key}`]);
+  const commit = git(repo, ['rev-parse', 'HEAD']);
+
+  return {
+    items: [{ json: { effect_key: key, outcome: 'applied', commit, branch, head_before: headBefore } }],
+    effect: {
+      ...baseSettlement,
+      outcome: 'applied',
+      receipt: { commit, branch, head_before: headBefore },
+    },
+    crashAfter: params.crash_after_effect === execution.attempt,
+  };
+}
+
+function safeHead(repo: string): string | null {
+  try {
+    return git(repo, ['rev-parse', 'HEAD']);
+  } catch {
+    return null;
+  }
 }
 
 /** Real model worker: the opencode CLI (auth lives in its own config,
@@ -151,7 +300,14 @@ async function main(): Promise<void> {
     }
 
     let output: Item[];
-    if ((params.mode ?? 'echo') === 'opencode') {
+    let effectSettlement: EffectSettlement | undefined;
+    let crashAfterEffect = false;
+    if ((params.mode ?? 'echo') === 'git') {
+      const applied = performGitEffect(execution, params, inputs);
+      output = applied.items;
+      effectSettlement = applied.effect;
+      crashAfterEffect = applied.crashAfter;
+    } else if ((params.mode ?? 'echo') === 'opencode') {
       const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs);
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
       const text = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
@@ -179,7 +335,13 @@ async function main(): Promise<void> {
     }
 
     clearInterval(beat);
-    completeActivity(db, executionId, lease, output);
+    if (crashAfterEffect) {
+      // Kill-test seam: the external change happened, the receipt did not.
+      console.error(`[worker] simulated crash AFTER effect on attempt ${execution.attempt}`);
+      closeDb();
+      process.exit(1);
+    }
+    completeActivity(db, executionId, lease, output, effectSettlement ? { effect: effectSettlement } : {});
     closeDb();
     process.exit(0);
   } catch (error) {
@@ -187,7 +349,11 @@ async function main(): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[worker] failed:', message);
     try {
-      failActivity(db, executionId, lease, 'llm_error', message);
+      if (error instanceof EffectConflict) {
+        failActivity(db, executionId, lease, 'effect_conflict', message, { effect: error.settlement });
+      } else {
+        failActivity(db, executionId, lease, 'llm_error', message);
+      }
     } catch (settleError) {
       console.error('[worker] could not settle failure:', settleError instanceof Error ? settleError.message : settleError);
     }

@@ -148,6 +148,16 @@ export function heartbeatExecution(
   }).immediate();
 }
 
+/** Effect receipt metadata a worker may attach when settling an activity
+ *  that changed the external world (M4). The kernel owns the ledger:
+ *  effects row + durable event land in the SAME transaction as the settle. */
+export interface EffectSettlement {
+  key: string;
+  desired_digest: string;
+  outcome: 'applied' | 'already_applied' | 'conflict' | 'failed';
+  receipt: Record<string, unknown>;
+}
+
 /** Worker success: settle the execution AND complete the node — atomically,
  *  exactly like the M1 scripted path, so the fold sees one grammar. */
 export function completeActivity(
@@ -155,6 +165,7 @@ export function completeActivity(
   executionId: string,
   lease: string,
   items: Item[],
+  opts: { effect?: EffectSettlement } = {},
   now = new Date()
 ): { digest: string } {
   return db.transaction(() => {
@@ -177,18 +188,21 @@ export function completeActivity(
     });
     db.prepare("UPDATE executions SET status = 'success', finished_at = ? WHERE id = ?")
       .run(now.toISOString(), executionId);
+    if (opts.effect) writeEffectLedger(db, row, opts.effect, now);
     return { digest };
   }).immediate();
 }
 
 /** Worker failure: record the failed attempt. Whether to retry belongs to the
- *  kernel (sweep), never to the worker. */
+ *  kernel (sweep), never to the worker. Typed effect outcomes (conflict,
+ *  failed) land in the ledger atomically with the attempt failure. */
 export function failActivity(
   db: Database.Database,
   executionId: string,
   lease: string,
   errorType: string,
   message: string,
+  opts: { effect?: EffectSettlement } = {},
   now = new Date()
 ): void {
   db.transaction(() => {
@@ -205,5 +219,43 @@ export function failActivity(
     });
     db.prepare("UPDATE executions SET status = 'error', finished_at = ? WHERE id = ?")
       .run(now.toISOString(), executionId);
+    if (opts.effect) writeEffectLedger(db, row, opts.effect, now);
   }).immediate();
+}
+
+/** The effect ledger: one row per idempotency key (last settlement wins),
+ *  one durable event per settlement — atomic with the activity settle. */
+function writeEffectLedger(
+  db: Database.Database,
+  row: ExecutionRow,
+  effect: EffectSettlement,
+  now: Date
+): void {
+  const status =
+    effect.outcome === 'applied' || effect.outcome === 'already_applied' ? 'applied' : 'failed';
+  const receiptJson = JSON.stringify(effect.receipt);
+  db.prepare(
+    `INSERT INTO effects (id, run_id, idempotency_key, desired_digest, status, receipt_json, created_at, settled_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(idempotency_key) DO UPDATE SET
+       status = excluded.status,
+       receipt_json = excluded.receipt_json,
+       settled_at = excluded.settled_at`
+  ).run(
+    randomUUID(),
+    row.run_id,
+    effect.key,
+    effect.desired_digest,
+    status,
+    receiptJson,
+    now.toISOString(),
+    now.toISOString()
+  );
+  appendEventInTx(db, row.run_id, 'effect.receipted', {
+    node_id: row.node_id,
+    key: effect.key,
+    outcome: effect.outcome,
+    desired_digest: effect.desired_digest,
+    receipt_json: receiptJson,
+  });
 }
