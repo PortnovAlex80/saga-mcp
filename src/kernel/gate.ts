@@ -9,7 +9,7 @@ import type { Item } from './node-types.js';
 //   across executions and repairs; the revision identity depends only on the
 //   member digest SET — which execution produced what is provenance.
 
-export type CheckOp = 'nonempty' | 'contains' | 'regex';
+export type CheckOp = 'nonempty' | 'contains' | 'regex' | 'not_contains';
 
 export interface GateCheck {
   op: CheckOp;
@@ -50,6 +50,11 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
     } else if (check.op === 'contains') {
       ok = items.some((item) => fieldValue(item, field).includes(String(check.value ?? '')));
       if (!ok) reasons.push(`contains:${field} — '${check.value}' not found`);
+    } else if (check.op === 'not_contains') {
+      // Negative criterion: forbidden content (e.g. unreadable mojibake U+FFFD)
+      // fails acceptance with a typed reason instead of sneaking through.
+      ok = !items.some((item) => fieldValue(item, field).includes(String(check.value ?? '')));
+      if (!ok) reasons.push(`not_contains:${field} — forbidden value present`);
     } else if (check.op === 'regex') {
       let re: RegExp;
       try {

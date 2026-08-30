@@ -3,7 +3,7 @@ import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
 import { runGraph } from '../kernel/runner.js';
 import { completeHumanTask, resolveHumanGate } from '../operator.js';
-import { DEFAULT_WORKSHOPS, startDiscovery } from '../workshops.js';
+import { DEFAULT_WORKSHOPS, startDiscovery, startFormalization } from '../workshops.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -73,6 +73,19 @@ export const definitions: Tool[] = [
         mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
       },
       required: ['idea'],
+    },
+  },
+  {
+    name: 'formalization_start',
+    description: 'Formalization Desk: takes the accepted discovery brief (default: latest discovery/brief.md from the product repo), runs the SRS skill, publishes formalization/srs.md.',
+    annotations: { title: 'Formalization Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        brief: { type: 'string', description: 'Approved brief text (default: latest discovery/brief.md)' },
+        repo: { type: 'string', description: 'Product repo path' },
+        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
+      },
     },
   },
   {
@@ -150,6 +163,15 @@ export const handlers: Record<string, ToolHandler> = {
     const db = getDb();
     return startDiscovery(db, {
       idea: String(args.idea ?? ''),
+      repo: args.repo === undefined ? undefined : String(args.repo),
+      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+    });
+  },
+
+  formalization_start: (args) => {
+    const db = getDb();
+    return startFormalization(db, {
+      brief: args.brief === undefined ? undefined : String(args.brief),
       repo: args.repo === undefined ? undefined : String(args.repo),
       mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
     });

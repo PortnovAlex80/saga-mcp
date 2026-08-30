@@ -19,7 +19,7 @@ const { getDb, closeDb } = await import('../dist/db.js');
 const { resumeRun } = await import('../dist/kernel/runner.js');
 const { getEvents } = await import('../dist/events.js');
 const { claimExecution } = await import('../dist/kernel/executions.js');
-const { startDiscovery, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
+const { startDiscovery, startFormalization, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
 
 const db = getDb();
 const WORKER = fileURLToPath(new URL('../dist/runtime/worker.js', import.meta.url));
@@ -83,6 +83,32 @@ test('discovery desk: idea in → brief skill → artifact committed', async () 
 
 test('discovery desk without an idea fails fast', () => {
   assert.throws(() => startDiscovery(db, { idea: '   ', repo: productRepo, mode: 'echo' }), /IDEA_REQUIRED/);
+});
+
+test('discovery desk rejects broken-encoding ideas at the entrance', () => {
+  assert.throws(
+    () => startDiscovery(db, { idea: 'идея \uFFFD\uFFFD\uFFFD сломана', repo: productRepo, mode: 'echo' }),
+    /IDEA_NOT_UTF8/,
+    'mojibake never enters production'
+  );
+});
+
+test('formalization desk: discovery artifact in → SRS out; missing brief fails honestly', async () => {
+  // lifecycle link: no explicit brief → takes discovery/brief.md from the repo
+  const started = startFormalization(db, { repo: productRepo, mode: 'echo' });
+  assert.equal(started.briefSource, 'discovery/brief.md');
+  const status = await driveWithRealWorkers(started.runId);
+  assert.equal(status, 'success');
+  const srs = readFileSync(path.join(productRepo, 'formalization', 'srs.md'), 'utf8');
+  assert.ok(srs.includes('FR-'), 'SRS carries functional requirements');
+
+  // a fresh repo without a discovery artifact fails honestly
+  const emptyRepo = path.join(dir, 'empty-repo');
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: emptyRepo });
+  assert.throws(
+    () => startFormalization(db, { repo: emptyRepo, mode: 'echo' }),
+    /BRIEF_MISSING/
+  );
 });
 
 after(() => {
