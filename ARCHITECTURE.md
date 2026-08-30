@@ -1,124 +1,104 @@
-# Saga Factory architecture
+# Saga5 architecture
 
-This repository contains one factory runtime. A product order enters through
-the factory gateway, advances through an installed lifecycle, and is processed
-by declarative workshops made from universal Production Cells.
+One event-sourced kernel, declarative workshops, a content-addressed desk.
 
-The normative conceptual document is
+The normative plan is [`docs/plans/SAGA5-REBUILD-PLAN.md`](docs/plans/SAGA5-REBUILD-PLAN.md);
+the board and artifact projections are described in
+[`docs/architecture/SAGA5-BOARD-AND-ARTIFACTS.md`](docs/architecture/SAGA5-BOARD-AND-ARTIFACTS.md).
+The conveyor's normative meaning lives in
 [`docs/architecture/CONVEYOR-MENTAL-MODEL.md`](docs/architecture/CONVEYOR-MENTAL-MODEL.md).
-Acceptance invariants are registered in
-[`docs/architecture/FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md`](docs/architecture/FACTORY-DOMAIN-ACCEPTANCE-REGISTRY.md).
 
-## One start path
+> Documents under `docs/architecture/decisions/` numbered 024–075 belong to
+> **saga4** and describe machinery this engine no longer has. They are kept as
+> the reasoning trail behind ADR-053, not as current design.
 
-Every execution begins with a durable `factory_launch_request` created by the
-factory gateway. The request selects exactly one mode:
+## Three pillars
 
-- new order from a product idea;
-- resume an existing project from its last durable boundary;
-- adopt an inspected checkpoint;
-- deterministic test production using supplied products;
-- LM test production with the declared reduced test policy.
+```text
+DECLARATION            KERNEL                        MATERIAL
+workflow graph    →    deterministic interpreter  →  content-addressed desk
+(n8n shape)            append-only event log         (sealed desk revisions)
+                       (Temporal split)
+```
 
-The process host accepts a `launch_ref`. It does not create projects, choose an
-epic, reconstruct lifecycle input from environment variables, or start an
-independent board runner.
+- **Declaration** — `{nodes, connections}` JSON. A workshop is data, never
+  engine code. The kernel never branches on a workshop's name or meaning.
+- **Kernel** — folds the event log and emits command events. Scripted nodes
+  execute inside one kernel transaction; activities (LLM, external effects)
+  run in worker processes; gates are decided by the kernel over the sealed
+  revision.
+- **Material** — identity is `sha256(schema_ref, content)`. Which execution
+  produced it is provenance, never identity (ADR-053, from the first commit).
 
-## Runtime ownership
+## Authority
 
-The application runtime owns:
-
-- lifecycle and StageRun progression;
-- ProcessRun and NodeRun reconciliation;
-- the global dispatch concurrency budget;
-- Workplace state and execution reservations;
-- product persistence and exact reads;
-- CandidateSet sealing;
-- GateRun, CheckReceipt and GateDecision persistence;
-- recovery, checkpoint, resume and adoption;
-- transition journal and diagnostics.
-
-A workshop package owns only declarations:
-
-- Flow and Production Cell definitions;
-- execution profiles, skills and instructions;
-- input and output schemas;
-- capability presets;
-- CheckPlans, decision policies and recovery policies.
-
-The core never switches on workshop names or product meanings.
-
-## Universal production loop
-
-For every materialized Production Cell:
-
-1. The runtime creates one deterministic `WorkplaceRef`.
-2. The global dispatcher reserves one eligible Workplace and launches one
-   fenced worker execution.
-3. The worker reads exact pinned inputs and submits schema-typed products.
-4. The runtime seals those exact products into a CandidateSet.
-5. Declared checks produce immutable receipts.
-6. A GateDecision accepts, requests repair, requests a human decision, or
-   terminates the Workplace.
-7. Only an accepted final GateDecision releases outputs to the next Flow node.
-
-Author and reviewer are roles in the same loop. Fan-out changes only the number
-of deterministic Workplace instances.
-
-## Authority model
+`events` is the only authority. Every other table is a header or a projection
+that can be rebuilt by folding the log.
 
 | Concern | Authority |
 |---|---|
-| Factory order and start mode | `factory_orders`, `factory_launch_requests` |
-| Lifecycle position | LifecycleRun, StageRun, ProcessTransition |
-| Flow position | ProcessRun, NodeRun |
-| Card and machine-loop state | Workplace |
-| Worker mutation right | active reservation and execution fence |
-| Produced material | content-addressed ProductRef |
-| Candidate identity | CandidateSet |
-| Quality result | CheckReceipt and GateDecision |
-| External action | EffectAttempt and immutable receipt |
-| Human choice | HumanInteractionRun and receipt |
+| Everything that happened | `events` (append-only, enforced by trigger) |
+| Run position | fold of the log (`runs` is a header projection) |
+| Produced material | `materials` (immutable, content-addressed) |
+| Accepted material | the desk revision a gate accepted |
+| Activity attempt | `executions` (lease + heartbeat + typed timeouts) |
+| External change | `effects` (idempotency key + typed receipt) |
+| Human choice | `operator.resolved` event |
+| Kanban card, artifact page, board task | **projections** — never authority |
 
-Task rows and board views are rebuildable projections. They cannot accept a
-product, decide quality, or advance a Flow.
+## Execution loop
 
-## Persistence boundaries
+1. `workshop_start` (or `factory_start` with a raw graph) registers the graph
+   and creates a run.
+2. The kernel drives: every runnable node is executed, scheduled or decided.
+   Scripted nodes commit `scheduled + started + material + completed` in ONE
+   transaction; activities get an `execution` row and wait for a worker.
+3. The bridge claims queued executions and spawns one worker process per
+   attempt. A worker may only heartbeat and settle **its own** execution, with
+   the lease it was handed. Workers never choose work.
+4. A gate evaluates the accumulated desk, seals a revision and decides:
+   `accepted` | `repair_required` | `human_required`.
+5. The sweep is a SELECT, not a supervisor: expired heartbeats become
+   `execution.timed_out`, and the retry decision is the kernel's, recorded
+   durably.
 
-All durable identities are immutable or CAS-guarded. A restart reuses accepted
-products and resumes from the last incomplete boundary. Checkpoint adoption
-copies exact products, lineage, receipts and installation pins; it never
-fabricates provenance.
+`waiting` is never `crashed`: a human gate, a queued activity and a repair
+cycle are legitimate pauses.
 
-SQLite transactions protect local atomic boundaries. The outbox and journal
-make cross-process transitions replayable. Content hashes cover canonical
-payloads, installed package resources, node inputs and decisions.
+## Quality
+
+- **Acceptance criteria** are positive and satisfied by any surviving desk
+  member — accumulation across attempts is a feature.
+- **Admission criteria** (`not_contains`) must hold for every member; a
+  violating member leaves the desk via `material.superseded` with a durable
+  reason, otherwise an accumulating desk could never be repaired.
+- Repair reasons travel into the next attempt's prompt, so a worker fixes what
+  failed instead of rolling the dice again.
+- The operator may answer a human gate by **repairing the material**: an
+  operator submission is an ordinary material submission (`author: operator`),
+  and the gate re-decides by the same criteria.
 
 ## Code layout
 
-- `src/app/` — composition and application orchestration.
-- `src/process-modules/application/` — universal Flow and Production Cell use
-  cases.
-- `src/process-modules/domain/` — closed domain contracts and reducers.
-- `src/process-modules/installation/` — package installation and digest pins.
-- `src/process-modules/persistence/` — runtime persistence adapters.
-- `src/modules/` — workshop declarations and semantic kernels.
-- `src/infrastructure/` — SQLite, process host, workspace and provider adapters.
-- `src/lifecycle/` — assignment, reservation and lifecycle transition rules.
-- `src/tools/` — authorized inbound tool adapters.
-- `tests/` — domain, architecture, integration and full-factory acceptance.
+- `src/events.ts`, `src/materials.ts`, `src/schema.ts` — the log, the material
+  store, the ~12-table schema.
+- `src/kernel/` — `runner` (interpreter), `graph`, `node-types` (the plugin
+  registry), `gate`, `executions`, `sweep`, `projection`, `board`,
+  `artifacts`, `stats`.
+- `src/runtime/worker.ts` — the activity worker process (LLM and git effects).
+- `src/workshops.ts` — the default workshops as declarative graphs, and THE
+  start path.
+- `src/operator.ts` — human gate decisions and operator-authored material.
+- `src/bridge.ts` — sweep + worker dispatch + JSON API + desk static, one origin.
+- `src/tools/` — the MCP surface (board tools from upstream + the kernel tools).
+- `desk/` — React Flow desk: board, canvas, artifact wiki.
 
-## Required verification
+## Budgets and fitness tests
 
-Every change to factory mechanics must pass:
-
-1. TypeScript build.
-2. Architecture and process-module tests.
-3. Complete repository test suite.
-4. Deterministic full-factory mock from order through all workshops.
-5. Crash/resume checks when reservation, product, gate or transition semantics
-   change.
-
-Architecture tests must reject any additional start path, private dispatcher,
-module-specific submit store, task-state authority, unfenced product write,
-nullable installation pin, or quality bypass.
+- Kernel LOC budget ≤ 10 000; schema ≤ 12 tables (plan §5).
+- A new table is allowed only if it cannot be expressed as an event or a
+  projection of events.
+- A new workshop adds a graph — never a tool, an endpoint or a UI branch.
+- No consumer selects material by `execution_id`, `task_id` or `latest`.
+- `npm test` runs the whole suite (kernel, quality loop, effects, bridge E2E,
+  board and artifact projections) with scripted workers — no network, no LLM.

@@ -13,6 +13,8 @@ import {
   type Connection,
   type Edge,
 } from '@xyflow/react';
+import { Board } from './Board';
+import { Wiki } from './Wiki';
 import { nodeTypes } from './nodes';
 import {
   NODE_TYPES,
@@ -32,6 +34,9 @@ const NODE_COLORS: Record<string, string> = {
   llm: '#a78bfa',
   gate: '#fbbf24',
   effect: '#2dd4bf',
+  split: '#fb923c',
+  join: '#fb923c',
+  json_parse: '#94a3b8',
 };
 
 // W2: fold the run's event log into per-node visual states (same idea as the
@@ -479,14 +484,50 @@ function Desk() {
   );
 }
 
+type View = 'desk' | 'board' | 'wiki';
+
+const VIEWS: Array<{ id: View; label: string; hint: string }> = [
+  { id: 'board', label: 'Доска', hint: 'канбан: карточка = стол узла, колонка выводится из журнала' },
+  { id: 'desk', label: 'Стол', hint: 'граф цеха: узлы, связи, параметры' },
+  { id: 'wiki', label: 'Артефакты', hint: 'мини-вики: материалы завода, чтение и правка' },
+];
+
 export default function App() {
+  const [view, setView] = useState<View>('board');
+  const [wikiRun, setWikiRun] = useState<string | undefined>(undefined);
+
   return (
     <ReactFlowProvider>
       <header className="desk-header">
-        <b>Saga5 Desk</b>
-        <span>визуальный стол конвейера · W1 skeleton</span>
+        <b>Saga5</b>
+        <nav className="tabs">
+          {VIEWS.map((tab) => (
+            <button
+              key={tab.id}
+              className={view === tab.id ? 'tab active' : 'tab'}
+              title={tab.hint}
+              onClick={() => setView(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <span className="header-hint">{VIEWS.find((tab) => tab.id === view)?.hint}</span>
       </header>
-      <Desk />
+      {/* Стол монтируется один раз: раскладка и незавершённая правка графа
+          не должны теряться при переключении вкладок. */}
+      <div style={{ display: view === 'desk' ? 'contents' : 'none' }}>
+        <Desk />
+      </div>
+      {view === 'board' && (
+        <Board
+          onOpenArtifacts={(runId) => {
+            setWikiRun(runId);
+            setView('wiki');
+          }}
+        />
+      )}
+      {view === 'wiki' && <Wiki runId={wikiRun} onClearRun={() => setWikiRun(undefined)} />}
     </ReactFlowProvider>
   );
 }

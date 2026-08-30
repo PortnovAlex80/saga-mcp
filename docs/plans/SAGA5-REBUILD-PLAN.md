@@ -179,10 +179,17 @@ factory_start(order)
 ### 2.6 MCP-поверхность (~15 тулов вместо 30 файлов)
 
 Доска (из upstream): `project_*`, `epic_*`, `task_*`, `dashboard`, поиск/экспорт.
-Конвейер: `factory_start`, `factory_status`, `desk_read`, `desk_submit`,
-`execution_complete`, `operator_resolve`, `effect_run`, `event_tail`.
+Конвейер: `factory_start`, `factory_status`, `workshop_start`, `workshops_list`,
+`board_view`, `artifact_list`, `artifact_read`, `artifact_submit`,
+`operator_resolve`, `event_tail`.
 Всё остальное (settlement-debug, нормализация, readiness, approvals…) —
 узлы графа и проекции, не отдельные протоколы.
+
+**Правило нерастущей поверхности (2026-08-30):** цех — это граф. Новый цех не
+имеет права добавлять ни тула, ни HTTP-ручки, ни ветки в UI: вход один
+(`workshop_start` / `POST /api/workshops/:name/start`), а форма ввода
+объявляется самим цехом. Нарушение этого правила — ровно тот рост, из-за
+которого saga4 стала saga4.
 
 ---
 
@@ -201,8 +208,8 @@ NodeToolbar, Panel) и `Development/n8n-src` (приёмы UX).
 | Фаза | Что | Статус |
 |---|---|---|
 | W1 | `desk/` — Vite + React Flow: палитра узлов, связывание, инспектор JSON-параметров, сериализация `graph_json` (позиции узлов хранятся в `graph_json.position`, ядро их игнорирует) | скелет готов, коммит W1 |
-| W2 | Run-кнопка → HTTP-мост к ядру (`factory_start`); overlay прогона: fold событий журнала раскрашивает узлы; клик по узлу → его события/материал | после M2 |
-| A | Панель оператора: канбан доски, список ранов, очередь `human_required` | после M3 |
+| W2 | Run-кнопка → HTTP-мост к ядру (`factory_start`); overlay прогона: fold событий журнала раскрашивает узлы; клик по узлу → его события/материал | ✅ готово |
+| A | Панель оператора: канбан (карточка = стол узла), запуск цеха, очередь `human_required`, мини-вики артефактов с правкой | ✅ готово — [`SAGA5-BOARD-AND-ARTIFACTS.md`](../architecture/SAGA5-BOARD-AND-ARTIFACTS.md) |
 | — | НЕ делаем: collaborative-редактирование, expression-язык n8n, credentials-менеджмент | — |
 
 Правило границы: фронт — только читатель/редактор деклараций и проекций

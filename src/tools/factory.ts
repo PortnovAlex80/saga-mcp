@@ -1,15 +1,19 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
+import { artifactBody, artifactIndex, runArtifacts } from '../kernel/artifacts.js';
+import { board, operatorQueue } from '../kernel/board.js';
 import { runGraph } from '../kernel/runner.js';
 import { kernelStats } from '../kernel/stats.js';
-import { completeHumanTask, resolveHumanGate } from '../operator.js';
-import { DEFAULT_WORKSHOPS, startDevelopment, startDiscovery, startFormalization, startProduct } from '../workshops.js';
+import { completeHumanTask, resolveHumanGate, submitOperatorMaterial } from '../operator.js';
+import { DEFAULT_WORKSHOPS, startWorkshop } from '../workshops.js';
+import type { Item } from '../kernel/node-types.js';
 import type { ToolHandler } from '../types.js';
 
-// M0 kernel surface: read-only observation of runs and the event log.
-// The interpreting kernel (graph execution) arrives in M1; until then these
-// tools make the kernel tables visible and testable through MCP.
+// The kernel's MCP surface: ONE start path (`workshop_start`), read models
+// (board, artifacts, events) and the two operator writes (a decision at a
+// human gate, hand-authored material). A new workshop adds a graph — never a
+// tool, an endpoint or a UI branch.
 
 export const definitions: Tool[] = [
   {
@@ -53,69 +57,85 @@ export const definitions: Tool[] = [
     },
   },
   {
-    name: 'discovery_start',
-    description: 'Default Discovery Desk: accepts an idea, runs the brief skill (Discovery workshop), publishes the brief artifact to discovery/brief.md in the product repo.',
-    annotations: { title: 'Discovery Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    name: 'workshop_start',
+    description: 'THE start path: run a declared workshop (discovery | formalization | product | development). Inputs are declared per workshop (see workshops_list); missing upstream material is taken from the accepted artifact of the previous workshop.',
+    annotations: { title: 'Workshop Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     inputSchema: {
       type: 'object',
       properties: {
-        idea: { type: 'string', description: 'The raw idea written into the start node' },
-        repo: { type: 'string', description: 'Product repo path (default: SAGA_PRODUCT_REPO or ../saga5-canary/product-repo)' },
-        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
-      },
-      required: ['idea'],
-    },
-  },
-  {
-    name: 'formalization_start',
-    description: 'Formalization Desk: takes the accepted discovery brief (default: latest discovery/brief.md from the product repo), runs the SRS skill, publishes formalization/srs.md.',
-    annotations: { title: 'Formalization Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brief: { type: 'string', description: 'Approved brief text (default: latest discovery/brief.md)' },
-        repo: { type: 'string', description: 'Product repo path' },
-        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
-      },
-    },
-  },
-  {
-    name: 'product_start',
-    description: 'Unified product conveyor: Discovery + Formalization in ONE run — idea → brief (LLM) → gate → publish brief → SRS (LLM) → gate → publish SRS.',
-    annotations: { title: 'Product Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      type: 'object',
-      properties: {
-        idea: { type: 'string', description: 'The raw idea written into the start node' },
-        repo: { type: 'string', description: 'Product repo path' },
-        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
-      },
-      required: ['idea'],
-    },
-  },
-  {
-    name: 'development_start',
-    description: 'Development Desk: SRS → task plan → parallel implementation (one worker per task) → review → integration commit. opts.tasks bypasses the planner.',
-    annotations: { title: 'Development Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    inputSchema: {
-      type: 'object',
-      properties: {
-        srs: { type: 'string', description: 'SRS text (default: latest formalization/srs.md)' },
-        tasks: {
-          type: 'array',
-          description: 'Explicit task list [{id,title,description,files}] — bypasses the planner',
-          items: { type: 'object' },
+        workshop: { type: 'string', description: 'Workshop name (workshops_list)' },
+        input: {
+          type: 'object',
+          description: 'Declared inputs, e.g. {"idea": "..."} — plus optional repo / mode / tasks',
         },
-        repo: { type: 'string', description: 'Product repo path' },
-        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
       },
+      required: ['workshop'],
     },
   },
   {
     name: 'workshops_list',
-    description: 'List default workshops (declarative desk graphs) and their shapes.',
+    description: 'List default workshops (declarative desk graphs), their declared inputs and their shapes.',
     annotations: { title: 'Workshops', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'board_view',
+    description: 'Kanban board: every node of the recent runs as a card in the columns todo | in_progress | review | blocked | done | failed. A pure projection of the event log — cards cannot be moved, only produced.',
+    annotations: { title: 'Board', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string', description: 'Only this run' },
+        runs: { type: 'number', description: 'How many recent runs to fold (default 12)' },
+        active_only: { type: 'boolean', description: 'Hide done cards of finished runs' },
+        blocked_only: { type: 'boolean', description: 'Only cards waiting for an operator decision' },
+      },
+    },
+  },
+  {
+    name: 'artifact_list',
+    description: 'The artifact wiki: every material produced by the recent runs (or one run), with its repo path, digest and acceptance state.',
+    annotations: { title: 'Artifacts', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string', description: 'Only this run' },
+        path: { type: 'string', description: 'Only artifacts published at this repo path' },
+        accepted_only: { type: 'boolean', description: 'Only material a gate accepted' },
+        runs: { type: 'number', description: 'How many recent runs to fold (default 12)' },
+      },
+    },
+  },
+  {
+    name: 'artifact_read',
+    description: 'Full body of one artifact (run + node + material digest + item index).',
+    annotations: { title: 'Artifact Read', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string' },
+        node: { type: 'string', description: 'Node whose desk holds the material' },
+        digest: { type: 'string', description: 'Material digest (a prefix is enough)' },
+        index: { type: 'number', description: 'Item index inside the material (default 0)' },
+      },
+      required: ['run_id', 'node', 'digest'],
+    },
+  },
+  {
+    name: 'artifact_submit',
+    description: 'Operator-authored material for one node: the edited artifact lands on the node desk exactly like a worker submission, the gate re-decides, downstream follows. Provenance is recorded as author=operator.',
+    annotations: { title: 'Artifact Submit', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string' },
+        node: { type: 'string', description: 'Node whose desk receives the material' },
+        text: { type: 'string', description: 'Edited body — shorthand for items [{json:{text}}]' },
+        items: { type: 'array', description: 'Full item array, when the shape is not plain text', items: { type: 'object' } },
+        note: { type: 'string', description: 'Why the operator wrote this material' },
+      },
+      required: ['run_id', 'node'],
+    },
   },
   {
     name: 'event_tail',
@@ -156,42 +176,12 @@ export const handlers: Record<string, ToolHandler> = {
     return event;
   },
 
-  discovery_start: (args) => {
-    const db = getDb();
-    return startDiscovery(db, {
-      idea: String(args.idea ?? ''),
-      repo: args.repo === undefined ? undefined : String(args.repo),
-      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-    });
-  },
-
-  formalization_start: (args) => {
-    const db = getDb();
-    return startFormalization(db, {
-      brief: args.brief === undefined ? undefined : String(args.brief),
-      repo: args.repo === undefined ? undefined : String(args.repo),
-      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-    });
-  },
-
-  product_start: (args) => {
-    const db = getDb();
-    return startProduct(db, {
-      idea: String(args.idea ?? ''),
-      repo: args.repo === undefined ? undefined : String(args.repo),
-      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-    });
-  },
-
-  development_start: (args) => {
-    const db = getDb();
-    return startDevelopment(db, {
-      srs: args.srs === undefined ? undefined : String(args.srs),
-      tasks: Array.isArray(args.tasks) ? (args.tasks as Array<Record<string, unknown>>) : undefined,
-      repo: args.repo === undefined ? undefined : String(args.repo),
-      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-    });
-  },
+  workshop_start: (args) =>
+    startWorkshop(
+      getDb(),
+      String(args.workshop ?? ''),
+      (args.input as Record<string, unknown>) ?? {}
+    ),
 
   workshops_list: () => {
     const shape = (graph: unknown) => {
@@ -203,7 +193,52 @@ export const handlers: Record<string, ToolHandler> = {
       }));
     };
     return Object.fromEntries(
-      Object.entries(DEFAULT_WORKSHOPS).map(([name, w]) => [name, { title: w.title, shape: shape(w.graph) }])
+      Object.entries(DEFAULT_WORKSHOPS).map(([name, w]) => [
+        name,
+        { title: w.title, inputs: w.inputs, shape: shape(w.graph) },
+      ])
+    );
+  },
+
+  board_view: (args) => {
+    const db = getDb();
+    if (args.blocked_only) return { queue: operatorQueue(db, Number(args.runs ?? 50) || 50) };
+    return board(db, {
+      run_id: args.run_id === undefined ? undefined : String(args.run_id),
+      runs: args.runs === undefined ? undefined : Number(args.runs),
+      active_only: Boolean(args.active_only),
+    });
+  },
+
+  artifact_list: (args) => {
+    const db = getDb();
+    if (args.run_id) return runArtifacts(db, String(args.run_id));
+    return artifactIndex(db, {
+      runs: args.runs === undefined ? undefined : Number(args.runs),
+      path: args.path === undefined ? undefined : String(args.path),
+      accepted_only: Boolean(args.accepted_only),
+    });
+  },
+
+  artifact_read: (args) =>
+    artifactBody(
+      getDb(),
+      String(args.run_id ?? ''),
+      String(args.node ?? ''),
+      String(args.digest ?? ''),
+      Number(args.index ?? 0) || 0
+    ),
+
+  artifact_submit: (args) => {
+    const items: Item[] = Array.isArray(args.items)
+      ? (args.items as Item[])
+      : [{ json: { text: String(args.text ?? '') } }];
+    return submitOperatorMaterial(
+      getDb(),
+      String(args.run_id ?? ''),
+      String(args.node ?? ''),
+      items,
+      args.note === undefined ? undefined : String(args.note)
     );
   },
 

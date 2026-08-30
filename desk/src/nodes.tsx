@@ -12,6 +12,9 @@ const STYLE: Record<string, { accent: string; glyph: string }> = {
   llm: { accent: '#a78bfa', glyph: '✦' },
   gate: { accent: '#fbbf24', glyph: '⚖' },
   effect: { accent: '#2dd4bf', glyph: '⚡' },
+  split: { accent: '#fb923c', glyph: '⑃' },
+  join: { accent: '#fb923c', glyph: '⑂' },
+  json_parse: { accent: '#94a3b8', glyph: '{ }' },
 };
 
 const STATUS_BADGE: Record<string, { glyph: string; title: string }> = {

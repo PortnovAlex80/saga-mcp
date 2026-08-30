@@ -15,12 +15,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { closeDb, getDb } from './db.js';
 import { getRun, tailEvents } from './events.js';
+import { artifactBody, artifactIndex, runArtifacts } from './kernel/artifacts.js';
+import { board, operatorQueue } from './kernel/board.js';
 import { runGraph, resumeRun } from './kernel/runner.js';
 import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
-import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
-import { DEFAULT_WORKSHOPS, ensureProductRepo, startDevelopment, startDiscovery, startFormalization, startProduct } from './workshops.js';
+import { completeHumanTask, ensureHumanTask, resolveHumanGate, submitOperatorMaterial } from './operator.js';
+import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
+import type { Item } from './kernel/node-types.js';
 
 const WORKER_PATH = fileURLToPath(new URL('./runtime/worker.js', import.meta.url));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -157,45 +160,60 @@ export function startBridge(opts: {
         sendJson(res, 200, resumeRun(db, url.pathname.split('/')[3] ?? ''));
         return;
       }
-      if (req.method === 'POST' && url.pathname === '/api/discovery') {
-        const args = JSON.parse(await readBody(req)) as { idea?: string; repo?: string; mode?: string };
-        if (!args.idea) throw new Error('idea is required: напишите идею в стартовый узел');
-        sendJson(res, 200, startDiscovery(db, {
-          idea: String(args.idea),
-          repo: args.repo === undefined ? undefined : String(args.repo),
-          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-        }));
+      // THE start path: one endpoint for every declared workshop.
+      const startMatch = url.pathname.match(/^\/api\/workshops\/([\w-]+)\/start$/);
+      if (req.method === 'POST' && startMatch) {
+        const args = JSON.parse((await readBody(req)) || '{}') as Record<string, unknown>;
+        const input = (args.input as Record<string, unknown>) ?? args;
+        sendJson(res, 200, startWorkshop(db, startMatch[1], input));
         return;
       }
-      if (req.method === 'POST' && url.pathname === '/api/development') {
+      if (req.method === 'GET' && url.pathname === '/api/board') {
+        sendJson(res, 200, url.searchParams.get('blocked_only')
+          ? { queue: operatorQueue(db) }
+          : board(db, {
+              run_id: url.searchParams.get('run_id') ?? undefined,
+              runs: url.searchParams.get('runs') ? Number(url.searchParams.get('runs')) : undefined,
+              active_only: url.searchParams.get('active_only') === '1',
+            }));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/artifacts') {
+        const runId = url.searchParams.get('run_id');
+        sendJson(res, 200, runId
+          ? runArtifacts(db, runId)
+          : artifactIndex(db, {
+              path: url.searchParams.get('path') ?? undefined,
+              accepted_only: url.searchParams.get('accepted_only') === '1',
+              runs: url.searchParams.get('runs') ? Number(url.searchParams.get('runs')) : undefined,
+            }));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/artifact') {
+        sendJson(res, 200, artifactBody(
+          db,
+          url.searchParams.get('run_id') ?? '',
+          url.searchParams.get('node') ?? '',
+          url.searchParams.get('digest') ?? '',
+          Number(url.searchParams.get('index') ?? 0) || 0
+        ));
+        return;
+      }
+      const submitMatch = url.pathname.match(/^\/api\/runs\/([\w-]+)\/nodes\/([^/]+)\/submit$/);
+      if (req.method === 'POST' && submitMatch) {
         const args = JSON.parse(await readBody(req)) as {
-          srs?: string; tasks?: Array<Record<string, unknown>>; repo?: string; mode?: string;
+          text?: string; items?: Item[]; note?: string;
         };
-        sendJson(res, 200, startDevelopment(db, {
-          srs: args.srs === undefined ? undefined : String(args.srs),
-          tasks: Array.isArray(args.tasks) ? args.tasks : undefined,
-          repo: args.repo === undefined ? undefined : String(args.repo),
-          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-        }));
-        return;
-      }
-      if (req.method === 'POST' && url.pathname === '/api/product') {
-        const args = JSON.parse(await readBody(req)) as { idea?: string; repo?: string; mode?: string };
-        if (!args.idea) throw new Error('idea is required: напишите идею в стартовый узел');
-        sendJson(res, 200, startProduct(db, {
-          idea: String(args.idea),
-          repo: args.repo === undefined ? undefined : String(args.repo),
-          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-        }));
-        return;
-      }
-      if (req.method === 'POST' && url.pathname === '/api/formalization') {
-        const args = JSON.parse(await readBody(req)) as { brief?: string; repo?: string; mode?: string };
-        sendJson(res, 200, startFormalization(db, {
-          brief: args.brief === undefined ? undefined : String(args.brief),
-          repo: args.repo === undefined ? undefined : String(args.repo),
-          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
-        }));
+        const items: Item[] = Array.isArray(args.items)
+          ? args.items
+          : [{ json: { text: String(args.text ?? '') } }];
+        sendJson(res, 200, submitOperatorMaterial(
+          db,
+          submitMatch[1],
+          decodeURIComponent(submitMatch[2]),
+          items,
+          args.note
+        ));
         return;
       }
       if (req.method === 'POST' && /^\/api\/runs\/([\w-]+)\/resolve$/.test(url.pathname)) {

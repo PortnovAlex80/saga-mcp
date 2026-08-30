@@ -96,6 +96,64 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
     : { verdict: 'repair_required', reasons };
 }
 
+/** One member of the desk under judgement: exactly one submitted material. */
+export interface DeskMember {
+  node: string;
+  digest: string;
+  items: Item[];
+}
+
+export interface DeskOutcome extends GateVerdict {
+  /** Members that violated an ADMISSION criterion and leave the desk. */
+  tainted: Array<{ node: string; digest: string; reason: string }>;
+  /** Members that survive and form the sealed revision. */
+  survivors: DeskMember[];
+}
+
+/** Desk-level evaluation, member by member.
+ *
+ *  Positive criteria (`nonempty`, `contains`, `regex`, `json_array`) are
+ *  ACCEPTANCE criteria: satisfied when SOME surviving member satisfies them —
+ *  desks accumulate, so a later repair may complete what an earlier attempt
+ *  started (ADR-053).
+ *
+ *  `not_contains` is an ADMISSION criterion: it must hold for EVERY member.
+ *  Without superseding, an accumulating desk could never be repaired — the
+ *  offending material would sit there forever and burn the whole repair budget.
+ *  So a violating member is dropped from the desk with an explicit, logged
+ *  reason, and the repair judges only what remains. */
+export function evaluateDesk(checks: GateCheck[], members: DeskMember[]): DeskOutcome {
+  const admission = checks.filter((check) => check.op === 'not_contains');
+  const acceptance = checks.filter((check) => check.op !== 'not_contains');
+
+  const tainted: DeskOutcome['tainted'] = [];
+  const survivors: DeskMember[] = [];
+  for (const member of members) {
+    const failed = admission.find(
+      (check) => evaluateChecks([check], member.items).verdict !== 'accepted'
+    );
+    if (failed) {
+      tainted.push({
+        node: member.node,
+        digest: member.digest,
+        reason: `not_contains:${failed.field ?? 'text'} — forbidden value present, material superseded`,
+      });
+    } else {
+      survivors.push(member);
+    }
+  }
+
+  const items = survivors.flatMap((member) => member.items);
+  const outcome = evaluateChecks(acceptance, items);
+  const reasons = [...tainted.map((entry) => entry.reason), ...outcome.reasons];
+  return {
+    verdict: reasons.length === 0 ? 'accepted' : 'repair_required',
+    reasons,
+    tainted,
+    survivors,
+  };
+}
+
 export interface RevisionMembers {
   node: string;
   digests: string[];
@@ -140,4 +198,18 @@ export function readDeskItems(
   digests: string[]
 ): Item[] {
   return digests.flatMap((digest) => JSON.parse(requireMaterial(db, digest).content) as Item[]);
+}
+
+/** Splits the accumulated desk into judgeable members (one per material). */
+export function deskMembers(
+  db: Database.Database,
+  entries: RevisionMembers[]
+): DeskMember[] {
+  return entries.flatMap((entry) =>
+    entry.digests.map((digest) => ({
+      node: entry.node,
+      digest,
+      items: readDeskItems(db, [digest]),
+    }))
+  );
 }

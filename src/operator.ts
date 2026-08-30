@@ -1,10 +1,19 @@
 import type Database from 'better-sqlite3';
-import { appendEvent } from './events.js';
+import { appendEvent, appendEventInTx, getRun } from './events.js';
+import { putMaterial } from './materials.js';
+import { nodeDefinitionFor, resumeRun, type RunResult } from './kernel/runner.js';
+import { runGraphJson } from './kernel/projection.js';
+import type { Item } from './kernel/node-types.js';
 import type { EventRow } from './types.js';
 
 // The operator layer: human gates surface as `blocked` tasks on the board
 // (a projection — the kernel only emits events), and operator decisions
 // re-enter the kernel as ordinary events (`operator.resolved`).
+//
+// Editing an artifact is NOT a second mechanism: a human hand-writing material
+// is a worker submitting material. Same events, same desk accumulation, same
+// gate — only the provenance differs (`author: 'operator'`). That is what
+// makes "управление через артефакты-спецификации" cost one function.
 
 export type OperatorDecision = 'approve' | 'reject';
 
@@ -21,6 +30,76 @@ export function resolveHumanGate(
     decision,
     note: note ?? null,
   });
+}
+
+export interface OperatorSubmission {
+  run_id: string;
+  node_id: string;
+  digest: string;
+  items_count: number;
+  /** The run after the kernel re-drove it (gate re-decides over the new desk). */
+  run: RunResult;
+}
+
+/** Operator-authored material for one node: the artifact editor's write path.
+ *
+ *  The new material lands on the node's desk exactly like a worker submission,
+ *  so the gate re-decides over the accumulated desk and downstream nodes see
+ *  the repaired revision. A terminal (`error`) run is explicitly reopened with
+ *  a durable `operator.reopened` event — never silently. */
+export function submitOperatorMaterial(
+  db: Database.Database,
+  runId: string,
+  nodeId: string,
+  items: Item[],
+  note?: string
+): OperatorSubmission {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error('ITEMS_REQUIRED: operator submission needs at least one item');
+  }
+  const run = getRun(db, runId);
+  if (run.status === 'success') {
+    throw new Error('RUN_SEALED: a successful run is accepted material; start a new run instead');
+  }
+  // Fails closed for a node that does not exist in this run's topology.
+  nodeDefinitionFor(db, runId, runGraphJson(db, runId), nodeId);
+
+  const normalized: Item[] = items.map((item) => ({
+    json: (item && typeof item === 'object' && 'json' in item
+      ? (item as Item).json
+      : (item as unknown as Record<string, unknown>)) ?? {},
+  }));
+
+  const digest = db.transaction(() => {
+    if (run.status === 'error' || run.status === 'crashed') {
+      appendEventInTx(db, runId, 'operator.reopened', { from_status: run.status, note: note ?? null });
+      db.prepare("UPDATE runs SET status = 'running', updated_at = datetime('now') WHERE id = ?").run(runId);
+    }
+    const stored = putMaterial(db, 'node_output', JSON.stringify(normalized));
+    appendEventInTx(db, runId, 'material.submitted', {
+      node_id: nodeId,
+      digest: stored.digest,
+      schema_ref: 'node_output',
+      items_count: normalized.length,
+      author: 'operator',
+      note: note ?? null,
+    });
+    appendEventInTx(db, runId, 'node.completed', {
+      node_id: nodeId,
+      output_digest: stored.digest,
+      items_count: normalized.length,
+      author: 'operator',
+    });
+    return stored.digest;
+  }).immediate();
+
+  return {
+    run_id: runId,
+    node_id: nodeId,
+    digest,
+    items_count: normalized.length,
+    run: resumeRun(db, runId),
+  };
 }
 
 function ensureProjectEpic(db: Database.Database): { projectId: number; epicId: number } {

@@ -18,7 +18,8 @@ import {
   type ActivityTimeouts,
 } from './executions.js';
 import {
-  evaluateChecks,
+  deskMembers,
+  evaluateDesk,
   revisionManifest,
   readDeskItems,
   type GateParameters,
@@ -129,6 +130,15 @@ function foldRun(db: Database.Database, runId: string): Fold {
         const n = nodeOf(String(payload.node_id));
         n.status = 'failed';
         n.lastSeq = event.seq;
+        break;
+      }
+      case 'material.superseded': {
+        // Material that failed an ADMISSION criterion leaves the desk with a
+        // durable reason, so the repair judges only what remains (gate.ts).
+        for (const member of (payload.members ?? []) as Array<{ node: string; digest: string }>) {
+          const n = nodeOf(member.node);
+          n.desk = n.desk.filter((digest) => digest !== member.digest);
+        }
         break;
       }
       case 'execution.scheduled':
@@ -268,16 +278,22 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
       if (!gate) return { nodeId: name, kind: 'gate' };
       if (gate.verdict === 'accepted') continue; // node.completed exists
       const operator = fold.operator.get(name);
+      const params = graph.nodes[name].parameters as Partial<GateParameters>;
+      const target = params.repair_target ?? graph.inbound[name][0];
+      const targetFold = fold.nodes.get(target);
       if (gate.verdict === 'human_required') {
         if (operator && operator.seq > gate.decisionSeq) {
           return { nodeId: name, kind: operator.decision === 'reject' ? 'operator-reject' : 'gate' };
         }
+        // The operator may answer a human gate by REPAIRING the material
+        // instead of deciding: new material on the repair target is judged by
+        // the same criteria, no budget spent (the budget is already exhausted).
+        if (targetFold?.lastSeq !== undefined && targetFold.lastSeq > gate.decisionSeq) {
+          return { nodeId: name, kind: 'gate' };
+        }
         continue; // typed human wait
       }
       // repair_required: re-check once the repair target produced new material
-      const params = graph.nodes[name].parameters as Partial<GateParameters>;
-      const target = params.repair_target ?? graph.inbound[name][0];
-      const targetFold = fold.nodes.get(target);
       if (targetFold?.lastSeq !== undefined && targetFold.lastSeq > gate.decisionSeq) {
         return { nodeId: name, kind: 'gate' };
       }
@@ -501,8 +517,12 @@ function executeGate(
   const maxRepairs = typeof params.max_repairs === 'number' ? params.max_repairs : 2;
   const repairsUsed = fold.gates.get(nodeId)?.repairsUsed ?? 0;
 
-  const items = inbound.flatMap((name) => readDeskItems(db, fold.nodes.get(name)!.desk));
-  const outcome = evaluateChecks(checks, items);
+  const desk: RevisionMembers[] = inbound.map((name) => ({
+    node: name,
+    digests: [...(fold.nodes.get(name)!.desk)],
+  }));
+  const outcome = evaluateDesk(checks, deskMembers(db, desk));
+  const items = outcome.survivors.flatMap((member) => member.items);
   const verdict =
     outcome.verdict === 'accepted'
       ? 'accepted'
@@ -510,13 +530,21 @@ function executeGate(
         ? 'repair_required'
         : 'human_required';
 
+  // The sealed revision judges only what survived admission.
   const members: RevisionMembers[] = inbound.map((name) => ({
     node: name,
-    digests: [...(fold.nodes.get(name)!.desk)],
+    digests: outcome.survivors.filter((m) => m.node === name).map((m) => m.digest),
   }));
   const manifest = revisionManifest(members);
 
   db.transaction(() => {
+    if (outcome.tainted.length > 0) {
+      appendEventInTx(db, runId, 'material.superseded', {
+        node_id: nodeId,
+        members: outcome.tainted.map((entry) => ({ node: entry.node, digest: entry.digest })),
+        reasons: outcome.tainted.map((entry) => entry.reason),
+      });
+    }
     const revision = putMaterial(db, 'desk_revision', manifest);
     appendEventInTx(db, runId, 'revision.sealed', {
       node_id: nodeId,
@@ -692,6 +720,13 @@ export function readActivityInputs(
       const desk = desks.get(payload.node_id) ?? [];
       if (!desk.includes(payload.output_digest)) desk.push(payload.output_digest);
       desks.set(payload.node_id, desk);
+    }
+    if (event.type === 'material.superseded') {
+      const payload = JSON.parse(event.payload_json) as { members: Array<{ node: string; digest: string }> };
+      for (const member of payload.members ?? []) {
+        const desk = desks.get(member.node);
+        if (desk) desks.set(member.node, desk.filter((digest) => digest !== member.digest));
+      }
     }
     if (event.type === 'nodes.spawned') {
       const payload = JSON.parse(event.payload_json) as { children: Array<{ id: string; item: Item }> };

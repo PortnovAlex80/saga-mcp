@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type Database from 'better-sqlite3';
+import { latestPublished } from './kernel/artifacts.js';
 import { runGraph, type RunResult } from './kernel/runner.js';
 
 // Default workshops (цеха) — declarative graphs, the saga5 way of shipping
@@ -381,24 +382,129 @@ function devGraph(usePlanner: boolean) {
   };
 }
 
-export const DEFAULT_WORKSHOPS: Record<string, { title: string; graph: unknown }> = {
+/** One field the operator fills in to start a workshop. The desk renders the
+ *  form from this declaration — a new workshop never needs new UI, a new tool
+ *  or a new HTTP endpoint (that growth is exactly how saga4 became saga4). */
+export interface WorkshopInput {
+  name: string;
+  label: string;
+  kind: 'text' | 'longtext';
+  required?: boolean;
+  placeholder?: string;
+}
+
+export interface Workshop {
+  title: string;
+  graph: unknown;
+  inputs: WorkshopInput[];
+  /** Extra fields (repo, source artifact, digests) travel to the operator as
+   *  part of the JSON answer; the kernel contract is the RunResult. */
+  start(db: Database.Database, input: Record<string, unknown>): RunResult;
+}
+
+const str = (input: Record<string, unknown>, key: string): string | undefined =>
+  input[key] === undefined || input[key] === null || String(input[key]).trim() === ''
+    ? undefined
+    : String(input[key]);
+
+export const DEFAULT_WORKSHOPS: Record<string, Workshop> = {
   product: {
     title: 'Продуктовый конвейер — Discovery + Formalization единым прогоном',
     graph: PRODUCT_GRAPH,
+    inputs: [
+      { name: 'idea', label: 'Идея продукта', kind: 'longtext', required: true, placeholder: 'опиши идею…' },
+    ],
+    start: (db, input) =>
+      startProduct(db, { idea: String(input.idea ?? ''), repo: str(input, 'repo'), mode: str(input, 'mode') }),
   },
   discovery: {
     title: 'Discovery Desk — идея → бриф → артефакт',
     graph: DISCOVERY_GRAPH,
+    inputs: [
+      { name: 'idea', label: 'Идея продукта', kind: 'longtext', required: true, placeholder: 'опиши идею…' },
+    ],
+    start: (db, input) =>
+      startDiscovery(db, { idea: String(input.idea ?? ''), repo: str(input, 'repo'), mode: str(input, 'mode') }),
   },
   formalization: {
     title: 'Formalization Desk — бриф → SRS (FR/NFR/UC/AC)',
     graph: FORMALIZATION_GRAPH,
+    inputs: [
+      {
+        name: 'brief',
+        label: 'Бриф (пусто — возьмём принятый артефакт discovery/brief.md)',
+        kind: 'longtext',
+      },
+    ],
+    start: (db, input) =>
+      startFormalization(db, { brief: str(input, 'brief'), repo: str(input, 'repo'), mode: str(input, 'mode') }),
   },
   development: {
     title: 'Development Desk — SRS → задачи → параллельная реализация → ревью → интеграция',
     graph: devGraph(true),
+    inputs: [
+      {
+        name: 'srs',
+        label: 'SRS (пусто — возьмём принятый артефакт formalization/srs.md)',
+        kind: 'longtext',
+      },
+    ],
+    start: (db, input) =>
+      startDevelopment(db, {
+        srs: str(input, 'srs'),
+        tasks: Array.isArray(input.tasks) ? (input.tasks as Array<Record<string, unknown>>) : undefined,
+        repo: str(input, 'repo'),
+        mode: str(input, 'mode'),
+      }),
   },
 };
+
+/** THE start path. Every workshop, one entry — no per-workshop tool, endpoint
+ *  or UI branch. */
+export function startWorkshop(
+  db: Database.Database,
+  name: string,
+  input: Record<string, unknown> = {}
+): RunResult & { workshop: string } {
+  const workshop = DEFAULT_WORKSHOPS[name];
+  if (!workshop) {
+    throw new Error(`WORKSHOP_UNKNOWN: '${name}' (known: ${Object.keys(DEFAULT_WORKSHOPS).join(', ')})`);
+  }
+  for (const field of workshop.inputs) {
+    if (field.required && !str(input, field.name)) {
+      throw new Error(`INPUT_REQUIRED: '${field.name}' (${field.label})`);
+    }
+  }
+  return { workshop: name, ...workshop.start(db, input) };
+}
+
+/** Material handoff between workshops: the ACCEPTED artifact published at
+ *  `filePath` comes from the content-addressed desk (exact digest, full
+ *  lineage). The repository file is only a fallback for material produced
+ *  outside the kernel. */
+function readUpstreamArtifact(
+  db: Database.Database,
+  repo: string,
+  filePath: string,
+  errorCode: string
+): { text: string; source: string; digest?: string; source_run?: string } {
+  const published = latestPublished(db, filePath, { repo });
+  if (published) {
+    return {
+      text: published.content,
+      source: filePath,
+      digest: published.digest,
+      source_run: published.run_id,
+    };
+  }
+  const onDisk = path.join(repo, filePath);
+  if (existsSync(onDisk)) {
+    return { text: readFileSync(onDisk, 'utf8'), source: filePath };
+  }
+  throw new Error(
+    `${errorCode}: нет принятого артефакта '${filePath}' ни на столе, ни в продуктовом репозитории — запустите предыдущий цех или передайте материал явно`
+  );
+}
 
 function repoRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -479,21 +585,20 @@ export function startProduct(
 export function startDevelopment(
   db: Database.Database,
   opts: { srs?: string; tasks?: Array<Record<string, unknown>>; repo?: string; mode?: string }
-): RunResult & { repo: string; srsSource: string; tasks: number } {
+): RunResult & { repo: string; srsSource: string; srsDigest?: string; tasks: number } {
   const repo = ensureProductRepo(opts.repo);
   const usePlanner = !opts.tasks;
   const graph = devGraph(usePlanner) as ReturnType<typeof devGraph>;
 
   let srsSource = 'provided';
+  let srsDigest: string | undefined;
   if (usePlanner) {
     let srs = opts.srs?.trim();
     if (!srs) {
-      const prev = path.join(repo, 'formalization', 'srs.md');
-      if (!existsSync(prev)) {
-        throw new Error('SRS_MISSING: сначала запустите Formalization Desk (артефакта formalization/srs.md нет) или передайте srs/tasks явно');
-      }
-      srs = readFileSync(prev, 'utf8');
-      srsSource = 'formalization/srs.md';
+      const upstream = readUpstreamArtifact(db, repo, 'formalization/srs.md', 'SRS_MISSING');
+      srs = upstream.text;
+      srsSource = upstream.source;
+      srsDigest = upstream.digest;
     }
     if (srs.includes('\uFFFD')) {
       throw new Error('SRS_NOT_UTF8: SRS содержит символы \uFFFD — исправьте кодировку');
@@ -522,6 +627,7 @@ export function startDevelopment(
     ...result,
     repo,
     srsSource,
+    srsDigest,
     tasks: usePlanner ? 0 : (opts.tasks ?? []).length,
   };
 }
@@ -533,17 +639,16 @@ export function startDevelopment(
 export function startFormalization(
   db: Database.Database,
   opts: { brief?: string; repo?: string; mode?: string }
-): RunResult & { repo: string; briefSource: string } {
+): RunResult & { repo: string; briefSource: string; briefDigest?: string } {
   const repo = ensureProductRepo(opts.repo);
   let brief = opts.brief?.trim();
   let briefSource = 'provided';
+  let briefDigest: string | undefined;
   if (!brief) {
-    const prev = path.join(repo, 'discovery', 'brief.md');
-    if (!existsSync(prev)) {
-      throw new Error('BRIEF_MISSING: сначала запустите Discovery Desk (артефакта discovery/brief.md нет) или передайте brief явно');
-    }
-    brief = readFileSync(prev, 'utf8');
-    briefSource = 'discovery/brief.md';
+    const upstream = readUpstreamArtifact(db, repo, 'discovery/brief.md', 'BRIEF_MISSING');
+    brief = upstream.text;
+    briefSource = upstream.source;
+    briefDigest = upstream.digest;
   }
   if (brief.includes('\uFFFD')) {
     throw new Error('BRIEF_NOT_UTF8: бриф содержит символы \uFFFD — исправьте кодировку');
@@ -557,5 +662,5 @@ export function startFormalization(
   }
   graph.nodes.artifact.parameters.repo = repo;
   const result = runGraph(db, JSON.stringify(graph), { name: 'formalization' });
-  return { ...result, repo, briefSource };
+  return { ...result, repo, briefSource, briefDigest };
 }

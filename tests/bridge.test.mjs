@@ -66,6 +66,61 @@ test('event tail and desk static are served on the same origin', async () => {
   assert.ok(index.includes('Saga5 Desk'), 'desk index.html served');
 });
 
+test('board, artifacts and the operator write live on the same origin', async () => {
+  const board = await (await fetch(`${base}/api/board`)).json();
+  const cards = board.columns.flatMap((column) => column.cards);
+  assert.ok(cards.some((card) => card.node_id === 'brain' && card.status === 'done'),
+    'the finished activity is a done card');
+  assert.deepEqual(
+    board.columns.map((column) => column.status),
+    ['todo', 'in_progress', 'review', 'blocked', 'done', 'failed']
+  );
+
+  const artifacts = await (await fetch(`${base}/api/artifacts`)).json();
+  const artifact = artifacts.find((entry) => entry.node_id === 'brain');
+  assert.ok(artifact, 'the worker material is an artifact');
+
+  const query = new URLSearchParams({
+    run_id: artifact.run_id,
+    node: artifact.node_id,
+    digest: artifact.digest,
+    index: '0',
+  });
+  const body = await (await fetch(`${base}/api/artifact?${query}`)).json();
+  assert.equal(typeof body.body, 'string');
+
+  // The operator write path: a successful run is sealed and says so.
+  const rejected = await fetch(`${base}/api/runs/${artifact.run_id}/nodes/brain/submit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'подмена', note: 'должно быть отказано' }),
+  });
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /RUN_SEALED/);
+});
+
+test('one start path: POST /api/workshops/:name/start validates declared inputs', async () => {
+  const list = await (await fetch(`${base}/api/workshops`)).json();
+  assert.ok(list.discovery.inputs.some((field) => field.name === 'idea'),
+    'the workshop declares its own form');
+
+  const missing = await fetch(`${base}/api/workshops/discovery/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: {} }),
+  });
+  assert.equal(missing.status, 400);
+  assert.match((await missing.json()).error, /INPUT_REQUIRED/);
+
+  const unknown = await fetch(`${base}/api/workshops/nosuch/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ input: { idea: 'x' } }),
+  });
+  assert.equal(unknown.status, 400);
+  assert.match((await unknown.json()).error, /WORKSHOP_UNKNOWN/);
+});
+
 after(() => {
   bridge.stop();
   rmSync(dir, { recursive: true, force: true });
