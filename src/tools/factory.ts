@@ -3,7 +3,7 @@ import { getDb } from '../db.js';
 import { getRun, tailEvents } from '../events.js';
 import { runGraph } from '../kernel/runner.js';
 import { completeHumanTask, resolveHumanGate } from '../operator.js';
-import { DEFAULT_WORKSHOPS, startDiscovery, startFormalization, startProduct } from '../workshops.js';
+import { DEFAULT_WORKSHOPS, startDevelopment, startDiscovery, startFormalization, startProduct } from '../workshops.js';
 import type { ToolHandler } from '../types.js';
 
 // M0 kernel surface: read-only observation of runs and the event log.
@@ -103,6 +103,24 @@ export const definitions: Tool[] = [
     },
   },
   {
+    name: 'development_start',
+    description: 'Development Desk: SRS → task plan → parallel implementation (one worker per task) → review → integration commit. opts.tasks bypasses the planner.',
+    annotations: { title: 'Development Start', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        srs: { type: 'string', description: 'SRS text (default: latest formalization/srs.md)' },
+        tasks: {
+          type: 'array',
+          description: 'Explicit task list [{id,title,description,files}] — bypasses the planner',
+          items: { type: 'object' },
+        },
+        repo: { type: 'string', description: 'Product repo path' },
+        mode: { type: 'string', enum: ['opencode', 'echo'], description: 'Worker mode (echo = scripted, for tests)' },
+      },
+    },
+  },
+  {
     name: 'workshops_list',
     description: 'List default workshops (declarative desk graphs) and their shapes.',
     annotations: { title: 'Workshops', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -195,6 +213,16 @@ export const handlers: Record<string, ToolHandler> = {
     const db = getDb();
     return startProduct(db, {
       idea: String(args.idea ?? ''),
+      repo: args.repo === undefined ? undefined : String(args.repo),
+      mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+    });
+  },
+
+  development_start: (args) => {
+    const db = getDb();
+    return startDevelopment(db, {
+      srs: args.srs === undefined ? undefined : String(args.srs),
+      tasks: Array.isArray(args.tasks) ? (args.tasks as Array<Record<string, unknown>>) : undefined,
       repo: args.repo === undefined ? undefined : String(args.repo),
       mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
     });

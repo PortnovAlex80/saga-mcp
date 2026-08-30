@@ -9,7 +9,7 @@ import type { Item } from './node-types.js';
 //   across executions and repairs; the revision identity depends only on the
 //   member digest SET — which execution produced what is provenance.
 
-export type CheckOp = 'nonempty' | 'contains' | 'regex' | 'not_contains';
+export type CheckOp = 'nonempty' | 'contains' | 'not_contains' | 'regex' | 'json_array';
 
 export interface GateCheck {
   op: CheckOp;
@@ -17,6 +17,8 @@ export interface GateCheck {
   field?: string;
   value?: string;
   pattern?: string;
+  /** json_array: minimum element count. */
+  min_count?: number;
 }
 
 export interface GateParameters {
@@ -55,6 +57,26 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
       // fails acceptance with a typed reason instead of sneaking through.
       ok = !items.some((item) => fieldValue(item, field).includes(String(check.value ?? '')));
       if (!ok) reasons.push(`not_contains:${field} — forbidden value present`);
+    } else if (check.op === 'json_array') {
+      // Structural validation for planner outputs: the field must BE a JSON
+      // array with at least min_count elements. Malformed JSON fails the gate
+      // with a typed reason that travels back into the planner's repair.
+      const min = typeof check.min_count === 'number' ? check.min_count : 1;
+      let ok = false;
+      let reason = `json_array:${field} — not a JSON array of ≥${min}`;
+      for (const item of items) {
+        try {
+          const parsed = JSON.parse(fieldValue(item, field)) as unknown;
+          if (Array.isArray(parsed) && parsed.length >= min) {
+            ok = true;
+            break;
+          }
+          reason = `json_array:${field} — array has ${Array.isArray(parsed) ? parsed.length : 'non-array'} elements, need ≥${min}`;
+        } catch {
+          reason = `json_array:${field} — not valid JSON`;
+        }
+      }
+      if (!ok) reasons.push(reason);
     } else if (check.op === 'regex') {
       let re: RegExp;
       try {

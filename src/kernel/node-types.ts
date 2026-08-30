@@ -27,6 +27,13 @@ export interface NodeType {
   /** Gates are decided by the kernel itself (deterministic checks over the
    *  sealed desk revision): accepted | repair_required | human_required. */
   gate?: boolean;
+  /** Split: kernel reads input items and spawns one child node per item
+   *  (nodes.spawned event, atomic) — dynamic fan-out, the conveyor model's
+   *  "materialize the complete sealed set before admission". */
+  splitter?: boolean;
+  /** Join: runnable only after ALL children of the upstream split completed;
+   *  its inputs are the union of the children's desks. */
+  joiner?: boolean;
   execute(ctx: NodeExecuteContext): Item[];
 }
 
@@ -130,7 +137,56 @@ const effect: NodeType = {
   },
 };
 
-const REGISTRY: Record<string, NodeType> = { emit, template, collect, fail, llm, gate, effect };
+// Deterministic JSON extractor: each input item's text must be a JSON array;
+// every element becomes one output item. Planner outputs become task items.
+const jsonParse: NodeType = {
+  name: 'json_parse',
+  execute: (ctx) => {
+    const out: Item[] = [];
+    for (const item of ctx.inputs) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(String(item.json.text ?? ''));
+      } catch (error) {
+        throw new Error(`JSON_PARSE_FAILED: ${(error as Error).message}`);
+      }
+      if (!Array.isArray(parsed)) {
+        throw new Error('JSON_PARSE_FAILED: expected a JSON array');
+      }
+      for (const element of parsed) {
+        out.push({
+          json:
+            element && typeof element === 'object' && !Array.isArray(element)
+              ? (element as Record<string, unknown>)
+              : { value: element },
+        });
+      }
+    }
+    return out;
+  },
+};
+
+// Dynamic fan-out: parameters.child = {type, parameters}. The kernel spawns
+// one child per input item (see runner's executeSplit).
+const split: NodeType = {
+  name: 'split',
+  splitter: true,
+  execute: () => {
+    throw new Error('SPLITTER_MISUSE: split nodes are executed by the kernel');
+  },
+};
+
+// Fan-in: waits for all spawned siblings; inputs = union of children desks.
+const join: NodeType = {
+  name: 'join',
+  joiner: true,
+  execute: (ctx) => [{ json: { items: ctx.inputs.map((item) => item.json) } }],
+};
+
+const REGISTRY: Record<string, NodeType> = {
+  emit, template, collect, fail, llm, gate, effect,
+  json_parse: jsonParse, split, join,
+};
 
 export function getNodeType(name: string): NodeType {
   const type = REGISTRY[name];

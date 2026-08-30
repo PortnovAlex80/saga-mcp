@@ -78,12 +78,19 @@ interface OperatorAction {
   seq: number;
 }
 
+interface SpawnedChild {
+  id: string;
+  item: Item;
+}
+
 interface Fold {
   nodes: Map<string, NodeFold>;
   execs: Map<string, ExecFold>;
   gates: Map<string, GateFold>;
   openRepairs: Map<string, OpenRepair>;
   operator: Map<string, OperatorAction>;
+  /** Dynamic fan-out: parent split → spawned children (topology from the log). */
+  spawned: Map<string, SpawnedChild[]>;
 }
 
 type Payload = Record<string, unknown>;
@@ -95,6 +102,7 @@ function foldRun(db: Database.Database, runId: string): Fold {
     gates: new Map(),
     openRepairs: new Map(),
     operator: new Map(),
+    spawned: new Map(),
   };
   const nodeOf = (name: string): NodeFold => {
     let n = fold.nodes.get(name);
@@ -165,6 +173,11 @@ function foldRun(db: Database.Database, runId: string): Fold {
           attempt: Number(payload.attempt),
         });
         break;
+      case 'nodes.spawned': {
+        const children = (payload.children ?? []) as Array<{ id: string; item: Item }>;
+        fold.spawned.set(String(payload.parent), children.map((c) => ({ id: c.id, item: c.item })));
+        break;
+      }
       case 'operator.resolved':
         fold.operator.set(String(payload.node_id), {
           decision: payload.decision as 'approve' | 'reject',
@@ -178,15 +191,77 @@ function foldRun(db: Database.Database, runId: string): Fold {
 
 type RunnableKind = 'scripted' | 'activity' | 'gate' | 'operator-reject';
 
+/** Runtime node view: static graph + children spawned by splits (from the
+ *  event log). This is the run's EFFECTIVE topology — dynamic fan-out is
+ *  data in the log, not a graph mutation. */
+interface EffectiveNode {
+  nodeId: string;
+  type: string;
+  parameters: Record<string, unknown>;
+  inbound: string[];
+  /** join nodes: the split parent whose children gate this node. */
+  joinParent?: string;
+}
+
+function effectiveNodes(graph: ParsedGraph, fold: Fold): Map<string, EffectiveNode> {
+  const result = new Map<string, EffectiveNode>();
+  for (const nodeId of graph.order) {
+    const node = graph.nodes[nodeId];
+    result.set(nodeId, {
+      nodeId,
+      type: node.type,
+      parameters: (node.parameters ?? {}) as Record<string, unknown>,
+      inbound: graph.inbound[nodeId],
+    });
+  }
+  for (const [parent, children] of fold.spawned) {
+    const splitDef = graph.nodes[parent];
+    const childDef = ((splitDef?.parameters ?? {}) as { child?: { type?: string; parameters?: Record<string, unknown> } }).child;
+    if (!childDef?.type) continue;
+    for (const child of children) {
+      result.set(child.id, {
+        nodeId: child.id,
+        type: childDef.type,
+        parameters: childDef.parameters ?? {},
+        inbound: [parent],
+      });
+    }
+    // join's effective inbound = the spawned children (it waits for THEM)
+    for (const nodeId of graph.order) {
+      if (graph.inbound[nodeId].includes(parent) && getNodeType(graph.nodes[nodeId].type).joiner) {
+        const entry = result.get(nodeId);
+        if (entry) entry.joinParent = parent;
+      }
+    }
+  }
+  return result;
+}
+
+function splitChildrenCompleted(fold: Fold, parent: string): boolean {
+  const children = fold.spawned.get(parent);
+  if (!children || children.length === 0) return false;
+  return children.every((child) => fold.nodes.get(child.id)?.status === 'completed');
+}
+
 function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: RunnableKind } | undefined {
+  const effective = effectiveNodes(graph, fold);
   for (const name of graph.order) {
     const nodeFold = fold.nodes.get(name);
     if (nodeFold?.status === 'failed') continue;
-    if (!graph.inbound[name].every((upstream) => fold.nodes.get(upstream)?.status === 'completed')) {
+    const def = effective.get(name);
+    if (!def) continue;
+    const type = getNodeType(def.type);
+
+    if (type.joiner) {
+      const parent = def.joinParent;
+      if (!parent || !splitChildrenCompleted(fold, parent)) continue;
+      if (!graph.inbound[name].every((upstream) => fold.nodes.get(upstream)?.status === 'completed')) continue;
+      return { nodeId: name, kind: 'scripted' };
+    }
+
+    if (!def.inbound.every((upstream) => fold.nodes.get(upstream)?.status === 'completed')) {
       continue;
     }
-    const type = getNodeType(graph.nodes[name].type);
-
     if (type.gate) {
       const gate = fold.gates.get(name);
       if (!gate) return { nodeId: name, kind: 'gate' };
@@ -222,16 +297,37 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
     }
     return { nodeId: name, kind: 'scripted' };
   }
+
+  // spawned children: schedule as activities once their split completed
+  for (const [parent, children] of fold.spawned) {
+    if (fold.nodes.get(parent)?.status !== 'completed') continue;
+    const splitDef = graph.nodes[parent];
+    const childDef = ((splitDef?.parameters ?? {}) as { child?: { type?: string } }).child;
+    if (!childDef?.type) continue;
+    const childType = getNodeType(childDef.type);
+    for (const child of children) {
+      const childFold = fold.nodes.get(child.id);
+      if (childFold?.status) continue; // settled (completed or failed)
+      if (childType.activity) {
+        const exec = fold.execs.get(child.id);
+        if (!exec) return { nodeId: child.id, kind: 'activity' };
+        continue; // in flight or awaiting sweep decision
+      }
+      return { nodeId: child.id, kind: 'scripted' };
+    }
+  }
   return undefined;
 }
 
 /** success → every node completed; error → the rest is stranded downstream of
  *  failures; waiting → an activity is in flight, a repair cycle is spinning,
- *  or a gate waits for the operator. */
+ *  or a gate waits for the operator. Spawned children count as nodes: a
+ *  failed child strands the join (its effective inbound). */
 function analyzeTerminal(graph: ParsedGraph, fold: Fold): 'success' | 'error' | 'waiting' {
+  const effective = effectiveNodes(graph, fold);
   const failed = new Set<string>();
   let allCompleted = true;
-  for (const name of graph.order) {
+  for (const name of effective.keys()) {
     const nodeFold = fold.nodes.get(name);
     if (!nodeFold?.status) {
       allCompleted = false;
@@ -240,20 +336,38 @@ function analyzeTerminal(graph: ParsedGraph, fold: Fold): 'success' | 'error' | 
       failed.add(name);
     }
   }
+  // join nodes are complete only when all spawned siblings completed
+  for (const name of effective.keys()) {
+    const entry = effective.get(name);
+    if (entry?.joinParent && !splitChildrenCompleted(fold, entry.joinParent)) allCompleted = false;
+  }
   if (allCompleted) return 'success';
+
+  const inboundOf = (name: string): string[] => {
+    const def = effective.get(name);
+    if (def?.joinParent) return (fold.spawned.get(def.joinParent) ?? []).map((c) => c.id);
+    return def?.inbound ?? [];
+  };
 
   const stranded = new Set<string>();
   const stack = [...failed];
   while (stack.length > 0) {
     const current = stack.pop()!;
-    for (const name of graph.order) {
-      if (!stranded.has(name) && graph.inbound[name].includes(current)) {
+    for (const name of effective.keys()) {
+      if (!stranded.has(name) && inboundOf(name).includes(current)) {
         stranded.add(name);
         stack.push(name);
       }
     }
   }
-  for (const name of graph.order) {
+  for (const name of effective.keys()) {
+    const entry = effective.get(name)!;
+    if (entry.joinParent && !splitChildrenCompleted(fold, entry.joinParent) && !stranded.has(name)) {
+      // join waiting on unfinished children: waiting unless a child failed
+      const children = fold.spawned.get(entry.joinParent) ?? [];
+      if (children.some((c) => fold.nodes.get(c.id)?.status === 'failed')) continue;
+      return 'waiting';
+    }
     if (!fold.nodes.get(name)?.status && !stranded.has(name)) return 'waiting';
   }
   return 'error';
@@ -277,25 +391,32 @@ function activityPolicy(parameters: Record<string, unknown>): {
 }
 
 /** Executes one scripted node: scheduled+started+material+completed in ONE
- *  transaction; failures are re-logged honestly. */
+ *  transaction; failures are re-logged honestly. Works for static nodes AND
+ *  spawned children / join (effective defs). */
 function executeNode(
   db: Database.Database,
   runId: string,
   graph: ParsedGraph,
   nodeId: string,
-  fold: Fold
+  fold: Fold,
+  effective?: Map<string, EffectiveNode>
 ): void {
-  const node = graph.nodes[nodeId];
-  const upstream = graph.inbound[nodeId];
-  const inputDigests = upstream.flatMap((name) => fold.nodes.get(name)!.desk);
+  const def = effective?.get(nodeId);
+  const nodeType = def?.type ?? graph.nodes[nodeId]?.type;
+  const parameters = def?.parameters ?? (graph.nodes[nodeId]?.parameters ?? {}) as Record<string, unknown>;
+  // join reads the spawned children's desks, not the split's own output
+  const upstream = def?.joinParent
+    ? (fold.spawned.get(def.joinParent) ?? []).map((c) => c.id)
+    : (def?.inbound ?? graph.inbound[nodeId] ?? []);
+  const inputDigests = upstream.flatMap((name) => fold.nodes.get(name)?.desk ?? []);
   try {
     db.transaction(() => {
       appendEventInTx(db, runId, 'node.scheduled', { node_id: nodeId });
       appendEventInTx(db, runId, 'node.started', { node_id: nodeId, input_digests: inputDigests });
-      const inputs = upstream.flatMap((name) => readDeskItems(db, fold.nodes.get(name)!.desk));
-      const outputs = getNodeType(node.type).execute({
+      const inputs = upstream.flatMap((name) => readDeskItems(db, fold.nodes.get(name)?.desk ?? []));
+      const outputs = getNodeType(nodeType).execute({
         nodeId,
-        parameters: node.parameters ?? {},
+        parameters,
         inputs,
       });
       const { digest } = putMaterial(db, 'node_output', JSON.stringify(outputs));
@@ -319,6 +440,48 @@ function executeNode(
       appendEventInTx(db, runId, 'node.failed', { node_id: nodeId, error: message });
     }).immediate();
   }
+}
+
+/** Dynamic fan-out: one transaction spawns the COMPLETE child set (the
+ *  conveyor model's "materialize and seal the workplace set atomically")
+ *  and completes the split with its input items. */
+function executeSplit(
+  db: Database.Database,
+  runId: string,
+  graph: ParsedGraph,
+  nodeId: string,
+  fold: Fold
+): void {
+  const upstream = graph.inbound[nodeId];
+  const items = upstream.flatMap((name) => readDeskItems(db, fold.nodes.get(name)!.desk));
+  const childDef = ((graph.nodes[nodeId].parameters ?? {}) as {
+    child?: { type: string; parameters?: Record<string, unknown> };
+  }).child;
+  if (!childDef?.type) {
+    throw new Error(`SPLIT_MISCONFIGURED: node '${nodeId}' has no parameters.child`);
+  }
+  if (items.length === 0) {
+    throw new Error('SPLIT_EMPTY: nothing to fan out (upstream desk is empty)');
+  }
+  db.transaction(() => {
+    appendEventInTx(db, runId, 'node.scheduled', { node_id: nodeId });
+    appendEventInTx(db, runId, 'node.started', { node_id: nodeId, items_count: items.length });
+    const children = items.map((item, index) => ({
+      id: `${nodeId}::${index + 1}`,
+      item,
+    }));
+    appendEventInTx(db, runId, 'nodes.spawned', {
+      parent: nodeId,
+      children: children.map((c) => ({ id: c.id, item: c.item })),
+      child_type: childDef.type,
+    });
+    const { digest } = putMaterial(db, 'node_output', JSON.stringify(items));
+    appendEventInTx(db, runId, 'node.completed', {
+      node_id: nodeId,
+      output_digest: digest,
+      items_count: items.length,
+    });
+  }).immediate();
 }
 
 /** Kernel decision over the sealed desk revision. One transaction commits:
@@ -400,8 +563,13 @@ function drive(
     if (opts.maxNodeExecutions !== undefined && executed >= opts.maxNodeExecutions) {
       return { runId, status: 'running', executed, stop: 'budget' };
     }
-    if (runnable.kind === 'scripted') {
-      executeNode(db, runId, graph, runnable.nodeId, fold);
+    const effective = effectiveNodes(graph, fold);
+    const def = effective.get(runnable.nodeId);
+    const nodeType = getNodeType(def?.type ?? graph.nodes[runnable.nodeId]?.type ?? 'fail');
+    if (nodeType.splitter) {
+      executeSplit(db, runId, graph, runnable.nodeId, fold);
+    } else if (runnable.kind === 'scripted') {
+      executeNode(db, runId, graph, runnable.nodeId, fold, effective);
     } else if (runnable.kind === 'gate' || runnable.kind === 'operator-reject') {
       if (runnable.kind === 'operator-reject') {
         db.transaction(() => {
@@ -414,7 +582,7 @@ function drive(
         executeGate(db, runId, graph, runnable.nodeId, fold);
       }
     } else {
-      const policy = activityPolicy(graph.nodes[runnable.nodeId].parameters ?? {});
+      const policy = activityPolicy(def?.parameters ?? graph.nodes[runnable.nodeId]?.parameters ?? {});
       const prior = fold.execs.get(runnable.nodeId)?.attempt ?? 0;
       scheduleExecution(db, runId, runnable.nodeId, prior + 1, policy);
     }
@@ -477,7 +645,8 @@ function ensureWorkflow(db: Database.Database, name: string, graphJson: string):
 }
 
 /** Worker-side input read: the ACCUMULATED desk of each upstream node (all
- *  completed materials, event order) — exact digests, never 'latest' (ADR-053). */
+ *  completed materials, event order) — exact digests, never 'latest' (ADR-053).
+ *  Spawned children receive their OWN item (from nodes.spawned), not a desk. */
 export function readActivityInputs(
   db: Database.Database,
   runId: string,
@@ -487,11 +656,17 @@ export function readActivityInputs(
   const graph = parseGraph(graphJson);
   const desks = new Map<string, string[]>();
   for (const event of getEvents(db, runId)) {
-    if (event.type !== 'node.completed') continue;
-    const payload = JSON.parse(event.payload_json) as { node_id: string; output_digest: string };
-    const desk = desks.get(payload.node_id) ?? [];
-    if (!desk.includes(payload.output_digest)) desk.push(payload.output_digest);
-    desks.set(payload.node_id, desk);
+    if (event.type === 'node.completed') {
+      const payload = JSON.parse(event.payload_json) as { node_id: string; output_digest: string };
+      const desk = desks.get(payload.node_id) ?? [];
+      if (!desk.includes(payload.output_digest)) desk.push(payload.output_digest);
+      desks.set(payload.node_id, desk);
+    }
+    if (event.type === 'nodes.spawned') {
+      const payload = JSON.parse(event.payload_json) as { children: Array<{ id: string; item: Item }> };
+      const mine = payload.children.find((c) => c.id === nodeId);
+      if (mine) return [mine.item];
+    }
   }
   return graph.inbound[nodeId].flatMap((upstream) => {
     const digests = desks.get(upstream);

@@ -37,6 +37,8 @@ interface LlmParameters {
   branch?: string;
   message?: string;
   files?: Array<{ path: string; field?: string }>;
+  /** git effect: build the file set from input items ({path, content}). */
+  files_from?: 'items';
   effect_key?: string;
 }
 
@@ -69,6 +71,14 @@ interface DesiredFile {
 }
 
 function desiredFiles(params: LlmParameters, inputs: Item[]): DesiredFile[] {
+  // Dynamic mode: each input item IS a file ({path, content}) — used by the
+  // integration effect after the development fan-out.
+  if (params.files_from === 'items') {
+    return inputs
+      .map((item) => ({ path: String(item.json.path ?? ''), content: String(item.json.content ?? '') }))
+      .filter((f) => f.path.length > 0)
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  }
   return (params.files ?? [])
     .map((f) => ({
       path: f.path,

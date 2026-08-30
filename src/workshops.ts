@@ -244,6 +244,143 @@ const PRODUCT_GRAPH = {
   },
 };
 
+const IMPLEMENT_PROMPT = [
+  'Ты — разработчик. Реализуй ОДНУ задачу веб-приложения (статические файлы: html/css/js, без сборки и серверного кода).',
+  'Верни ТОЛЬКО JSON-массив файлов: [{"path":"...","content":"..."}] — без markdown, без пояснений.',
+  'Файлы должны быть полными и рабочими (не заглушки).',
+  '',
+  'Задача: {{title}}.',
+  'Описание: {{description}}.',
+  'Файлы: {{files}}.',
+].join('\n');
+
+const REVIEW_PROMPT = [
+  'Ты — ревьюер кода. Проверь файлы на: полноту реализации (не заглушки),',
+  'синтаксическую корректность, соответствие заявленным файлам задачи.',
+  'Первая строка ответа строго: VERDICT: APPROVED или VERDICT: REJECT.',
+  'При REJECT после вердикта перечисли конкретные причины.',
+  '',
+  '{{path}}:',
+  '```',
+  '{{content}}',
+  '```',
+].join('\n');
+
+function devGraph(usePlanner: boolean) {
+  const head = usePlanner
+    ? {
+        input: { type: 'emit', parameters: { items: [{ json: { text: '', source_ref: 'formalization/srs.md' } }] } },
+        plan: {
+          type: 'llm',
+          parameters: {
+            mode: 'opencode',
+            model: MODEL,
+            prompt: [
+              'Ты — техлид (цех Development). По SRS составь план НЕЗАВИСИМЫХ задач разработки.',
+              'Верни ТОЛЬКО JSON-массив, каждый элемент:',
+              '{"id":"T1","title":"...","description":"...","files":["index.html","styles.css"]}.',
+              'Правила: 2–4 задачи; задачи независимы (каждая осмысленна сама по себе);',
+              'файлы не пересекаются между задачами; без markdown — только JSON.',
+              '',
+              'SRS:',
+              '{{text}}',
+            ].join('\n'),
+          },
+        },
+        plan_gate: {
+          type: 'gate',
+          parameters: {
+            checks: [
+              { op: 'not_contains', field: 'text', value: '\uFFFD' },
+              { op: 'json_array', field: 'text', min_count: 2 },
+            ],
+            repair_target: 'plan',
+            max_repairs: 2,
+            title: 'Development: план задач не является JSON-массивом (≥2)',
+          },
+        },
+        parse: { type: 'json_parse', parameters: {} },
+      }
+    : {
+        input: { type: 'emit', parameters: { items: [] } }, // tasks injected at start
+      };
+
+  const headConnections = usePlanner
+    ? {
+        input: { main: [[{ node: 'plan' }]] },
+        plan: { main: [[{ node: 'plan_gate' }]] },
+        plan_gate: { main: [[{ node: 'parse' }]] },
+        parse: { main: [[{ node: 'tasks' }]] },
+      }
+    : {
+        input: { main: [[{ node: 'tasks' }]] },
+      };
+
+  return {
+    nodes: {
+      ...head,
+      // Динамический fan-out: по одному дочернему llm-воркеру на задачу.
+      tasks: {
+        type: 'split',
+        parameters: {
+          child: {
+            type: 'llm',
+            parameters: {
+              mode: 'opencode',
+              model: MODEL,
+              prompt: IMPLEMENT_PROMPT,
+              timeouts: { heartbeat_s: 15, start_to_close_s: 240, schedule_to_start_s: 60 },
+              retry: { max_attempts: 2 },
+            },
+          },
+        },
+      },
+      merge: { type: 'join', parameters: {} },
+      parse_files: { type: 'json_parse', parameters: {} },
+      review: {
+        type: 'llm',
+        parameters: {
+          mode: 'opencode',
+          model: MODEL,
+          prompt: REVIEW_PROMPT,
+          timeouts: { heartbeat_s: 15, start_to_close_s: 240 },
+          retry: { max_attempts: 2 },
+        },
+      },
+      review_gate: {
+        type: 'gate',
+        parameters: {
+          checks: [
+            { op: 'not_contains', field: 'text', value: '\uFFFD' },
+            { op: 'contains', field: 'text', value: 'VERDICT: APPROVED' },
+          ],
+          repair_target: 'review',
+          max_repairs: 2,
+          title: 'Development: ревью не одобрило код',
+        },
+      },
+      integrate: {
+        type: 'effect',
+        parameters: {
+          mode: 'git',
+          repo: '', // injected at start time
+          branch: 'main',
+          message: 'development: implement tasks',
+          files_from: 'items',
+        },
+      },
+    },
+    connections: {
+      ...headConnections,
+      tasks: { main: [[{ node: 'merge' }]] },
+      merge: { main: [[{ node: 'parse_files' }]] },
+      parse_files: { main: [[{ node: 'review' }]] },
+      review: { main: [[{ node: 'review_gate' }]] },
+      review_gate: { main: [[{ node: 'integrate' }]] },
+    },
+  };
+}
+
 export const DEFAULT_WORKSHOPS: Record<string, { title: string; graph: unknown }> = {
   product: {
     title: 'Продуктовый конвейер — Discovery + Formalization единым прогоном',
@@ -256,6 +393,10 @@ export const DEFAULT_WORKSHOPS: Record<string, { title: string; graph: unknown }
   formalization: {
     title: 'Formalization Desk — бриф → SRS (FR/NFR/UC/AC)',
     graph: FORMALIZATION_GRAPH,
+  },
+  development: {
+    title: 'Development Desk — SRS → задачи → параллельная реализация → ревью → интеграция',
+    graph: devGraph(true),
   },
 };
 
@@ -330,6 +471,59 @@ export function startProduct(
   graph.nodes.publish_srs.parameters.repo = repo;
   const result = runGraph(db, JSON.stringify(graph), { name: 'product' });
   return { ...result, repo };
+}
+
+/** The Development Desk: SRS → task plan → PARALLEL implementation (dynamic
+ *  fan-out, one worker per task) → review → integration commit.
+ *  opts.tasks bypasses the planner (operator override / tests). */
+export function startDevelopment(
+  db: Database.Database,
+  opts: { srs?: string; tasks?: Array<Record<string, unknown>>; repo?: string; mode?: string }
+): RunResult & { repo: string; srsSource: string; tasks: number } {
+  const repo = ensureProductRepo(opts.repo);
+  const usePlanner = !opts.tasks;
+  const graph = devGraph(usePlanner) as ReturnType<typeof devGraph>;
+
+  let srsSource = 'provided';
+  if (usePlanner) {
+    let srs = opts.srs?.trim();
+    if (!srs) {
+      const prev = path.join(repo, 'formalization', 'srs.md');
+      if (!existsSync(prev)) {
+        throw new Error('SRS_MISSING: сначала запустите Formalization Desk (артефакта formalization/srs.md нет) или передайте srs/tasks явно');
+      }
+      srs = readFileSync(prev, 'utf8');
+      srsSource = 'formalization/srs.md';
+    }
+    if (srs.includes('\uFFFD')) {
+      throw new Error('SRS_NOT_UTF8: SRS содержит символы \uFFFD — исправьте кодировку');
+    }
+    (graph.nodes.input.parameters as { items: Array<{ json: Record<string, unknown> }> }).items[0].json.text = srs;
+  } else {
+    const tasks = opts.tasks ?? [];
+    if (tasks.length === 0) throw new Error('TASKS_REQUIRED: передайте непустой массив задач');
+    (graph.nodes.input.parameters as { items: unknown[] }).items = tasks;
+    srsSource = 'manual-tasks';
+  }
+
+  if (opts.mode) {
+    const m = opts.mode as 'echo' | 'opencode' | 'api';
+    const planner = (graph.nodes as Record<string, { parameters?: Record<string, unknown> }>).plan;
+    if (planner?.parameters) planner.parameters.mode = m;
+    ((graph.nodes.tasks.parameters as { child: { parameters: Record<string, unknown> } }).child.parameters).mode = m;
+    (graph.nodes.review.parameters as Record<string, unknown>).mode = m;
+  }
+  (graph.nodes.integrate.parameters as Record<string, unknown>).repo = repo;
+
+  const result = runGraph(db, JSON.stringify(graph), {
+    name: usePlanner ? 'development' : 'development-manual',
+  });
+  return {
+    ...result,
+    repo,
+    srsSource,
+    tasks: usePlanner ? 0 : (opts.tasks ?? []).length,
+  };
 }
 
 /** The Formalization Desk: takes the ACCEPTED discovery artifact (or an

@@ -20,7 +20,7 @@ import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { handlers as factoryHandlers } from './tools/factory.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
-import { DEFAULT_WORKSHOPS, ensureProductRepo, startDiscovery, startFormalization, startProduct } from './workshops.js';
+import { DEFAULT_WORKSHOPS, ensureProductRepo, startDevelopment, startDiscovery, startFormalization, startProduct } from './workshops.js';
 
 const WORKER_PATH = fileURLToPath(new URL('./runtime/worker.js', import.meta.url));
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,6 +171,18 @@ export function startBridge(opts: {
         if (!args.idea) throw new Error('idea is required: напишите идею в стартовый узел');
         sendJson(res, 200, startDiscovery(db, {
           idea: String(args.idea),
+          repo: args.repo === undefined ? undefined : String(args.repo),
+          mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
+        }));
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/development') {
+        const args = JSON.parse(await readBody(req)) as {
+          srs?: string; tasks?: Array<Record<string, unknown>>; repo?: string; mode?: string;
+        };
+        sendJson(res, 200, startDevelopment(db, {
+          srs: args.srs === undefined ? undefined : String(args.srs),
+          tasks: Array.isArray(args.tasks) ? args.tasks : undefined,
           repo: args.repo === undefined ? undefined : String(args.repo),
           mode: args.mode === undefined ? undefined : (String(args.mode) as 'echo' | 'opencode'),
         }));
