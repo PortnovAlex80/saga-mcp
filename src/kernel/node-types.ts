@@ -176,11 +176,12 @@ const split: NodeType = {
   },
 };
 
-// Fan-in: waits for all spawned siblings; inputs = union of children desks.
+// Fan-in: waits for all spawned siblings; passes through the UNION of the
+// children's desks (flattened items, desk order) unchanged.
 const join: NodeType = {
   name: 'join',
   joiner: true,
-  execute: (ctx) => [{ json: { items: ctx.inputs.map((item) => item.json) } }],
+  execute: (ctx) => ctx.inputs,
 };
 
 const REGISTRY: Record<string, NodeType> = {

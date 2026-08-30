@@ -21,7 +21,7 @@ import {
   failActivity,
   type EffectSettlement,
 } from '../kernel/executions.js';
-import { readActivityInputs } from '../kernel/runner.js';
+import { readActivityInputs, nodeDefinitionFor } from '../kernel/runner.js';
 import { renderTemplateString, type Item } from '../kernel/node-types.js';
 
 interface LlmParameters {
@@ -300,10 +300,14 @@ async function main(): Promise<void> {
   const workflow = db
     .prepare('SELECT graph_json FROM workflows WHERE id = ?')
     .get(run.workflow_id) as { graph_json: string };
-  const graph = JSON.parse(workflow.graph_json) as {
-    nodes: Record<string, { parameters?: LlmParameters }>;
-  };
-  const params: LlmParameters = graph.nodes[execution.node_id]?.parameters ?? {};
+  // Static nodes live in the declared graph; spawned children (split fan-out)
+  // resolve their definition through the kernel — from the event log.
+  const params: LlmParameters = nodeDefinitionFor(
+    db,
+    execution.run_id,
+    workflow.graph_json,
+    execution.node_id
+  ).parameters as LlmParameters;
   const timeouts = JSON.parse(execution.timeouts_json) as { heartbeat_s: number; start_to_close_s?: number };
 
   // Crash simulation: hard-exit without settling — the sweep must reap this.

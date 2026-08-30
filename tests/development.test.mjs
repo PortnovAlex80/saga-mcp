@@ -4,7 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const dir = mkdtempSync(path.join(tmpdir(), 'saga5-split-'));
 process.env.DB_PATH = path.join(dir, 'split.db');
 const repo = path.join(dir, 'repo');
+mkdirSync(repo, { recursive: true });
 spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
 spawnSync('git', ['config', 'user.email', 'dev@test'], { cwd: repo });
 spawnSync('git', ['config', 'user.name', 'dev'], { cwd: repo });
@@ -20,6 +21,7 @@ const { getDb, closeDb } = await import('../dist/db.js');
 const { runGraph, resumeRun } = await import('../dist/kernel/runner.js');
 const { getEvents } = await import('../dist/events.js');
 const { claimExecution } = await import('../dist/kernel/executions.js');
+const { sweep } = await import('../dist/kernel/sweep.js');
 const { evaluateChecks } = await import('../dist/kernel/gate.js');
 const { startDevelopment, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
 
@@ -35,7 +37,7 @@ async function driveWithRealWorkers(runId) {
       .filter((e) => e.type === 'execution.scheduled')
       .map((e) => JSON.parse(e.payload_json).execution_id)
       .filter((id) => !claimed.has(id));
-    if (queued.length === 0) throw new Error('no queued execution and no progress');
+    if (queued.length === 0) { sweep(db); continue; } // typed wait for the retry decision (the bridge does this)
     // параллельно: claim + spawn всех незанятых
     await Promise.all(queued.map(async (id) => {
       const claim = claimExecution(db, id);
@@ -135,6 +137,7 @@ test('development desk registry shape + honest failures', () => {
 
   // no SRS artifact in a fresh repo → honest failure
   const fresh = path.join(dir, 'fresh');
+  mkdirSync(fresh, { recursive: true });
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: fresh });
   assert.throws(() => startDevelopment(db, { repo: fresh }), /SRS_MISSING/);
   assert.throws(() => startDevelopment(db, { repo: fresh, tasks: [] }), /TASKS_REQUIRED/);

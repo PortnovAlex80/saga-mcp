@@ -18,7 +18,7 @@ import { getRun, tailEvents } from './events.js';
 import { runGraph, resumeRun } from './kernel/runner.js';
 import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
-import { handlers as factoryHandlers } from './tools/factory.js';
+import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate } from './operator.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startDevelopment, startDiscovery, startFormalization, startProduct } from './workshops.js';
 
@@ -49,10 +49,7 @@ export function startBridge(opts: {
   const children = new Set<ChildProcess>();
 
   function spawnPending(): void {
-    const queued = db
-      .prepare("SELECT id FROM executions WHERE status = 'new' ORDER BY created_at LIMIT ?")
-      .all(opts.maxWorkers ?? 4) as Array<{ id: string }>;
-    for (const { id } of queued) {
+    for (const id of queuedExecutionIds(db, (opts.maxWorkers ?? 4) - children.size)) {
       if (children.size >= (opts.maxWorkers ?? 4)) break;
       const claim = claimExecution(db, id);
       if (!claim) continue;
@@ -67,15 +64,9 @@ export function startBridge(opts: {
   }
 
   function projectHumanGates(): void {
-    const decisions = db
-      .prepare(
-        "SELECT run_id, payload_json FROM events WHERE type = 'gate.decided' AND payload_json LIKE '%\"verdict\":\"human_required\"%'"
-      )
-      .all() as Array<{ run_id: string; payload_json: string }>;
-    for (const row of decisions) {
-      const payload = JSON.parse(row.payload_json) as { node_id: string; revision_digest?: string };
+    for (const decision of humanGateDecisions(db)) {
       try {
-        ensureHumanTask(db, row.run_id, payload.node_id, payload.revision_digest);
+        ensureHumanTask(db, decision.run_id, decision.node_id, decision.revision_digest);
       } catch {
         // projection only — never break the sweep on board failures
       }
@@ -222,7 +213,7 @@ export function startBridge(opts: {
         return;
       }
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/state') {
-        sendJson(res, 200, factoryHandlers.factory_status({}));
+        sendJson(res, 200, kernelStats(db));
         return;
       }
       if (req.method === 'GET' || req.method === 'HEAD') {

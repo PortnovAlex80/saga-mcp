@@ -253,6 +253,7 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
     const type = getNodeType(def.type);
 
     if (type.joiner) {
+      if (nodeFold?.status) continue; // already settled (completed/failed)
       const parent = def.joinParent;
       if (!parent || !splitChildrenCompleted(fold, parent)) continue;
       if (!graph.inbound[name].every((upstream) => fold.nodes.get(upstream)?.status === 'completed')) continue;
@@ -631,6 +632,36 @@ export function resumeRun(
     throw new Error(`WORKFLOW_NOT_FOUND: ${run.workflow_id}`);
   }
   return drive(db, runId, parseGraph(workflow.graph_json), opts);
+}
+
+/** Resolves a node's runtime definition: static graph nodes OR children
+ *  spawned by a split (their def lives in the parent's parameters.child,
+ *  recorded in the nodes.spawned event). */
+export function nodeDefinitionFor(
+  db: Database.Database,
+  runId: string,
+  graphJson: string,
+  nodeId: string
+): { type: string; parameters: Record<string, unknown> } {
+  const graph = parseGraph(graphJson);
+  const staticNode = graph.nodes[nodeId];
+  if (staticNode) {
+    return { type: staticNode.type, parameters: (staticNode.parameters ?? {}) as Record<string, unknown> };
+  }
+  for (const event of getEvents(db, runId)) {
+    if (event.type !== 'nodes.spawned') continue;
+    const payload = JSON.parse(event.payload_json) as {
+      parent: string;
+      children: Array<{ id: string }>;
+    };
+    if (!payload.children.some((c) => c.id === nodeId)) continue;
+    const parentDef = graph.nodes[payload.parent];
+    const childDef = ((parentDef?.parameters ?? {}) as {
+      child?: { type: string; parameters?: Record<string, unknown> };
+    }).child;
+    if (childDef) return { type: childDef.type, parameters: childDef.parameters ?? {} };
+  }
+  throw new Error(`NODE_DEFINITION_NOT_FOUND: ${nodeId}`);
 }
 
 /** Workflow registration with content dedup: same name + same bytes → same
