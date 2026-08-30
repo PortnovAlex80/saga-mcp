@@ -1,0 +1,180 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #14141b;
+  color: #e6e6ef;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.desk-header {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 16px;
+  background: #1b1b26;
+  border-bottom: 1px solid #2a2a38;
+}
+.desk-header span { color: #8b8ba3; font-size: 13px; }
+
+.desk {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.palette {
+  width: 170px;
+  padding: 12px;
+  background: #1b1b26;
+  border-right: 1px solid #2a2a38;
+}
+.palette h2, .inspector h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8b8ba3;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: #23232f;
+  border: 1px solid #2f2f40;
+  border-radius: 8px;
+  cursor: grab;
+  user-select: none;
+}
+.palette-item:hover { border-color: #4a4a66; }
+
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.hint { color: #6d6d85; font-size: 12px; }
+
+.desk-canvas { flex: 1; min-width: 0; }
+
+.inspector {
+  width: 300px;
+  padding: 12px;
+  background: #1b1b26;
+  border-left: 1px solid #2a2a38;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inspector textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #14141b;
+  color: #dcdce8;
+  border: 1px solid #2f2f40;
+  border-radius: 6px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  padding: 8px;
+  resize: vertical;
+}
+.inspector label { font-size: 12px; color: #8b8ba3; }
+
+.tag {
+  background: #2a2a3d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: #a5b4fc;
+}
+
+.row { display: flex; gap: 8px; margin-top: 4px; }
+
+button {
+  background: #2a2a3d;
+  color: #e6e6ef;
+  border: 1px solid #3a3a52;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+button:hover:not(:disabled) { background: #353550; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.danger { border-color: #7f3b3b; color: #fca5a5; }
+
+.error { color: #fca5a5; font-size: 12px; }
+
+/* Кастомный узел */
+.saga-node {
+  min-width: 170px;
+  background: #20202c;
+  border: 1px solid #34344a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.saga-node.selected { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.35); }
+
+.saga-node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  color: #101018;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.saga-node-body {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #9a9ab2;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* JSON-ящик */
+.drawer {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 16, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.drawer-card {
+  width: 620px;
+  max-height: 84vh;
+  overflow: auto;
+  background: #1b1b26;
+  border: 1px solid #2f2f40;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.drawer-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: #14141b;
+  color: #dcdce8;
+  border: 1px solid #2f2f40;
+  border-radius: 6px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  padding: 8px;
+}

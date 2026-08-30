@@ -186,6 +186,30 @@ factory_start(order)
 
 ---
 
+## 2.7 Фронт: стол (W1/W2) и панель оператора (A)
+
+Решение оператора (2026-08-30): фронт будет, в стиле n8n-канваса. Стек —
+**React + React Flow (`@xyflow/react`, MIT)**; референс-клоны рядом:
+`Development/xyflow` (само React Flow — компоненты из
+`packages/react/src/additional-components`: MiniMap, Controls, Background,
+NodeToolbar, Panel) и `Development/n8n-src` (приёмы UX).
+
+Ключ к дешевизне: `graph_json` сознательно повторяет модель данных n8n
+(`nodes` + `connections` adjacency + `type`/`typeVersion` + `parameters`),
+поэтому канвас и ядро говорят на одном языке без адаптеров.
+
+| Фаза | Что | Статус |
+|---|---|---|
+| W1 | `desk/` — Vite + React Flow: палитра узлов, связывание, инспектор JSON-параметров, сериализация `graph_json` (позиции узлов хранятся в `graph_json.position`, ядро их игнорирует) | скелет готов, коммит W1 |
+| W2 | Run-кнопка → HTTP-мост к ядру (`factory_start`); overlay прогона: fold событий журнала раскрашивает узлы; клик по узлу → его события/материал | после M2 |
+| A | Панель оператора: канбан доски, список ранов, очередь `human_required` | после M3 |
+| — | НЕ делаем: collaborative-редактирование, expression-язык n8n, credentials-менеджмент | — |
+
+Правило границы: фронт — только читатель/редактор деклараций и проекций
+(`workflows.graph_json`, журнал, доска). Авторитет остаётся в SQLite-журнале.
+
+---
+
 ## 3. Чего сознательно НЕ переносим из saga4
 
 | Артефакт saga4 | Почему нет в saga5 |
