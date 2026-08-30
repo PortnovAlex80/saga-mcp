@@ -424,3 +424,33 @@ summary { cursor: pointer; }
 .md h4, .md h5 { font-size: 13px; margin: 12px 0 4px; color: #a5a5c0; }
 .md code { background: #23232f; border-radius: 4px; padding: 1px 4px; font-size: 12px; }
 .md ul { padding-left: 20px; }
+
+/* ─────────── Светофор карточки ─────────── */
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  margin-right: 6px;
+  vertical-align: baseline;
+  background: #6d6d85;
+  box-shadow: 0 0 0 2px rgba(109, 109, 133, 0.18);
+}
+.dot-todo       { background: #94a3b8; box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.16); }
+.dot-in_progress{ background: #4ade80; box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.28); animation: dotpulse 1.3s ease-in-out infinite; }
+.dot-review     { background: #fbbf24; box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25); }
+.dot-blocked    { background: #fbbf24; box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3); animation: dotpulse 1.8s ease-in-out infinite; }
+.dot-done       { background: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.22); }
+.dot-failed     { background: #f87171; box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.28); }
+
+@keyframes dotpulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.25); }
+  50%      { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.05); }
+}
+
+/* карточка «в работе» подсвечивается целиком — её видно, не вглядываясь */
+.col-in_progress .card { background: #23302b; }
+.col-blocked .card { background: #2e2a20; }
+.column h3 > span:first-child { display: inline-flex; align-items: center; }
+.st-badge .dot { margin-right: 5px; }

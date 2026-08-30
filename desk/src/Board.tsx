@@ -19,6 +19,19 @@ const TYPE_GLYPH: Record<string, string> = {
   gate: '⚖', effect: '⚡', split: '⑃', join: '⑂', json_parse: '{ }',
 };
 
+/** Светофор карточки: зелёный — идёт/принято, жёлтый — нужно внимание,
+ *  красный — отказ. Пульсирует то, что происходит ПРЯМО СЕЙЧАС или ждёт
+ *  человека. Подсказка — словами, чтобы цвет не был единственным носителем
+ *  смысла. */
+const DOT_TITLE: Record<CardStatus, string> = {
+  todo: 'в очереди — ждёт своей очереди на исполнение',
+  in_progress: 'в работе прямо сейчас',
+  review: 'на доработке — гейт вернул материал',
+  blocked: 'ждёт решения оператора',
+  done: 'принято гейтом',
+  failed: 'отказ',
+};
+
 function relative(iso: string): string {
   const delta = (Date.now() - Date.parse(`${iso.replace(' ', 'T')}Z`)) / 1000;
   if (!Number.isFinite(delta)) return iso;
@@ -154,7 +167,12 @@ export function Board({ onOpenArtifacts }: Props) {
         {data?.columns.map((column) => (
           <section key={column.status} className={`column col-${column.status}`}>
             <h3>
-              {COLUMN_TITLES[column.status]}
+              <span>
+                {(column.status === 'in_progress' || column.status === 'blocked') && column.cards.length > 0 && (
+                  <span className={`dot dot-${column.status}`} />
+                )}
+                {COLUMN_TITLES[column.status]}
+              </span>
               <span className="count">{column.cards.length}</span>
             </h3>
             <div className="column-body">
@@ -165,6 +183,7 @@ export function Board({ onOpenArtifacts }: Props) {
                   onClick={() => setSelected(card)}
                 >
                   <header>
+                    <span className={`dot dot-${card.status}`} title={DOT_TITLE[card.status]} />
                     <span className="glyph">{TYPE_GLYPH[card.node_type] ?? '•'}</span>
                     <b>{card.title}</b>
                   </header>
@@ -201,7 +220,10 @@ export function Board({ onOpenArtifacts }: Props) {
               <span className="tag">{selected.node_type}</span>
               <span className="tag ghost">{selected.workflow}</span>
               <span className="tag ghost">run {selected.run_id.slice(0, 8)}</span>
-              <span className={`st-badge st-${selected.status}`}>{COLUMN_TITLES[selected.status]}</span>
+              <span className={`st-badge st-${selected.status}`}>
+                <span className={`dot dot-${selected.status}`} title={DOT_TITLE[selected.status]} />
+                {COLUMN_TITLES[selected.status]}
+              </span>
             </p>
             {selected.verdict && <p>вердикт гейта: <b>{selected.verdict}</b></p>}
             {selected.reasons.length > 0 && (
