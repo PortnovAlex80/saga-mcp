@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 import { appendEvent, appendEventInTx, getRun } from './events.js';
 import { putMaterial } from './materials.js';
 import { nodeDefinitionFor, resumeRun, type RunResult } from './kernel/runner.js';
-import { runGraphJson } from './kernel/projection.js';
+import { projectRun, runGraphJson } from './kernel/projection.js';
 import type { Item } from './kernel/node-types.js';
 import type { EventRow } from './types.js';
 
@@ -55,10 +55,23 @@ export function retryNode(
   }
   nodeDefinitionFor(db, runId, runGraphJson(db, runId), nodeId);
 
+  // «Повтори» значит ПЕРЕДЕЛАЙ, а не «добавь ещё одну попытку»: материал,
+  // ради замены которого оператор нажал повтор, уходит со стола. Иначе он
+  // остаётся лежать рядом с новым и продолжает валить приёмку — накопление
+  // стола придумано для взаимодополняющих попыток, а не для брака.
+  const stale = projectRun(db, runId).nodes.find((node) => node.node_id === nodeId)?.desk ?? [];
+
   db.transaction(() => {
     if (run.status === 'error' || run.status === 'crashed') {
       appendEventInTx(db, runId, 'operator.reopened', { from_status: run.status, note: note ?? null });
       db.prepare("UPDATE runs SET status = 'running', updated_at = datetime('now') WHERE id = ?").run(runId);
+    }
+    if (stale.length > 0) {
+      appendEventInTx(db, runId, 'material.superseded', {
+        node_id: nodeId,
+        members: stale.map((digest) => ({ node: nodeId, digest })),
+        reasons: [`оператор отправил узел на переделку${note ? `: ${note}` : ''}`],
+      });
     }
     appendEventInTx(db, runId, 'operator.retry_requested', { node_id: nodeId, note: note ?? null });
   }).immediate();

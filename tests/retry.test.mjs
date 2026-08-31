@@ -293,6 +293,8 @@ test('повтор ребёнка веера доходит до соедине�
   const texts = JSON.parse(getMaterial(db, mergeDigest).content).map((item) => item.json.text);
   assert.ok(texts.some((t) => t.includes('черновик tasks::1')), 'работа соседа не пропала');
   assert.ok(texts.some((t) => t === 'ГОТОВО tasks::2'), 'переделанная работа попала в союз');
+  assert.ok(!texts.includes('черновик tasks::2'),
+    '«повтори» значит ПЕРЕДЕЛАЙ: забракованный материал ушёл со стола, а не лёг рядом');
 });
 
 test('повторять успешный прогон нечего', () => {
