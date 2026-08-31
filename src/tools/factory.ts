@@ -7,7 +7,7 @@ import { runGraph } from '../kernel/runner.js';
 import { kernelStats } from '../kernel/stats.js';
 import { liveWorkers, recentWorkers, workerStats } from '../kernel/workers.js';
 import { readLimits, writeLimits } from '../limits.js';
-import { completeHumanTask, resolveHumanGate, submitOperatorMaterial } from '../operator.js';
+import { completeHumanTask, resolveHumanGate, retryNode, submitOperatorMaterial } from '../operator.js';
 import { BUILTIN_SKILLS } from '../skills.js';
 import { DEFAULT_WORKSHOPS, startWorkshop } from '../workshops.js';
 import type { Item } from '../kernel/node-types.js';
@@ -142,6 +142,20 @@ export const definitions: Tool[] = [
         text: { type: 'string', description: 'Edited body — shorthand for items [{json:{text}}]' },
         items: { type: 'array', description: 'Full item array, when the shape is not plain text', items: { type: 'object' } },
         note: { type: 'string', description: 'Why the operator wrote this material' },
+      },
+      required: ['run_id', 'node'],
+    },
+  },
+  {
+    name: 'operator_retry',
+    description: 'Retry one node whose attempts were exhausted by a condition that no longer holds (network outage, provider down). Records operator.retry_requested, reopens a terminal run explicitly and gives the node a fresh attempt budget. Accepted upstream material is untouched.',
+    annotations: { title: 'Operator Retry', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        run_id: { type: 'string' },
+        node: { type: 'string', description: 'Node to run again' },
+        note: { type: 'string', description: 'Why the world changed' },
       },
       required: ['run_id', 'node'],
     },
@@ -304,6 +318,14 @@ export const handlers: Record<string, ToolHandler> = {
       args.note === undefined ? undefined : String(args.note)
     );
   },
+
+  operator_retry: (args) =>
+    retryNode(
+      getDb(),
+      String(args.run_id ?? ''),
+      String(args.node ?? ''),
+      args.note === undefined ? undefined : String(args.note)
+    ),
 
   workers_view: (args) => {
     const db = getDb();

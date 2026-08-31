@@ -23,7 +23,7 @@ import { claimExecution } from './kernel/executions.js';
 import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
 import { liveWorkers, recentWorkers, workerStats } from './kernel/workers.js';
 import { limitsStamp, readLimits, writeLimits, type Limits } from './limits.js';
-import { completeHumanTask, ensureHumanTask, resolveHumanGate, submitOperatorMaterial } from './operator.js';
+import { completeHumanTask, ensureHumanTask, resolveHumanGate, retryNode, submitOperatorMaterial } from './operator.js';
 import { BUILTIN_SKILLS } from './skills.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
 import type { Item } from './kernel/node-types.js';
@@ -245,6 +245,12 @@ export function startBridge(opts: {
           url.searchParams.get('digest') ?? '',
           Number(url.searchParams.get('index') ?? 0) || 0
         ));
+        return;
+      }
+      const retryMatch = url.pathname.match(/^\/api\/runs\/([\w-]+)\/nodes\/([^/]+)\/retry$/);
+      if (req.method === 'POST' && retryMatch) {
+        const args = JSON.parse((await readBody(req)) || '{}') as { note?: string };
+        sendJson(res, 200, retryNode(db, retryMatch[1], decodeURIComponent(retryMatch[2]), args.note));
         return;
       }
       const submitMatch = url.pathname.match(/^\/api\/runs\/([\w-]+)\/nodes\/([^/]+)\/submit$/);

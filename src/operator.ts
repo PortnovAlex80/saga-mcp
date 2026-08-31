@@ -32,6 +32,40 @@ export function resolveHumanGate(
   });
 }
 
+/** «Мир изменился — попробуй снова».
+ *
+ *  Исчерпанный бюджет ретраев — утверждение о ВОРКЕРЕ, а не о мире: пропала
+ *  сеть, лежал провайдер, был занят диск. Автоматически отличить такое от
+ *  настоящего дефекта нельзя (именно на этой развилке saga4 отрастила
+ *  супервайзеров), поэтому решение остаётся за человеком — но стоит одну
+ *  команду и записывается durable-событием, а не правкой состояния руками.
+ *
+ *  Терминальный прогон переоткрывается явно; узел получает свежий бюджет
+ *  автоматических попыток. Материал, уже принятый выше по конвейеру, не
+ *  трогается — повторяется ровно один узел. */
+export function retryNode(
+  db: Database.Database,
+  runId: string,
+  nodeId: string,
+  note?: string
+): OperatorSubmission['run'] {
+  const run = getRun(db, runId);
+  if (run.status === 'success') {
+    throw new Error('RUN_SEALED: успешный прогон повторять нечего — запустите новый');
+  }
+  nodeDefinitionFor(db, runId, runGraphJson(db, runId), nodeId);
+
+  db.transaction(() => {
+    if (run.status === 'error' || run.status === 'crashed') {
+      appendEventInTx(db, runId, 'operator.reopened', { from_status: run.status, note: note ?? null });
+      db.prepare("UPDATE runs SET status = 'running', updated_at = datetime('now') WHERE id = ?").run(runId);
+    }
+    appendEventInTx(db, runId, 'operator.retry_requested', { node_id: nodeId, note: note ?? null });
+  }).immediate();
+
+  return resumeRun(db, runId);
+}
+
 export interface OperatorSubmission {
   run_id: string;
   node_id: string;

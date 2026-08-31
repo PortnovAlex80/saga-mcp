@@ -69,10 +69,14 @@ interface GateFold {
 }
 
 interface OpenRepair {
+  /** Узел-гейт, потребовавший доработку, либо OPERATOR_RETRY. */
   gate: string;
   seq: number;
   attempt: number;
 }
+
+/** Псевдо-«гейт» для операторского повтора: доработку запросил человек. */
+export const OPERATOR_RETRY = '@operator';
 
 interface OperatorAction {
   decision: 'approve' | 'reject';
@@ -183,6 +187,18 @@ function foldRun(db: Database.Database, runId: string): Fold {
           attempt: Number(payload.attempt),
         });
         break;
+      case 'operator.retry_requested': {
+        // «Мир изменился — попробуй снова». Исчерпанный бюджет ретраев — это
+        // утверждение о ВОРКЕРЕ, а не о мире: сеть пропала, диск был занят,
+        // провайдер лежал. Оператор снимает отказ явным событием, и узел
+        // снова становится исполнимым — с новым бюджетом попыток.
+        const target = String(payload.node_id);
+        const n = nodeOf(target);
+        n.status = undefined;
+        n.lastSeq = event.seq;
+        fold.openRepairs.set(target, { gate: OPERATOR_RETRY, seq: event.seq, attempt: 0 });
+        break;
+      }
       case 'nodes.spawned': {
         const children = (payload.children ?? []) as Array<{ id: string; item: Item }>;
         fold.spawned.set(String(payload.parent), children.map((c) => ({ id: c.id, item: c.item })));
@@ -613,6 +629,11 @@ function drive(
     } else {
       const policy = activityPolicy(def?.parameters ?? graph.nodes[runnable.nodeId]?.parameters ?? {});
       const prior = fold.execs.get(runnable.nodeId)?.attempt ?? 0;
+      // Операторский повтор даёт узлу СВЕЖИЙ бюджет автоматических ретраев:
+      // прошлые попытки сгорели на условии, которого больше нет.
+      if (fold.openRepairs.get(runnable.nodeId)?.gate === OPERATOR_RETRY) {
+        policy.retry = { ...policy.retry, max_attempts: prior + policy.retry.max_attempts };
+      }
       scheduleExecution(db, runId, runnable.nodeId, prior + 1, policy);
     }
     executed++;

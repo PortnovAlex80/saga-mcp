@@ -117,6 +117,20 @@ export function Board({ onOpenArtifacts }: Props) {
     [selected, note, refresh]
   );
 
+  const retry = useCallback(async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api.retry(selected.run_id, selected.node_id, note || undefined);
+      setNote('');
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, note, refresh]);
+
   const startWorkshop = useCallback(async () => {
     if (!wsName) return;
     setBusy(true);
@@ -243,6 +257,19 @@ export function Board({ onOpenArtifacts }: Props) {
                   Или откройте вкладку «Артефакты» и отредактируйте материал — гейт
                   пересмотрит правку по тем же критериям.
                 </p>
+              </div>
+            )}
+            {selected.status === 'failed' && (
+              <div className="decision">
+                <p className="hint">
+                  Попытки исчерпаны. Если причина была внешней — не было сети, лежал
+                  провайдер — повторите узел: принятый выше материал не тронут.
+                </p>
+                <textarea rows={2} value={note} placeholder="что изменилось…"
+                  onChange={(e) => setNote(e.target.value)} />
+                <div className="row">
+                  <button disabled={busy} onClick={retry}>↻ Повторить узел</button>
+                </div>
               </div>
             )}
             <div className="row">

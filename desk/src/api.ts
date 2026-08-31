@@ -202,6 +202,15 @@ export const api = {
       }
     ),
   resume: (runId: string) => json(`/api/runs/${runId}/resume`, { method: 'POST' }),
+  retry: (runId: string, node: string, note?: string) =>
+    json<{ status: string; stop: string }>(
+      `/api/runs/${runId}/nodes/${encodeURIComponent(node)}/retry`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note }),
+      }
+    ),
   workers: () => json<WorkersData>('/api/workers'),
   setLimits: (limits: Partial<Limits>) =>
     json<{ limits: Limits; hired: number }>('/api/limits', {
