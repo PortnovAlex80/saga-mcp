@@ -12,6 +12,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { request as httpRequest } from 'node:http';
 import path from 'node:path';
 import { getDb, closeDb } from '../db.js';
 import { getRun, getEvents } from '../events.js';
@@ -376,6 +377,37 @@ function followSignals(base: string, started: number, signal_: AbortSignal): voi
   })();
 }
 
+/** POST без таймаута.
+ *
+ *  `fetch` в Node построен на undici, у которого headersTimeout по умолчанию
+ *  300 секунд. Запрос к модели держит ответ до конца генерации, поэтому
+ *  реализация, думающая шесть минут, падала с «fetch failed» ровно на 305-й
+ *  секунде — поймано живьём на прогоне Элиты. Здесь таймаут задаёт ЯДРО
+ *  (start_to_close), а не транспорт. */
+function postJson(base: string, route: string, body: unknown): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(route, base);
+    const payload = Buffer.from(JSON.stringify(body), 'utf8');
+    const request = httpRequest(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length },
+      },
+      (response) => {
+        let text = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => { text += chunk; });
+        response.on('end', () => resolve({ status: response.statusCode ?? 0, text }));
+      }
+    );
+    request.on('error', reject);
+    request.end(payload);
+  });
+}
+
 interface OpencodeMessage {
   info?: { tokens?: Record<string, number>; cost?: number; error?: unknown; finish?: string };
   parts?: Array<{ type?: string; text?: string }>;
@@ -402,24 +434,18 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
   const killTimer = setTimeout(() => { abort.abort(); child.kill(); }, timeoutMs);
   try {
     followSignals(base, started, abort.signal);
-    const session = (await (await fetch(`${base}/session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-      signal: abort.signal,
-    })).json()) as { id?: string };
+    const created = await postJson(base, '/session', {});
+    const session = JSON.parse(created.text || '{}') as { id?: string };
     if (!session.id) throw new Error('OPENCODE_SESSION_FAILED: сервер не выдал сессию');
 
-    const response = await fetch(`${base}/session/${session.id}/message`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: { providerID, modelID }, parts: [{ type: 'text', text: prompt }] }),
-      signal: abort.signal,
+    const response = await postJson(base, `/session/${session.id}/message`, {
+      model: { providerID, modelID },
+      parts: [{ type: 'text', text: prompt }],
     });
-    if (!response.ok) {
-      throw new Error(`OPENCODE_HTTP_${response.status}: ${(await response.text()).slice(-400)}`);
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`OPENCODE_HTTP_${response.status}: ${response.text.slice(-400)}`);
     }
-    const message = (await response.json()) as OpencodeMessage;
+    const message = JSON.parse(response.text) as OpencodeMessage;
     if (message.info?.error) {
       throw new Error(`OPENCODE_ERROR: ${JSON.stringify(message.info.error).slice(0, 400)}`);
     }
