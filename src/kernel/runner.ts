@@ -279,10 +279,20 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
     const type = getNodeType(def.type);
 
     if (type.joiner) {
-      if (nodeFold?.status) continue; // already settled (completed/failed)
       const parent = def.joinParent;
       if (!parent || !splitChildrenCompleted(fold, parent)) continue;
       if (!graph.inbound[name].every((upstream) => fold.nodes.get(upstream)?.status === 'completed')) continue;
+      if (nodeFold?.status === 'completed') {
+        // Соединение УСТАРЕЛО: ребёнок веера доработал уже после того, как
+        // союз был собран. Без этого повтор ребёнка оставался незамеченным —
+        // он сдавал материал, а ниже по конвейеру никто об этом не узнавал.
+        const newer = (fold.spawned.get(parent) ?? []).some(
+          (child) => (fold.nodes.get(child.id)?.lastSeq ?? 0) > (nodeFold.lastSeq ?? 0)
+        );
+        if (!newer) continue;
+        return { nodeId: name, kind: 'scripted' };
+      }
+      if (nodeFold?.status) continue; // failed — сюда возвращает только оператор
       return { nodeId: name, kind: 'scripted' };
     }
 
@@ -301,12 +311,15 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
         if (operator && operator.seq > gate.decisionSeq) {
           return { nodeId: name, kind: operator.decision === 'reject' ? 'operator-reject' : 'gate' };
         }
-        // The operator may answer a human gate by REPAIRING the material
-        // instead of deciding: new material on the repair target is judged by
-        // the same criteria, no budget spent (the budget is already exhausted).
-        if (targetFold?.lastSeq !== undefined && targetFold.lastSeq > gate.decisionSeq) {
-          return { nodeId: name, kind: 'gate' };
-        }
+        // Человеческий гейт пересматривает решение, когда СТОЛ ИЗМЕНИЛСЯ —
+        // неважно, кто его изменил: оператор правкой артефакта, повтор
+        // упавшего узла или переисполненное соединение веера. Судят материал,
+        // а не автора: если под судом лежит другое, приговор устарел.
+        const deskChanged = [target, ...graph.inbound[name]].some((upstream) => {
+          const seq = fold.nodes.get(upstream)?.lastSeq;
+          return seq !== undefined && seq > gate.decisionSeq;
+        });
+        if (deskChanged) return { nodeId: name, kind: 'gate' };
         continue; // typed human wait
       }
       // repair_required: re-check once the repair target produced new material

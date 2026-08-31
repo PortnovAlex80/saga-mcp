@@ -226,6 +226,75 @@ test('опоздавший приговор не переголосовывае�
   );
 });
 
+test('повтор ребёнка веера доходит до соединения и до приёмки', async () => {
+  const { getMaterial } = await import('../dist/materials.js');
+  const graph = JSON.stringify({
+    nodes: {
+      plan: { type: 'emit', parameters: { items: [{ json: { title: 'T1' } }, { json: { title: 'T2' } }] } },
+      tasks: {
+        type: 'split',
+        parameters: {
+          child: {
+            type: 'llm',
+            parameters: {
+              mode: 'echo', prompt: 'делаю {{title}}',
+              timeouts: { heartbeat_s: 30, schedule_to_start_s: 60 },
+              retry: { max_attempts: 1 },
+            },
+          },
+        },
+      },
+      merge: { type: 'join', parameters: {} },
+      quality: {
+        type: 'gate',
+        parameters: { checks: [{ op: 'contains', field: 'text', value: 'ГОТОВО' }], max_repairs: 0 },
+      },
+    },
+    connections: {
+      plan: { main: [[{ node: 'tasks' }]] },
+      tasks: { main: [[{ node: 'merge' }]] },
+      merge: { main: [[{ node: 'quality' }]] },
+    },
+  });
+  const run = runGraph(db, graph, { name: 'fanout-refresh' });
+
+  // оба ребёнка сдают материал, который приёмку НЕ проходит
+  for (const child of ['tasks::1', 'tasks::2']) {
+    resumeRun(db, run.runId);
+    const exec = getEvents(db, run.runId)
+      .filter((e) => e.type === 'execution.scheduled')
+      .map((e) => JSON.parse(e.payload_json))
+      .find((p) => p.node_id === child && getExecution(db, p.execution_id).status === 'new');
+    const { lease } = claimExecution(db, exec.execution_id);
+    completeActivity(db, exec.execution_id, lease, [{ json: { text: `черновик ${child}` } }]);
+  }
+  resumeRun(db, run.runId);
+  assert.equal(cardFor(run.runId, 'quality').status, 'blocked', 'бюджет 0 → решает человек');
+
+  // оператор возвращает в работу ОДНОГО ребёнка, и тот сдаёт годный материал
+  retryNode(db, run.runId, 'tasks::2', 'переделай');
+  const retryExec = getEvents(db, run.runId)
+    .filter((e) => e.type === 'execution.scheduled')
+    .map((e) => JSON.parse(e.payload_json))
+    .at(-1);
+  assert.equal(retryExec.node_id, 'tasks::2');
+  const { lease } = claimExecution(db, retryExec.execution_id);
+  completeActivity(db, retryExec.execution_id, lease, [{ json: { text: 'ГОТОВО tasks::2' } }]);
+
+  const settled = resumeRun(db, run.runId);
+  assert.equal(settled.status, 'success', 'соединение пересобралось, приёмка пересмотрела решение');
+
+  // союз включает и старую работу соседа, и новую работу переделанного
+  const mergeDigest = getEvents(db, run.runId)
+    .filter((e) => e.type === 'node.completed')
+    .map((e) => JSON.parse(e.payload_json))
+    .filter((p) => p.node_id === 'merge')
+    .at(-1).output_digest;
+  const texts = JSON.parse(getMaterial(db, mergeDigest).content).map((item) => item.json.text);
+  assert.ok(texts.some((t) => t.includes('черновик tasks::1')), 'работа соседа не пропала');
+  assert.ok(texts.some((t) => t === 'ГОТОВО tasks::2'), 'переделанная работа попала в союз');
+});
+
 test('повторять успешный прогон нечего', () => {
   const runId = board(db, {}).runs.find((r) => r.status === 'success').run_id;
   assert.throws(() => retryNode(db, runId, 'brief'), /RUN_SEALED/);
