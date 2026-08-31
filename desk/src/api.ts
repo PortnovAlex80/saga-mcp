@@ -64,10 +64,41 @@ export interface WorkshopInput {
   placeholder?: string;
 }
 
+export interface GateCheckView {
+  op: string;
+  field?: string;
+  value?: string;
+  pattern?: string;
+  min_count?: number;
+}
+
+export interface SkillView {
+  title: string;
+  role: string;
+  instruction: string;
+  output?: string;
+  input_label?: string;
+  checks: GateCheckView[];
+}
+
+export interface DeskView {
+  id: string;
+  title: string;
+  skill?: string;
+  input: { kind: string; desk?: string; path?: string; field?: string };
+  fanout: boolean;
+  tools: Array<{ kind: string; path: string; label?: string }>;
+  hooks: { before?: Array<Record<string, unknown>>; after?: Array<Record<string, unknown>> };
+  checks?: GateCheckView[];
+  publish?: { path?: string; files_from?: string };
+}
+
 export interface WorkshopInfo {
   title: string;
   graph: unknown;
   inputs: WorkshopInput[];
+  desks: DeskView[];
+  shape: Array<{ node: string; type: string; next: string[] }>;
 }
 
 export interface Limits {
@@ -131,6 +162,7 @@ export const api = {
     return json<BoardData>(`/api/board?${query}`);
   },
   workshops: () => json<Record<string, WorkshopInfo>>('/api/workshops'),
+  skills: () => json<Record<string, SkillView>>('/api/skills'),
   startWorkshop: (name: string, input: Record<string, unknown>) =>
     json<{ runId: string; status: string }>(`/api/workshops/${name}/start`, {
       method: 'POST',

@@ -23,7 +23,7 @@ const { getEvents } = await import('../dist/events.js');
 const { claimExecution } = await import('../dist/kernel/executions.js');
 const { sweep } = await import('../dist/kernel/sweep.js');
 const { evaluateChecks } = await import('../dist/kernel/gate.js');
-const { startDevelopment, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
+const { startWorkshop, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
 
 const db = getDb();
 const WORKER = fileURLToPath(new URL('../dist/runtime/worker.js', import.meta.url));
@@ -128,19 +128,48 @@ test('split → parallel children → join → parse → dynamic git effect', as
   assert.equal(JSON.parse(eventsOf(run.runId, 'effect.receipted')[0].payload_json).outcome, 'applied');
 });
 
-test('development desk registry shape + honest failures', () => {
-  const nodes = DEFAULT_WORKSHOPS.development.graph.nodes;
-  assert.equal(nodes.tasks.type, 'split');
-  assert.equal(nodes.merge.type, 'join');
+test('development is compiled from desks and ends with a RUN, not a promise', () => {
+  const workshop = DEFAULT_WORKSHOPS.development;
+  assert.deepEqual(workshop.spec.desks.map((desk) => desk.id),
+    ['plan', 'implement', 'review', 'assemble', 'smoke']);
+
+  const nodes = workshop.graph.nodes;
+  assert.equal(nodes.implement_tasks.type, 'split');
+  assert.equal(nodes.implement_merge.type, 'join');
   assert.equal(nodes.review_gate.type, 'gate');
-  assert.equal(nodes.integrate.parameters.files_from, 'items');
+
+  // каждый воркер веера знает, что делают соседи — иначе сборка разъезжается
+  assert.equal(nodes.implement_pre2.type, 'siblings');
+
+  // кандидат проверяется ЗАПУСКОМ до публикации: команда судит временный
+  // каталог, а гейт пускает эффект только после её успеха
+  assert.equal(nodes.assemble_post2.type, 'command');
+  assert.equal(nodes.assemble_post2.parameters.workdir, 'items');
+  assert.ok(nodes.assemble_gate.parameters.checks.some((check) => check.op === 'command_ok'));
+
+  // публикуется СОБРАННЫЙ материал (команда — доказательство, а не материал):
+  // эффект зависит и от приёмки (порядок), и от разобранных файлов (содержимое)
+  assert.equal(nodes.assemble_publish.parameters.files_from, 'items');
+  const publishInbound = Object.entries(workshop.graph.connections)
+    .filter(([, conn]) => conn.main[0].some((target) => target.node === 'assemble_publish'))
+    .map(([from]) => from)
+    .sort();
+  assert.deepEqual(publishInbound, ['assemble_gate', 'assemble_post1']);
+
+  // последний стол — приёмка без модели: запускаем то, что реально легло в репо
+  assert.equal(nodes.smoke_post1.type, 'command');
+  assert.match(nodes.smoke_post1.parameters.run, /smoke-static/);
+  assert.equal(nodes.smoke_post1.parameters.workdir, undefined);
+  assert.deepEqual(nodes.smoke_gate.parameters.checks.map((check) => check.op), ['command_ok']);
+
+  // веер нельзя переделать автоматически — бюджет доработок нулевой
+  assert.equal(nodes.implement_gate.parameters.max_repairs, 0);
 
   // no SRS artifact in a fresh repo → honest failure
   const fresh = path.join(dir, 'fresh');
   mkdirSync(fresh, { recursive: true });
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: fresh });
-  assert.throws(() => startDevelopment(db, { repo: fresh }), /SRS_MISSING/);
-  assert.throws(() => startDevelopment(db, { repo: fresh, tasks: [] }), /TASKS_REQUIRED/);
+  assert.throws(() => startWorkshop(db, 'development', { repo: fresh }), /PLAN_MISSING/);
 });
 
 after(() => {

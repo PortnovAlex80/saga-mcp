@@ -8,6 +8,7 @@ import { kernelStats } from '../kernel/stats.js';
 import { liveWorkers, recentWorkers, workerStats } from '../kernel/workers.js';
 import { readLimits, writeLimits } from '../limits.js';
 import { completeHumanTask, resolveHumanGate, submitOperatorMaterial } from '../operator.js';
+import { BUILTIN_SKILLS } from '../skills.js';
 import { DEFAULT_WORKSHOPS, startWorkshop } from '../workshops.js';
 import type { Item } from '../kernel/node-types.js';
 import type { ToolHandler } from '../types.js';
@@ -78,6 +79,12 @@ export const definitions: Tool[] = [
     name: 'workshops_list',
     description: 'List default workshops (declarative desk graphs), their declared inputs and their shapes.',
     annotations: { title: 'Workshops', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'skills_list',
+    description: 'The skill library: role, instruction, output contract and the ACCEPTANCE CHECKS that belong to each skill (a brief means five sections — that is part of the word, not a workshop setting).',
+    annotations: { title: 'Skills', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -220,10 +227,41 @@ export const handlers: Record<string, ToolHandler> = {
     return Object.fromEntries(
       Object.entries(DEFAULT_WORKSHOPS).map(([name, w]) => [
         name,
-        { title: w.title, inputs: w.inputs, shape: shape(w.graph) },
+        {
+          title: w.title,
+          inputs: w.inputs,
+          // Цех — это СПИСОК СТОЛОВ; граф лишь его развёртка.
+          desks: w.spec.desks.map((desk) => ({
+            id: desk.id,
+            title: desk.title,
+            skill: desk.skill,
+            input: desk.input,
+            fanout: desk.fanout ?? false,
+            tools: desk.tools ?? [],
+            hooks: desk.hooks ?? {},
+            publish: desk.publish,
+          })),
+          shape: shape(w.graph),
+        },
       ])
     );
   },
+
+  skills_list: () =>
+    Object.fromEntries(
+      Object.entries(BUILTIN_SKILLS).map(([id, skill]) => [
+        id,
+        {
+          title: skill.title,
+          role: skill.role,
+          instruction: skill.instruction,
+          output: skill.output,
+          input_label: skill.input_label,
+          // Критерии приёмки принадлежат навыку, а не цеху.
+          checks: skill.checks,
+        },
+      ])
+    ),
 
   board_view: (args) => {
     const db = getDb();

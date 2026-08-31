@@ -19,7 +19,7 @@ const { getDb, closeDb } = await import('../dist/db.js');
 const { resumeRun } = await import('../dist/kernel/runner.js');
 const { getEvents } = await import('../dist/events.js');
 const { claimExecution } = await import('../dist/kernel/executions.js');
-const { startProduct, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
+const { startWorkshop, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
 
 const db = getDb();
 const WORKER = fileURLToPath(new URL('../dist/runtime/worker.js', import.meta.url));
@@ -56,11 +56,20 @@ test('product workshop is registered with both gates and two publications', () =
   assert.equal(nodes.srs_gate.type, 'gate');
   // эффекты публикуют по принятой ревизии, SRS читает бриф из того же стола
   const downstream = DEFAULT_WORKSHOPS.product.graph.connections.brief_gate.main[0].map((t) => t.node);
-  assert.deepEqual(downstream.sort(), ['publish_brief', 'srs']);
+  assert.deepEqual(downstream.sort(), ['brief_publish', 'srs']);
+
+  // цех — это СПИСОК СТОЛОВ, и оба стола те же самые, что в discovery и
+  // formalization: переиспользование, а не копия
+  assert.deepEqual(DEFAULT_WORKSHOPS.product.spec.desks.map((desk) => desk.id), ['brief', 'srs']);
+  assert.equal(
+    DEFAULT_WORKSHOPS.product.graph.nodes.brief.parameters.prompt,
+    DEFAULT_WORKSHOPS.discovery.graph.nodes.brief.parameters.prompt,
+    'один стол — один промпт во всех цехах'
+  );
 });
 
 test('unified conveyor: one run produces both artifacts through the desk', async () => {
-  const started = startProduct(db, {
+  const started = startWorkshop(db, 'product', {
     idea: 'Маркетплейс мастер-классов: кулинария, гончарное дело, живопись.',
     repo: productRepo,
     mode: 'echo',

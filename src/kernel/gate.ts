@@ -9,7 +9,7 @@ import type { Item } from './node-types.js';
 //   across executions and repairs; the revision identity depends only on the
 //   member digest SET — which execution produced what is provenance.
 
-export type CheckOp = 'nonempty' | 'contains' | 'not_contains' | 'regex' | 'json_array';
+export type CheckOp = 'nonempty' | 'contains' | 'not_contains' | 'regex' | 'json_array' | 'command_ok';
 
 export interface GateCheck {
   op: CheckOp;
@@ -77,6 +77,22 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
         }
       }
       if (!ok) reasons.push(reason);
+    } else if (check.op === 'command_ok') {
+      // Приёмка «программа запускается»: исход команды, а не обещание модели.
+      // Вывод команды попадает В ПРИЧИНУ отказа, поэтому доработка получает
+      // текст ошибки компилятора/теста, а не «что-то пошло не так».
+      const runs = items.filter((item) => item.json[field] !== undefined || item.json.exit_code !== undefined);
+      ok = runs.length > 0 && runs.every((item) => item.json[field] === true);
+      if (!ok) {
+        const failed = runs.find((item) => item.json[field] !== true);
+        const output = String(failed?.json.output ?? '').trim().slice(-800);
+        reasons.push(
+          runs.length === 0
+            ? 'command_ok — команда не выполнялась, исход неизвестен'
+            : `command_ok — «${String(failed?.json.command ?? 'команда')}» завершилась с кодом ` +
+              `${String(failed?.json.exit_code ?? '?')}:\n${output}`
+        );
+      }
     } else if (check.op === 'regex') {
       let re: RegExp;
       try {

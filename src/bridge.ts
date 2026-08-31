@@ -24,6 +24,7 @@ import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/st
 import { liveWorkers, recentWorkers, workerStats } from './kernel/workers.js';
 import { limitsStamp, readLimits, writeLimits, type Limits } from './limits.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate, submitOperatorMaterial } from './operator.js';
+import { BUILTIN_SKILLS } from './skills.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
 import type { Item } from './kernel/node-types.js';
 
@@ -274,7 +275,25 @@ export function startBridge(opts: {
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/workshops') {
-        sendJson(res, 200, DEFAULT_WORKSHOPS);
+        // Цех отдаётся и как СПИСОК СТОЛОВ (то, из чего он собран), и как граф
+        // (то, во что он развернулся): канвасу нужен граф, вкладке цехов — столы.
+        sendJson(res, 200, Object.fromEntries(
+          Object.entries(DEFAULT_WORKSHOPS).map(([name, workshop]) => [name, {
+            title: workshop.title,
+            inputs: workshop.inputs,
+            graph: workshop.graph,
+            desks: workshop.spec.desks,
+            shape: Object.entries(workshop.graph.nodes).map(([node, def]) => ({
+              node,
+              type: def.type,
+              next: (workshop.graph.connections[node]?.main?.[0] ?? []).map((target) => target.node),
+            })),
+          }])
+        ));
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/skills') {
+        sendJson(res, 200, BUILTIN_SKILLS);
         return;
       }
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/api/state') {

@@ -10,7 +10,8 @@
 // as the real API call, deterministic, no network.
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { getDb, closeDb } from '../db.js';
 import { getRun, getEvents } from '../events.js';
@@ -28,6 +29,14 @@ import { renderTemplateString, type Item } from '../kernel/node-types.js';
 interface LlmParameters {
   prompt?: string;
   mode?: 'echo' | 'api' | 'opencode' | 'git';
+  /** command node: declared command, product repo, budget. */
+  run?: string;
+  label?: string;
+  timeout_s?: number;
+  /** 'items' — судить КАНДИДАТА во временном каталоге, а не репозиторий. */
+  workdir?: 'items';
+  /** attach tool: accepted product artifacts pasted into the prompt. */
+  attach?: Array<{ path: string; label?: string }>;
   model?: string;
   system?: string;
   temperature?: number;
@@ -313,6 +322,85 @@ function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<
   });
 }
 
+/** Runs a DECLARED command in the product repository. The outcome — including
+ *  the output a failing test printed — becomes material, so the gate can
+ *  reject on evidence and the repair prompt can carry that evidence back. */
+function runCommand(
+  params: LlmParameters,
+  started: number,
+  inputs: Item[]
+): Promise<Item[]> {
+  const run = String(params.run ?? '').trim();
+  if (!run) throw new Error('COMMAND_MISSING: у узла command не задан parameters.run');
+  // `workdir: 'items'` проверяет КАНДИДАТА: входные items ({path, content})
+  // материализуются во временный каталог, и команда судит их, а не то, что уже
+  // лежит в репозитории. Так «публикуем только то, что запускается» становится
+  // выполнимым: приёмка проходит ДО эффекта.
+  let cwd = params.repo ?? '';
+  let scratch: string | undefined;
+  if (params.workdir === 'items') {
+    scratch = mkdtempSync(path.join(tmpdir(), 'saga5-candidate-'));
+    let written = 0;
+    for (const item of inputs) {
+      const filePath = typeof item.json.path === 'string' ? item.json.path : '';
+      if (!filePath) continue;
+      const full = path.join(scratch, filePath);
+      mkdirSync(path.dirname(full), { recursive: true });
+      writeFileSync(full, String(item.json.content ?? ''), 'utf8');
+      written++;
+    }
+    note(started, `кандидат разложен во временный каталог: ${written} файл(ов)`);
+    cwd = scratch;
+  }
+  if (!cwd || !existsSync(cwd)) throw new Error(`COMMAND_REPO_MISSING: '${cwd}'`);
+  const timeoutMs = Math.max(1, params.timeout_s ?? 120) * 1000;
+  note(started, `выполняю: ${run}`);
+
+  return new Promise((resolve) => {
+    const child = spawn(run, {
+      cwd,
+      shell: true,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    let killed = false;
+    child.stdout?.on('data', (chunk) => { output += chunk; });
+    child.stderr?.on('data', (chunk) => { output += chunk; });
+    const killTimer = setTimeout(() => { killed = true; child.kill(); }, timeoutMs);
+    const settle = (code: number | null, error?: string): void => {
+      clearTimeout(killTimer);
+      if (scratch) rmSync(scratch, { recursive: true, force: true });
+      const ok = !killed && code === 0;
+      note(started, ok ? 'команда прошла' : `команда не прошла (код ${code ?? '—'})`);
+      resolve([{
+        json: {
+          ok,
+          exit_code: code ?? -1,
+          command: params.label ?? run,
+          output: (killed ? `таймаут ${params.timeout_s ?? 120}s\n` : '') + (error ? `${error}\n` : '') + output.slice(-8000),
+        },
+      }]);
+    };
+    // Даже неудача — это МАТЕРИАЛ, а не отказ активности: гейт должен увидеть
+    // исход и вернуть его в доработку, а не отправить попытку в ретрай.
+    child.on('error', (error) => settle(-1, error.message));
+    child.on('exit', (code) => settle(code));
+  });
+}
+
+/** attach: принятые артефакты продукта, вложенные в промпт как контекст. */
+function attachments(params: LlmParameters): string {
+  const repo = params.repo ?? '';
+  let text = '';
+  for (const item of params.attach ?? []) {
+    const full = path.join(repo, item.path);
+    if (!existsSync(full)) continue;
+    text += `\n\n=== ${item.label ?? item.path} ===\n${readFileSync(full, 'utf8')}`;
+  }
+  return text;
+}
+
 function parseArgs(): string {
   const index = process.argv.indexOf('--execution');
   const id = index >= 0 ? process.argv[index + 1] : undefined;
@@ -389,12 +477,8 @@ async function main(): Promise<void> {
     .get(run.workflow_id) as { graph_json: string };
   // Static nodes live in the declared graph; spawned children (split fan-out)
   // resolve their definition through the kernel — from the event log.
-  const params: LlmParameters = nodeDefinitionFor(
-    db,
-    execution.run_id,
-    workflow.graph_json,
-    execution.node_id
-  ).parameters as LlmParameters;
+  const definition = nodeDefinitionFor(db, execution.run_id, workflow.graph_json, execution.node_id);
+  const params: LlmParameters = definition.parameters as LlmParameters;
   const timeouts = JSON.parse(execution.timeouts_json) as { heartbeat_s: number; start_to_close_s?: number };
 
   // Crash simulation: hard-exit without settling — the sweep must reap this.
@@ -430,13 +514,15 @@ async function main(): Promise<void> {
     let effectSettlement: EffectSettlement | undefined;
     let crashAfterEffect = false;
     let usage: ModelUsage | undefined;
-    if ((params.mode ?? 'echo') === 'git') {
+    if (definition.type === 'command') {
+      output = await runCommand(params, Date.now(), inputs);
+    } else if ((params.mode ?? 'echo') === 'git') {
       const applied = performGitEffect(execution, params, inputs);
       output = applied.items;
       effectSettlement = applied.effect;
       crashAfterEffect = applied.crashAfter;
     } else if ((params.mode ?? 'echo') === 'opencode') {
-      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + repairNote;
+      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + attachments(params) + repairNote;
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
       const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
       // Usage is provenance of the ATTEMPT, not of the material: keeping it out

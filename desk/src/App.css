@@ -555,3 +555,67 @@ summary { cursor: pointer; }
   white-space: pre-wrap;
   color: #8b8ba3;
 }
+
+/* ─────────── Цеха: из чего собрана работа ─────────── */
+.shop { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.shop-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: #1b1b26;
+  border-bottom: 1px solid #2a2a38;
+}
+.shop-bar select {
+  background: #2a2a3d;
+  color: #e6e6ef;
+  border: 1px solid #3a3a52;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  max-width: 420px;
+}
+.shop-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(230px, 1fr);
+  gap: 16px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+}
+.desk-card {
+  background: #1b1b26;
+  border: 1px solid #2a2a38;
+  border-left: 3px solid #a78bfa;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.desk-card header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.desk-row { display: flex; gap: 10px; margin: 4px 0; align-items: baseline; }
+.desk-row > span:last-child { display: flex; gap: 4px; flex-wrap: wrap; align-items: baseline; flex: 1; min-width: 0; }
+.desk-key {
+  flex: 0 0 96px;
+  color: #8b8ba3;
+  font-size: 12px;
+  text-transform: lowercase;
+}
+.desk-card details { width: 100%; }
+.desk-card pre {
+  background: #10101a;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: #a9a9c2;
+  margin: 6px 0 0;
+}
+.shop-graph { font-size: 12px; }
+.shop-graph h3 { font-size: 12px; text-transform: uppercase; color: #8b8ba3; }
+.shop-graph ol { padding-left: 18px; color: #c7c7de; }
+.shop-graph li { margin: 3px 0; }
+.shop-graph code { color: #a5b4fc; }

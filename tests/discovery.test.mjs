@@ -19,7 +19,7 @@ const { getDb, closeDb } = await import('../dist/db.js');
 const { resumeRun } = await import('../dist/kernel/runner.js');
 const { getEvents } = await import('../dist/events.js');
 const { claimExecution } = await import('../dist/kernel/executions.js');
-const { startDiscovery, startFormalization, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
+const { startWorkshop, DEFAULT_WORKSHOPS } = await import('../dist/workshops.js');
 
 const db = getDb();
 const WORKER = fileURLToPath(new URL('../dist/runtime/worker.js', import.meta.url));
@@ -48,17 +48,24 @@ async function driveWithRealWorkers(runId) {
   throw new Error('discovery run did not settle in budget');
 }
 
-test('workshops registry describes the discovery desk', () => {
-  const shape = DEFAULT_WORKSHOPS.discovery.graph.nodes;
-  assert.deepEqual(Object.keys(shape), ['idea', 'brief', 'quality', 'artifact']);
-  assert.equal(shape.brief.type, 'llm');
-  assert.equal(shape.quality.type, 'gate');
-  assert.equal(shape.artifact.type, 'effect');
+test('the discovery workshop is COMPILED from one desk, not drawn by hand', () => {
+  const workshop = DEFAULT_WORKSHOPS.discovery;
+  // Стол brief объявлен один раз и переиспользован тремя цехами — граф лишь
+  // его развёртка: вход → воркер → приёмка → публикация.
+  assert.deepEqual(Object.keys(workshop.graph.nodes), ['brief_input', 'brief', 'brief_gate', 'brief_publish']);
+  assert.equal(workshop.graph.nodes.brief.type, 'llm');
+  assert.equal(workshop.graph.nodes.brief_gate.type, 'gate');
+  assert.equal(workshop.graph.nodes.brief_publish.type, 'effect');
+  assert.deepEqual(workshop.inputs.map((field) => field.name), ['idea']);
+
+  // критерии приёмки приходят из НАВЫКА, а не из настроек цеха
+  const checks = workshop.graph.nodes.brief_gate.parameters.checks.map((check) => check.pattern ?? check.op);
+  assert.ok(checks.includes('Суть продукта') && checks.includes('ритери'));
 });
 
 test('discovery desk: idea in → brief skill → artifact committed', async () => {
   const idea = 'Кофейня «Тёплый пар» — сайт-визитка со свежей обжаркой';
-  const started = startDiscovery(db, { idea, repo: productRepo, mode: 'echo' });
+  const started = startWorkshop(db, 'discovery', { idea, repo: productRepo, mode: 'echo' });
   assert.equal(started.repo, productRepo);
   assert.equal(started.status, 'running');
 
@@ -82,12 +89,12 @@ test('discovery desk: idea in → brief skill → artifact committed', async () 
 });
 
 test('discovery desk without an idea fails fast', () => {
-  assert.throws(() => startDiscovery(db, { idea: '   ', repo: productRepo, mode: 'echo' }), /IDEA_REQUIRED/);
+  assert.throws(() => startWorkshop(db, 'discovery', { idea: '   ', repo: productRepo, mode: 'echo' }), /INPUT_REQUIRED/);
 });
 
 test('discovery desk rejects broken-encoding ideas at the entrance', () => {
   assert.throws(
-    () => startDiscovery(db, { idea: 'идея \uFFFD\uFFFD\uFFFD сломана', repo: productRepo, mode: 'echo' }),
+    () => startWorkshop(db, 'discovery', { idea: 'идея \uFFFD\uFFFD\uFFFD сломана', repo: productRepo, mode: 'echo' }),
     /IDEA_NOT_UTF8/,
     'mojibake never enters production'
   );
@@ -95,8 +102,8 @@ test('discovery desk rejects broken-encoding ideas at the entrance', () => {
 
 test('formalization desk: discovery artifact in → SRS out; missing brief fails honestly', async () => {
   // lifecycle link: no explicit brief → takes discovery/brief.md from the repo
-  const started = startFormalization(db, { repo: productRepo, mode: 'echo' });
-  assert.equal(started.briefSource, 'discovery/brief.md');
+  const started = startWorkshop(db, 'formalization', { repo: productRepo, mode: 'echo' });
+  assert.match(started.sources.srs, /^discovery\/brief\.md@/, 'материал взят по дайджесту, а не по файлу');
   const status = await driveWithRealWorkers(started.runId);
   assert.equal(status, 'success');
   const srs = readFileSync(path.join(productRepo, 'formalization', 'srs.md'), 'utf8');
@@ -106,8 +113,8 @@ test('formalization desk: discovery artifact in → SRS out; missing brief fails
   const emptyRepo = path.join(dir, 'empty-repo');
   spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: emptyRepo });
   assert.throws(
-    () => startFormalization(db, { repo: emptyRepo, mode: 'echo' }),
-    /BRIEF_MISSING/
+    () => startWorkshop(db, 'formalization', { repo: emptyRepo, mode: 'echo' }),
+    /SRS_MISSING/
   );
 });
 

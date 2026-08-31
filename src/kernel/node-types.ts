@@ -166,6 +166,26 @@ const jsonParse: NodeType = {
   },
 };
 
+// Соседи по вееру: каждый item получает сводку обо ВСЕХ items. Рабочий на
+// конвейере должен знать, что делают соседние рабочие места, иначе сборка
+// разъезжается — например, владелец index.html подключает файл, которого никто
+// не создаёт. parameters: field (куда класть, по умолчанию siblings),
+// pick (какие поля брать в сводку).
+const siblings: NodeType = {
+  name: 'siblings',
+  execute: (ctx) => {
+    const field = typeof ctx.parameters.field === 'string' ? ctx.parameters.field : 'siblings';
+    const pick = Array.isArray(ctx.parameters.pick)
+      ? (ctx.parameters.pick as string[])
+      : ['id', 'title', 'files'];
+    const summary = ctx.inputs.map((item) =>
+      Object.fromEntries(pick.filter((key) => item.json[key] !== undefined).map((key) => [key, item.json[key]]))
+    );
+    const text = JSON.stringify(summary);
+    return ctx.inputs.map((item) => ({ json: { ...item.json, [field]: text } }));
+  },
+};
+
 // Dynamic fan-out: parameters.child = {type, parameters}. The kernel spawns
 // one child per input item (see runner's executeSplit).
 const split: NodeType = {
@@ -173,6 +193,23 @@ const split: NodeType = {
   splitter: true,
   execute: () => {
     throw new Error('SPLITTER_MISUSE: split nodes are executed by the kernel');
+  },
+};
+
+// The command activity: runs a DECLARED command in the product repository and
+// turns its outcome into material — `{ok, exit_code, output, command}`.
+//
+// This is what makes a turnkey factory possible: acceptance can require that
+// the program actually runs, instead of trusting the model's promise. The
+// command text comes from the workshop declaration (an operator), never from
+// model output — a worker may describe desired state, it may not grant itself
+// effect authority (CONVEYOR-MENTAL-MODEL §1).
+// parameters: run, repo, timeout_s?, label?
+const command: NodeType = {
+  name: 'command',
+  activity: true,
+  execute: () => {
+    throw new Error('ACTIVITY_MISUSE: command nodes are executed by worker processes, not by the kernel');
   },
 };
 
@@ -185,7 +222,7 @@ const join: NodeType = {
 };
 
 const REGISTRY: Record<string, NodeType> = {
-  emit, template, collect, fail, llm, gate, effect,
+  emit, template, collect, fail, llm, gate, effect, command, siblings,
   json_parse: jsonParse, split, join,
 };
 
