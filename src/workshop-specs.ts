@@ -6,8 +6,11 @@ import type { Desk, WorkshopSpec } from './desks.js';
 // product и factory), поэтому копипаста узлов — та самая болезнь, с которой
 // начиналась saga4, — структурно невозможна.
 
-/** Дымовая проверка: {{tools}} подставляется на старте (абсолютный путь). */
-const SMOKE_RUN = 'node "{{tools}}/smoke-static.mjs" .';
+/** Дымовые проверки: {{tools}} подставляется на старте (абсолютный путь).
+ *  Статическая ловит битые ссылки и синтаксис; браузерная — то, что видит
+ *  пользователь: ошибки в консоли, пустой холст, неподключившийся модуль. */
+const SMOKE_STATIC = 'node "{{tools}}/smoke-static.mjs" .';
+const SMOKE_BROWSER = 'node "{{tools}}/smoke-browser.mjs" .';
 
 const briefDesk: Omit<Desk, 'input'> = {
   id: 'brief',
@@ -72,7 +75,11 @@ const assembleDesk: Desk = {
       // Заплатка сборщика ложится на исходный набор — переписывать всё
       // дорого и рвётся по бюджету (замерено: 300 с не хватило).
       { kind: 'overlay', key: 'path', with: 'input' },
-      { kind: 'command', run: SMOKE_RUN, label: 'smoke-static', timeout_s: 120, workdir: 'items' },
+      { kind: 'command', run: SMOKE_STATIC, label: 'smoke-static', timeout_s: 120, workdir: 'items' },
+      // Второй, более честный вопрос: страница РАБОТАЕТ? Расхождение
+      // контрактов между параллельными воркерами статикой не ловится —
+      // оба файла корректны, а на экране пусто (поймано живьём на Элите).
+      { kind: 'command', run: SMOKE_BROWSER, label: 'smoke-browser', timeout_s: 180, workdir: 'items' },
     ],
   },
   publish: { files_from: 'items', message: 'development: assembled application' },
@@ -86,7 +93,12 @@ const smokeDesk: Desk = {
   id: 'smoke',
   title: 'Запуск опубликованного приложения',
   input: { kind: 'publish', desk: 'assemble' },
-  hooks: { after: [{ kind: 'command', run: SMOKE_RUN, label: 'smoke-published', timeout_s: 120 }] },
+  hooks: {
+    after: [
+      { kind: 'command', run: SMOKE_STATIC, label: 'smoke-published', timeout_s: 120 },
+      { kind: 'command', run: SMOKE_BROWSER, label: 'browser-published', timeout_s: 180 },
+    ],
+  },
   max_repairs: 0,
 };
 

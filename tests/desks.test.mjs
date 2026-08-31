@@ -96,7 +96,8 @@ test('гейт судит СОЮЗ: что воркер произвёл и чт
     .filter(([, conn]) => conn.main[0].some((target) => target.node === 'app_gate'))
     .map(([from]) => from)
     .sort();
-  assert.deepEqual(gateInbound, ['app', 'app_post2']);
+  // материал, доказательство и то, что произвёл воркер
+  assert.deepEqual(gateInbound, ['app', 'app_post1', 'app_post2']);
   const ops = graph.nodes.app_gate.parameters.checks.map((check) => check.op);
   assert.ok(ops.includes('each_json_array') && ops.includes('command_ok'));
 });

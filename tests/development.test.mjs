@@ -145,8 +145,17 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
   // каталог, а гейт пускает эффект только после её успеха
   // заплатка сборщика ложится на исходный набор, и только потом — запуск
   assert.equal(nodes.assemble_post2.type, 'overlay');
+  // ДВЕ проверки, и обе судят МАТЕРИАЛ, а не вывод предыдущей команды
   assert.equal(nodes.assemble_post3.type, 'command');
-  assert.equal(nodes.assemble_post3.parameters.workdir, 'items');
+  assert.equal(nodes.assemble_post4.type, 'command');
+  assert.match(nodes.assemble_post4.parameters.run, /smoke-browser/);
+  for (const evidence of ['assemble_post3', 'assemble_post4']) {
+    assert.equal(nodes[evidence].parameters.workdir, 'items');
+    const inbound = Object.entries(workshop.graph.connections)
+      .filter(([, conn]) => conn.main[0].some((target) => target.node === evidence))
+      .map(([from]) => from);
+    assert.deepEqual(inbound, ['assemble_post2'], `${evidence} судит материал, а не соседнюю проверку`);
+  }
   assert.ok(nodes.assemble_gate.parameters.checks.some((check) => check.op === 'command_ok'));
 
   // публикуется СОБРАННЫЙ материал (команда — доказательство, а не материал):
@@ -156,12 +165,12 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
     .filter(([, conn]) => conn.main[0].some((target) => target.node === 'assemble_publish'))
     .map(([from]) => from)
     .sort();
-  assert.deepEqual(publishInbound, ['assemble_gate', 'assemble_post2']);
+  assert.deepEqual(publishInbound, ['assemble_gate']);
 
   // последний стол — приёмка без модели: запускаем то, что реально легло в репо
   assert.equal(nodes.smoke_post1.type, 'command');
   assert.match(nodes.smoke_post1.parameters.run, /smoke-static/);
-  assert.equal(nodes.smoke_post1.parameters.workdir, undefined);
+  assert.equal(nodes.smoke_post1.parameters.workdir, undefined, 'финальная проверка судит репозиторий');
   assert.deepEqual(nodes.smoke_gate.parameters.checks.map((check) => check.op), ['command_ok']);
 
   // веер нельзя переделать автоматически — бюджет доработок нулевой

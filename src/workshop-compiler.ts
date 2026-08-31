@@ -198,10 +198,19 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
     // Команда производит ДОКАЗАТЕЛЬСТВО, а не материал: она обосновывает
     // приёмку, но публиковать нужно то, что было до неё.
     let materialNode = cursor;
-    let seenCommand = false;
+    const evidence: string[] = [];
     (desk.hooks?.after ?? []).forEach((hook, index) => {
       const name = names.after(index);
       nodes[name] = hookNode(hook);
+      if (hook.kind === 'command') {
+        // Каждая команда судит МАТЕРИАЛ, а не вывод предыдущей команды:
+        // иначе вторая проверка получила бы на вход {ok, exit_code, output}
+        // и проверяла бы пустоту. Проверок может быть несколько — статика и
+        // браузер отвечают на разные вопросы.
+        connect(materialNode, name);
+        evidence.push(name);
+        return;
+      }
       // Склейка читает БАЗУ (вход стола) и ЗАПЛАТКУ (то, что произвёл воркер).
       // База объявляется первой — поздний item побеждает раннего.
       if (hook.kind === 'overlay' && hook.with === 'input') {
@@ -210,9 +219,11 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       }
       connect(cursor, name);
       cursor = name;
-      if (hook.kind === 'command') seenCommand = true;
-      else if (!seenCommand) materialNode = name;
+      materialNode = name;
     });
+    const seenCommand = evidence.length > 0;
+    // Приёмка судит союз: материал (для критериев навыка) и ВСЕ доказательства.
+    if (seenCommand) cursor = materialNode;
 
     // ── приёмка
     const gateInput = cursor;
@@ -234,10 +245,10 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
         },
       };
       connect(cursor, names.gate);
-      // Команда заменяет содержимое стола ДОКАЗАТЕЛЬСТВОМ (ok/exit_code/output),
-      // и критерии навыка («ответ — это JSON-массив») проверять стало бы не на
-      // чем. Поэтому при наличии команды гейт судит СОЮЗ: что воркер произвёл
-      // и что показал запуск.
+      // Доказательства (исходы команд) — отдельными рёбрами, и вместе с ними
+      // то, что произвёл воркер: критерии навыка («ответ — это JSON-массив»)
+      // иначе проверять было бы не на чем.
+      for (const node of evidence) if (node !== cursor) connect(node, names.gate);
       if (seenCommand && workerNode && workerNode !== cursor) connect(workerNode, names.gate);
       cursor = names.gate;
     }
