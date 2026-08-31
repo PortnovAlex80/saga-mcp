@@ -51,6 +51,8 @@ function hookNode(hook: DeskHook): GraphNode {
           ...(hook.pick ? { pick: hook.pick } : {}),
         },
       };
+    case 'overlay':
+      return { type: 'overlay', parameters: { ...(hook.key ? { key: hook.key } : {}) } };
     case 'command':
       return {
         type: 'command',
@@ -200,6 +202,12 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
     (desk.hooks?.after ?? []).forEach((hook, index) => {
       const name = names.after(index);
       nodes[name] = hookNode(hook);
+      // Склейка читает БАЗУ (вход стола) и ЗАПЛАТКУ (то, что произвёл воркер).
+      // База объявляется первой — поздний item побеждает раннего.
+      if (hook.kind === 'overlay' && hook.with === 'input') {
+        const base = inputOf.get(desk.id);
+        if (base) connect(base, name);
+      }
       connect(cursor, name);
       cursor = name;
       if (hook.kind === 'command') seenCommand = true;
@@ -226,6 +234,11 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
         },
       };
       connect(cursor, names.gate);
+      // Команда заменяет содержимое стола ДОКАЗАТЕЛЬСТВОМ (ok/exit_code/output),
+      // и критерии навыка («ответ — это JSON-массив») проверять стало бы не на
+      // чем. Поэтому при наличии команды гейт судит СОЮЗ: что воркер произвёл
+      // и что показал запуск.
+      if (seenCommand && workerNode && workerNode !== cursor) connect(workerNode, names.gate);
       cursor = names.gate;
     }
 

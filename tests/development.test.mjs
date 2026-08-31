@@ -143,8 +143,10 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
 
   // кандидат проверяется ЗАПУСКОМ до публикации: команда судит временный
   // каталог, а гейт пускает эффект только после её успеха
-  assert.equal(nodes.assemble_post2.type, 'command');
-  assert.equal(nodes.assemble_post2.parameters.workdir, 'items');
+  // заплатка сборщика ложится на исходный набор, и только потом — запуск
+  assert.equal(nodes.assemble_post2.type, 'overlay');
+  assert.equal(nodes.assemble_post3.type, 'command');
+  assert.equal(nodes.assemble_post3.parameters.workdir, 'items');
   assert.ok(nodes.assemble_gate.parameters.checks.some((check) => check.op === 'command_ok'));
 
   // публикуется СОБРАННЫЙ материал (команда — доказательство, а не материал):
@@ -154,7 +156,7 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
     .filter(([, conn]) => conn.main[0].some((target) => target.node === 'assemble_publish'))
     .map(([from]) => from)
     .sort();
-  assert.deepEqual(publishInbound, ['assemble_gate', 'assemble_post1']);
+  assert.deepEqual(publishInbound, ['assemble_gate', 'assemble_post2']);
 
   // последний стол — приёмка без модели: запускаем то, что реально легло в репо
   assert.equal(nodes.smoke_post1.type, 'command');

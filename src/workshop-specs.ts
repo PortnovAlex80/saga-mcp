@@ -69,6 +69,9 @@ const assembleDesk: Desk = {
     before: [{ kind: 'json_array' }],
     after: [
       { kind: 'json_array' },
+      // Заплатка сборщика ложится на исходный набор — переписывать всё
+      // дорого и рвётся по бюджету (замерено: 300 с не хватило).
+      { kind: 'overlay', key: 'path', with: 'input' },
       { kind: 'command', run: SMOKE_RUN, label: 'smoke-static', timeout_s: 120, workdir: 'items' },
     ],
   },

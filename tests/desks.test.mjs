@@ -75,6 +75,83 @@ test('цех компилируется из столов: топология в
   );
 });
 
+test('гейт судит СОЮЗ: что воркер произвёл и что показал запуск', () => {
+  const { graph } = compileWorkshop(
+    {
+      id: 'demo',
+      title: 'Демо',
+      desks: [{
+        id: 'app',
+        title: 'Приложение',
+        skill: 'implement',
+        input: { kind: 'operator' },
+        hooks: { after: [{ kind: 'json_array' }, { kind: 'command', run: 'echo ok', workdir: 'items' }] },
+      }],
+    },
+    { skills: BUILTIN_SKILLS }
+  );
+  // Команда подменяет содержимое стола доказательством, поэтому критерии
+  // навыка проверять было бы не на чем — гейт читает и воркера, и команду.
+  const gateInbound = Object.entries(graph.connections)
+    .filter(([, conn]) => conn.main[0].some((target) => target.node === 'app_gate'))
+    .map(([from]) => from)
+    .sort();
+  assert.deepEqual(gateInbound, ['app', 'app_post2']);
+  const ops = graph.nodes.app_gate.parameters.checks.map((check) => check.op);
+  assert.ok(ops.includes('json_array') && ops.includes('command_ok'));
+});
+
+test('склейка: исполнитель шлёт только изменённое, база переносится сама', async () => {
+  const base = [
+    { json: { path: 'index.html', content: '<html><script src="app.js"></script></html>' } },
+    { json: { path: 'style.css', content: 'body{}' } },
+  ];
+  const patch = [{ json: { path: 'app.js', content: 'console.log(1)' } }];
+  const graph = JSON.stringify({
+    nodes: {
+      base: { type: 'emit', parameters: { items: base } },
+      patch: { type: 'emit', parameters: { items: patch } },
+      merged: { type: 'overlay', parameters: { key: 'path' } },
+    },
+    // порядок объявления задаёт порядок склейки: поздний побеждает
+    connections: { base: { main: [[{ node: 'merged' }]] }, patch: { main: [[{ node: 'merged' }]] } },
+  });
+  const run = runGraph(db, graph, { name: 'overlay' });
+  assert.equal(run.status, 'success');
+
+  const { getMaterial } = await import('../dist/materials.js');
+  const completed = getEvents(db, run.runId)
+    .filter((e) => e.type === 'node.completed')
+    .map((e) => JSON.parse(e.payload_json))
+    .find((p) => p.node_id === 'merged');
+  const items = JSON.parse(getMaterial(db, completed.output_digest).content);
+
+  assert.deepEqual(items.map((item) => item.json.path).sort(), ['app.js', 'index.html', 'style.css'],
+    'заплатка добавилась, база не потерялась');
+  assert.equal(items.find((item) => item.json.path === 'index.html').json.content,
+    '<html><script src="app.js"></script></html>', 'нетронутый файл перенесён байт в байт');
+});
+
+test('склейка: поздний item побеждает раннего по ключу', async () => {
+  const graph = JSON.stringify({
+    nodes: {
+      base: { type: 'emit', parameters: { items: [{ json: { path: 'a.js', content: 'старое' } }] } },
+      patch: { type: 'emit', parameters: { items: [{ json: { path: 'a.js', content: 'новое' } }] } },
+      merged: { type: 'overlay', parameters: { key: 'path' } },
+    },
+    connections: { base: { main: [[{ node: 'merged' }]] }, patch: { main: [[{ node: 'merged' }]] } },
+  });
+  const run = runGraph(db, graph, { name: 'overlay-wins' });
+  const { getMaterial } = await import('../dist/materials.js');
+  const completed = getEvents(db, run.runId)
+    .filter((e) => e.type === 'node.completed')
+    .map((e) => JSON.parse(e.payload_json))
+    .find((p) => p.node_id === 'merged');
+  const items = JSON.parse(getMaterial(db, completed.output_digest).content);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].json.content, 'новое');
+});
+
 test('компилятор отказывается собирать бессмысленный стол', () => {
   const compile = (desks) => compileWorkshop({ id: 'x', title: 'x', desks }, { skills: BUILTIN_SKILLS });
 

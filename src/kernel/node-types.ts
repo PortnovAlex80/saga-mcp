@@ -186,6 +186,26 @@ const siblings: NodeType = {
   },
 };
 
+// Склейка по ключу: поздний item побеждает раннего. Позволяет исполнителю
+// присылать ТОЛЬКО изменённое, а не переписывать весь набор: переписывание
+// целого — это и лишние токены, и риск обрыва по бюджету (замерено: сборщик
+// не уложился в 300 с, переписывая пять файлов). Порядок входов задаёт граф:
+// база объявлена раньше заплатки.
+// parameters: key (по умолчанию path)
+const overlay: NodeType = {
+  name: 'overlay',
+  execute: (ctx) => {
+    const key = typeof ctx.parameters.key === 'string' ? ctx.parameters.key : 'path';
+    const merged = new Map<string, Item>();
+    for (const item of ctx.inputs) {
+      const id = item.json[key];
+      if (id === undefined || id === null || id === '') continue;
+      merged.set(String(id), item);
+    }
+    return [...merged.values()];
+  },
+};
+
 // Dynamic fan-out: parameters.child = {type, parameters}. The kernel spawns
 // one child per input item (see runner's executeSplit).
 const split: NodeType = {
@@ -222,7 +242,7 @@ const join: NodeType = {
 };
 
 const REGISTRY: Record<string, NodeType> = {
-  emit, template, collect, fail, llm, gate, effect, command, siblings,
+  emit, template, collect, fail, llm, gate, effect, command, siblings, overlay,
   json_parse: jsonParse, split, join,
 };
 
