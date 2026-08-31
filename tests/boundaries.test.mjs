@@ -71,6 +71,16 @@ test('2. воркер не выбирает следующий узел: он в
   assert.match(worker, /nodeDefinitionFor/);
 });
 
+test('2б. модель не пишет В РЕПОЗИТОРИЙ ЗАВОДА: она работает в песочнице', () => {
+  // Пойман живьём: у агента opencode есть инструменты записи, и без явного
+  // рабочего каталога он записал файл продукта прямо в репозиторий движка.
+  // Воркер может ОПИСАТЬ желаемое состояние, но не выдать себе право на эффект.
+  const worker = readFileSync(path.join(SRC, 'runtime/worker.ts'), 'utf8');
+  assert.match(worker, /mkdtempSync\(path\.join\(tmpdir\(\), 'saga5-model-'\)\)/, 'на попытку создаётся песочница');
+  assert.match(worker, /cwd: sandbox/, 'сервер модели запускается В песочнице');
+  assert.match(worker, /rmSync\(sandbox/, 'песочница умирает вместе с попыткой');
+});
+
 test('3. модель не пишет состояние прогона: чужой lease не settlит ничего', () => {
   const run = runGraph(db, GRAPH, { name: 'boundaries-lease' });
   const scheduled = getEvents(db, run.runId)

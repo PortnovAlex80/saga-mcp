@@ -281,9 +281,19 @@ interface OpencodeResult {
 
 /** Поднимает свой headless-сервер opencode и отдаёт его порт.
  *  Замер: готов за 1.4–1.7 с, что ничтожно против вызова в десятки секунд. */
-function startOpencodeServer(timeoutMs: number): Promise<{ port: number; child: ReturnType<typeof spawn> }> {
+function startOpencodeServer(
+  timeoutMs: number,
+  sandbox: string
+): Promise<{ port: number; child: ReturnType<typeof spawn> }> {
   return new Promise((resolve, reject) => {
+    // ПЕСОЧНИЦА. У агента opencode есть инструменты записи, и рабочим
+    // каталогом по умолчанию стал бы каталог воркера — то есть репозиторий
+    // самого завода. Это прямое нарушение границы: воркер может ОПИСАТЬ
+    // желаемое состояние, но не может выдать себе право на эффект. Всё, что
+    // модель напишет мимо ответа, падает во временный каталог и умирает
+    // вместе с попыткой; материалом остаётся только сданный текст.
     const child = spawn(opencodeBin(), ['serve', '--port', '0'], {
+      cwd: sandbox,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -385,7 +395,8 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
   const providerID = model.slice(0, slash);
   const modelID = model.slice(slash + 1);
 
-  const { port, child } = await startOpencodeServer(Math.min(timeoutMs, 60_000));
+  const sandbox = mkdtempSync(path.join(tmpdir(), 'saga5-model-'));
+  const { port, child } = await startOpencodeServer(Math.min(timeoutMs, 60_000), sandbox);
   const base = `http://127.0.0.1:${port}`;
   const abort = new AbortController();
   const killTimer = setTimeout(() => { abort.abort(); child.kill(); }, timeoutMs);
@@ -430,6 +441,8 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
     clearTimeout(killTimer);
     abort.abort();
     child.kill();
+    // Всё, что модель написала мимо ответа, уходит вместе с песочницей.
+    rmSync(sandbox, { recursive: true, force: true });
   }
 }
 
