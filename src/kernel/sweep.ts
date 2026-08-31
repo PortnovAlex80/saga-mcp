@@ -25,8 +25,16 @@ export interface SweepResult {
   }>;
 }
 
-function timeoutsOf(row: ExecutionRow): { schedule_to_start_s: number; heartbeat_s: number } {
-  return JSON.parse(row.timeouts_json) as { schedule_to_start_s: number; heartbeat_s: number };
+function timeoutsOf(row: ExecutionRow): {
+  schedule_to_start_s: number;
+  heartbeat_s: number;
+  stuck_silence_s?: number;
+} {
+  return JSON.parse(row.timeouts_json) as {
+    schedule_to_start_s: number;
+    heartbeat_s: number;
+    stuck_silence_s?: number;
+  };
 }
 
 function ageSeconds(now: Date, iso: string | null): number {
@@ -86,13 +94,27 @@ export function sweep(
     // воркер», и снимать попытку нельзя: иначе наш собственный лимит
     // параллельности сжигает бюджет ретраев, ни разу не сходив к модели.
     if (isQueued && opts.dispatcherAlive) continue;
-    const kind = isQueued ? 'schedule_to_start' : 'heartbeat';
-    const staleSeconds = isQueued
+    // Два РАЗНЫХ вопроса о живой попытке:
+    //   heartbeat  — жив ли процесс воркера (умерла машина, упал процесс);
+    //   silence    — производит ли МОДЕЛЬ (поток дельт замер надолго).
+    // Второе появилось только когда воркер получил настоящий поток; пока
+    // признаков жизни нет вовсе (скриптованный воркер), тишина не судится.
+    let kind = isQueued ? 'schedule_to_start' : 'heartbeat';
+    let staleSeconds = isQueued
       ? ageSeconds(now, row.created_at)
       : ageSeconds(now, row.heartbeat_at ?? row.started_at);
-    if (staleSeconds <= (isQueued ? timeouts.schedule_to_start_s : timeouts.heartbeat_s)) {
-      continue;
+    let budget = isQueued ? timeouts.schedule_to_start_s : timeouts.heartbeat_s;
+
+    if (!isQueued && staleSeconds <= budget && row.progress_at) {
+      const silence = ageSeconds(now, row.progress_at);
+      const silenceBudget = timeouts.stuck_silence_s ?? 600;
+      if (silence > silenceBudget) {
+        kind = 'stuck_silence';
+        staleSeconds = silence;
+        budget = silenceBudget;
+      }
     }
+    if (staleSeconds <= budget) continue;
     db.transaction(() => {
       appendEventInTx(db, row.run_id, 'execution.timed_out', {
         execution_id: row.id,

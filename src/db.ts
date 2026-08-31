@@ -35,8 +35,12 @@ function migrate(database: Database.Database): void {
     new Set(
       (database.pragma(`table_info(${table})`) as Array<{ name: string }>).map((row) => row.name)
     );
-  if (!columns('executions').has('progress')) {
+  const executions = columns('executions');
+  if (!executions.has('progress')) {
     database.exec('ALTER TABLE executions ADD COLUMN progress TEXT');
+  }
+  if (!executions.has('progress_at')) {
+    database.exec('ALTER TABLE executions ADD COLUMN progress_at TEXT');
   }
 }
 

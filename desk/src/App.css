@@ -631,3 +631,21 @@ summary { cursor: pointer; }
 .card.stranded { opacity: 0.62; border-left-color: #6b2f2f; }
 .card.stranded:hover { opacity: 1; }
 .stranded-note { margin-top: 5px; font-size: 11px; color: #fca5a5; }
+
+/* Бегущая строка мыслей модели: одна строка, без роста окна */
+.ticker {
+  margin-top: 6px;
+  padding: 6px 9px;
+  background: #10101a;
+  border: 1px solid #2a2a38;
+  border-radius: 6px;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+  color: #7c7c96;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+.ticker.live { color: #86efac; border-color: #2f5a3a; }

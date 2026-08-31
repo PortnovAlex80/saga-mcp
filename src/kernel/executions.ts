@@ -15,6 +15,8 @@ export interface ActivityTimeouts {
   heartbeat_s: number;
   /** Hard budget for the whole activity body (worker self-kills past it). */
   start_to_close_s?: number;
+  /** Сколько модель имеет право молчать: тишина дольше — она застряла. */
+  stuck_silence_s?: number;
 }
 
 export interface ActivityRetry {
@@ -34,10 +36,16 @@ export interface ActivityRetry {
 //   schedule_to_start— «эту работу вообще кто-нибудь возьмёт?». Пока диспетчер
 //                      жив, он берёт её при первом свободном слоте, поэтому
 //                      таймер не срабатывает вовсе (см. src/dispatcher.ts).
+//   stuck_silence_s  — сколько модель имеет право МОЛЧАТЬ. Между признаками
+//                      жизни бывают паузы в минуты (вызов инструмента вообще
+//                      не даёт вывода), поэтому окно взято с большим запасом
+//                      — как в saga4 (STUCK_SILENCE 10 минут). Замеры — в
+//                      docs/architecture/SAGA5-WORKER-MONITOR.md.
 export const DEFAULT_TIMEOUTS: ActivityTimeouts = {
   schedule_to_start_s: 900,
   heartbeat_s: 30,
   start_to_close_s: 3600,
+  stuck_silence_s: 600,
 };
 
 export const DEFAULT_RETRY: ActivityRetry = { max_attempts: 2 };
@@ -55,6 +63,8 @@ export interface ExecutionRow {
   heartbeat_at: string | null;
   /** Live output tail — operational, overwritten each heartbeat. */
   progress: string | null;
+  /** Последний признак жизни МОДЕЛИ (не процесса воркера). */
+  progress_at: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -168,7 +178,7 @@ export function heartbeatExecution(
   db: Database.Database,
   executionId: string,
   lease: string,
-  opts: { progress?: string } = {},
+  opts: { progress?: string; signals?: number; lastSignalAt?: Date } = {},
   now = new Date()
 ): void {
   const tail = opts.progress === undefined ? undefined : opts.progress.slice(-PROGRESS_TAIL_CHARS);
@@ -177,17 +187,53 @@ export function heartbeatExecution(
     if (row.status !== 'running' || row.lease !== lease) {
       throw new Error(`EXECUTION_LEASE_INVALID: ${executionId}`);
     }
+    // В журнал — только СЧЁТЧИКИ: сколько символов пришло и сколько признаков
+    // жизни подала модель. Сам поток не хранится: он забил бы журнал и не
+    // является материалом.
     appendEventInTx(db, row.run_id, 'execution.heartbeat', {
       execution_id: executionId,
       ...(opts.progress === undefined ? {} : { progress_chars: opts.progress.length }),
+      ...(opts.signals === undefined ? {} : { signals: opts.signals }),
     });
-    if (tail === undefined) {
-      db.prepare('UPDATE executions SET heartbeat_at = ? WHERE id = ?').run(now.toISOString(), executionId);
-    } else {
-      db.prepare('UPDATE executions SET heartbeat_at = ?, progress = ? WHERE id = ?')
-        .run(now.toISOString(), tail, executionId);
-    }
+    db.prepare(
+      'UPDATE executions SET heartbeat_at = ?' +
+      (tail === undefined ? '' : ', progress = ?') +
+      (opts.lastSignalAt === undefined ? '' : ', progress_at = ?') +
+      ' WHERE id = ?'
+    ).run(
+      now.toISOString(),
+      ...(tail === undefined ? [] : [tail]),
+      ...(opts.lastSignalAt === undefined ? [] : [opts.lastSignalAt.toISOString()]),
+      executionId
+    );
   }).immediate();
+}
+
+/** Обновляет ТОЛЬКО операционное окно: бегущую строку и отметку жизни модели.
+ *
+ *  Без события. Иначе живая строка стоила бы по событию каждые пару секунд —
+ *  за час это сотни записей в журнале ни о чём. Событие остаётся редким и
+ *  несёт счётчики; окно обновляется часто и не хранится. */
+export function touchProgress(
+  db: Database.Database,
+  executionId: string,
+  lease: string,
+  opts: { progress: string; lastSignalAt: Date },
+  now = new Date()
+): void {
+  const changed = db
+    .prepare(
+      "UPDATE executions SET heartbeat_at = ?, progress = ?, progress_at = ?" +
+      " WHERE id = ? AND lease = ? AND status = 'running'"
+    )
+    .run(
+      now.toISOString(),
+      opts.progress.slice(-PROGRESS_TAIL_CHARS),
+      opts.lastSignalAt.toISOString(),
+      executionId,
+      lease
+    ).changes;
+  if (changed !== 1) throw new Error(`EXECUTION_LEASE_INVALID: ${executionId}`);
 }
 
 /** Effect receipt metadata a worker may attach when settling an activity

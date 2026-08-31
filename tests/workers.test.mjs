@@ -75,12 +75,42 @@ test('a heartbeat carries the replayable fact; the live text stays operational',
   completeActivity(db, worker.execution_id, lease, [{ json: { text: full } }]);
 });
 
+test('бегущая строка живёт часто, а журнал растёт редко', async () => {
+  const { touchProgress } = await import('../dist/kernel/executions.js');
+  const run = runGraph(db, GRAPH, { name: 'ticker' });
+  const worker = liveWorkers(db).find((w) => w.run_id === run.runId && w.status === 'new');
+  const { lease } = claimExecution(db, worker.execution_id);
+
+  const beatsBefore = getEvents(db, run.runId).filter((e) => e.type === 'execution.heartbeat').length;
+  for (const text of ['▶ модель', '▶ модель дум', '▶ модель думает вслух']) {
+    touchProgress(db, worker.execution_id, lease, { progress: text, lastSignalAt: new Date() });
+  }
+
+  const live = liveWorkers(db).find((w) => w.execution_id === worker.execution_id);
+  assert.equal(live.progress, '▶ модель думает вслух', 'окно показывает последнее состояние');
+  assert.equal(live.producing, true, 'модель подавала признак жизни только что');
+  assert.equal(live.silent_s, 0);
+  assert.equal(
+    getEvents(db, run.runId).filter((e) => e.type === 'execution.heartbeat').length,
+    beatsBefore,
+    'три обновления окна не добавили в журнал ни одного события'
+  );
+
+  assert.throws(
+    () => touchProgress(db, worker.execution_id, 'чужой-lease', { progress: 'x', lastSignalAt: new Date() }),
+    /EXECUTION_LEASE_INVALID/
+  );
+  // Закрываем попытку: висящий воркер исказил бы соседние тесты о таймаутах.
+  completeActivity(db, worker.execution_id, lease, [{ json: { text: 'готово' } }]);
+});
+
 test('a settled attempt reports its duration, not its age', () => {
   const [finished] = recentWorkers(db, 5);
   assert.equal(finished.status, 'success');
   assert.equal(finished.stale, false);
   assert.ok(finished.elapsed_s < 60, 'duration of a sub-second attempt is not "seconds since it ended"');
-  assert.equal(workerStats(db).succeeded, 1);
+  // Успешных попыток к этому моменту две: воркер брифа и воркер бегущей строки.
+  assert.equal(workerStats(db).succeeded, 2);
 });
 
 test('очередь за нашим же лимитом — ожидание, а не крах', async () => {

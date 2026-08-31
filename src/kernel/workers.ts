@@ -36,6 +36,11 @@ export interface WorkerView {
   schedule_to_start_s: number;
   /** true when the kernel is about to reap this attempt. */
   stale: boolean;
+  /** Признаки жизни МОДЕЛИ: сколько их было и как давно последний. */
+  signals: number;
+  silent_s: number | null;
+  /** Модель подавала признак жизни только что — «огонёк мигает». */
+  producing: boolean;
   progress: string;
   progress_chars: number;
   /** What the attempt spent, from `execution.completed`. */
@@ -57,7 +62,7 @@ function seconds(now: number, iso: string | null): number {
   return parsed === null ? 0 : Math.max(0, Math.round((now - parsed) / 1000));
 }
 
-function view(db: Database.Database, row: JoinedRow, now: number): WorkerView {
+function view(db: Database.Database, row: JoinedRow, now: number, signalCount = 0): WorkerView {
   const timeouts = JSON.parse(row.timeouts_json ?? '{}') as {
     heartbeat_s?: number;
     start_to_close_s?: number;
@@ -79,6 +84,7 @@ function view(db: Database.Database, row: JoinedRow, now: number): WorkerView {
   const settled = row.finished_at !== null;
   const heartbeatS = timeouts.heartbeat_s ?? 15;
   const heartbeatAge = queued || settled ? null : seconds(now, row.heartbeat_at ?? row.started_at);
+  const silence = queued || settled || !row.progress_at ? null : seconds(now, row.progress_at);
   const scheduleToStartS = timeouts.schedule_to_start_s ?? 30;
   // For a settled attempt `elapsed` is its DURATION, not its age.
   const elapsed = settled
@@ -111,6 +117,9 @@ function view(db: Database.Database, row: JoinedRow, now: number): WorkerView {
         : (heartbeatAge ?? 0) > heartbeatS,
     progress: row.progress ?? '',
     progress_chars: (row.progress ?? '').length,
+    signals: signalCount,
+    silent_s: silence,
+    producing: silence !== null && silence < 15,
   };
 }
 
@@ -118,6 +127,27 @@ const JOIN = `SELECT e.*, w.name AS workflow
                 FROM executions e
                 JOIN runs r ON r.id = e.run_id
                 JOIN workflows w ON w.id = r.workflow_id`;
+
+/** Признаки жизни на попытку: счётчик из последнего удара сердца.
+ *  В журнале лежит ЧИСЛО, а не поток — поток забил бы журнал и материалом
+ *  всё равно не является. */
+function signalsByExecution(db: Database.Database, ids: string[]): Map<string, number> {
+  const result = new Map<string, number>();
+  if (ids.length === 0) return result;
+  const wanted = new Set(ids);
+  const rows = db
+    .prepare(
+      `SELECT payload_json FROM events
+        WHERE type = 'execution.heartbeat' AND payload_json LIKE '%"signals"%'`
+    )
+    .all() as Array<{ payload_json: string }>;
+  for (const row of rows) {
+    const payload = JSON.parse(row.payload_json) as { execution_id?: string; signals?: number };
+    if (!payload.execution_id || !wanted.has(payload.execution_id)) continue;
+    result.set(payload.execution_id, Math.max(result.get(payload.execution_id) ?? 0, payload.signals ?? 0));
+  }
+  return result;
+}
 
 /** Spend per attempt, read from the log where the worker recorded it. */
 function usageByExecution(db: Database.Database, ids: string[]): Map<string, ModelUsage> {
@@ -144,7 +174,8 @@ export function liveWorkers(db: Database.Database, now = Date.now()): WorkerView
   const rows = db
     .prepare(`${JOIN} WHERE e.status IN ('running','new') ORDER BY e.status DESC, e.created_at`)
     .all() as JoinedRow[];
-  return rows.map((row) => view(db, row, now));
+  const signals = signalsByExecution(db, rows.map((row) => row.id));
+  return rows.map((row) => view(db, row, now, signals.get(row.id) ?? 0));
 }
 
 /** Recently settled attempts — the shift that just ended. */
@@ -155,8 +186,10 @@ export function recentWorkers(db: Database.Database, limit = 20, now = Date.now(
         ORDER BY COALESCE(e.finished_at, e.created_at) DESC LIMIT ?`
     )
     .all(Math.max(1, Math.min(limit, 100))) as JoinedRow[];
-  const usage = usageByExecution(db, rows.map((row) => row.id));
-  return rows.map((row) => ({ ...view(db, row, now), usage: usage.get(row.id) }));
+  const ids = rows.map((row) => row.id);
+  const usage = usageByExecution(db, ids);
+  const signals = signalsByExecution(db, ids);
+  return rows.map((row) => ({ ...view(db, row, now, signals.get(row.id) ?? 0), usage: usage.get(row.id) }));
 }
 
 export interface WorkerStats {

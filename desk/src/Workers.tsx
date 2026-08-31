@@ -30,13 +30,25 @@ function budget(worker: WorkerView): { used: number; label: string } | undefined
   return undefined;
 }
 
+/** Воркер шлёт одно поле: фазовый журнал плюс строку потока с префиксом «▶».
+ *  Разделяем здесь, чтобы окно не росло: журнал сверху, мысли — одной строкой. */
+const phaseLines = (progress: string): string[] =>
+  progress.split('\n').filter((line) => !line.startsWith('▶'));
+
+const tickerLine = (progress: string): string =>
+  progress.split('\n').filter((line) => line.startsWith('▶')).map((line) => line.slice(2))[0] ?? '';
+
 function WorkerCard({ worker }: { worker: WorkerView }) {
   const bar = budget(worker);
   const running = worker.status === 'running';
   return (
     <article className={`worker${worker.stale ? ' stale' : ''}`}>
       <header>
-        <span className={`dot dot-${worker.stale ? 'failed' : running ? 'in_progress' : 'todo'}`} />
+        {/* Огонёк живой модели: мигает, пока идут дельты потока. */}
+        <span
+          className={`dot dot-${worker.stale ? 'failed' : worker.producing ? 'in_progress' : running ? 'review' : 'todo'}`}
+          title={worker.producing ? 'модель пишет прямо сейчас' : worker.silent_s === null ? 'ждёт' : `молчит ${worker.silent_s}с`}
+        />
         <b>{worker.node_id}</b>
         <span className="tag">{worker.model ?? worker.worker_kind ?? '—'}</span>
         {worker.attempt > 1 && <span className="tag warn">попытка {worker.attempt}</span>}
@@ -51,7 +63,11 @@ function WorkerCard({ worker }: { worker: WorkerView }) {
             <span title={`бюджет сердцебиения ${worker.heartbeat_s}с`}>
               пульс {worker.heartbeat_age_s === null ? '—' : hhmmss(worker.heartbeat_age_s)} назад
             </span>
-            {worker.progress_chars > 0 && <span>{worker.progress_chars} символов</span>}
+            {worker.signals > 0 && (
+              <span title="признаков жизни от модели: дельты потока, шаги, инструменты">
+                {worker.producing ? 'пишет' : `молчит ${worker.silent_s}с`} · {worker.signals} сигналов
+              </span>
+            )}
           </>
         ) : (
           <span>в очереди {hhmmss(worker.elapsed_s)} — свободного места нет или ждёт интервала найма</span>
@@ -67,7 +83,13 @@ function WorkerCard({ worker }: { worker: WorkerView }) {
       )}
 
       {worker.progress ? (
-        <pre className="worker-progress">{worker.progress}</pre>
+        <>
+          <pre className="worker-progress">{phaseLines(worker.progress).join('\n')}</pre>
+          {/* Мысли модели одной бегущей строкой: окно не растёт. */}
+          {tickerLine(worker.progress) && (
+            <div className={`ticker${worker.producing ? ' live' : ''}`}>{tickerLine(worker.progress)}</div>
+          )}
+        </>
       ) : (
         worker.prompt_preview && (
           <details className="worker-task">

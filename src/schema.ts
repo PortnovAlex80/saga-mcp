@@ -98,6 +98,10 @@ CREATE TABLE IF NOT EXISTS executions (
   -- the text itself is a window into a non-deterministic process, not
   -- material. Material is what the worker SUBMITS.
   progress      TEXT,
+  -- Последний ПРИЗНАК ЖИЗНИ МОДЕЛИ (не процесса): пришёл шаг, рассуждение,
+  -- вызов инструмента или ответ. Отдельно от heartbeat_at, потому что это
+  -- разные вопросы: «жив ли воркер» и «производит ли модель».
+  progress_at   TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at   TEXT
 );

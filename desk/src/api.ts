@@ -128,6 +128,9 @@ export interface WorkerView {
   start_to_close_s: number | null;
   schedule_to_start_s: number;
   stale: boolean;
+  signals: number;
+  silent_s: number | null;
+  producing: boolean;
   progress: string;
   progress_chars: number;
   usage?: { input?: number; output?: number; reasoning?: number; cost?: number };

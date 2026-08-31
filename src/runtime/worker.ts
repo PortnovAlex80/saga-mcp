@@ -18,6 +18,7 @@ import { getRun, getEvents } from '../events.js';
 import {
   getExecution,
   heartbeatExecution,
+  touchProgress,
   completeActivity,
   failActivity,
   type EffectSettlement,
@@ -216,29 +217,57 @@ function opencodeBin(): string {
   return 'opencode';
 }
 
-/** Live window into what the worker is doing. Read by the heartbeat, shown in
- *  the operator's monitor — never by a decision.
+/** Живое окно в работу воркера. Читается сердцебиением, показывается
+ *  оператору — и никогда решением.
  *
- *  Honest limitation: `opencode run` does not stream tokens — measured, the
- *  whole answer arrives in one chunk at the end. So this is NOT a thought
- *  stream; it is a PHASE log built from `--format json` events (step started,
- *  answer received, tool used). That is the truth the CLI can actually tell,
- *  and it is what distinguishes "the model is thinking" from "the call hung
- *  before it ever started". */
-const live = { text: '' };
+ *  `signals` и `lastSignalAt` — признаки жизни МОДЕЛИ: пришла дельта текста,
+ *  начался шаг, модель дёрнула инструмент. Это ответ на вопрос «она ещё
+ *  производит?», в отличие от сердцебиения, которое отвечает лишь «жив ли
+ *  процесс воркера». Сам поток не хранится — только счётчики. */
+const live = { text: '', signals: 0, lastSignalAt: new Date() };
+
+/** Фазовый журнал (ограничен) + бегущая строка мыслей модели.
+ *  Окно не растёт: последние фазы плюс хвост потока, который заменяется на
+ *  месте. Сам поток никуда не копится — ни в журнал, ни в материал. */
+const TICKER_CHARS = 220;
+const PHASE_LINES = 10;
+const stream = { phases: [] as string[], ticker: '' };
+
+function render(): void {
+  const tail = stream.ticker ? `\n▶ ${stream.ticker}` : '';
+  live.text = stream.phases.slice(-PHASE_LINES).join('\n') + tail;
+}
+
+function signal(): void {
+  live.signals++;
+  live.lastSignalAt = new Date();
+}
+
+/** Токен из потока модели: двигает бегущую строку, не наращивая окно. */
+function tick(delta: string): void {
+  signal();
+  const merged = (stream.ticker + delta.replace(/\s+/g, ' ')).slice(-TICKER_CHARS);
+  stream.ticker = merged;
+  render();
+}
 
 /** Best-effort final write of the phase log. Operational only. */
 function flushProgress(db: ReturnType<typeof getDb>, executionId: string, lease: string): void {
   if (!live.text) return;
   try {
-    heartbeatExecution(db, executionId, lease, { progress: live.text });
+    heartbeatExecution(db, executionId, lease, {
+      progress: live.text,
+      signals: live.signals,
+      lastSignalAt: live.lastSignalAt,
+    });
   } catch {
     /* the attempt may already be reaped — the monitor is not worth a failure */
   }
 }
 
 function noteRaw(line: string): void {
-  live.text = `${live.text}${line}\n`;
+  stream.phases.push(line);
+  render();
 }
 
 function note(started: number, line: string): void {
@@ -250,82 +279,158 @@ interface OpencodeResult {
   usage?: ModelUsage;
 }
 
-/** Parses opencode's NDJSON event stream. Falls back to raw stdout when a
- *  provider or version emits something we do not recognise — a monitor must
- *  never be the reason a worker fails. */
-function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<OpencodeResult> {
+/** Поднимает свой headless-сервер opencode и отдаёт его порт.
+ *  Замер: готов за 1.4–1.7 с, что ничтожно против вызова в десятки секунд. */
+function startOpencodeServer(timeoutMs: number): Promise<{ port: number; child: ReturnType<typeof spawn> }> {
   return new Promise((resolve, reject) => {
-    const started = Date.now();
-    note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
-    // Промпт уходит через STDIN, а не аргументом командной строки. Windows
-    // ограничивает командную строку ~32 000 символами, а промпт стола сборки
-    // несёт содержимое всех файлов продукта — аргументом он однажды просто не
-    // поместится. Так же это делала saga4 (tools/agent-proxy/claude-shim.mjs).
-    const child = spawn(opencodeBin(), ['run', '--format', 'json', '-m', model], {
+    const child = spawn(opencodeBin(), ['serve', '--port', '0'], {
       windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.stdin?.on('error', () => { /* opencode может выйти раньше, чем мы допишем */ });
-    child.stdin?.end(prompt, 'utf8');
-    let stdout = '';
-    let stderr = '';
-    let pending = '';
-    const texts: string[] = [];
-    let usage: ModelUsage | undefined;
-
-    const consume = (line: string): void => {
-      if (!line.trim()) return;
-      let event: { type?: string; part?: Record<string, unknown> };
-      try {
-        event = JSON.parse(line) as { type?: string; part?: Record<string, unknown> };
-      } catch {
-        return; // not an event line — kept in stdout for the fallback
-      }
-      const part = event.part ?? {};
-      if (event.type === 'step_start') {
-        note(started, 'модель начала шаг');
-      } else if (event.type === 'text' && typeof part.text === 'string') {
-        texts.push(part.text);
-        note(started, `получен ответ · ${part.text.length} симв.`);
-      } else if (event.type === 'tool' || event.type === 'tool_use') {
-        note(started, `инструмент: ${String(part.name ?? part.tool ?? '—')}`);
-      } else if (event.type === 'step_finish') {
-        const tokens = part.tokens as Record<string, unknown> | undefined;
-        usage = {
-          input: Number(tokens?.input ?? 0) || undefined,
-          output: Number(tokens?.output ?? 0) || undefined,
-          reasoning: Number(tokens?.reasoning ?? 0) || undefined,
-          cost: Number(part.cost ?? 0) || undefined,
-        };
-        note(started, `шаг завершён · ${usage.output ?? '?'} токенов ответа`);
+    let noise = '';
+    const scan = (chunk: unknown): void => {
+      noise += String(chunk);
+      const match = noise.match(/https?:\/\/[\d.]+:(\d+)/);
+      if (match) {
+        clearTimeout(timer);
+        resolve({ port: Number(match[1]), child });
       }
     };
-
-    child.stdout?.on('data', (chunk) => {
-      stdout += chunk;
-      pending += chunk;
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() ?? '';
-      for (const line of lines) consume(line);
-    });
-    child.stderr?.on('data', (chunk) => { stderr += chunk; });
-    const killTimer = setTimeout(() => child.kill(), timeoutMs);
-    child.on('error', (error) => { clearTimeout(killTimer); reject(error); });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`OPENCODE_SERVER_TIMEOUT: не поднялся за ${Math.round(timeoutMs / 1000)}s: ${noise.slice(-300)}`));
+    }, timeoutMs);
+    child.stdout?.on('data', scan);
+    child.stderr?.on('data', scan);
+    child.on('error', (error) => { clearTimeout(timer); reject(error); });
     child.on('exit', (code) => {
-      clearTimeout(killTimer);
-      if (pending) consume(pending);
-      if (code !== 0) {
-        reject(new Error(`opencode exited ${code}: ${stderr.slice(-500)}`));
-        return;
-      }
-      if (texts.length > 0) {
-        resolve({ text: texts.join('\n'), usage });
-        return;
-      }
-      note(started, 'событий не распознано — беру сырой вывод');
-      resolve({ text: stdout, usage });
+      clearTimeout(timer);
+      reject(new Error(`OPENCODE_SERVER_EXITED: код ${code}: ${noise.slice(-300)}`));
     });
   });
+}
+
+/** Подписка на поток событий сервера — ТОЛЬКО ради признаков жизни.
+ *
+ *  Ответ приходит HTTP-ответом на запрос, поэтому обрыв потока ничего не
+ *  ломает: мы теряем мигающий огонёк, но не работу. Само содержимое дельт
+ *  не копится и не хранится — считаем их и обновляем отметку жизни. */
+function followSignals(base: string, started: number, signal_: AbortSignal): void {
+  void (async () => {
+    try {
+      const response = await fetch(`${base}/event`, { signal: signal_ });
+      const reader = response.body?.getReader();
+      if (!reader) return;
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let deltas = 0;
+      let announced = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event: {
+            type?: string;
+            properties?: { delta?: string; part?: { type?: string; tool?: string } };
+          };
+          try {
+            event = JSON.parse(line.slice(6)) as typeof event;
+          } catch {
+            continue;
+          }
+          if (event.type === 'message.part.delta') {
+            deltas++;
+            tick(String(event.properties?.delta ?? ''));
+          } else if (event.type === 'message.part.updated') {
+            signal();
+            const part = event.properties?.part;
+            if (part?.type === 'step-start') note(started, 'модель начала шаг');
+            else if (part?.type === 'tool') note(started, `инструмент: ${part.tool ?? '—'}`);
+          } else if (event.type === 'session.idle') {
+            signal();
+          }
+          // Фазовая отметка о темпе — редкая, чтобы журнал не рос.
+          if (deltas - announced >= 400) {
+            announced = deltas;
+            note(started, `модель пишет · ${deltas} фрагментов`);
+          }
+        }
+      }
+    } catch {
+      // Поток необязателен: без него просто нет огонька.
+    }
+  })();
+}
+
+interface OpencodeMessage {
+  info?: { tokens?: Record<string, number>; cost?: number; error?: unknown; finish?: string };
+  parts?: Array<{ type?: string; text?: string }>;
+}
+
+/** Вызов модели через headless-сервер opencode.
+ *
+ *  Почему не `opencode run`: он не стримит. Замерено — между признаками жизни
+ *  в нём бывает до 138 секунд тишины, и отличить «думает» от «повисла» нельзя.
+ *  Сервер отдаёт `message.part.delta` каждые ~30 мс (замер: 484 дельты за 9 с
+ *  генерации), то есть даёт настоящий признак жизни модели. */
+async function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<OpencodeResult> {
+  const started = Date.now();
+  note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
+  const slash = model.indexOf('/');
+  if (slash <= 0) throw new Error(`MODEL_ID_INVALID: ожидается 'провайдер/модель', получено '${model}'`);
+  const providerID = model.slice(0, slash);
+  const modelID = model.slice(slash + 1);
+
+  const { port, child } = await startOpencodeServer(Math.min(timeoutMs, 60_000));
+  const base = `http://127.0.0.1:${port}`;
+  const abort = new AbortController();
+  const killTimer = setTimeout(() => { abort.abort(); child.kill(); }, timeoutMs);
+  try {
+    followSignals(base, started, abort.signal);
+    const session = (await (await fetch(`${base}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: abort.signal,
+    })).json()) as { id?: string };
+    if (!session.id) throw new Error('OPENCODE_SESSION_FAILED: сервер не выдал сессию');
+
+    const response = await fetch(`${base}/session/${session.id}/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: { providerID, modelID }, parts: [{ type: 'text', text: prompt }] }),
+      signal: abort.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`OPENCODE_HTTP_${response.status}: ${(await response.text()).slice(-400)}`);
+    }
+    const message = (await response.json()) as OpencodeMessage;
+    if (message.info?.error) {
+      throw new Error(`OPENCODE_ERROR: ${JSON.stringify(message.info.error).slice(0, 400)}`);
+    }
+    const text = (message.parts ?? [])
+      .filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text as string)
+      .join('\n');
+    const tokens = message.info?.tokens ?? {};
+    const usage: ModelUsage = {
+      input: tokens.input || undefined,
+      output: tokens.output || undefined,
+      reasoning: tokens.reasoning || undefined,
+      cost: message.info?.cost || undefined,
+    };
+    note(started, `получен ответ · ${text.length} симв. · ${usage.output ?? '?'} токенов`);
+    if (!text.trim()) throw new Error('OPENCODE_EMPTY: модель не вернула текста');
+    return { text, usage };
+  } finally {
+    clearTimeout(killTimer);
+    abort.abort();
+    child.kill();
+  }
 }
 
 /** Runs a DECLARED command in the product repository. The outcome — including
@@ -493,13 +598,30 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Два ритма. Окно оператора должно ЖИТЬ (бегущая строка обновляется раз в
+  // две секунды), а журнал — не расти: событие остаётся редким и несёт только
+  // счётчики. Разводим их явно, а не выбираем компромисс между «мигает» и
+  // «не забивает».
+  const windowMs = 2000;
+  const window_ = setInterval(() => {
+    try {
+      touchProgress(db, executionId, lease, { progress: live.text, lastSignalAt: live.lastSignalAt });
+    } catch {
+      /* попытку уже сняли — сердцебиение ниже разберётся честно */
+    }
+  }, windowMs);
   const beatMs = Math.max(200, Math.floor(((timeouts.heartbeat_s ?? 15) * 1000) / 3));
   const beat = setInterval(() => {
     try {
-      heartbeatExecution(db, executionId, lease, { progress: live.text });
+      heartbeatExecution(db, executionId, lease, {
+        progress: live.text,
+        signals: live.signals,
+        lastSignalAt: live.lastSignalAt,
+      });
     } catch (error) {
       console.error('[worker] heartbeat failed:', error instanceof Error ? error.message : error);
       clearInterval(beat);
+      clearInterval(window_);
       process.exit(1);
     }
   }, beatMs);
@@ -561,6 +683,7 @@ async function main(): Promise<void> {
     }
 
     clearInterval(beat);
+    clearInterval(window_);
     // The last phases land after the final beat; flush them so the finished
     // card shows the whole story. A monitor write must never block a settle.
     flushProgress(db, executionId, lease);
@@ -578,6 +701,7 @@ async function main(): Promise<void> {
     process.exit(0);
   } catch (error) {
     clearInterval(beat);
+    clearInterval(window_);
     const message = error instanceof Error ? error.message : String(error);
     console.error('[worker] failed:', message);
     noteRaw(`ОТКАЗ: ${message.slice(0, 300)}`);
