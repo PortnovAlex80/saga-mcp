@@ -442,7 +442,14 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
     abort.abort();
     child.kill();
     // Всё, что модель написала мимо ответа, уходит вместе с песочницей.
-    rmSync(sandbox, { recursive: true, force: true });
+    // Уборка — best-effort: на Windows только что убитый сервер ещё держит
+    // каталог, и EPERM здесь однажды уронил готовую работу. Убирать важно,
+    // но не ценой результата: остаток заберёт ОС.
+    try {
+      rmSync(sandbox, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    } catch {
+      /* каталог ещё занят — он временный и переживёт нас недолго */
+    }
   }
 }
 
