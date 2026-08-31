@@ -344,6 +344,12 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
       if (childType.activity) {
         const exec = fold.execs.get(child.id);
         if (!exec) return { nodeId: child.id, kind: 'activity' };
+        // Дети веера возвращаются в работу так же, как статические узлы:
+        // открытая доработка (в том числе операторский повтор) над settled
+        // попыткой означает «назначить новую». Без этого отказавший ребёнок
+        // не имел пути назад вообще.
+        const settled = exec.state === 'completed' || exec.state === 'failed' || exec.state === 'timed_out';
+        if (fold.openRepairs.has(child.id) && settled) return { nodeId: child.id, kind: 'activity' };
         continue; // in flight or awaiting sweep decision
       }
       return { nodeId: child.id, kind: 'scripted' };

@@ -20,6 +20,8 @@ export interface Card {
   repairs: number;
   effect_outcome?: string;
   gate?: string;
+  queued: boolean;
+  blocked_by?: string;
   materials: number;
   updated_at: string;
   seq: number;
@@ -30,6 +32,7 @@ export interface BoardData {
   columns: Array<{ status: CardStatus; cards: Card[] }>;
   runs: Array<{ run_id: string; workflow: string; status: string; created_at: string; updated_at: string }>;
   totals: Record<string, number>;
+  summary: { queued: number; ahead: number; stranded: number; culprits: string[] };
 }
 
 export interface Artifact {

@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { getEvents } from '../events.js';
-import { parseGraph } from './graph.js';
+import { parseGraph, type ParsedGraph } from './graph.js';
 import type { Item } from './node-types.js';
 
 // The ONE read model. Kanban and the artifact wiki are both folds of the same
@@ -42,6 +42,11 @@ export interface NodeProjection {
   effect_outcome?: string;
   /** Gate node this card is waiting on (human_required), for the operator UI. */
   gate?: string;
+  /** true — исполнение уже назначено и ждёт свободного воркера. */
+  queued: boolean;
+  /** Ближайший отказавший узел выше по маршруту. Пока он не починен, эта
+   *  работа не поедет — и это НЕ «очередь». */
+  blocked_by?: string;
   last_seq: number;
   last_ts: string;
 }
@@ -129,6 +134,7 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
         reasons: [],
         attempts: 0,
         repairs: 0,
+        queued: false,
         last_seq: 0,
         last_ts: row.created_at,
       };
@@ -179,13 +185,19 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
       case 'execution.scheduled': {
         const node = touch(known);
         if (node && node.status !== 'in_progress') node.status = 'todo';
-        if (node && event.type === 'execution.scheduled') node.attempts += 1;
+        if (node && event.type === 'execution.scheduled') {
+          node.attempts += 1;
+          node.queued = true; // ждёт свободного воркера — вот это очередь
+        }
         break;
       }
       case 'node.started':
       case 'execution.started': {
         const node = touch(known);
-        if (node) node.status = 'in_progress';
+        if (node) {
+          node.status = 'in_progress';
+          node.queued = false;
+        }
         break;
       }
       case 'node.completed': {
@@ -194,6 +206,7 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
           const digest = String(payload.output_digest);
           if (!node.desk.includes(digest)) node.desk.push(digest);
           node.status = 'done';
+          node.queued = false;
           // New material answers the previous rejection: the old gate reasons
           // described material that is no longer the newest word on this desk.
           node.reasons = [];
@@ -208,6 +221,7 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
         const node = touch(known);
         if (node) {
           node.status = 'failed';
+          node.queued = false;
           if (typeof payload.error === 'string') node.reasons = [payload.error];
         }
         break;
@@ -274,6 +288,8 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
     }
   }
 
+  markStranded(graph, nodes);
+
   return {
     run_id: row.id,
     workflow_id: row.workflow_id,
@@ -285,6 +301,55 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
     accepted_digests: accepted,
     nodes: [...nodes.values()],
   };
+}
+
+/** Работа ниже отказа — это не «очередь», а обрыв конвейера.
+ *
+ *  Оператор, глядящий на доску, обязан различать «ещё не дошли» и «не поедет,
+ *  пока не починишь вот здесь». Поэтому каждой не начатой карточке ниже
+ *  отказа проставляется ближайший виновник. */
+function markStranded(graph: ParsedGraph, nodes: Map<string, NodeProjection>): void {
+  // Эффективная топология: дети веера входят от своего split, а join ждёт
+  // ИМЕННО детей, а не сам split.
+  const inbound = new Map<string, string[]>();
+  for (const node of nodes.values()) {
+    if (node.parent) {
+      inbound.set(node.node_id, [node.parent]);
+      continue;
+    }
+    inbound.set(node.node_id, [...(graph.inbound[node.node_id] ?? [])]);
+  }
+  const childrenOf = new Map<string, string[]>();
+  for (const node of nodes.values()) {
+    if (!node.parent) continue;
+    childrenOf.set(node.parent, [...(childrenOf.get(node.parent) ?? []), node.node_id]);
+  }
+  for (const node of nodes.values()) {
+    if (graph.nodes[node.node_id]?.type !== 'join') continue;
+    const parent = (graph.inbound[node.node_id] ?? []).find((up) => childrenOf.has(up));
+    if (parent) inbound.set(node.node_id, childrenOf.get(parent)!);
+  }
+
+  const blame = new Map<string, string>();
+  for (const node of nodes.values()) {
+    if (node.status === 'failed') blame.set(node.node_id, node.node_id);
+  }
+  // Распространяем вниз, пока есть чему распространяться (граф ацикличен).
+  for (let pass = 0; pass < nodes.size; pass++) {
+    let changed = false;
+    for (const node of nodes.values()) {
+      if (blame.has(node.node_id) || node.status === 'done') continue;
+      const culprit = (inbound.get(node.node_id) ?? [])
+        .map((up) => blame.get(up))
+        .find((found) => found !== undefined);
+      if (culprit) {
+        blame.set(node.node_id, culprit);
+        node.blocked_by = culprit;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 export interface RunSummary {

@@ -6,7 +6,7 @@ import { api, type BoardData, type Card, type CardStatus, type RunEvent, type Wo
 // оператора здесь — решение на человеческом гейте (обычное событие ядра).
 
 const COLUMN_TITLES: Record<CardStatus, string> = {
-  todo: 'В очереди',
+  todo: 'Не начато',
   in_progress: 'В работе',
   review: 'На доработке',
   blocked: 'Ждёт оператора',
@@ -24,7 +24,7 @@ const TYPE_GLYPH: Record<string, string> = {
  *  человека. Подсказка — словами, чтобы цвет не был единственным носителем
  *  смысла. */
 const DOT_TITLE: Record<CardStatus, string> = {
-  todo: 'в очереди — ждёт своей очереди на исполнение',
+  todo: 'не начато: либо ждёт свободного воркера, либо ещё не дошла очередь по маршруту',
   in_progress: 'в работе прямо сейчас',
   review: 'на доработке — гейт вернул материал',
   blocked: 'ждёт решения оператора',
@@ -189,6 +189,17 @@ export function Board({ onOpenArtifacts }: Props) {
               </span>
               <span className="count">{column.cards.length}</span>
             </h3>
+            {/* «Не начато» без разбора — враньё: работа ниже отказа никогда не
+                поедет сама, и это должно быть видно, не открывая карточку. */}
+            {column.status === 'todo' && data?.summary && column.cards.length > 0 && (
+              <p className="column-note">
+                {data.summary.queued > 0 && <>в очереди {data.summary.queued} · </>}
+                впереди по маршруту {data.summary.ahead}
+                {data.summary.stranded > 0 && (
+                  <span className="error"> · стоят из-за отказа {data.summary.stranded}</span>
+                )}
+              </p>
+            )}
             <div className="column-body">
               {column.cards.map((card) => (
                 <article
@@ -206,6 +217,11 @@ export function Board({ onOpenArtifacts }: Props) {
                     <span className="tag ghost">{card.run_id.slice(0, 8)}</span>
                     {card.parent && <span className="tag ghost">↳ {card.parent}</span>}
                   </div>
+                  {card.blocked_by && (
+                    <div className="stranded-note">
+                      стоит из-за отказа <b>{card.blocked_by}</b>
+                    </div>
+                  )}
                   {card.reasons.length > 0 && (
                     <ul className="reasons">
                       {card.reasons.slice(0, 3).map((reason, index) => <li key={index}>{reason}</li>)}

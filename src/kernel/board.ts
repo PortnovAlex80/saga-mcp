@@ -35,6 +35,11 @@ export interface Card {
   effect_outcome?: string;
   /** Gate that is holding this card (repair or human decision). */
   gate?: string;
+  /** Исполнение назначено и ждёт свободного воркера. */
+  queued: boolean;
+  /** Ближайший отказавший узел выше по маршруту: работа не поедет, пока он
+   *  не починен. Это НЕ очередь — это обрыв конвейера. */
+  blocked_by?: string;
   materials: number;
   updated_at: string;
   seq: number;
@@ -51,6 +56,14 @@ export interface Board {
   columns: BoardColumn[];
   runs: RunSummary[];
   totals: Record<string, number>;
+  /** Сводка для оператора: что реально в работе, а что стоит и почему. */
+  summary: {
+    queued: number;
+    ahead: number;
+    stranded: number;
+    /** Узлы, починка которых сдвинет весь застрявший хвост. */
+    culprits: string[];
+  };
 }
 
 function toCard(run: ReturnType<typeof projectRun>, node: NodeProjection): Card {
@@ -70,6 +83,8 @@ function toCard(run: ReturnType<typeof projectRun>, node: NodeProjection): Card 
     repairs: node.repairs,
     effect_outcome: node.effect_outcome,
     gate: node.gate,
+    queued: node.queued,
+    blocked_by: node.blocked_by,
     materials: node.desk.length,
     updated_at: node.last_ts,
     seq: node.last_seq,
@@ -120,13 +135,24 @@ export function board(db: Database.Database, opts: BoardOptions = {}): Board {
   for (const status of CARD_STATUSES) totals[status] = 0;
   for (const card of cards) totals[card.status] += 1;
 
+  const notStarted = cards.filter((card) => card.status === 'todo');
+  const stranded = notStarted.filter((card) => card.blocked_by !== undefined);
   return {
     columns: CARD_STATUSES.map((status) => ({
       status,
-      cards: cards.filter((card) => card.status === status),
+      // Застрявшие карточки — в конец колонки: сверху то, что вот-вот поедет.
+      cards: cards
+        .filter((card) => card.status === status)
+        .sort((a, b) => Number(a.blocked_by !== undefined) - Number(b.blocked_by !== undefined)),
     })),
     runs,
     totals,
+    summary: {
+      queued: notStarted.filter((card) => card.queued).length,
+      ahead: notStarted.filter((card) => !card.queued && card.blocked_by === undefined).length,
+      stranded: stranded.length,
+      culprits: [...new Set(stranded.map((card) => card.blocked_by!))],
+    },
   };
 }
 

@@ -619,3 +619,15 @@ summary { cursor: pointer; }
 .shop-graph ol { padding-left: 18px; color: #c7c7de; }
 .shop-graph li { margin: 3px 0; }
 .shop-graph code { color: #a5b4fc; }
+
+/* работа ниже отказа — не «очередь», а обрыв конвейера */
+.column-note {
+  margin: 0;
+  padding: 4px 10px 6px;
+  font-size: 11px;
+  color: #7c7c96;
+  border-bottom: 1px solid #23232f;
+}
+.card.stranded { opacity: 0.62; border-left-color: #6b2f2f; }
+.card.stranded:hover { opacity: 1; }
+.stranded-note { margin-top: 5px; font-size: 11px; color: #fca5a5; }

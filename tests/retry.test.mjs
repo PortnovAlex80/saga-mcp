@@ -69,6 +69,22 @@ test('внешний отказ доводит прогон до error — че�
   assert.equal(cardFor(run.runId, 'idea').status, 'done', 'принятый выше материал цел');
 });
 
+test('доска не называет «очередью» то, что стоит из-за отказа', () => {
+  const runId = board(db, {}).runs[0].run_id;
+  const data = board(db, { run_id: runId });
+
+  // publish ниже упавшего brief: он не в очереди — он не поедет, пока не починят
+  const publish = data.columns.flatMap((c) => c.cards).find((c) => c.node_id === 'publish');
+  assert.equal(publish.status, 'todo');
+  assert.equal(publish.queued, false, 'исполнение ему никто не назначал');
+  assert.equal(publish.blocked_by, 'brief', 'виновник назван прямо на карточке');
+
+  assert.equal(data.summary.stranded, 1);
+  assert.equal(data.summary.queued, 0, 'в очереди на воркера — никого');
+  assert.deepEqual(data.summary.culprits, ['brief'],
+    'починка этого узла сдвинет весь застрявший хвост');
+});
+
 test('оператор повторяет узел: прогон продолжается с того места, где встал', () => {
   const runId = board(db, {}).runs[0].run_id;
   const attemptsBefore = eventsOf(runId, 'execution.scheduled').length;
@@ -99,6 +115,71 @@ test('оператор повторяет узел: прогон продолж�
   assert.equal(completed.filter((node) => node === 'idea').length, 1,
     'верхний узел не переисполнялся');
   assert.ok(completed.includes('publish'), 'ниже по конвейеру работа поехала дальше');
+});
+
+test('ребёнок веера тоже возвращается в работу — иначе у него нет пути назад', () => {
+  const graph = JSON.stringify({
+    nodes: {
+      plan: {
+        type: 'emit',
+        parameters: { items: [{ json: { title: 'T1' } }, { json: { title: 'T2' } }] },
+      },
+      tasks: {
+        type: 'split',
+        parameters: {
+          child: {
+            type: 'llm',
+            parameters: {
+              mode: 'echo',
+              prompt: 'делаю {{title}}',
+              timeouts: { heartbeat_s: 30, schedule_to_start_s: 60, start_to_close_s: 120 },
+              retry: { max_attempts: 1 },
+            },
+          },
+        },
+      },
+      merge: { type: 'join', parameters: {} },
+    },
+    connections: { plan: { main: [[{ node: 'tasks' }]] }, tasks: { main: [[{ node: 'merge' }]] } },
+  });
+  const run = runGraph(db, graph, { name: 'fanout-outage' });
+
+  // первый ребёнок отработал, второй — упал без сети
+  for (const child of ['tasks::1', 'tasks::2']) {
+    resumeRun(db, run.runId);
+    const exec = getEvents(db, run.runId)
+      .filter((e) => e.type === 'execution.scheduled')
+      .map((e) => JSON.parse(e.payload_json))
+      .find((p) => p.node_id === child && getExecution(db, p.execution_id).status === 'new');
+    const { lease } = claimExecution(db, exec.execution_id);
+    if (child === 'tasks::1') {
+      completeActivity(db, exec.execution_id, lease, [{ json: { text: 'T1 готово' } }]);
+    } else {
+      failActivity(db, exec.execution_id, lease, 'llm_error', 'сеть недоступна');
+      sweep(db);
+    }
+  }
+  assert.equal(resumeRun(db, run.runId).status, 'error');
+  assert.equal(cardFor(run.runId, 'tasks::2').status, 'failed');
+  assert.equal(cardFor(run.runId, 'merge').blocked_by, 'tasks::2', 'join стоит из-за упавшего ребёнка');
+
+  // повтор возвращает ИМЕННО его; сосед не переисполняется
+  retryNode(db, run.runId, 'tasks::2', 'сеть вернулась');
+  const retryExec = getEvents(db, run.runId)
+    .filter((e) => e.type === 'execution.scheduled')
+    .map((e) => JSON.parse(e.payload_json))
+    .at(-1);
+  assert.equal(retryExec.node_id, 'tasks::2');
+
+  const { lease } = claimExecution(db, retryExec.execution_id);
+  completeActivity(db, retryExec.execution_id, lease, [{ json: { text: 'T2 готово' } }]);
+  assert.equal(resumeRun(db, run.runId).status, 'success', 'join дождался обоих и веер закрылся');
+
+  const completed = getEvents(db, run.runId)
+    .filter((e) => e.type === 'node.completed')
+    .map((e) => JSON.parse(e.payload_json).node_id);
+  assert.equal(completed.filter((node) => node === 'tasks::1').length, 1,
+    'успешный сосед не переделывался');
 });
 
 test('повторять успешный прогон нечего', () => {
