@@ -41,6 +41,8 @@ function Hooks({ title, hooks }: { title: string; hooks?: Array<Record<string, u
 
 function DeskCard({ desk, skill }: { desk: DeskView; skill?: SkillView }) {
   const checks = [...(skill?.checks ?? []), ...(desk.checks ?? [])];
+  const tools = desk.tools ?? [];
+  const hooks = desk.hooks ?? {};
   return (
     <article className="desk-card">
       <header>
@@ -68,17 +70,17 @@ function DeskCard({ desk, skill }: { desk: DeskView; skill?: SkillView }) {
         </div>
       )}
 
-      {desk.tools.length > 0 && (
+      {tools.length > 0 && (
         <div className="desk-row">
           <span className="desk-key">инструменты</span>
-          <span>{desk.tools.map((tool, index) => (
+          <span>{tools.map((tool, index) => (
             <span key={index} className="tag">{tool.kind}: {tool.path}</span>
           ))}</span>
         </div>
       )}
 
-      <Hooks title="до работы" hooks={desk.hooks.before} />
-      <Hooks title="после работы" hooks={desk.hooks.after} />
+      <Hooks title="до работы" hooks={hooks.before} />
+      <Hooks title="после работы" hooks={hooks.after} />
 
       {checks.length > 0 && (
         <div className="desk-row">

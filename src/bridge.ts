@@ -282,7 +282,15 @@ export function startBridge(opts: {
             title: workshop.title,
             inputs: workshop.inputs,
             graph: workshop.graph,
-            desks: workshop.spec.desks,
+            // Нормализуем необязательные поля: читателю не должно доставаться
+            // undefined там, где по смыслу пустой список.
+            desks: workshop.spec.desks.map((desk) => ({
+              ...desk,
+              fanout: desk.fanout ?? false,
+              tools: desk.tools ?? [],
+              hooks: desk.hooks ?? {},
+              checks: desk.checks ?? [],
+            })),
             shape: Object.entries(workshop.graph.nodes).map(([node, def]) => ({
               node,
               type: def.type,
