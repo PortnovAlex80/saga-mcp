@@ -44,7 +44,7 @@ const MIME: Record<string, string> = {
 
 export interface BridgeHandle {
   port: number;
-  stop(): void;
+  stop(opts?: { killWorkers?: boolean }): void;
 }
 
 export function startBridge(opts: {
@@ -337,9 +337,18 @@ export function startBridge(opts: {
       const address = server.address();
       return typeof address === 'object' && address ? address.port : Number(process.env.SAGA_BRIDGE_PORT ?? 4455);
     },
-    stop(): void {
+    /** Диспетчер не владеет работой. Воркер держит собственный lease, сам
+     *  бьётся сердцем и сам сдаёт материал, поэтому перезапуск моста НЕ
+     *  обязан убивать то, что уже считается: убитая на 200-й секунде попытка
+     *  — это выброшенные три минуты настоящей работы. Убиваем только по явной
+     *  просьбе (уборка в тестах). */
+    stop(opts: { killWorkers?: boolean } = {}): void {
       clearInterval(interval);
-      for (const child of children) child.kill();
+      if (opts.killWorkers) {
+        for (const child of children) child.kill();
+      } else {
+        for (const child of children) child.unref();
+      }
       server.close();
       closeDb();
     },

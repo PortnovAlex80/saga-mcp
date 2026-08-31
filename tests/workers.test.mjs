@@ -44,7 +44,7 @@ test('a queued activity is a hired-but-waiting worker, with its model and task v
   assert.equal(worker.model, 'zai-coding-plan/glm-5.3-flash', 'the model comes from the declared graph');
   assert.equal(worker.mode, 'echo');
   assert.match(worker.prompt_preview, /сделай бриф/);
-  assert.equal(worker.schedule_to_start_s, 30);
+  assert.equal(worker.schedule_to_start_s, 30, 'объявленный столом бюджет сильнее умолчания');
   assert.equal(worker.heartbeat_age_s, null, 'nothing to prove while still queued');
   assert.equal(worker.stale, false);
 

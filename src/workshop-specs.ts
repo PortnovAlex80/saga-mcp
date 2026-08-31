@@ -40,9 +40,8 @@ const implementDesk: Desk = {
   // Соседи по вееру: владелец index.html должен знать, какие файлы создают
   // другие задачи, иначе сборка разъезжается ссылкой на несуществующий файл.
   hooks: { before: [{ kind: 'json_array' }, { kind: 'siblings' }] },
-  // Замер живого прогона: успешная реализация заняла 239 с при 10 306
-  // токенах рассуждения. Бюджет 300 с срезал соседей на ровном месте.
-  timeouts: { heartbeat_s: 30, start_to_close_s: 900, schedule_to_start_s: 900 },
+  // Столы не объявляют бюджетов: пока модель производит — её не трогают.
+  // Сторож один — сердцебиение воркера (DEFAULT_TIMEOUTS).
 };
 
 /** Ревью — суждение о коде. */
@@ -52,7 +51,6 @@ const reviewDesk: Desk = {
   skill: 'review',
   input: { kind: 'desk', desk: 'implement' },
   hooks: { before: [{ kind: 'json_array' }] },
-  timeouts: { heartbeat_s: 30, start_to_close_s: 900, schedule_to_start_s: 900 },
 };
 
 /** Сборка: приводит куски разных воркеров к согласованному набору и ПРОВЕРЯЕТ
@@ -79,7 +77,6 @@ const assembleDesk: Desk = {
   },
   publish: { files_from: 'items', message: 'development: assembled application' },
   max_repairs: 2,
-  timeouts: { heartbeat_s: 30, start_to_close_s: 900, schedule_to_start_s: 900 },
 };
 
 /** Финальная честность: запускаем то, что РЕАЛЬНО легло в репозиторий.

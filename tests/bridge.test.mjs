@@ -176,7 +176,7 @@ test('the operator throttle caps hiring: two ready activities, one worker allowe
 });
 
 after(async () => {
-  bridge.stop();
+  bridge.stop({ killWorkers: true });
   await new Promise((resolve) => setTimeout(resolve, 300)); // let killed children release the db
   try {
     rmSync(dir, { recursive: true, force: true });
