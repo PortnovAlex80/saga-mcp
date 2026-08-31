@@ -17,7 +17,12 @@ import { scheduleExecution, type ExecutionRow } from './executions.js';
 
 export interface SweepResult {
   reaped: Array<{ executionId: string; nodeId: string; kind: string }>;
-  decisions: Array<{ executionId: string; nodeId: string; decision: 'retry' | 'exhausted' }>;
+  decisions: Array<{
+    executionId: string;
+    nodeId: string;
+    /** `reopened` — приговор опоздал: оператор уже вернул узел в работу. */
+    decision: 'retry' | 'exhausted' | 'reopened';
+  }>;
 }
 
 function timeoutsOf(row: ExecutionRow): { schedule_to_start_s: number; heartbeat_s: number } {
@@ -38,7 +43,36 @@ function hasDecision(db: Database.Database, runId: string, executionId: string):
   });
 }
 
-export function sweep(db: Database.Database, now: Date = new Date()): SweepResult {
+/** Оператор уже сказал «повтори» ПОСЛЕ того, как эта попытка стартовала?
+ *
+ *  Тогда её приговор опоздал: узел уже возвращён в работу человеком, и
+ *  автоматический `node.failed` переголосовал бы решение оператора. Такое
+ *  случается буквально: попытка висела в полёте со старым бюджетом, оператор
+ *  нажал повтор, попытка дотикала до таймаута — и убила узел задним числом. */
+function reopenedAfter(db: Database.Database, row: ExecutionRow): boolean {
+  let scheduledSeq = 0;
+  let retrySeq = 0;
+  for (const event of getEvents(db, row.run_id)) {
+    const payload = JSON.parse(event.payload_json) as { execution_id?: string; node_id?: string };
+    if (event.type === 'execution.scheduled' && payload.execution_id === row.id) {
+      scheduledSeq = event.seq;
+    } else if (event.type === 'operator.retry_requested' && payload.node_id === row.node_id) {
+      retrySeq = event.seq;
+    }
+  }
+  return retrySeq > scheduledSeq;
+}
+
+export interface SweepOptions {
+  /** Диспетчер жив и разбирает очередь: ожидание в ней — пауза, не крах. */
+  dispatcherAlive?: boolean;
+}
+
+export function sweep(
+  db: Database.Database,
+  now: Date = new Date(),
+  opts: SweepOptions = {}
+): SweepResult {
   const result: SweepResult = { reaped: [], decisions: [] };
 
   const active = db
@@ -47,6 +81,11 @@ export function sweep(db: Database.Database, now: Date = new Date()): SweepResul
   for (const row of active) {
     const timeouts = timeoutsOf(row);
     const isQueued = row.status === 'new';
+    // schedule-to-start отвечает на вопрос «эту работу вообще кто-нибудь
+    // возьмёт?». Пока диспетчер жив, ответ «да, как только освободится
+    // воркер», и снимать попытку нельзя: иначе наш собственный лимит
+    // параллельности сжигает бюджет ретраев, ни разу не сходив к модели.
+    if (isQueued && opts.dispatcherAlive) continue;
     const kind = isQueued ? 'schedule_to_start' : 'heartbeat';
     const staleSeconds = isQueued
       ? ageSeconds(now, row.created_at)
@@ -89,18 +128,28 @@ export function sweep(db: Database.Database, now: Date = new Date()): SweepResul
       );
       result.decisions.push({ executionId: row.id, nodeId: row.node_id, decision: 'retry' });
     } else {
+      const reopened = reopenedAfter(db, row);
       db.transaction(() => {
         appendEventInTx(db, row.run_id, 'execution.retry_exhausted', {
           supersedes: row.id,
           node_id: row.node_id,
           attempts: row.attempt,
+          ...(reopened ? { superseded_by_operator: true } : {}),
         });
-        appendEventInTx(db, row.run_id, 'node.failed', {
-          node_id: row.node_id,
-          error: `activity failed after ${row.attempt} attempt(s)`,
-        });
+        // Решение оператора старше приговора: узел остаётся в работе, ядро
+        // назначит ему свежую попытку по открытой доработке.
+        if (!reopened) {
+          appendEventInTx(db, row.run_id, 'node.failed', {
+            node_id: row.node_id,
+            error: `activity failed after ${row.attempt} attempt(s)`,
+          });
+        }
       }).immediate();
-      result.decisions.push({ executionId: row.id, nodeId: row.node_id, decision: 'exhausted' });
+      result.decisions.push({
+        executionId: row.id,
+        nodeId: row.node_id,
+        decision: reopened ? 'reopened' : 'exhausted',
+      });
     }
   }
 

@@ -257,10 +257,16 @@ function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<
   return new Promise((resolve, reject) => {
     const started = Date.now();
     note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
-    const child = spawn(opencodeBin(), ['run', '--format', 'json', '-m', model, prompt], {
+    // Промпт уходит через STDIN, а не аргументом командной строки. Windows
+    // ограничивает командную строку ~32 000 символами, а промпт стола сборки
+    // несёт содержимое всех файлов продукта — аргументом он однажды просто не
+    // поместится. Так же это делала saga4 (tools/agent-proxy/claude-shim.mjs).
+    const child = spawn(opencodeBin(), ['run', '--format', 'json', '-m', model], {
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+    child.stdin?.on('error', () => { /* opencode может выйти раньше, чем мы допишем */ });
+    child.stdin?.end(prompt, 'utf8');
     let stdout = '';
     let stderr = '';
     let pending = '';

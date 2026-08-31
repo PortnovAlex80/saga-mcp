@@ -83,6 +83,36 @@ test('a settled attempt reports its duration, not its age', () => {
   assert.equal(workerStats(db).succeeded, 1);
 });
 
+test('очередь за нашим же лимитом — ожидание, а не крах', async () => {
+  const { sweep } = await import('../dist/kernel/sweep.js');
+  const { markDispatcherAlive, dispatcherAlive } = await import('../dist/dispatcher.js');
+  const { runGraph } = await import('../dist/kernel/runner.js');
+
+  const run = runGraph(db, JSON.stringify({
+    nodes: {
+      seed: { type: 'emit', parameters: { items: [{ json: { text: 'x' } }] } },
+      slow: {
+        type: 'llm',
+        parameters: { mode: 'echo', timeouts: { heartbeat_s: 15, schedule_to_start_s: 30 } },
+      },
+    },
+    connections: { seed: { main: [[{ node: 'slow' }]] } },
+  }), { name: 'queue-wait' });
+
+  const queued = liveWorkers(db).find((w) => w.run_id === run.runId && w.status === 'new');
+  assert.ok(queued, 'исполнение стоит в очереди');
+
+  // бюджет ожидания давно прошёл, но диспетчер на месте и разбирает очередь
+  const later = new Date(Date.now() + 120_000);
+  markDispatcherAlive();
+  assert.equal(dispatcherAlive(), true);
+  assert.equal(sweep(db, later, { dispatcherAlive: true }).reaped.length, 0,
+    'живой диспетчер → очередь ждёт, попытка не снимается');
+
+  // а вот если разбирать очередь некому — работу действительно никто не возьмёт
+  assert.equal(sweep(db, later, { dispatcherAlive: false }).reaped.length, 1);
+});
+
 test('limits live beside the database, are clamped, and survive a reread', () => {
   assert.deepEqual(readLimits(), DEFAULT_LIMITS, 'no file yet → documented defaults');
   assert.equal(existsSync(limitsPath()), false, 'reading never creates the file');

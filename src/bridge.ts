@@ -22,6 +22,7 @@ import { sweep } from './kernel/sweep.js';
 import { claimExecution } from './kernel/executions.js';
 import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
 import { liveWorkers, recentWorkers, workerStats } from './kernel/workers.js';
+import { markDispatcherAlive } from './dispatcher.js';
 import { limitsStamp, readLimits, writeLimits, type Limits } from './limits.js';
 import { completeHumanTask, ensureHumanTask, resolveHumanGate, retryNode, submitOperatorMaterial } from './operator.js';
 import { BUILTIN_SKILLS } from './skills.js';
@@ -107,7 +108,10 @@ export function startBridge(opts: {
   function tick(): void {
     try {
       refreshLimits();
-      sweep(db);
+      // Сначала отмечаемся живыми, потом сметаем: очередь за нашим же лимитом
+      // параллельности — это ожидание, а не крах.
+      markDispatcherAlive();
+      sweep(db, new Date(), { dispatcherAlive: true });
       spawnPending();
       projectHumanGates();
     } catch (error) {

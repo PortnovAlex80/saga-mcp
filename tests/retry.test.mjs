@@ -182,6 +182,50 @@ test('ребёнок веера тоже возвращается в работ�
     'успешный сосед не переделывался');
 });
 
+test('опоздавший приговор не переголосовывает оператора', () => {
+  // бюджет в одну попытку: её провал — это сразу «исчерпано», то есть тот
+  // самый приговор, который может опоздать
+  const run = runGraph(db, JSON.stringify({
+    nodes: {
+      idea: { type: 'emit', parameters: { items: [{ json: { text: 'таймер' } }] } },
+      brief: {
+        type: 'llm',
+        parameters: {
+          mode: 'echo',
+          timeouts: { heartbeat_s: 30, schedule_to_start_s: 60, start_to_close_s: 120 },
+          retry: { max_attempts: 1 },
+        },
+      },
+    },
+    connections: { idea: { main: [[{ node: 'brief' }]] } },
+  }), { name: 'late-verdict' });
+
+  // попытка в полёте: воркер её взял и ещё не сдал
+  resumeRun(db, run.runId);
+  const exec = getEvents(db, run.runId)
+    .filter((e) => e.type === 'execution.scheduled')
+    .map((e) => JSON.parse(e.payload_json))
+    .find((p) => p.node_id === 'brief');
+  const { lease } = claimExecution(db, exec.execution_id);
+
+  // оператор уже сказал «повтори», пока попытка висела
+  retryNode(db, run.runId, 'brief', 'сеть вернулась, старая попытка ещё висит');
+
+  // и только теперь старая попытка доваливается по своему бюджету
+  failActivity(db, exec.execution_id, lease, 'llm_error', 'таймаут старого бюджета');
+  const decisions = sweep(db).decisions.filter((d) => d.nodeId === 'brief');
+
+  assert.ok(decisions.some((d) => d.decision === 'reopened'),
+    'свип видит, что решение оператора старше приговора');
+  assert.equal(cardFor(run.runId, 'brief').status !== 'failed', true,
+    'узел остаётся в работе, а не убит задним числом');
+  assert.equal(
+    getEvents(db, run.runId).filter((e) => e.type === 'node.failed').length,
+    0,
+    'приговор не выносился вовсе'
+  );
+});
+
 test('повторять успешный прогон нечего', () => {
   const runId = board(db, {}).runs.find((r) => r.status === 'success').run_id;
   assert.throws(() => retryNode(db, runId, 'brief'), /RUN_SEALED/);
