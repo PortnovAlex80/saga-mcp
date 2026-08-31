@@ -93,7 +93,10 @@ export const BUILTIN_SKILLS: Record<string, Skill> = {
       'Соседние задачи и их файлы: {{siblings}}.',
     ].join('\n'),
     output: 'Без markdown, без пояснений — только JSON.',
-    checks: [NO_MOJIBAKE, { op: 'json_array', field: 'text', min_count: 1 }],
+    // each_json_array, а не json_array: ниже по конвейеру разбирается КАЖДЫЙ
+    // материал веера, поэтому негодный член вытесняется со стола, а работа
+    // соседей продолжается.
+    checks: [NO_MOJIBAKE, { op: 'each_json_array', field: 'text', min_count: 1 }],
   },
 
   assemble: {

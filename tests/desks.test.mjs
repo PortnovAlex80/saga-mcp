@@ -98,7 +98,7 @@ test('гейт судит СОЮЗ: что воркер произвёл и чт
     .sort();
   assert.deepEqual(gateInbound, ['app', 'app_post2']);
   const ops = graph.nodes.app_gate.parameters.checks.map((check) => check.op);
-  assert.ok(ops.includes('json_array') && ops.includes('command_ok'));
+  assert.ok(ops.includes('each_json_array') && ops.includes('command_ok'));
 });
 
 test('склейка: исполнитель шлёт только изменённое, база переносится сама', async () => {
@@ -150,6 +150,36 @@ test('склейка: поздний item побеждает раннего по
   const items = JSON.parse(getMaterial(db, completed.output_digest).content);
   assert.equal(items.length, 1);
   assert.equal(items[0].json.content, 'новое');
+});
+
+test('негодный член веера вытесняется, работа соседей не пропадает', async () => {
+  // Ровно тот сбой, что случился на Элите: один воркер вернул не ответ, а
+  // служебный поток. Гейт с «достаточно одного» это пропускал, и разбор ниже
+  // ронял весь прогон.
+  const { evaluateDesk } = await import('../dist/kernel/gate.js');
+  const good = (name) => ({
+    node: 'impl',
+    digest: `d-${name}`,
+    items: [{ json: { text: `[{"path":"${name}.js","content":"ok"}]` } }],
+  });
+  const garbage = {
+    node: 'impl',
+    digest: 'd-bad',
+    items: [{ json: { text: '{"type":"step_start","sessionID":"ses_x"}\n{"type":"text"}' } }],
+  };
+
+  const checks = [{ op: 'each_json_array', field: 'text', min_count: 1 }];
+  const outcome = evaluateDesk(checks, [good('a'), garbage, good('b')]);
+
+  assert.deepEqual(outcome.tainted.map((entry) => entry.digest), ['d-bad'],
+    'со стола уходит именно негодный член');
+  assert.deepEqual(outcome.survivors.map((member) => member.digest), ['d-a', 'd-b'],
+    'работа соседей остаётся');
+  assert.equal(outcome.verdict, 'repair_required');
+  assert.match(outcome.reasons[0], /each_json_array/);
+
+  // а когда все члены годные — стол принимается целиком
+  assert.equal(evaluateDesk(checks, [good('a'), good('b')]).verdict, 'accepted');
 });
 
 test('компилятор отказывается собирать бессмысленный стол', () => {

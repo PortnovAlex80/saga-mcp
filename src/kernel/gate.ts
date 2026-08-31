@@ -9,7 +9,15 @@ import type { Item } from './node-types.js';
 //   across executions and repairs; the revision identity depends only on the
 //   member digest SET — which execution produced what is provenance.
 
-export type CheckOp = 'nonempty' | 'contains' | 'not_contains' | 'regex' | 'json_array' | 'command_ok';
+export type CheckOp =
+  | 'nonempty'
+  | 'contains'
+  | 'not_contains'
+  | 'regex'
+  | 'json_array'
+  /** Допускной: КАЖДЫЙ материал стола обязан быть JSON-массивом. */
+  | 'each_json_array'
+  | 'command_ok';
 
 export interface GateCheck {
   op: CheckOp;
@@ -77,6 +85,30 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
         }
       }
       if (!ok) reasons.push(reason);
+    } else if (check.op === 'each_json_array') {
+      // Допускной критерий веера: если ниже по конвейеру КАЖДЫЙ материал
+      // разбирается как JSON, то один негодный член — это не «плохой стол»,
+      // а негодный член. Он вытесняется со стола со своей причиной, и работа
+      // соседей не пропадает. Пойман живьём: один воркер вернул служебный
+      // поток вместо ответа — гейт с «достаточно одного» это пропустил, и
+      // разбор ниже уронил весь прогон.
+      const min = typeof check.min_count === 'number' ? check.min_count : 1;
+      let bad: string | undefined;
+      for (const item of items) {
+        const raw = fieldValue(item, field);
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (!Array.isArray(parsed) || parsed.length < min) {
+            bad = `не JSON-массив из ≥${min}`;
+            break;
+          }
+        } catch {
+          bad = `не разбирается как JSON: «${raw.slice(0, 60)}…»`;
+          break;
+        }
+      }
+      ok = bad === undefined;
+      if (!ok) reasons.push(`each_json_array:${field} — ${bad}`);
     } else if (check.op === 'command_ok') {
       // Приёмка «программа запускается»: исход команды, а не обещание модели.
       // Вывод команды попадает В ПРИЧИНУ отказа, поэтому доработка получает
@@ -139,20 +171,29 @@ export interface DeskOutcome extends GateVerdict {
  *  So a violating member is dropped from the desk with an explicit, logged
  *  reason, and the repair judges only what remains. */
 export function evaluateDesk(checks: GateCheck[], members: DeskMember[]): DeskOutcome {
-  const admission = checks.filter((check) => check.op === 'not_contains');
-  const acceptance = checks.filter((check) => check.op !== 'not_contains');
+  const isAdmission = (check: GateCheck): boolean =>
+    check.op === 'not_contains' || check.op === 'each_json_array';
+  const admission = checks.filter(isAdmission);
+  const acceptance = checks.filter((check) => !isAdmission(check));
 
   const tainted: DeskOutcome['tainted'] = [];
   const survivors: DeskMember[] = [];
   for (const member of members) {
-    const failed = admission.find(
-      (check) => evaluateChecks([check], member.items).verdict !== 'accepted'
-    );
-    if (failed) {
+    // Причина берётся у САМОГО критерия: оператор должен прочитать, чем
+    // именно материал не подошёл, а не «не подошёл».
+    let failure: string | undefined;
+    for (const check of admission) {
+      const verdict = evaluateChecks([check], member.items);
+      if (verdict.verdict !== 'accepted') {
+        failure = verdict.reasons[0] ?? `${check.op} — материал не допущен`;
+        break;
+      }
+    }
+    if (failure) {
       tainted.push({
         node: member.node,
         digest: member.digest,
-        reason: `not_contains:${failed.field ?? 'text'} — forbidden value present, material superseded`,
+        reason: `${failure} — материал вытеснен со стола`,
       });
     } else {
       survivors.push(member);
