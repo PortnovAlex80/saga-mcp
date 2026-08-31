@@ -449,6 +449,15 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
     if (message.info?.error) {
       throw new Error(`OPENCODE_ERROR: ${JSON.stringify(message.info.error).slice(0, 400)}`);
     }
+    // Оборванный ответ — это НЕ ответ. Провайдер сообщает причину остановки:
+    // всё, кроме 'stop', означает, что модель не договорила (упёрлась в
+    // лимит вывода, отфильтрована, прервана). Поймано живьём: воркер Элиты
+    // вернул JSON, обрезанный на середине строки, тот прошёл дальше и застрял
+    // на разборе. Ловим в источнике — ядро назначит новую попытку.
+    const finish = message.info?.finish;
+    if (finish && finish !== 'stop') {
+      throw new Error(`OPENCODE_TRUNCATED: модель не договорила (finish=${finish})`);
+    }
     const text = (message.parts ?? [])
       .filter((part) => part.type === 'text' && typeof part.text === 'string')
       .map((part) => part.text as string)
