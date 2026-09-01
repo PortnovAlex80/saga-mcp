@@ -35,7 +35,7 @@ export interface NodeProjection {
   desk: string[];
   verdict?: 'accepted' | 'repair_required' | 'human_required';
   reasons: string[];
-  /** Activity attempts scheduled for this node. */
+  /** Сколько рабочих нанято на это место — падения и круги доработки вместе. */
   attempts: number;
   /** Repair rounds this gate has spent. */
   repairs: number;

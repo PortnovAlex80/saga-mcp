@@ -83,7 +83,7 @@ const assembleDesk: Desk = {
     ],
   },
   publish: { files_from: 'items', message: 'development: assembled application' },
-  max_repairs: 2,
+  max_repairs: 5,
 };
 
 /** Финальная честность: запускаем то, что РЕАЛЬНО легло в репозиторий.

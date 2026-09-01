@@ -48,13 +48,18 @@ export const DEFAULT_TIMEOUTS: ActivityTimeouts = {
   stuck_silence_s: 600,
 };
 
-export const DEFAULT_RETRY: ActivityRetry = { max_attempts: 2 };
+// Пять попыток на круг: провайдер может лечь, сеть моргнуть, процесс упасть —
+// это всё «рабочий сломался», и оно не должно тратить право на доработку.
+export const DEFAULT_RETRY: ActivityRetry = { max_attempts: 5 };
 
 export interface ExecutionRow {
   id: string;
   run_id: string;
   node_id: string;
+  /** Попытка внутри круга: «рабочий сломался, зови следующего». */
   attempt: number;
+  /** Круг доработки: «работа не принята, переделываем». */
+  round: number;
   status: 'new' | 'running' | 'waiting' | 'success' | 'error' | 'canceled' | 'crashed';
   worker_kind: string | null;
   timeouts_json: string;
@@ -102,8 +107,9 @@ export function scheduleExecution(
   attempt: number,
   policy: { workerKind: string; timeouts: ActivityTimeouts; retry: ActivityRetry },
   now = new Date(),
-  opts: { supersedes?: string } = {}
+  opts: { supersedes?: string; round?: number } = {}
 ): string {
+  const round = opts.round ?? 1;
   const executionId = randomUUID();
   return db.transaction(() => {
     appendEventInTx(db, runId, 'node.scheduled', { node_id: nodeId });
@@ -111,6 +117,7 @@ export function scheduleExecution(
       execution_id: executionId,
       node_id: nodeId,
       attempt,
+      round,
       worker_kind: policy.workerKind,
       timeouts: policy.timeouts,
       retry: policy.retry,
@@ -125,13 +132,14 @@ export function scheduleExecution(
       });
     }
     db.prepare(
-      `INSERT INTO executions (id, run_id, node_id, attempt, status, worker_kind, timeouts_json, retry_json, created_at)
-       VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`
+      `INSERT INTO executions (id, run_id, node_id, attempt, round, status, worker_kind, timeouts_json, retry_json, created_at)
+       VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`
     ).run(
       executionId,
       runId,
       nodeId,
       attempt,
+      round,
       policy.workerKind,
       JSON.stringify(policy.timeouts),
       JSON.stringify(policy.retry),

@@ -83,7 +83,13 @@ CREATE TABLE IF NOT EXISTS executions (
   id            TEXT PRIMARY KEY,
   run_id        TEXT NOT NULL REFERENCES runs(id),
   node_id       TEXT NOT NULL,
+  -- ДВА РАЗНЫХ счётчика, и путать их нельзя:
+  --   attempt — попытка внутри круга: «рабочий сломался, зови следующего»;
+  --   round   — круг доработки: «работа не принята, переделываем».
+  -- Круг начинается с чистым бюджетом попыток: доработка не должна съедать
+  -- право на ретрай при настоящем сбое.
   attempt       INTEGER NOT NULL DEFAULT 1,
+  round         INTEGER NOT NULL DEFAULT 1,
   status        TEXT NOT NULL DEFAULT 'new'
                   CHECK (status IN ('new','running','waiting','success','error','canceled','crashed')),
   worker_kind   TEXT,

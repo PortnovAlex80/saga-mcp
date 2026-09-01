@@ -42,6 +42,9 @@ function migrate(database: Database.Database): void {
   if (!executions.has('progress_at')) {
     database.exec('ALTER TABLE executions ADD COLUMN progress_at TEXT');
   }
+  if (!executions.has('round')) {
+    database.exec('ALTER TABLE executions ADD COLUMN round INTEGER NOT NULL DEFAULT 1');
+  }
 }
 
 export function closeDb(): void {

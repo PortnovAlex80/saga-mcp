@@ -683,7 +683,10 @@ async function main(): Promise<void> {
 
   try {
     const inputs = readActivityInputs(db, execution.run_id, workflow.graph_json, execution.node_id);
-    const feedback = execution.attempt > 1
+    // Замечания приёмки принадлежат КРУГУ ДОРАБОТКИ, а не номеру попытки:
+    // «рабочий сломался» и «работа не принята» — разные счётчики, и второй
+    // рабочий на том же месте должен прочитать, что не понравилось первому.
+    const feedback = execution.round > 1
       ? readRepairFeedback(db, execution.run_id, execution.node_id)
       : null;
     const repairNote = feedback

@@ -233,7 +233,7 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       // следующего рабочего с замечаниями. Для веера это работает
       // по-рабочеместно: гейт возвращает в работу того, чей материал не
       // прошёл, а сосед со своей годной работой не переделывает ничего.
-      const maxRepairs = desk.max_repairs ?? 2;
+      const maxRepairs = desk.max_repairs ?? 5;
       nodes[names.gate] = {
         type: 'gate',
         parameters: {

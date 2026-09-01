@@ -175,7 +175,7 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
 
   // стол = рабочее место: не принято — нанимают следующего рабочего НА ТО ЖЕ
   // место, с замечаниями приёмки; сосед свою годную работу не переделывает
-  assert.equal(nodes.implement_gate.parameters.max_repairs, 2);
+  assert.equal(nodes.implement_gate.parameters.max_repairs, 5);
 
   // no SRS artifact in a fresh repo → honest failure
   const fresh = path.join(dir, 'fresh');

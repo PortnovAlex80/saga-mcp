@@ -59,6 +59,8 @@ interface ExecFold {
   executionId: string;
   state: 'scheduled' | 'running' | 'completed' | 'failed' | 'timed_out';
   attempt: number;
+  /** Круг доработки, к которому относится попытка. */
+  round: number;
 }
 
 interface GateFold {
@@ -93,6 +95,8 @@ interface Fold {
   execs: Map<string, ExecFold>;
   gates: Map<string, GateFold>;
   openRepairs: Map<string, OpenRepair>;
+  /** Сколько раз узел отправляли на переделку (в т.ч. оператором). */
+  rounds: Map<string, number>;
   operator: Map<string, OperatorAction>;
   /** Dynamic fan-out: parent split → spawned children (topology from the log). */
   spawned: Map<string, SpawnedChild[]>;
@@ -106,8 +110,12 @@ function foldRun(db: Database.Database, runId: string): Fold {
     execs: new Map(),
     gates: new Map(),
     openRepairs: new Map(),
+    rounds: new Map(),
     operator: new Map(),
     spawned: new Map(),
+  };
+  const openRound = (node: string): void => {
+    fold.rounds.set(node, (fold.rounds.get(node) ?? 0) + 1);
   };
   const nodeOf = (name: string): NodeFold => {
     let n = fold.nodes.get(name);
@@ -150,6 +158,7 @@ function foldRun(db: Database.Database, runId: string): Fold {
           executionId: String(payload.execution_id),
           state: 'scheduled',
           attempt: Number(payload.attempt),
+          round: Number(payload.round ?? 1),
         });
         break;
       case 'execution.started': {
@@ -186,6 +195,7 @@ function foldRun(db: Database.Database, runId: string): Fold {
           seq: event.seq,
           attempt: Number(payload.attempt),
         });
+        openRound(String(payload.target));
         break;
       case 'operator.retry_requested': {
         // «Мир изменился — попробуй снова». Исчерпанный бюджет ретраев — это
@@ -197,6 +207,7 @@ function foldRun(db: Database.Database, runId: string): Fold {
         n.status = undefined;
         n.lastSeq = event.seq;
         fold.openRepairs.set(target, { gate: OPERATOR_RETRY, seq: event.seq, attempt: 0 });
+        openRound(target);
         break;
       }
       case 'nodes.spawned': {
@@ -555,7 +566,7 @@ function executeGate(
   const params = (graph.nodes[nodeId].parameters ?? {}) as Partial<GateParameters>;
   const inbound = graph.inbound[nodeId];
   const checks = Array.isArray(params.checks) ? (params.checks as GateParameters['checks']) : [];
-  const maxRepairs = typeof params.max_repairs === 'number' ? params.max_repairs : 2;
+  const maxRepairs = typeof params.max_repairs === 'number' ? params.max_repairs : 5;
   const repairsUsed = fold.gates.get(nodeId)?.repairsUsed ?? 0;
 
   const desk: RevisionMembers[] = inbound.map((name) => ({
@@ -721,13 +732,13 @@ function drive(
       }
     } else {
       const policy = activityPolicy(def?.parameters ?? graph.nodes[runnable.nodeId]?.parameters ?? {});
-      const prior = fold.execs.get(runnable.nodeId)?.attempt ?? 0;
-      // Операторский повтор даёт узлу СВЕЖИЙ бюджет автоматических ретраев:
-      // прошлые попытки сгорели на условии, которого больше нет.
-      if (fold.openRepairs.get(runnable.nodeId)?.gate === OPERATOR_RETRY) {
-        policy.retry = { ...policy.retry, max_attempts: prior + policy.retry.max_attempts };
-      }
-      scheduleExecution(db, runId, runnable.nodeId, prior + 1, policy);
+      const exec = fold.execs.get(runnable.nodeId);
+      // Круг доработки начинается с ЧИСТЫМ бюджетом попыток: «работа не
+      // принята» и «рабочий сломался» — разные счётчики, и первое не смеет
+      // тратить второе.
+      const round = (fold.rounds.get(runnable.nodeId) ?? 0) + 1;
+      const prior = exec && exec.round === round ? exec.attempt : 0;
+      scheduleExecution(db, runId, runnable.nodeId, prior + 1, policy, new Date(), { round });
     }
     executed++;
     fold = foldRun(db, runId);

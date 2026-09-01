@@ -115,7 +115,7 @@ const llm: NodeType = {
 // never executed as an ordinary node. parameters:
 //   checks: [{op: 'nonempty'|'contains'|'regex', field?, value?, pattern?}]
 //   repair_target: node re-executed on repair_required (default: first inbound)
-//   max_repairs: repair_required budget before human_required (default 2)
+//   max_repairs: repair_required budget before human_required (default 5)
 const gate: NodeType = {
   name: 'gate',
   gate: true,

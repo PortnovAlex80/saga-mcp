@@ -229,8 +229,8 @@ export function Board({ onOpenArtifacts }: Props) {
                   )}
                   <footer>
                     {card.materials > 0 && <span title="материалов на столе">📄 {card.materials}</span>}
-                    {card.attempts > 1 && <span title="попыток">↻ {card.attempts}</span>}
-                    {card.repairs > 0 && <span title="доработок">🛠 {card.repairs}</span>}
+                    {card.attempts > 1 && <span title="нанято рабочих на это место">👷 {card.attempts}</span>}
+                    {card.repairs > 0 && <span title="кругов доработки (не принято приёмкой)">🛠 {card.repairs}</span>}
                     {card.effect_outcome && <span title="эффект">⚡ {card.effect_outcome}</span>}
                     <span className="when">{relative(card.updated_at)}</span>
                   </footer>
