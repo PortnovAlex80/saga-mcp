@@ -99,7 +99,7 @@ test('гейт судит СОЮЗ: что воркер произвёл и чт
   // материал, доказательство и то, что произвёл воркер
   assert.deepEqual(gateInbound, ['app', 'app_post1', 'app_post2']);
   const ops = graph.nodes.app_gate.parameters.checks.map((check) => check.op);
-  assert.ok(ops.includes('each_json_array') && ops.includes('command_ok'));
+  assert.ok(ops.includes('files') && ops.includes('command_ok'));
 });
 
 test('склейка: исполнитель шлёт только изменённое, база переносится сама', async () => {

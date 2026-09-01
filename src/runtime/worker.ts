@@ -10,7 +10,7 @@
 // as the real API call, deterministic, no network.
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { request as httpRequest } from 'node:http';
 import path from 'node:path';
@@ -37,6 +37,8 @@ interface LlmParameters {
   timeout_s?: number;
   /** 'items' — судить КАНДИДАТА во временном каталоге, а не репозиторий. */
   workdir?: 'items';
+  /** Результат стола — ФАЙЛЫ в рабочем каталоге, а не текст ответа. */
+  produces?: 'files';
   /** attach tool: accepted product artifacts pasted into the prompt. */
   attach?: Array<{ path: string; label?: string }>;
   model?: string;
@@ -278,6 +280,8 @@ function note(started: number, line: string): void {
 interface OpencodeResult {
   text: string;
   usage?: ModelUsage;
+  /** Столы, производящие код: файлы, снятые из рабочего каталога модели. */
+  files?: DesiredFile[];
 }
 
 /** Поднимает свой headless-сервер opencode и отдаёт его порт.
@@ -413,13 +417,59 @@ interface OpencodeMessage {
   parts?: Array<{ type?: string; text?: string }>;
 }
 
+/** Каталоги, которые модель не писала: служебные следы инструмента и то, что
+ *  притащит пакетный менеджер. В урожай идёт исходный код, а не мусор. */
+const HARVEST_SKIP = new Set(['node_modules', '.git', '.opencode', '.cache']);
+
+function walkFiles(root: string, base = ''): DesiredFile[] {
+  const out: DesiredFile[] = [];
+  for (const entry of readdirSync(path.join(root, base), { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || HARVEST_SKIP.has(entry.name)) continue;
+    const rel = base ? `${base}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      out.push(...walkFiles(root, rel));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    let content: string;
+    try {
+      content = readFileSync(path.join(root, rel), 'utf8');
+    } catch {
+      continue; // нечитаемое (бинарь, блокировка) — не наш материал
+    }
+    out.push({ path: rel, content });
+  }
+  return out;
+}
+
+/** Разложить входные файлы в песочницу: модель правит НАСТОЯЩИЕ файлы,
+ *  а не их пересказ в промпте. */
+function seedSandbox(sandbox: string, inputs: Item[]): Map<string, string> {
+  const seeded = new Map<string, string>();
+  for (const item of inputs) {
+    const rel = String(item.json.path ?? '').trim();
+    const content = item.json.content;
+    if (!rel || typeof content !== 'string' || rel.includes('..')) continue;
+    const full = path.join(sandbox, rel);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, content, 'utf8');
+    seeded.set(rel, content);
+  }
+  return seeded;
+}
+
 /** Вызов модели через headless-сервер opencode.
  *
  *  Почему не `opencode run`: он не стримит. Замерено — между признаками жизни
  *  в нём бывает до 138 секунд тишины, и отличить «думает» от «повисла» нельзя.
  *  Сервер отдаёт `message.part.delta` каждые ~30 мс (замер: 484 дельты за 9 с
  *  генерации), то есть даёт настоящий признак жизни модели. */
-async function runOpencode(prompt: string, model: string, timeoutMs: number): Promise<OpencodeResult> {
+async function runOpencode(
+  prompt: string,
+  model: string,
+  timeoutMs: number,
+  opts: { produces?: 'files'; inputs?: Item[] } = {}
+): Promise<OpencodeResult> {
   const started = Date.now();
   note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
   const slash = model.indexOf('/');
@@ -428,6 +478,8 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
   const modelID = model.slice(slash + 1);
 
   const sandbox = mkdtempSync(path.join(tmpdir(), 'saga5-model-'));
+  const seeded = opts.produces === 'files' ? seedSandbox(sandbox, opts.inputs ?? []) : new Map<string, string>();
+  if (seeded.size > 0) note(started, `в каталог разложено файлов: ${seeded.size}`);
   const { port, child } = await startOpencodeServer(Math.min(timeoutMs, 60_000), sandbox);
   const base = `http://127.0.0.1:${port}`;
   const abort = new AbortController();
@@ -470,6 +522,19 @@ async function runOpencode(prompt: string, model: string, timeoutMs: number): Pr
       cost: message.info?.cost || undefined,
     };
     note(started, `получен ответ · ${text.length} симв. · ${usage.output ?? '?'} токенов`);
+    if (opts.produces === 'files') {
+      // Урожай — то, что модель НАПИСАЛА, а не то, что пересказала. Неизменные
+      // файлы не возвращаем: стол собирает заплатку, а не копию репозитория.
+      const files = walkFiles(sandbox).filter((file) => seeded.get(file.path) !== file.content);
+      note(started, `сдано файлов: ${files.length}`);
+      // «Ничего не изменил» — законный ответ там, где каталог УЖЕ был полон
+      // (сборщику нечего править). Там, где каталог был пуст, это значит, что
+      // рабочий не работал, и такое молча пропускать нельзя.
+      if (files.length === 0 && seeded.size === 0) {
+        throw new Error('OPENCODE_NO_FILES: модель не записала ни одного файла');
+      }
+      return { text, usage, files };
+    }
     if (!text.trim()) throw new Error('OPENCODE_EMPTY: модель не вернула текста');
     return { text, usage };
   } finally {
@@ -710,11 +775,16 @@ async function main(): Promise<void> {
     } else if ((params.mode ?? 'echo') === 'opencode') {
       const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + attachments(params) + repairNote;
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
-      const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000);
+      const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000, {
+        produces: params.produces,
+        inputs,
+      });
       // Usage is provenance of the ATTEMPT, not of the material: keeping it out
       // of the item keeps identical answers content-identical.
       usage = answer.usage;
-      output = [{ json: { text: stripCodeFences(answer.text), model } }];
+      output = answer.files
+        ? answer.files.map((file) => ({ json: { path: file.path, content: file.content, model } }))
+        : [{ json: { text: stripCodeFences(answer.text), model } }];
     } else if ((params.mode ?? 'echo') === 'api') {
       const baseUrl = process.env.LLM_BASE_URL;
       if (!baseUrl) throw new Error('LLM_BASE_URL is required for mode=api');

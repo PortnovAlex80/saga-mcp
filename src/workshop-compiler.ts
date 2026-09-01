@@ -159,6 +159,7 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       mode: 'opencode',
       model: desk.model ?? opts.model ?? DEFAULT_MODEL,
       prompt: skill ? buildPrompt(skill, desk) : '',
+      ...(skill?.produces ? { produces: skill.produces } : {}),
       ...(desk.timeouts ? { timeouts: desk.timeouts } : {}),
       ...(desk.tools?.some((tool) => tool.kind === 'attach')
         ? { attach: desk.tools.filter((tool) => tool.kind === 'attach'), repo: '' }

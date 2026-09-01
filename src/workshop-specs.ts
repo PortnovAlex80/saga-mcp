@@ -53,7 +53,6 @@ const reviewDesk: Desk = {
   title: 'Ревью кода',
   skill: 'review',
   input: { kind: 'desk', desk: 'implement' },
-  hooks: { before: [{ kind: 'json_array' }] },
 };
 
 /** Сборка: приводит куски разных воркеров к согласованному набору и ПРОВЕРЯЕТ
@@ -69,11 +68,9 @@ const assembleDesk: Desk = {
   input: { kind: 'desk', desk: 'implement' },
   depends_on: ['review'],
   hooks: {
-    before: [{ kind: 'json_array' }],
     after: [
-      { kind: 'json_array' },
-      // Заплатка сборщика ложится на исходный набор — переписывать всё
-      // дорого и рвётся по бюджету (замерено: 300 с не хватило).
+      // Заплатка сборщика ложится на исходный набор: он правит файлы на месте
+      // и отдаёт только изменённые, а неизменные приходят со входа стола.
       { kind: 'overlay', key: 'path', with: 'input' },
       { kind: 'command', run: SMOKE_STATIC, label: 'smoke-static', timeout_s: 120, workdir: 'items' },
       // Второй, более честный вопрос: страница РАБОТАЕТ? Расхождение

@@ -17,6 +17,8 @@ export type CheckOp =
   | 'json_array'
   /** Допускной: КАЖДЫЙ материал стола обязан быть JSON-массивом. */
   | 'each_json_array'
+  /** На столе лежат готовые файлы ({path, content}) — не менее min_count. */
+  | 'files'
   | 'command_ok';
 
 export interface GateCheck {
@@ -109,6 +111,16 @@ export function evaluateChecks(checks: GateCheck[], items: Item[]): GateVerdict 
       }
       ok = bad === undefined;
       if (!ok) reasons.push(`each_json_array:${field} — ${bad}`);
+    } else if (check.op === 'files') {
+      // Файл считается сданным, когда у него есть и имя, и непустое тело:
+      // пустышка с правильным путём — это заглушка, а не работа.
+      const need = check.min_count ?? 1;
+      const files = items.filter(
+        (item) => String(item.json.path ?? '').trim().length > 0
+          && String(item.json.content ?? '').trim().length > 0
+      );
+      ok = files.length >= need;
+      if (!ok) reasons.push(`files — сдано файлов: ${files.length}, требуется не меньше ${need}`);
     } else if (check.op === 'command_ok') {
       // Приёмка «программа запускается»: исход команды, а не обещание модели.
       // Вывод команды попадает В ПРИЧИНУ отказа, поэтому доработка получает
