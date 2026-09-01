@@ -27,6 +27,14 @@ import {
 } from '../kernel/executions.js';
 import { readActivityInputs, nodeDefinitionFor } from '../kernel/runner.js';
 import { renderTemplateString, type Item } from '../kernel/node-types.js';
+import {
+  materializeWorkplace,
+  trackerProgress,
+  workplaceBriefing,
+  workplaceDir,
+  WORKPLACE_FILES,
+  type WorkplacePlan,
+} from './workplace.js';
 
 interface LlmParameters {
   prompt?: string;
@@ -39,6 +47,13 @@ interface LlmParameters {
   workdir?: 'items';
   /** Результат стола — ФАЙЛЫ в рабочем каталоге, а не текст ответа. */
   produces?: 'files';
+  /** Путь к цели: цель стола, его шаги и самопроверка. Материализуются в
+   *  рабочее место, которое переживает рабочего. */
+  workshop?: string;
+  desk?: string;
+  goal?: string;
+  steps?: string[];
+  checklist?: string[];
   /** attach tool: accepted product artifacts pasted into the prompt. */
   attach?: Array<{ path: string; label?: string }>;
   model?: string;
@@ -468,7 +483,7 @@ async function runOpencode(
   prompt: string,
   model: string,
   timeoutMs: number,
-  opts: { produces?: 'files'; inputs?: Item[] } = {}
+  opts: { produces?: 'files'; inputs?: Item[]; workplace?: { dir: string; plan: WorkplacePlan } } = {}
 ): Promise<OpencodeResult> {
   const started = Date.now();
   note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
@@ -477,9 +492,17 @@ async function runOpencode(
   const providerID = model.slice(0, slash);
   const modelID = model.slice(slash + 1);
 
-  const sandbox = mkdtempSync(path.join(tmpdir(), 'saga5-model-'));
+  // Место переживает рабочего: каталог стола, а не случайная песочница.
+  const sandbox = opts.workplace
+    ? materializeWorkplace(opts.workplace.dir, opts.workplace.plan)
+    : mkdtempSync(path.join(tmpdir(), 'saga5-model-'));
   const seeded = opts.produces === 'files' ? seedSandbox(sandbox, opts.inputs ?? []) : new Map<string, string>();
   if (seeded.size > 0) note(started, `в каталог разложено файлов: ${seeded.size}`);
+  if (opts.workplace) {
+    const plan = opts.workplace.plan;
+    note(started, `стол обустроен · круг ${plan.round} · шагов ${plan.steps.length}`
+      + (plan.feedback ? ' · с замечаниями' : ''));
+  }
   const { port, child } = await startOpencodeServer(Math.min(timeoutMs, 60_000), sandbox);
   const base = `http://127.0.0.1:${port}`;
   const abort = new AbortController();
@@ -525,8 +548,27 @@ async function runOpencode(
     if (opts.produces === 'files') {
       // Урожай — то, что модель НАПИСАЛА, а не то, что пересказала. Неизменные
       // файлы не возвращаем: стол собирает заплатку, а не копию репозитория.
-      const files = walkFiles(sandbox).filter((file) => seeded.get(file.path) !== file.content);
-      note(started, `сдано файлов: ${files.length}`);
+      // Обстановка стола — трекер, чек-лист, замечания — принадлежит ЗАВОДУ и
+      // в продукт не едет никогда (правило сага4: factory-managed files
+      // обновляются, но не коммитятся).
+      const harvested = walkFiles(sandbox)
+        .filter((file) => !WORKPLACE_FILES.includes(file.path))
+        .filter((file) => seeded.get(file.path) !== file.content);
+      const owns = opts.workplace?.plan.owns;
+      const files = owns && owns.length > 0
+        ? harvested.filter((file) => owns.includes(file.path))
+        : harvested;
+      const refused = harvested.length - files.length;
+      if (refused > 0) {
+        // Граница записи — не пожелание в промпте. Файл вне своей области не
+        // становится материалом: именно так на прогоне Элиты в продукт уехали
+        // 370 строк мёртвого кода, которых не было в плане.
+        const names = harvested.filter((f) => !files.includes(f)).map((f) => f.path);
+        note(started, `отброшено вне границы стола: ${names.join(', ')}`);
+      }
+      const progress = opts.workplace ? trackerProgress(sandbox) : undefined;
+      note(started, `сдано файлов: ${files.length}`
+        + (progress ? ` · шагов пройдено ${progress.done}/${progress.total}` : ''));
       // «Ничего не изменил» — законный ответ там, где каталог УЖЕ был полон
       // (сборщику нечего править). Там, где каталог был пуст, это значит, что
       // рабочий не работал, и такое молча пропускать нельзя.
@@ -541,12 +583,17 @@ async function runOpencode(
     clearTimeout(killTimer);
     abort.abort();
     child.kill();
-    // Всё, что модель написала мимо ответа, уходит вместе с песочницей.
-    // Уборка — best-effort: на Windows только что убитый сервер ещё держит
-    // каталог, и EPERM здесь однажды уронил готовую работу. Убирать важно,
-    // но не ценой результата: остаток заберёт ОС.
+    // РАБОЧЕЕ МЕСТО НЕ УБИРАЕМ. Стол переживает рабочего: следующий на этом
+    // месте должен найти трекер с отметками предшественника и замечания
+    // приёмки. Снести каталог здесь значило бы вернуть «каждая попытка с
+    // чистого листа» — ровно то, из-за чего приёмка умела только отвергать.
+    // Безымянную песочницу (столы без пути) убираем, как убирали: best-effort,
+    // потому что на Windows убитый сервер ещё держит каталог, и EPERM здесь
+    // однажды уронил готовую работу.
     try {
-      rmSync(sandbox, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      if (!opts.workplace) {
+        rmSync(sandbox, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      }
     } catch {
       /* каталог ещё занят — он временный и переживёт нас недолго */
     }
@@ -640,6 +687,23 @@ function parseArgs(): string {
     process.exit(2);
   }
   return id;
+}
+
+/** Шаги и пункты самопроверки — такие же шаблоны, как промпт: «Реализуй
+ *  {{title}}» должно стать конкретной задачей этого рабочего места. */
+function renderLines(lines: string[], items: Item[]): string[] {
+  const first = items[0]?.json ?? {};
+  return lines.map((line) => renderTemplateString(line, first));
+}
+
+/** Граница записи берётся из САМОГО задания: план назвал файлы задачи, и это
+ *  не пожелание, а область ответственности рабочего места. */
+function writeBoundary(items: Item[]): string[] | undefined {
+  const files = items.flatMap((item) => {
+    const value = item.json.files;
+    return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+  });
+  return files.length > 0 ? [...new Set(files)] : undefined;
 }
 
 function renderPrompt(tmpl: string, items: Item[]): string {
@@ -773,11 +837,30 @@ async function main(): Promise<void> {
       effectSettlement = applied.effect;
       crashAfterEffect = applied.crashAfter;
     } else if ((params.mode ?? 'echo') === 'opencode') {
-      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs) + attachments(params) + repairNote;
       const model = params.model ?? 'zai-coding-plan/glm-5.3-flash';
+      // Стол объявил ПУТЬ к цели — значит рабочее место обустраивается, и
+      // рабочий приходит не в пустую песочницу, а на место с трекером,
+      // самопроверкой и замечаниями предшественника.
+      const plan: WorkplacePlan | undefined = (params.steps ?? []).length > 0
+        ? {
+          workshop: params.workshop,
+          desk: params.desk ?? execution.node_id,
+          goal: params.goal ?? 'Сделать работу этого стола и сдать её.',
+          steps: renderLines(params.steps ?? [], inputs),
+          checklist: renderLines(params.checklist ?? [], inputs),
+          owns: writeBoundary(inputs),
+          feedback,
+          round: execution.round,
+        }
+        : undefined;
+      const prompt = renderPrompt(params.prompt ?? '{{text}}', inputs)
+        + attachments(params)
+        + (plan ? workplaceBriefing(plan) : '')
+        + repairNote;
       const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000, {
         produces: params.produces,
         inputs,
+        ...(plan ? { workplace: { dir: workplaceDir(execution.run_id, execution.node_id), plan } } : {}),
       });
       // Usage is provenance of the ATTEMPT, not of the material: keeping it out
       // of the item keeps identical answers content-identical.
