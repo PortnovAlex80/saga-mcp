@@ -102,6 +102,8 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
   const publishOf = new Map<string, string>();
   /** Узел, с которого стол взял вход — им публикует стол интеграции. */
   const inputOf = new Map<string, string>();
+  /** Кто на столе ПРОИЗВОДИТ работу — адресат претензии с уровня ниже. */
+  const workerOf = new Map<string, string>();
   let entry: string | undefined;
 
   const connect = (from: string, to: string): void => {
@@ -235,6 +237,12 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       // по-рабочеместно: гейт возвращает в работу того, чей материал не
       // прошёл, а сосед со своей годной работой не переделывает ничего.
       const maxRepairs = desk.max_repairs ?? 5;
+      // Адресат эскалации — тот, кто произвёл ВХОД этого стола. «Задачу не
+      // удаётся сделать» — претензия к плану, а не к рабочему, и пока такой
+      // адресат есть, звать человека рано.
+      const supplier = desk.input.kind === 'desk' || desk.input.kind === 'publish'
+        ? workerOf.get(desk.input.desk)
+        : undefined;
       nodes[names.gate] = {
         type: 'gate',
         parameters: {
@@ -243,6 +251,7 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
           // повторять бессмысленно, они детерминированы.
           ...(workerNode ? { repair_target: workerNode } : {}),
           max_repairs: maxRepairs,
+          ...(supplier ? { escalate_to: supplier } : {}),
           title: `${spec.title}: ${desk.title}`,
         },
       };
@@ -280,6 +289,7 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       publishOf.set(desk.id, names.publish);
     }
 
+    if (workerNode) workerOf.set(desk.id, workerNode);
     exitOf.set(desk.id, cursor);
   }
 

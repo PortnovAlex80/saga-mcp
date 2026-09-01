@@ -5,6 +5,15 @@ import { api, type BoardData, type Card, type CardStatus, type RunEvent, type Wo
 // перетащить в «done»: колонка выводится из журнала. Единственное действие
 // оператора здесь — решение на человеческом гейте (обычное событие ядра).
 
+// Вердикты по-человечески: «escalated» на доске должно читаться как решение
+// завода, а не как английский термин из журнала.
+const VERDICT_TITLES: Record<string, string> = {
+  accepted: 'принято',
+  repair_required: 'на доработку',
+  escalated: 'претензия ушла на уровень выше',
+  human_required: 'нужен человек',
+};
+
 const COLUMN_TITLES: Record<CardStatus, string> = {
   todo: 'Не начато',
   in_progress: 'В работе',
@@ -278,7 +287,9 @@ export function Board({ onOpenArtifacts }: Props) {
                 {COLUMN_TITLES[selected.status]}
               </span>
             </p>
-            {selected.verdict && <p>вердикт гейта: <b>{selected.verdict}</b></p>}
+            {selected.verdict && (
+              <p>вердикт гейта: <b>{VERDICT_TITLES[selected.verdict] ?? selected.verdict}</b></p>
+            )}
             {selected.reasons.length > 0 && (
               <ul className="reasons">
                 {selected.reasons.map((reason, index) => <li key={index}>{reason}</li>)}

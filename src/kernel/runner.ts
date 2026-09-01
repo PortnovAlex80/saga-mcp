@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import {
+  appendEvent,
   appendEventInTx,
   createRun,
   createWorkflow,
@@ -64,7 +65,7 @@ interface ExecFold {
 }
 
 interface GateFold {
-  verdict: 'accepted' | 'repair_required' | 'human_required';
+  verdict: 'accepted' | 'repair_required' | 'human_required' | 'escalated';
   decisionSeq: number;
   revisionDigest?: string;
   repairsUsed: number;
@@ -100,6 +101,8 @@ interface Fold {
   operator: Map<string, OperatorAction>;
   /** Dynamic fan-out: parent split → spawned children (topology from the log). */
   spawned: Map<string, SpawnedChild[]>;
+  /** Сколько раз работа уходила на уровень выше — бюджет всего прогона. */
+  escalations: number;
 }
 
 type Payload = Record<string, unknown>;
@@ -113,6 +116,7 @@ function foldRun(db: Database.Database, runId: string): Fold {
     rounds: new Map(),
     operator: new Map(),
     spawned: new Map(),
+    escalations: 0,
   };
   const openRound = (node: string): void => {
     fold.rounds.set(node, (fold.rounds.get(node) ?? 0) + 1);
@@ -181,6 +185,15 @@ function foldRun(db: Database.Database, runId: string): Fold {
         }
         break;
       }
+      case 'escalation.requested':
+        // Претензия ушла выше: на своём уровне гейт начинает счёт заново,
+        // иначе вернувшийся сверху материал он забракует, не приступая.
+        fold.escalations += 1;
+        {
+          const gate = fold.gates.get(String(payload.node_id));
+          if (gate) gate.repairsUsed = 0;
+        }
+        break;
       case 'gate.decided':
         fold.gates.set(String(payload.node_id), {
           verdict: payload.verdict as GateFold['verdict'],
@@ -189,6 +202,15 @@ function foldRun(db: Database.Database, runId: string): Fold {
           repairsUsed: Number(payload.attempts_used ?? 0),
         });
         break;
+      case 'node.restarted': {
+        // Вход изменился — прежний результат больше не результат.
+        const n = nodeOf(String(payload.node_id));
+        n.status = undefined;
+        n.desk = [];
+        n.lastSeq = event.seq;
+        openRound(String(payload.node_id));
+        break;
+      }
       case 'repair.requested':
         fold.openRepairs.set(String(payload.target), {
           gate: String(payload.node_id),
@@ -342,6 +364,18 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
         });
       if (changed) return { nodeId: name, kind: 'gate' };
       continue;
+    }
+
+    // УСТАРЕВШИЙ РЕЗУЛЬТАТ. Раньше это правило было только у соединения веера,
+    // и до эскалации большего не требовалось: вход завершённого узла не менялся.
+    // Теперь меняется — переписанный сверху план обязан заново пройти вниз по
+    // конвейеру, иначе эскалация была бы жестом: наверху переделали, а внизу
+    // лежит работа по старому входу.
+    if (nodeFold?.status === 'completed' && !fold.openRepairs.has(name)) {
+      const stale = def.inbound.some(
+        (upstream) => (fold.nodes.get(upstream)?.lastSeq ?? 0) > (nodeFold.lastSeq ?? 0)
+      );
+      if (stale) return { nodeId: name, kind: type.activity ? 'activity' : 'scripted' };
     }
 
     if (nodeFold && !fold.openRepairs.has(name)) {
@@ -556,6 +590,11 @@ function executeSplit(
 /** Kernel decision over the sealed desk revision. One transaction commits:
  *  revision.sealed + gate.decided (+ node.completed on accepted, +
  *  repair.requested on repair_required). */
+/** Сколько раз за прогон работа может уйти на уровень выше. Без потолка завод
+ *  качается между планом и реализацией: каждый переписанный план порождает
+ *  новую реализацию, та снова не принимается, и так до конца бюджета. */
+const MAX_ESCALATIONS = 3;
+
 function executeGate(
   db: Database.Database,
   runId: string,
@@ -581,11 +620,19 @@ function executeGate(
   // спрос с каждого места отдельный.
   const perWorkplace = workplaceFailures(db, fold, params.repair_target ?? inbound[0], checks);
   const accepted = outcome.verdict === 'accepted' && perWorkplace.length === 0;
+  // Три адресата по возрастанию уровня, и человек — только когда кончились
+  // адресаты, а не варианты. Исчерпав ремонт на своём столе, гейт предъявляет
+  // претензию столу-поставщику: «эту задачу не удаётся сделать» — утверждение
+  // о ЗАДАЧЕ, то есть о плане, а не о рабочем.
+  const escalateTo = typeof params.escalate_to === 'string' ? params.escalate_to : undefined;
+  const canEscalate = Boolean(escalateTo) && fold.escalations < MAX_ESCALATIONS;
   const verdict = accepted
     ? 'accepted'
     : repairsUsed < maxRepairs
       ? 'repair_required'
-      : 'human_required';
+      : canEscalate
+        ? 'escalated'
+        : 'human_required';
   const reasons = accepted
     ? []
     : [...outcome.reasons, ...perWorkplace.flatMap((entry) => entry.reasons.map((r) => `${entry.target}: ${r}`))];
@@ -648,6 +695,42 @@ function executeGate(
           reasons: request.reasons,
         });
       }
+    }
+    if (verdict === 'escalated' && escalateTo) {
+      // Претензия переводится на уровень адресата: сырые причины («сдано
+      // файлов: 0») — это факты нашего стола, а поставщику нужно утверждение
+      // о ЕГО работе. Заголовок стола и говорит, где именно не получилось.
+      const level = params.title ? `«${params.title}»` : nodeId;
+      const claim = [
+        `Работу на столе ${level} не удалось довести до приёмки за ${maxRepairs} круга(ов).`,
+        'Похоже, дело не в исполнении, а в том, что пришло на вход. Что именно не сошлось:',
+        ...reasons.map((reason) => `— ${reason}`),
+        'Переделай свою часть так, чтобы это стало выполнимо.',
+      ];
+      const stale = [...(fold.nodes.get(escalateTo)?.desk ?? [])];
+      if (stale.length > 0) {
+        appendEventInTx(db, runId, 'material.superseded', {
+          node_id: nodeId,
+          members: stale.map((digest) => ({ node: escalateTo, digest })),
+          reasons: [`материал уровня выше отозван по эскалации со стола ${level}`],
+        });
+      }
+      appendEventInTx(db, runId, 'escalation.requested', {
+        node_id: nodeId,
+        target: escalateTo,
+        hop: fold.escalations + 1,
+        reasons,
+      });
+      // Переделку заказываем ОБЫЧНЫМ событием: наверху это такой же круг
+      // доработки с обратной связью, и всё, что уже умеет конвейер — счёт
+      // кругов, замечания в промпте, повторное исполнение — работает само.
+      appendEventInTx(db, runId, 'repair.requested', {
+        node_id: nodeId,
+        target: escalateTo,
+        attempt: repairsUsed + 1,
+        escalated: true,
+        reasons: claim,
+      });
     }
   }).immediate();
 }
@@ -732,6 +815,17 @@ function drive(
       }
     } else {
       const policy = activityPolicy(def?.parameters ?? graph.nodes[runnable.nodeId]?.parameters ?? {});
+      // Работу переделывают из-за устаревшего входа — это НОВЫЙ круг, и он
+      // должен быть записан, а не выведен: иначе у второго устаревания круг
+      // тот же, и рабочий унаследует уже потраченный бюджет падений.
+      const reopened = fold.openRepairs.has(runnable.nodeId);
+      if (fold.nodes.get(runnable.nodeId)?.status === 'completed' && !reopened) {
+        appendEvent(db, runId, 'node.restarted', {
+          node_id: runnable.nodeId,
+          reason: 'stale_input',
+        });
+        fold = foldRun(db, runId);
+      }
       const exec = fold.execs.get(runnable.nodeId);
       // Круг доработки начинается с ЧИСТЫМ бюджетом попыток: «работа не
       // принята» и «рабочий сломался» — разные счётчики, и первое не смеет

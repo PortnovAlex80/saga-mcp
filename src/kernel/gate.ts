@@ -37,6 +37,10 @@ export interface GateParameters {
   repair_target?: string;
   /** repair_required verdicts allowed before the gate goes human_required. */
   max_repairs?: number;
+  /** Узел стола-поставщика, которому уходит претензия, когда ремонт на СВОЁМ
+   *  уровне исчерпан. «Задача не режется» — претензия к плану, а не к
+   *  рабочему, и звать человека, пока есть адресат выше, преждевременно. */
+  escalate_to?: string;
   title?: string;
 }
 

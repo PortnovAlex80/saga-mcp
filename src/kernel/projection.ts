@@ -33,7 +33,7 @@ export interface NodeProjection {
   status: CardStatus;
   /** Accumulated, non-superseded output digests, event order. */
   desk: string[];
-  verdict?: 'accepted' | 'repair_required' | 'human_required';
+  verdict?: 'accepted' | 'repair_required' | 'human_required' | 'escalated';
   reasons: string[];
   /** Сколько рабочих нанято на это место — падения и круги доработки вместе. */
   attempts: number;
@@ -233,6 +233,21 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
         if (node && node.status !== 'done') node.status = 'todo';
         break;
       }
+      case 'escalation.requested': {
+        // Претензия ушла выше: гейт ждёт не человека, а переделки поставщика.
+        const gate = touch(known);
+        if (gate) gate.status = 'review';
+        break;
+      }
+      case 'node.restarted': {
+        const node = touch(known);
+        if (node) {
+          node.status = 'todo';
+          node.desk = [];
+          node.reasons = [];
+        }
+        break;
+      }
       case 'run.abandoned': {
         // Смену распустили: всё, что не доведено, снимается со стены. Карточка
         // не «провалилась» сама по себе — её закрыл оператор, и причина это
@@ -270,6 +285,7 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
           node.reasons = Array.isArray(payload.reasons) ? (payload.reasons as string[]) : [];
           node.repairs = Number(payload.attempts_used ?? node.repairs);
           if (verdict === 'repair_required') node.status = 'review';
+          if (verdict === 'escalated') node.status = 'review';
           if (verdict === 'human_required') node.status = 'blocked';
         }
         if (verdict === 'accepted') {
