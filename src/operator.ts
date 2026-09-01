@@ -212,3 +212,55 @@ export function completeHumanTask(
       `%"node":"${node}"%`
     );
 }
+
+/** «Распустить смену»: прогон встал, и оператор закрывает его целиком.
+ *
+ *  Сброс — это СОБЫТИЕ, а не удаление: журнал остаётся единственной властью,
+ *  поэтому «сбросить» не значит «стереть». Прогон становится `canceled`, его
+ *  незавершённые исполнения — тоже, и карточки перестают висеть. Живой воркер
+ *  дописать результат уже не сможет: он settle-ит по лизу и статусу `running`,
+ *  а статуса больше нет — то есть гонка со сбросом закрыта самой моделью
+ *  аренды, без отдельного протокола остановки.
+ *
+ *  Терминальные прогоны не трогаем: сброс успешного прогона стёр бы принятый
+ *  артефакт из вида, ничего не починив. */
+export function abandonRun(
+  db: Database.Database,
+  runId: string,
+  note?: string
+): { run_id: string; status: string; canceled: number } {
+  const run = getRun(db, runId);
+  if (run.status === 'success') {
+    throw new Error('RUN_SEALED: успешный прогон распускать нечего');
+  }
+  if (run.status === 'canceled') {
+    return { run_id: runId, status: 'canceled', canceled: 0 };
+  }
+  let canceled = 0;
+  db.transaction(() => {
+    canceled = db
+      .prepare(
+        "UPDATE executions SET status = 'canceled', lease = NULL WHERE run_id = ? AND status IN ('new','running','waiting')"
+      )
+      .run(runId).changes;
+    appendEventInTx(db, runId, 'run.abandoned', {
+      from_status: run.status,
+      canceled_executions: canceled,
+      note: note ?? null,
+    });
+    db.prepare("UPDATE runs SET status = 'canceled', updated_at = datetime('now') WHERE id = ?").run(runId);
+  }).immediate();
+  return { run_id: runId, status: 'canceled', canceled };
+}
+
+/** Сброс завода: распустить все прогоны, которые ещё чего-то ждут.
+ *  Успешные и уже распущенные остаются как есть. */
+export function abandonAllRuns(
+  db: Database.Database,
+  note?: string
+): Array<{ run_id: string; status: string; canceled: number }> {
+  const open = db
+    .prepare("SELECT id FROM runs WHERE status IN ('new','running','waiting','error','crashed')")
+    .all() as Array<{ id: string }>;
+  return open.map((row) => abandonRun(db, row.id, note));
+}

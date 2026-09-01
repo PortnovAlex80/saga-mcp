@@ -147,6 +147,23 @@ export function Board({ onOpenArtifacts }: Props) {
     }
   }, [wsName, wsInput, refresh]);
 
+  // Сброс необратим для прогона, но не для истории: карточки уходят со
+  // стены, журнал и принятые артефакты остаются. Поэтому спрашиваем один раз.
+  const resetFactory = useCallback(async () => {
+    if (!window.confirm('Распустить все вставшие прогоны? Успешные и их артефакты не тронем.')) return;
+    setBusy(true);
+    setStartInfo('сброс…');
+    try {
+      const result = await api.resetFactory('сброс с доски');
+      setStartInfo(`распущено прогонов: ${result.runs.length}, отпущено рабочих: ${result.dismissed}`);
+      await refresh();
+    } catch (e) {
+      setStartInfo(`ошибка: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh]);
+
   const workshop = workshops[wsName];
 
   return (
@@ -173,6 +190,12 @@ export function Board({ onOpenArtifacts }: Props) {
           <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} />
           только активные
         </label>
+        <button
+          className="danger"
+          disabled={busy}
+          title="Распустить все вставшие прогоны: карточки уходят со стены, история остаётся"
+          onClick={resetFactory}
+        >⨯ Сбросить завод</button>
         {startInfo && <span className="run-info">{startInfo}</span>}
         {error && <span className="error">{error}</span>}
       </div>

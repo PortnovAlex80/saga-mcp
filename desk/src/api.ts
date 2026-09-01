@@ -217,6 +217,16 @@ export const api = {
         body: JSON.stringify({ note }),
       }
     ),
+  abandon: (runId: string, note?: string) =>
+    json<{ run_id: string; status: string; canceled: number; dismissed: number }>(
+      `/api/runs/${runId}/abandon`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) }
+    ),
+  resetFactory: (note?: string) =>
+    json<{ runs: Array<{ run_id: string; canceled: number }>; dismissed: number }>(
+      '/api/factory/reset',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) }
+    ),
   workers: () => json<WorkersData>('/api/workers'),
   setLimits: (limits: Partial<Limits>) =>
     json<{ limits: Limits; hired: number }>('/api/limits', {

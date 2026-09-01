@@ -233,6 +233,19 @@ export function projectRun(db: Database.Database, runId: string): RunProjection 
         if (node && node.status !== 'done') node.status = 'todo';
         break;
       }
+      case 'run.abandoned': {
+        // Смену распустили: всё, что не доведено, снимается со стены. Карточка
+        // не «провалилась» сама по себе — её закрыл оператор, и причина это
+        // говорит прямо, иначе доска врала бы про дефект там, где было решение.
+        const note = typeof payload.note === 'string' && payload.note ? `: ${payload.note}` : '';
+        for (const node of nodes.values()) {
+          if (node.status === 'done' || node.status === 'failed') continue;
+          node.status = 'failed';
+          node.queued = false;
+          node.reasons = [`прогон распущен оператором${note}`];
+        }
+        break;
+      }
       case 'material.superseded': {
         const members = (payload.members ?? []) as Array<{ node: string; digest: string }>;
         for (const member of members) {

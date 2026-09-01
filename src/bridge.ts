@@ -19,12 +19,15 @@ import { artifactBody, artifactIndex, runArtifacts } from './kernel/artifacts.js
 import { board, operatorQueue } from './kernel/board.js';
 import { runGraph, resumeRun } from './kernel/runner.js';
 import { sweep } from './kernel/sweep.js';
-import { claimExecution } from './kernel/executions.js';
+import { claimExecution, getExecution } from './kernel/executions.js';
 import { humanGateDecisions, kernelStats, queuedExecutionIds } from './kernel/stats.js';
 import { liveWorkers, recentWorkers, workerStats } from './kernel/workers.js';
 import { markDispatcherAlive } from './dispatcher.js';
 import { limitsStamp, readLimits, writeLimits, type Limits } from './limits.js';
-import { completeHumanTask, ensureHumanTask, resolveHumanGate, retryNode, submitOperatorMaterial } from './operator.js';
+import {
+  abandonAllRuns, abandonRun, completeHumanTask, ensureHumanTask,
+  resolveHumanGate, retryNode, submitOperatorMaterial,
+} from './operator.js';
 import { BUILTIN_SKILLS } from './skills.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
 import type { Item } from './kernel/node-types.js';
@@ -53,7 +56,9 @@ export function startBridge(opts: {
   maxWorkers?: number;
 } = {}): BridgeHandle {
   const db = getDb();
-  const children = new Set<ChildProcess>();
+  // Нанятые процессы помним ВМЕСТЕ С ПРОГОНОМ: распустить смену — значит
+  // отпустить именно её рабочих, а не всех, кто сейчас работает.
+  const children = new Map<ChildProcess, string>();
 
   // Hiring throttle. The file beside the database is the source of truth, so
   // an operator (UI, MCP tool or editor) can retune a running factory; we
@@ -89,10 +94,23 @@ export function startBridge(opts: {
         env: { ...process.env, SAGA_LEASE: claim.lease },
         stdio: ['ignore', 'ignore', 'pipe', 'ignore'],
       });
-      children.add(child);
+      children.set(child, getExecution(db, id).run_id);
       child.stderr?.on('data', (chunk) => process.stderr.write(`[worker ${id.slice(0, 8)}] ${chunk}`));
       child.on('exit', () => children.delete(child));
     }
+  }
+
+  /** Отпустить рабочих распущенного прогона. Дописать они бы всё равно не
+   *  смогли — исполнение уже `canceled`, а settle требует `running`, — но без
+   *  этого они молча жгли бы слоты и токены до самого backstop-таймаута. */
+  function dismissWorkers(runId: string): number {
+    let dismissed = 0;
+    for (const [child, owner] of children) {
+      if (owner !== runId) continue;
+      child.kill();
+      dismissed += 1;
+    }
+    return dismissed;
   }
 
   function projectHumanGates(): void {
@@ -284,6 +302,20 @@ export function startBridge(opts: {
         sendJson(res, 200, event);
         return;
       }
+      const abandonMatch = url.pathname.match(/^\/api\/runs\/([\w-]+)\/abandon$/);
+      if (req.method === 'POST' && abandonMatch) {
+        const args = JSON.parse((await readBody(req)) || '{}') as { note?: string };
+        const result = abandonRun(db, abandonMatch[1], args.note);
+        sendJson(res, 200, { ...result, dismissed: dismissWorkers(abandonMatch[1]) });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/factory/reset') {
+        const args = JSON.parse((await readBody(req)) || '{}') as { note?: string };
+        const runs = abandonAllRuns(db, args.note);
+        const dismissed = runs.reduce((sum, run) => sum + dismissWorkers(run.run_id), 0);
+        sendJson(res, 200, { runs, dismissed });
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/api/workshops') {
         // Цех отдаётся и как СПИСОК СТОЛОВ (то, из чего он собран), и как граф
         // (то, во что он развернулся): канвасу нужен граф, вкладке цехов — столы.
@@ -345,9 +377,9 @@ export function startBridge(opts: {
     stop(opts: { killWorkers?: boolean } = {}): void {
       clearInterval(interval);
       if (opts.killWorkers) {
-        for (const child of children) child.kill();
+        for (const child of children.keys()) child.kill();
       } else {
-        for (const child of children) child.unref();
+        for (const child of children.keys()) child.unref();
       }
       server.close();
       closeDb();
