@@ -297,6 +297,91 @@ test('повтор ребёнка веера доходит до соедине�
     '«повтори» значит ПЕРЕДЕЛАЙ: забракованный материал ушёл со стола, а не лёг рядом');
 });
 
+test('стол = рабочее место: не принято — нанимают следующего НА ТО ЖЕ место', async () => {
+  const { getMaterial } = await import('../dist/materials.js');
+  const graph = JSON.stringify({
+    nodes: {
+      plan: { type: 'emit', parameters: { items: [{ json: { title: 'T1' } }, { json: { title: 'T2' } }] } },
+      tasks: {
+        type: 'split',
+        parameters: {
+          child: {
+            type: 'llm',
+            parameters: {
+              mode: 'echo', prompt: 'делаю {{title}}',
+              timeouts: { heartbeat_s: 30, schedule_to_start_s: 60 },
+              retry: { max_attempts: 1 },
+            },
+          },
+        },
+      },
+      merge: { type: 'join', parameters: {} },
+      quality: {
+        type: 'gate',
+        parameters: {
+          checks: [{ op: 'contains', field: 'text', value: 'ГОТОВО' }],
+          repair_target: 'tasks',
+          max_repairs: 2,
+        },
+      },
+    },
+    connections: {
+      plan: { main: [[{ node: 'tasks' }]] },
+      tasks: { main: [[{ node: 'merge' }]] },
+      merge: { main: [[{ node: 'quality' }]] },
+    },
+  });
+  const run = runGraph(db, graph, { name: 'desk-as-workplace' });
+
+  // первый рабочий сделал годное, второй — брак
+  const settle = (child, text) => {
+    resumeRun(db, run.runId);
+    const exec = getEvents(db, run.runId)
+      .filter((e) => e.type === 'execution.scheduled')
+      .map((e) => JSON.parse(e.payload_json))
+      .find((p) => p.node_id === child && getExecution(db, p.execution_id).status === 'new');
+    if (!exec) return null;
+    const { lease } = claimExecution(db, exec.execution_id);
+    completeActivity(db, exec.execution_id, lease, [{ json: { text } }]);
+    return exec;
+  };
+  settle('tasks::1', 'ГОТОВО T1');
+  settle('tasks::2', 'черновик T2');
+  resumeRun(db, run.runId);
+
+  // приёмка вернула в работу ИМЕННО второе рабочее место, с замечаниями
+  const repairs = getEvents(db, run.runId)
+    .filter((e) => e.type === 'repair.requested')
+    .map((e) => JSON.parse(e.payload_json));
+  assert.deepEqual(repairs.map((r) => r.target), ['tasks::2'],
+    'сосед со своей годной работой не переделывает ничего');
+  assert.match(repairs[0].reasons.join(' '), /ГОТОВО/, 'замечания приёмки поехали к рабочему');
+
+  // на то же место нанят следующий рабочий — и он сдал годное
+  const second = settle('tasks::2', 'ГОТОВО T2');
+  assert.ok(second, 'на освободившееся рабочее место назначена новая попытка');
+  assert.equal(second.node_id, 'tasks::2', 'нанят НА ТО ЖЕ рабочее место');
+  assert.equal(second.attempt, 2, 'второе исполнение на этом месте — провенанс, а не новая жизнь');
+  assert.equal(
+    getEvents(db, run.runId).filter((e) => {
+      const p = JSON.parse(e.payload_json);
+      return e.type === 'execution.scheduled' && p.node_id === 'tasks::1';
+    }).length,
+    1,
+    'соседнее рабочее место не переоткрывалось'
+  );
+  assert.equal(resumeRun(db, run.runId).status, 'success');
+
+  const mergeDigest = getEvents(db, run.runId)
+    .filter((e) => e.type === 'node.completed')
+    .map((e) => JSON.parse(e.payload_json))
+    .filter((p) => p.node_id === 'merge')
+    .at(-1).output_digest;
+  const texts = JSON.parse(getMaterial(db, mergeDigest).content).map((item) => item.json.text);
+  assert.deepEqual(texts.sort(), ['ГОТОВО T1', 'ГОТОВО T2'],
+    'на столе осталась только принятая работа: брак вытеснен, годное соседа сохранено');
+});
+
 test('повторять успешный прогон нечего', () => {
   const runId = board(db, {}).runs.find((r) => r.status === 'success').run_id;
   assert.throws(() => retryNode(db, runId, 'brief'), /RUN_SEALED/);

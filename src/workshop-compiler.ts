@@ -229,10 +229,11 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
     const gateInput = cursor;
     const checks = deskChecks(skill, desk);
     if (checks.length > 0) {
-      // Веер переделать нельзя: повторный запуск split породил бы те же
-      // (уже завершённые) узлы, и гейт крутился бы вхолостую. Поэтому у
-      // веерного стола бюджет доработок по умолчанию нулевой — решает человек.
-      const maxRepairs = desk.max_repairs ?? (desk.fanout ? 0 : 2);
+      // Стол — рабочее место, а не одна попытка: не принято — нанимаем
+      // следующего рабочего с замечаниями. Для веера это работает
+      // по-рабочеместно: гейт возвращает в работу того, чей материал не
+      // прошёл, а сосед со своей годной работой не переделывает ничего.
+      const maxRepairs = desk.max_repairs ?? 2;
       nodes[names.gate] = {
         type: 'gate',
         parameters: {

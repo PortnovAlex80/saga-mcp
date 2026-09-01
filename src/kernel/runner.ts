@@ -306,7 +306,6 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
       const operator = fold.operator.get(name);
       const params = graph.nodes[name].parameters as Partial<GateParameters>;
       const target = params.repair_target ?? graph.inbound[name][0];
-      const targetFold = fold.nodes.get(target);
       if (gate.verdict === 'human_required') {
         if (operator && operator.seq > gate.decisionSeq) {
           return { nodeId: name, kind: operator.decision === 'reject' ? 'operator-reject' : 'gate' };
@@ -322,10 +321,15 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
         if (deskChanged) return { nodeId: name, kind: 'gate' };
         continue; // typed human wait
       }
-      // repair_required: re-check once the repair target produced new material
-      if (targetFold?.lastSeq !== undefined && targetFold.lastSeq > gate.decisionSeq) {
-        return { nodeId: name, kind: 'gate' };
-      }
+      // repair_required: пересматриваем, когда изменился СТОЛ — им может быть
+      // и объявленная цель доработки, и вход гейта, и конкретное рабочее место
+      // веера (тогда цель — split, а материал сдал ребёнок).
+      const changed = [target, ...graph.inbound[name], ...(fold.spawned.get(target) ?? []).map((c) => c.id)]
+        .some((upstream) => {
+          const seq = fold.nodes.get(upstream)?.lastSeq;
+          return seq !== undefined && seq > gate.decisionSeq;
+        });
+      if (changed) return { nodeId: name, kind: 'gate' };
       continue;
     }
 
@@ -353,7 +357,9 @@ function findRunnable(graph: ParsedGraph, fold: Fold): { nodeId: string; kind: R
     const childType = getNodeType(childDef.type);
     for (const child of children) {
       const childFold = fold.nodes.get(child.id);
-      if (childFold?.status) continue; // settled (completed or failed)
+      // Завершённое рабочее место снова открыто, если приёмка вернула его в
+      // работу: стол — это МЕСТО, и на него нанимают следующего рабочего.
+      if (childFold?.status && !fold.openRepairs.has(child.id)) continue;
       if (childType.activity) {
         const exec = fold.execs.get(child.id);
         if (!exec) return { nodeId: child.id, kind: 'activity' };
@@ -558,12 +564,20 @@ function executeGate(
   }));
   const outcome = evaluateDesk(checks, deskMembers(db, desk));
   const items = outcome.survivors.flatMap((member) => member.items);
-  const verdict =
-    outcome.verdict === 'accepted'
-      ? 'accepted'
-      : repairsUsed < maxRepairs
-        ? 'repair_required'
-        : 'human_required';
+  // У веера приёмка ПОРАБОЧЕМЕСТНАЯ. Иначе годный сосед прикрывает брак:
+  // позитивный критерий удовлетворяется союзом, стол принимается целиком, и
+  // рабочее место с браком никто не переделывает. Стол — это место работы, и
+  // спрос с каждого места отдельный.
+  const perWorkplace = workplaceFailures(db, fold, params.repair_target ?? inbound[0], checks);
+  const accepted = outcome.verdict === 'accepted' && perWorkplace.length === 0;
+  const verdict = accepted
+    ? 'accepted'
+    : repairsUsed < maxRepairs
+      ? 'repair_required'
+      : 'human_required';
+  const reasons = accepted
+    ? []
+    : [...outcome.reasons, ...perWorkplace.flatMap((entry) => entry.reasons.map((r) => `${entry.target}: ${r}`))];
 
   // The sealed revision judges only what survived admission.
   const members: RevisionMembers[] = inbound.map((name) => ({
@@ -590,7 +604,7 @@ function executeGate(
       node_id: nodeId,
       verdict,
       revision_digest: revision.digest,
-      reasons: outcome.reasons,
+      reasons,
       attempts_used: verdict === 'repair_required' ? repairsUsed + 1 : repairsUsed,
     });
     if (verdict === 'accepted') {
@@ -603,14 +617,74 @@ function executeGate(
       });
     }
     if (verdict === 'repair_required') {
-      appendEventInTx(db, runId, 'repair.requested', {
-        node_id: nodeId,
-        target: params.repair_target ?? inbound[0],
-        attempt: repairsUsed + 1,
-        reasons: outcome.reasons,
-      });
+      const target = params.repair_target ?? inbound[0];
+      // Стол — это РАБОЧЕЕ МЕСТО, а не одна попытка: если работа не принята,
+      // на то же место нанимают следующего рабочего, и он получает замечания.
+      // У веера рабочих мест несколько, поэтому чинить надо КОНКРЕТНОЕ, а не
+      // весь веер: сосед, сделавший годную работу, переделывать не должен.
+      for (const request of repairRequests(fold, target, perWorkplace, reasons)) {
+        if (request.supersede.length > 0) {
+          appendEventInTx(db, runId, 'material.superseded', {
+            node_id: nodeId,
+            members: request.supersede.map((digest) => ({ node: request.target, digest })),
+            reasons: [`материал отправлен на переделку: ${request.reasons[0] ?? 'не принят'}`],
+          });
+        }
+        appendEventInTx(db, runId, 'repair.requested', {
+          node_id: nodeId,
+          target: request.target,
+          attempt: repairsUsed + 1,
+          reasons: request.reasons,
+        });
+      }
     }
   }).immediate();
+}
+
+interface RepairRequest {
+  target: string;
+  reasons: string[];
+  /** Дайджесты, которые уходят со стола вместе с заказом на переделку. */
+  supersede: string[];
+}
+
+/** Рабочие места веера, чья СОБСТВЕННАЯ работа не проходит критерии стола. */
+function workplaceFailures(
+  db: Database.Database,
+  fold: Fold,
+  target: string,
+  checks: GateParameters['checks']
+): RepairRequest[] {
+  const children = fold.spawned.get(target);
+  if (!children || children.length === 0) return [];
+  const failing: RepairRequest[] = [];
+  for (const child of children) {
+    const desk = fold.nodes.get(child.id)?.desk ?? [];
+    if (desk.length === 0) continue;
+    const outcome = evaluateDesk(checks, deskMembers(db, [{ node: child.id, digests: desk }]));
+    if (outcome.verdict === 'accepted') continue;
+    failing.push({ target: child.id, reasons: outcome.reasons, supersede: desk });
+  }
+  return failing;
+}
+
+/** Кого возвращать в работу: конкретные рабочие места веера, а если по
+ *  отдельности брака нет, а союз всё равно отклонён — дело коллективное, и
+ *  возвращаются все. Обычный стол — один адресат. */
+function repairRequests(
+  fold: Fold,
+  target: string,
+  perWorkplace: RepairRequest[],
+  reasons: string[]
+): RepairRequest[] {
+  if (perWorkplace.length > 0) return perWorkplace;
+  const children = fold.spawned.get(target);
+  if (!children || children.length === 0) return [{ target, reasons, supersede: [] }];
+  return children.map((child) => ({
+    target: child.id,
+    reasons,
+    supersede: fold.nodes.get(child.id)?.desk ?? [],
+  }));
 }
 
 function drive(

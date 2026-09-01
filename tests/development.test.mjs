@@ -173,8 +173,9 @@ test('development is compiled from desks and ends with a RUN, not a promise', ()
   assert.equal(nodes.smoke_post1.parameters.workdir, undefined, 'финальная проверка судит репозиторий');
   assert.deepEqual(nodes.smoke_gate.parameters.checks.map((check) => check.op), ['command_ok']);
 
-  // веер нельзя переделать автоматически — бюджет доработок нулевой
-  assert.equal(nodes.implement_gate.parameters.max_repairs, 0);
+  // стол = рабочее место: не принято — нанимают следующего рабочего НА ТО ЖЕ
+  // место, с замечаниями приёмки; сосед свою годную работу не переделывает
+  assert.equal(nodes.implement_gate.parameters.max_repairs, 2);
 
   // no SRS artifact in a fresh repo → honest failure
   const fresh = path.join(dir, 'fresh');
