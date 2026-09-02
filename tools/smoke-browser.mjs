@@ -173,7 +173,18 @@ async function main() {
             painted = lit;
           }
         } catch { painted = null; }
-        return { id: c.id, w: c.width, h: c.height, painted };
+        // Виден ли холст ЧЕЛОВЕКУ: перекрывающая заглушка поверх сцены — это
+        // не «страница работает». Поймано живьём на Элите: рендерер отрисовал
+        // кадр, а сверху лежал несъёмный экран ошибки с z-index 99999.
+        let covered = null;
+        try {
+          const r = c.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0) {
+            const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            covered = !(top === c || c.contains(top));
+          }
+        } catch { covered = null; }
+        return { id: c.id, w: c.width, h: c.height, area: c.width * c.height, painted, covered };
       });
       const text = (document.body.innerText || '').trim();
       return JSON.stringify({
@@ -197,6 +208,18 @@ async function main() {
     const painted = page.canvases.filter((c) => (c.painted ?? 0) > 0);
     if (page.canvases.length > 0 && painted.length === 0) {
       problems.push('на canvas ничего не нарисовано — страница открылась пустой');
+    }
+    // Судим ГЛАВНЫЙ холст, а не любой. Приложение с работающим HUD и пустой
+    // сценой раньше проходило приёмку: хватало одного нарисованного canvas,
+    // и рисовал его радар размером 128×128, пока сцена 800×450 была чёрной.
+    const main = [...page.canvases].sort((a, b) => (b.area ?? 0) - (a.area ?? 0))[0];
+    if (main && (main.painted ?? 0) === 0) {
+      problems.push(`главная сцена пуста: на canvas ${main.id || '(без id)'} ${main.w}×${main.h} ничего не нарисовано`);
+    }
+    // Перекрытие судим только у ГЛАВНОГО холста: подпись поверх радара — это
+    // нормальный HUD, а заглушка поверх сцены — сломанное приложение.
+    if (main && main.covered === true) {
+      problems.push(`главная сцена перекрыта другим элементом: canvas ${main.id || '(без id)'} человек не видит`);
     }
     if (page.canvases.length === 0 && page.textLength < 20) {
       problems.push('страница пуста: ни canvas, ни текста');
