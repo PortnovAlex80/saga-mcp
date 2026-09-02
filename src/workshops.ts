@@ -144,13 +144,15 @@ function injectEnvironment(
       parameters.run = parameters.run.replace(/\{\{tools\}\}/g, toolsDir().replace(/\\/g, '/'));
     }
     if (node.type === 'llm') {
-      if (parameters.attach) parameters.repo = opts.repo;
+      // `attach` кладёт в промпт один артефакт; `worktree` кладёт на стол весь
+      // продукт. Обоим нужен адрес репозитория.
+      if (parameters.attach || parameters.worktree) parameters.repo = opts.repo;
       applyMode(parameters);
     }
     if (node.type === 'split' && isRecord(parameters.child)) {
       const child = parameters.child as { type?: string; parameters?: Record<string, unknown> };
       if (child.parameters) {
-        if (child.parameters.attach) child.parameters.repo = opts.repo;
+        if (child.parameters.attach || child.parameters.worktree) child.parameters.repo = opts.repo;
         applyMode(child.parameters);
       }
     }

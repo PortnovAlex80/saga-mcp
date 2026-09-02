@@ -162,6 +162,7 @@ export function compileWorkshop(spec: WorkshopSpec, opts: CompileOptions): Compi
       model: desk.model ?? opts.model ?? DEFAULT_MODEL,
       prompt: skill ? buildPrompt(skill, desk) : '',
       ...(skill?.produces ? { produces: skill.produces } : {}),
+      ...(desk.worktree ?? skill?.worktree ? { worktree: true, repo: '' } : {}),
       // Путь к цели едет в параметры узла: рабочее место обустраивает воркер,
       // а объявляет его СТОЛ. Ядро по-прежнему не знает про столы.
       ...(skill?.steps && skill.steps.length > 0

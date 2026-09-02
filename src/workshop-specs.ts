@@ -99,6 +99,48 @@ const smokeDesk: Desk = {
   max_repairs: 0,
 };
 
+/** ЗАКАЗ НА ИЗМЕНЕНИЕ. Продукт уже существует; человек поправил спецификацию.
+ *
+ *  Отличие от выпуска с нуля — не в столах, а в том, что лежит НА столах:
+ *  рабочая копия продукта. Поэтому «внести правку» не вырождается в «написать
+ *  заново», а всё, чего правка не касается, остаётся ровно как было.
+ *
+ *  Судит приёмка не заплатку, а продукт С ПРИМЕНЁННОЙ заплаткой: обломок
+ *  запустить нельзя, и проверять его бессмысленно. */
+const changePlanDesk: Desk = {
+  id: 'change_plan',
+  title: 'План изменений',
+  skill: 'change-plan',
+  input: { kind: 'operator', field: 'change', label: 'Что изменилось в спецификации' },
+};
+
+const reviseDesk: Desk = {
+  id: 'revise',
+  title: 'Внесение изменений',
+  skill: 'revise',
+  fanout: true,
+  input: { kind: 'desk', desk: 'change_plan' },
+  hooks: { before: [{ kind: 'json_array' }] },
+};
+
+const changeAssembleDesk: Desk = {
+  id: 'change_assemble',
+  title: 'Сверка и запуск изменённого продукта',
+  skill: 'assemble',
+  // Сборщику нужен ВЕСЬ продукт: сверять контракты по одной заплатке нельзя.
+  worktree: true,
+  input: { kind: 'desk', desk: 'revise' },
+  hooks: {
+    after: [
+      { kind: 'overlay', key: 'path', with: 'input' },
+      { kind: 'command', run: SMOKE_STATIC, label: 'smoke-static', timeout_s: 120, workdir: 'worktree' },
+      { kind: 'command', run: SMOKE_BROWSER, label: 'smoke-browser', timeout_s: 180, workdir: 'worktree' },
+    ],
+  },
+  publish: { files_from: 'items', message: 'change: applied specification change' },
+  max_repairs: 5,
+};
+
 export const WORKSHOP_SPECS: Record<string, WorkshopSpec> = {
   factory: {
     id: 'factory',
@@ -127,6 +169,12 @@ export const WORKSHOP_SPECS: Record<string, WorkshopSpec> = {
     id: 'discovery',
     title: 'Discovery Desk — идея → бриф → артефакт',
     desks: [{ ...briefDesk, input: { kind: 'operator', field: 'idea', label: 'Идея продукта' } }],
+  },
+
+  change: {
+    id: 'change',
+    title: 'Заказ на изменение — правка спецификации → правка кода',
+    desks: [changePlanDesk, reviseDesk, changeAssembleDesk],
   },
 
   formalization: {

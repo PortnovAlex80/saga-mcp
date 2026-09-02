@@ -136,6 +136,23 @@ export interface WorkerView {
   usage?: { input?: number; output?: number; reasoning?: number; cost?: number };
 }
 
+export interface ProductDocument {
+  path: string;
+  content: string;
+  commit?: string;
+  author?: string;
+  updated_at?: string;
+  exists: boolean;
+}
+
+export interface DocumentSaved {
+  path: string;
+  commit: string;
+  patch: string;
+  changed: boolean;
+  run?: { runId: string; status: string };
+}
+
 export interface WorkersData {
   limits: Limits;
   hired: number;
@@ -227,6 +244,15 @@ export const api = {
       '/api/factory/reset',
       { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }) }
     ),
+  documents: () => json<{ repo: string; documents: ProductDocument[] }>('/api/documents'),
+  document: (docPath: string) =>
+    json<ProductDocument & { repo: string }>(`/api/document?path=${encodeURIComponent(docPath)}`),
+  saveDocument: (payload: { path: string; content: string; note?: string; apply?: boolean }) =>
+    json<DocumentSaved>('/api/document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
   workers: () => json<WorkersData>('/api/workers'),
   setLimits: (limits: Partial<Limits>) =>
     json<{ limits: Limits; hired: number }>('/api/limits', {

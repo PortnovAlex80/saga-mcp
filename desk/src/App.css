@@ -649,3 +649,18 @@ summary { cursor: pointer; }
   text-align: left;
 }
 .ticker.live { color: #86efac; border-color: #2f5a3a; }
+
+/* Спецификации: список слева, редактор справа. */
+.spec { display: grid; grid-template-columns: 260px 1fr; gap: 12px; padding: 12px; height: calc(100vh - 60px); box-sizing: border-box; }
+.spec-list { overflow: auto; border-right: 1px solid #23262d; padding-right: 8px; }
+.spec-list h3 { margin: 0 0 4px; font-size: 13px; }
+.spec-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; margin-bottom: 4px; padding: 6px 8px; }
+.spec-item.active { border-color: #3b6ea5; }
+.spec-editor { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.spec-editor header { display: flex; align-items: center; gap: 8px; }
+.spec-text { flex: 1; min-height: 240px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; resize: none; }
+.spec-note { width: 100%; box-sizing: border-box; }
+.spec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+button.primary { border-color: #3b6ea5; color: #cfe3ff; }
+.tag.warn { border-color: #7a6320; color: #f5d98b; }
+.small { font-size: 11px; }

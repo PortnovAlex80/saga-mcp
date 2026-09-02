@@ -29,6 +29,7 @@ import {
   resolveHumanGate, retryNode, submitOperatorMaterial,
 } from './operator.js';
 import { BUILTIN_SKILLS } from './skills.js';
+import { listDocuments, readDocument, saveDocument } from './documents.js';
 import { DEFAULT_WORKSHOPS, ensureProductRepo, startWorkshop } from './workshops.js';
 import type { Item } from './kernel/node-types.js';
 
@@ -48,6 +49,19 @@ const MIME: Record<string, string> = {
 export interface BridgeHandle {
   port: number;
   stop(opts?: { killWorkers?: boolean }): void;
+}
+
+/** Заказ, который получает завод: КАКОЙ документ изменился и ЧТО именно в нём
+ *  изменилось. Полная новая редакция превратила бы любое уточнение в
+ *  переписывание продукта — заводу нужна разница, а не редакция. */
+function changeOrder(docPath: string, patch: string): string {
+  return [
+    `Изменён документ спецификации: ${docPath}`,
+    '',
+    'Разница с принятой версией (unified diff):',
+    '',
+    patch.trim() || '(правка не затронула содержимое)',
+  ].join('\n');
 }
 
 export function startBridge(opts: {
@@ -314,6 +328,37 @@ export function startBridge(opts: {
         const runs = abandonAllRuns(db, args.note);
         const dismissed = runs.reduce((sum, run) => sum + dismissWorkers(run.run_id), 0);
         sendJson(res, 200, { runs, dismissed });
+        return;
+      }
+      // ДОКУМЕНТЫ ПРОДУКТА — спецификации, которые правит человек. Живут в
+      // репозитории продукта, а не в журнале: журнал властвует над РАБОТОЙ
+      // завода, git — над содержимым продукта. Это разные предметы.
+      if (req.method === 'GET' && url.pathname === '/api/documents') {
+        const repo = ensureProductRepo(url.searchParams.get('repo') ?? undefined);
+        sendJson(res, 200, { repo, documents: listDocuments(repo) });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/api/document') {
+        const repo = ensureProductRepo(url.searchParams.get('repo') ?? undefined);
+        const docPath = url.searchParams.get('path');
+        if (!docPath) throw new Error('path is required');
+        sendJson(res, 200, { repo, ...readDocument(repo, docPath) });
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/api/document') {
+        const args = JSON.parse(await readBody(req)) as {
+          path?: string; content?: string; note?: string; apply?: boolean;
+        };
+        if (!args.path) throw new Error('path is required');
+        const repo = ensureProductRepo();
+        const saved = saveDocument(repo, args.path, String(args.content ?? ''), args.note);
+        // «Сохранить» и «внести изменения» — разные действия, и второе не
+        // случается само: человек может править спецификацию несколько раз,
+        // прежде чем позвать завод.
+        const run = args.apply && saved.changed
+          ? startWorkshop(db, 'change', { change: changeOrder(saved.path, saved.patch), repo })
+          : undefined;
+        sendJson(res, 200, { ...saved, run });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/workshops') {

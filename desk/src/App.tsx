@@ -15,6 +15,7 @@ import {
 } from '@xyflow/react';
 import { Board } from './Board';
 import { Wiki } from './Wiki';
+import { Spec } from './Spec';
 import { Workers } from './Workers';
 import { Shop } from './Shop';
 import { nodeTypes } from './nodes';
@@ -486,13 +487,14 @@ function Desk() {
   );
 }
 
-type View = 'desk' | 'board' | 'wiki' | 'workers' | 'shop';
+type View = 'desk' | 'board' | 'wiki' | 'spec' | 'workers' | 'shop';
 
 const VIEWS: Array<{ id: View; label: string; hint: string }> = [
   { id: 'board', label: 'Доска', hint: 'канбан: карточка = стол узла, колонка выводится из журнала' },
   { id: 'workers', label: 'Воркеры', hint: 'смена: кто нанят, на чём, что производит сейчас; лимит найма' },
   { id: 'shop', label: 'Цеха', hint: 'из чего собрана работа: столы, навыки, инструменты, хуки, приёмка' },
   { id: 'desk', label: 'Стол', hint: 'граф цеха: узлы, связи, параметры' },
+  { id: 'spec', label: 'Спецификации', hint: 'документы продукта: правка человеком и заказ на изменение' },
   { id: 'wiki', label: 'Артефакты', hint: 'мини-вики: материалы завода, чтение и правка' },
 ];
 
@@ -533,6 +535,7 @@ export default function App() {
       )}
       {view === 'shop' && <Shop />}
       {view === 'workers' && <Workers />}
+      {view === 'spec' && <Spec />}
       {view === 'wiki' && <Wiki runId={wikiRun} onClearRun={() => setWikiRun(undefined)} />}
     </ReactFlowProvider>
   );

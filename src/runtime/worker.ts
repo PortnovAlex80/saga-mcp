@@ -43,10 +43,18 @@ interface LlmParameters {
   run?: string;
   label?: string;
   timeout_s?: number;
-  /** 'items' — судить КАНДИДАТА во временном каталоге, а не репозиторий. */
-  workdir?: 'items';
+  /** Где судить:
+   *   'items'    — только кандидат: items раскладываются во временный каталог.
+   *                Годится для выпуска с нуля, где items — весь продукт.
+   *   'worktree' — продукт С ПРИМЕНЁННЫМ изменением: рабочая копия репозитория
+   *                плюс items поверх. Для заказа на изменение items — это
+   *                заплатка, и судить одну заплатку значит судить обломок. */
+  workdir?: 'items' | 'worktree';
   /** Результат стола — ФАЙЛЫ в рабочем каталоге, а не текст ответа. */
   produces?: 'files';
+  /** Положить на стол ТЕКУЩИЙ продукт: рабочий правит существующий код, а не
+   *  сочиняет его заново. Писать всё равно можно только в своей границе. */
+  worktree?: boolean;
   /** Путь к цели: цель стола, его шаги и самопроверка. Материализуются в
    *  рабочее место, которое переживает рабочего. */
   workshop?: string;
@@ -99,11 +107,21 @@ interface DesiredFile {
   content: string;
 }
 
+/** Пути, которые принятая работа велит убрать из продукта. */
+function doomedFiles(params: LlmParameters, inputs: Item[]): string[] {
+  if (params.files_from !== 'items') return [];
+  return [...new Set(inputs
+    .filter((item) => item.json.deleted === true)
+    .map((item) => String(item.json.path ?? ''))
+    .filter((rel) => rel.length > 0 && !rel.includes('..')))].sort();
+}
+
 function desiredFiles(params: LlmParameters, inputs: Item[]): DesiredFile[] {
   // Dynamic mode: each input item IS a file ({path, content}) — used by the
   // integration effect after the development fan-out.
   if (params.files_from === 'items') {
     return inputs
+      .filter((item) => item.json.deleted !== true)
       .map((item) => ({ path: String(item.json.path ?? ''), content: String(item.json.content ?? '') }))
       .filter((f) => f.path.length > 0)
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -152,7 +170,10 @@ function performGitEffect(
   }
   const branch = params.branch ?? 'main';
   const desired = desiredFiles(params, inputs);
-  const desiredDigest = sha(JSON.stringify(desired));
+  const doomed = doomedFiles(params, inputs);
+  // Удаление — такая же часть намерения, как запись: без него два разных
+  // желаемых состояния делили бы один ключ идемпотентности.
+  const desiredDigest = sha(JSON.stringify({ desired, doomed }));
   const key = params.effect_key ?? sha(`${execution.run_id}:${execution.node_id}:${desiredDigest}`);
   const baseSettlement = {
     key,
@@ -162,7 +183,8 @@ function performGitEffect(
   // Idempotency first: observe external state before repeating (§26.3).
   const existing = findCommitByKey(repo, key);
   if (existing) {
-    const matches = desired.every((f) => fileAt(repo, existing, f.path) === f.content);
+    const matches = desired.every((f) => fileAt(repo, existing, f.path) === f.content)
+      && doomed.every((rel) => fileAt(repo, existing, rel) === null);
     if (matches) {
       return {
         items: [{ json: { effect_key: key, outcome: 'already_applied', commit: existing, branch } }],
@@ -193,6 +215,10 @@ function performGitEffect(
   }
 
   const headBefore = safeHead(repo);
+  for (const rel of doomed) {
+    const full = path.join(repo, rel);
+    if (existsSync(full)) rmSync(full, { force: true });
+  }
   for (const file of desired) {
     const fullPath = path.join(repo, file.path);
     mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -297,6 +323,10 @@ interface OpencodeResult {
   usage?: ModelUsage;
   /** Столы, производящие код: файлы, снятые из рабочего каталога модели. */
   files?: DesiredFile[];
+  /** Файлы, которые лежали на столе и которых рабочий не оставил. Без этого
+   *  завод умел только ПИСАТЬ файлы и не знал набора продукта: файлы прошлых
+   *  выпусков оставались сиротами (замерено на Элите — пять мёртвых файлов). */
+  deleted?: string[];
 }
 
 /** Поднимает свой headless-сервер opencode и отдаёт его порт.
@@ -457,6 +487,36 @@ function walkFiles(root: string, base = ''): DesiredFile[] {
   return out;
 }
 
+/** Выложить на стол рабочую копию продукта. Заказ на ИЗМЕНЕНИЕ отличается от
+ *  заказа на продукт ровно этим: у рабочего под руками уже есть то, что он
+ *  меняет. Без этого «внести правку» неизбежно вырождается в «написать
+ *  заново», и всё, что работало, переписывается вслепую. */
+function seedWorktree(sandbox: string, repo: string): Map<string, string> {
+  const seeded = new Map<string, string>();
+  if (!repo || !existsSync(repo)) return seeded;
+  let tracked: string;
+  try {
+    tracked = execFileSync('git', ['ls-files'], { cwd: repo, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  } catch {
+    return seeded; // не репозиторий или он пуст — работать не с чем
+  }
+  for (const line of tracked.split('\n')) {
+    const rel = line.trim();
+    if (!rel || rel.includes('..')) continue;
+    let content: string;
+    try {
+      content = readFileSync(path.join(repo, rel), 'utf8');
+    } catch {
+      continue; // бинарь или нечитаемое — не наш материал
+    }
+    const full = path.join(sandbox, rel);
+    mkdirSync(path.dirname(full), { recursive: true });
+    writeFileSync(full, content, 'utf8');
+    seeded.set(rel, content);
+  }
+  return seeded;
+}
+
 /** Разложить входные файлы в песочницу: модель правит НАСТОЯЩИЕ файлы,
  *  а не их пересказ в промпте. */
 function seedSandbox(sandbox: string, inputs: Item[]): Map<string, string> {
@@ -483,7 +543,13 @@ async function runOpencode(
   prompt: string,
   model: string,
   timeoutMs: number,
-  opts: { produces?: 'files'; inputs?: Item[]; workplace?: { dir: string; plan: WorkplacePlan } } = {}
+  opts: {
+    produces?: 'files';
+    inputs?: Item[];
+    workplace?: { dir: string; plan: WorkplacePlan };
+    /** Репозиторий, рабочую копию которого кладём на стол. */
+    worktree?: string;
+  } = {}
 ): Promise<OpencodeResult> {
   const started = Date.now();
   note(started, `запрос отправлен · ${model} · ${prompt.length} симв.`);
@@ -496,8 +562,19 @@ async function runOpencode(
   const sandbox = opts.workplace
     ? materializeWorkplace(opts.workplace.dir, opts.workplace.plan)
     : mkdtempSync(path.join(tmpdir(), 'saga5-model-'));
-  const seeded = opts.produces === 'files' ? seedSandbox(sandbox, opts.inputs ?? []) : new Map<string, string>();
-  if (seeded.size > 0) note(started, `в каталог разложено файлов: ${seeded.size}`);
+  // Посев СЛОЯМИ: сначала рабочая копия продукта, поверх — входные файлы.
+  // Для заказа на изменение это и есть кандидат: продукт плюс заплатка. Класть
+  // одно вместо другого нельзя — без копии сборщику не с чем сверять контракты,
+  // без заплатки он не увидит того, ради чего его позвали.
+  const seeded = opts.worktree ? seedWorktree(sandbox, opts.worktree) : new Map<string, string>();
+  if (opts.produces === 'files') {
+    for (const [rel, content] of seedSandbox(sandbox, opts.inputs ?? [])) seeded.set(rel, content);
+  }
+  if (seeded.size > 0) {
+    note(started, opts.worktree
+      ? `на стол выложен продукт: ${seeded.size} файл(ов)`
+      : `в каталог разложено файлов: ${seeded.size}`);
+  }
   if (opts.workplace) {
     const plan = opts.workplace.plan;
     note(started, `стол обустроен · круг ${plan.round} · шагов ${plan.steps.length}`
@@ -566,8 +643,16 @@ async function runOpencode(
         const names = harvested.filter((f) => !files.includes(f)).map((f) => f.path);
         note(started, `отброшено вне границы стола: ${names.join(', ')}`);
       }
+      // Чего рабочий на столе НЕ ОСТАВИЛ — тоже его решение. Удалять умеет
+      // только тот, кто видит весь продукт, поэтому спрашиваем лишь столы с
+      // рабочей копией: у остальных отсутствие файла ничего не значит.
+      const survived = new Set(walkFiles(sandbox).map((file) => file.path));
+      const deleted = opts.worktree
+        ? [...seeded.keys()].filter((rel) => !survived.has(rel) && !WORKPLACE_FILES.includes(rel))
+        : [];
       const progress = opts.workplace ? trackerProgress(sandbox) : undefined;
       note(started, `сдано файлов: ${files.length}`
+        + (deleted.length > 0 ? ` · удалено: ${deleted.join(', ')}` : '')
         + (progress ? ` · шагов пройдено ${progress.done}/${progress.total}` : ''));
       // «Ничего не изменил» — законный ответ там, где каталог УЖЕ был полон
       // (сборщику нечего править). Там, где каталог был пуст, это значит, что
@@ -575,7 +660,7 @@ async function runOpencode(
       if (files.length === 0 && seeded.size === 0) {
         throw new Error('OPENCODE_NO_FILES: модель не записала ни одного файла');
       }
-      return { text, usage, files };
+      return { text, usage, files, deleted };
     }
     if (!text.trim()) throw new Error('OPENCODE_EMPTY: модель не вернула текста');
     return { text, usage };
@@ -616,8 +701,15 @@ function runCommand(
   // выполнимым: приёмка проходит ДО эффекта.
   let cwd = params.repo ?? '';
   let scratch: string | undefined;
-  if (params.workdir === 'items') {
+  if (params.workdir === 'items' || params.workdir === 'worktree') {
     scratch = mkdtempSync(path.join(tmpdir(), 'saga5-candidate-'));
+    let base = 0;
+    if (params.workdir === 'worktree') {
+      // Сначала продукт как он есть, потом заплатка поверх: команда судит то,
+      // что получится ПОСЛЕ изменения, а не изменение в отрыве от продукта.
+      base = seedWorktree(scratch, params.repo ?? '').size;
+      note(started, `рабочая копия продукта разложена: ${base} файл(ов)`);
+    }
     let written = 0;
     for (const item of inputs) {
       const filePath = typeof item.json.path === 'string' ? item.json.path : '';
@@ -860,13 +952,17 @@ async function main(): Promise<void> {
       const answer = await runOpencode(prompt, model, (timeouts.start_to_close_s ?? 180) * 1000, {
         produces: params.produces,
         inputs,
+        ...(params.worktree && params.repo ? { worktree: params.repo } : {}),
         ...(plan ? { workplace: { dir: workplaceDir(execution.run_id, execution.node_id), plan } } : {}),
       });
       // Usage is provenance of the ATTEMPT, not of the material: keeping it out
       // of the item keeps identical answers content-identical.
       usage = answer.usage;
       output = answer.files
-        ? answer.files.map((file) => ({ json: { path: file.path, content: file.content, model } }))
+        ? [
+          ...answer.files.map((file) => ({ json: { path: file.path, content: file.content, model } })),
+          ...(answer.deleted ?? []).map((rel) => ({ json: { path: rel, deleted: true, model } })),
+        ]
         : [{ json: { text: stripCodeFences(answer.text), model } }];
     } else if ((params.mode ?? 'echo') === 'api') {
       const baseUrl = process.env.LLM_BASE_URL;
